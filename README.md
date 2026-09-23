@@ -42,6 +42,12 @@ pnpm pack --pack-destination .artifacts
 pnpm add /absolute/path/to/Ridgeline/.artifacts/ridgeline-map-0.1.0.tgz maplibre-gl@6.11.0
 ```
 
+## Control scheme experiments
+
+Run `pnpm dev:controls` for the separate [control lab](control-lab/README.md). It includes ten selectable map and unit-control schemes, from familiar drag-to-pan controls to RTS box selection, a command wheel, route sketching, formations, queued orders, and typed commands. `pnpm test:controls` and `pnpm build:controls` validate this application.
+
+The control lab uses simulated units and a fixed SVG street sample. It is an interaction experiment, not an integration with the Ridgeline viewport. Its React dependencies remain in its own private workspace package; the map library and existing playground are unchanged.
+
 ## First viewport in Vite
 
 ```ts

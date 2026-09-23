@@ -1,2 +1,5 @@
+packages:
+  - control-lab
+
 allowBuilds:
   esbuild: true

@@ -1,6 +1,8 @@
-# Ridgeline
+# Ridgeline control lab
 
 A local map-controls playground with all ten approved control schemes. The units are simulated. Orders place them immediately and leave route trails; there is no device connection, pathfinding, or movement simulation.
+
+This is an isolated interaction sandbox using an embedded SVG street sample. It does not use or change the Ridgeline viewport library. The existing MapLibre playground stays available through the root `pnpm dev` command.
 
 The approved design keeps the map dominant, the ten choices in a flat navigation list, and each scheme's controls next to the map. Empty selections disable unavailable actions; routes and formations show previews before commit. The navigation wraps into two columns on narrow screens. There are no decorative cards or idle animations.
 
@@ -10,10 +12,10 @@ Requires Node.js 22.12 or newer and pnpm.
 
 ```sh
 pnpm install
-pnpm dev
+pnpm dev:controls
 ```
 
-Open the local URL printed by Vite. `pnpm build` checks TypeScript and builds `dist/`. `pnpm test` checks selection, order execution, command parsing, formation placement, and camera geometry.
+Run those commands from the repository root and open the local URL printed by Vite. `pnpm build:controls` checks TypeScript and builds `control-lab/dist/`. `pnpm test:controls` checks selection, order execution, command parsing, formation placement, and camera geometry.
 
 ## Control schemes
 
