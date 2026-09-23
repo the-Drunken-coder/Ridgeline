@@ -6,7 +6,20 @@ export type Properties = Record<string, unknown>;
 export type MapFeature<P extends Properties = Properties> = Feature<Point | LineString | Polygon, P> & { id: string; entity?: Entity };
 export type Altitude = { meters: number; reference: 'ground' | 'sea-level' };
 type AttachmentBase = { id: string; name?: string; color?: string };
-export type CameraAttachment = AttachmentBase & { type: 'camera'; bearing: number; elevation: number; fovX: number; fovY: number; range: number };
+export type CameraAttachment = AttachmentBase & {
+  type: 'camera';
+  bearing: number;
+  elevation: number;
+  fovX: number;
+  fovY: number;
+  range: number;
+  /** CSS color for the volume only; defaults to color, then #176d46. */
+  volumeColor?: string;
+  /** Face opacity from 0 to 1. Defaults to 0.25; zero hides the faces. */
+  volumeOpacity?: number;
+  /** Show the volume edges independently of face opacity. Defaults to true. */
+  wireframe?: boolean;
+};
 export type EntityAttachment = CameraAttachment
   | AttachmentBase & { type: 'sphere'; radius: number }
   | AttachmentBase & { type: 'cylinder'; radius: number; height: number }

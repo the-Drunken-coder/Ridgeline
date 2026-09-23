@@ -69,6 +69,14 @@ footer { min-height: 31px; display: flex; align-items: center; justify-content: 
 #airborne-demo h2:not(:first-child) { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
 #airborne-demo .setting input[type=number] { width: 92px; padding: 4px; border: 1px solid var(--line); border-radius: 3px; background: var(--surface); }
 #airborne-demo .setting select { width: 118px; }
+.camera-appearance { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.camera-appearance .setting { flex-wrap: wrap; gap: 6px; }
+.camera-color { display: flex; align-items: center; gap: 6px; }
+.camera-color input[type=color] { width: 28px; height: 26px; padding: 1px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; }
+.camera-color input[type=text] { width: 78px; min-width: 0; padding: 4px; border: 1px solid var(--line); border-radius: 3px; background: var(--surface); color: var(--ink); font: 12px monospace; }
+.camera-strength input[type=range] { flex: 1; width: 60px; min-width: 45px; accent-color: var(--accent); }
+.camera-strength output { width: 4ch; text-align: right; font-variant-numeric: tabular-nums; }
+.camera-appearance input[type=checkbox] { accent-color: var(--accent); }
 .airborne-visibility { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
 .airborne-visibility label { display: flex; align-items: center; gap: 5px; font-size: 12px; }
 .airborne-visibility input { accent-color: var(--accent); }

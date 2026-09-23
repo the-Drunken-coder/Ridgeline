@@ -38,6 +38,13 @@ export function validateEntity(entity: Entity, fail: (message: string) => never)
           fail(
             'Camera angles must be finite, elevation within ±90°, FOV between 0° and 180°, and range positive.',
           );
+        if (
+          attachment.volumeOpacity !== undefined &&
+          (!Number.isFinite(attachment.volumeOpacity) || attachment.volumeOpacity < 0 || attachment.volumeOpacity > 1)
+        )
+          fail('Camera volume opacity must be between 0 and 1.');
+        if (attachment.wireframe !== undefined && typeof attachment.wireframe !== 'boolean')
+          fail('Camera wireframe must be a boolean.');
         break;
       case 'sphere':
       case 'circle':

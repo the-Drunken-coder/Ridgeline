@@ -249,8 +249,23 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
     }
     const visible = (depth: number) => terrainDepth === undefined || depth <= terrainDepth + 1e-6;
     for (const draw of this.draws) {
-      if (draw.mode === 'lines') continue;
+      if (draw.mode === 'lines' && !draw.attachmentId) continue;
       const points = draw.vertices.map((p) => this.project(p));
+      if (draw.mode === 'lines') {
+        for (let i = 0; i < points.length; i += 2) {
+          const a = points[i], b = points[i + 1];
+          if (!a || !b) continue;
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const lengthSquared = dx * dx + dy * dy;
+          const t = lengthSquared === 0 ? 0 : Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / lengthSquared));
+          const depth = a.depth + t * (b.depth - a.depth);
+          if (Math.hypot(x - a.x - t * dx, y - a.y - t * dy) <= tolerance && visible(depth)) {
+            hits.push({ entityId: draw.entityId, attachmentId: draw.attachmentId, depth });
+            break;
+          }
+        }
+        continue;
+      }
       if (draw.mode === 'points') {
         const p = points[0];
         if (

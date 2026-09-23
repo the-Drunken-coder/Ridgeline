@@ -10,6 +10,9 @@ export type AirborneSettings = {
   fovX: number;
   fovY: number;
   range: number;
+  volumeColor: string;
+  fillStrength: number;
+  wireframe: boolean;
   fallback: boolean;
   example: string;
 };
@@ -21,6 +24,9 @@ export const defaultAirborneSettings: AirborneSettings = {
   fovX: 60,
   fovY: 40,
   range: 2000,
+  volumeColor: '#176d46',
+  fillStrength: 25,
+  wireframe: true,
   fallback: true,
   example: 'normal',
 };
@@ -52,6 +58,9 @@ export function airborneFeatures(
       fovX: settings.fovX,
       fovY: settings.fovY,
       range: settings.range,
+      volumeColor: settings.volumeColor,
+      volumeOpacity: settings.fillStrength / 100,
+      wireframe: settings.wireframe,
     };
     feature.entity = {
       altitude:
@@ -112,6 +121,11 @@ export function mountAirborneInspector(
       <label class="setting">Horizontal FOV °<input data-setting="fovX" type="number" min="1" max="179" value="60"></label>
       <label class="setting">Vertical FOV °<input data-setting="fovY" type="number" min="1" max="179" value="40"></label>
       <label class="setting">Range m<input data-setting="range" type="number" min="1" step="100" value="2000"></label>
+      <div class="camera-appearance">
+        <div class="setting"><span>Color</span><div class="camera-color"><input type="color" aria-label="Volume color" data-setting="volumeColor" value="#176d46"><input type="text" aria-label="Volume hex color" data-setting="volumeColor" value="#176d46" pattern="#[0-9a-fA-F]{6}" required maxlength="7" spellcheck="false"></div></div>
+        <label class="setting camera-strength">Fill strength<input type="range" data-setting="fillStrength" min="0" max="100" step="1" value="25"><output data-strength>25%</output></label>
+        <label class="setting">Wireframe<input type="checkbox" data-setting="wireframe" checked></label>
+      </div>
     </div><dl data-zone hidden></dl><p data-state role="status"></p>`;
   function render() {
     const id = viewport.getSelection()[0],
@@ -123,10 +137,11 @@ export function mountAirborneInspector(
         '[data-setting]',
       )) {
         const key = input.dataset.setting;
-        if (key === 'fallback' && input instanceof HTMLInputElement) input.checked = settings.fallback;
+        if ((key === 'fallback' || key === 'wireframe') && input instanceof HTMLInputElement) input.checked = settings[key];
         else if (key && key in settings) input.value = String(settings[key as keyof AirborneSettings]);
       }
     }
+    container.querySelector<HTMLOutputElement>('[data-strength]')!.value = `${settings.fillStrength}%`;
     for (const input of container.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-setting]'))
       input.disabled = !feature?.entity;
     const select = container.querySelector<HTMLSelectElement>('[data-attachment]')!;
@@ -154,6 +169,29 @@ export function mountAirborneInspector(
         ? 'Loading elevation…'
         : `${state.placement.replaceAll('-', ' ')} · coverage ${state.coverage}`;
   }
+  function updateAppearance(target: HTMLInputElement) {
+    const key = target.dataset.setting;
+    if (!target.checkValidity()) return;
+    if (key === 'volumeColor') {
+      const color = target.value.toLowerCase();
+      if (color === settings.volumeColor) return;
+      settings.volumeColor = color;
+      for (const input of container.querySelectorAll<HTMLInputElement>('[data-setting="volumeColor"]'))
+        input.value = color;
+    } else if (key === 'fillStrength') {
+      if (target.valueAsNumber === settings.fillStrength) return;
+      settings.fillStrength = target.valueAsNumber;
+    } else if (key === 'wireframe') {
+      if (target.checked === settings.wireframe) return;
+      settings.wireframe = target.checked;
+    } else return;
+    const id = viewport.getSelection()[0];
+    if (id) onSettings(id, { ...settings });
+    render();
+  }
+  container.addEventListener('input', (event) => {
+    if (event.target instanceof HTMLInputElement) updateAppearance(event.target);
+  }, { signal: controller.signal });
   container.addEventListener(
     'change',
     (event) => {
@@ -171,7 +209,13 @@ export function mountAirborneInspector(
         render();
       } else {
         const key = target.dataset.setting;
-        if (key === 'fallback' && target instanceof HTMLInputElement) settings.fallback = target.checked;
+        if (key === 'volumeColor' || key === 'fillStrength' || key === 'wireframe') {
+          if (target instanceof HTMLInputElement) {
+            updateAppearance(target);
+            target.reportValidity();
+          }
+          return;
+        } else if (key === 'fallback' && target instanceof HTMLInputElement) settings.fallback = target.checked;
         else if (key === 'reference') settings.reference = target.value === 'ground' ? 'ground' : 'sea-level';
         else if (key === 'example') settings.example = target.value;
         else if (

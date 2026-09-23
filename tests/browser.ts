@@ -1,5 +1,5 @@
 import { createViewport, attachInteractions, RidgelineError } from '@ridgeline/map';
-import type { MapFeature, Viewport } from '@ridgeline/map';
+import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
 import { GeoJSONSource, ErrorEvent as MapErrorEvent, setWorkerUrl } from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
@@ -374,6 +374,58 @@ async function suite() {
       air.map.triggerRepaint();
     });
     check(pixels.every(green=>green>50),`Visible ground has unpainted gaps: green pixels ${pixels.join(',')}`);
+    air.destroy();
+  });
+  await run('Camera color, fill strength, and wireframe independently control visible and pickable geometry', async () => {
+    const air = createViewport({ container, basemap: style('#000000'),
+      elevationSampler: { sample: () => 0 }, camera: { center: [0, 0], zoom: 16, pitch: 0 },
+      entityVisibility: { volumes: true, footprints: false, zones: false, groundLines: false }, logger: () => {} });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'camera', type: 'camera', bearing: 0, elevation: 90,
+      fovX: 60, fovY: 60, range: 200, volumeColor: '#ff0000', wireframe: false };
+    async function update(changes: Partial<CameraAttachment>) {
+      Object.assign(camera, changes);
+      const previous = air.getEntityState('styled')?.computedAt;
+      air.upsert([{ ...point('styled'), entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [camera] } }]);
+      await until(() => air.getEntityState('styled')?.computedAt !== previous, 'camera style update');
+      return new Promise<{ pixels: Uint8Array; width: number; height: number; scale: number }>(resolve => {
+        air.map.once('render', () => {
+          const canvas = air.map.getCanvas(), gl = canvas.getContext('webgl2')!;
+          const pixels = new Uint8Array(canvas.width * canvas.height * 4);
+          gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+          resolve({ pixels, width: canvas.width, height: canvas.height, scale: canvas.width / canvas.clientWidth });
+        });
+        air.map.triggerRepaint();
+      });
+    }
+    const faint = await update({ volumeOpacity: 0.1 });
+    const solid = await update({ volumeOpacity: 1 });
+    const redPixels = (frame: typeof solid) => {
+      const indices: number[] = [];
+      for (let i = 0; i < frame.pixels.length; i += 4)
+        if (frame.pixels[i]! > 20 && frame.pixels[i + 1]! < 5 && frame.pixels[i + 2]! < 5) indices.push(i);
+      return indices;
+    };
+    const solidPixels = redPixels(solid);
+    check(solidPixels.length > 500, 'Custom red volume was not rendered');
+    const interior = solidPixels[Math.floor(solidPixels.length / 3)]!;
+    check(solid.pixels[interior]! > faint.pixels[interior]! + 100, 'Fill strength did not change the rendered opacity');
+    const blue = await update({ volumeColor: '#0000ff' });
+    check(blue.pixels[interior]! < 5 && blue.pixels[interior + 2]! > 200, 'Volume color did not update');
+    let hit = false;
+    air.on('click', event => { hit = event.attachments.some(a => a.attachmentId === 'camera'); });
+    function pick(frame: typeof solid, index: number) {
+      const p = { x: (index / 4 % frame.width) / frame.scale, y: (frame.height - 1 - Math.floor(index / 4 / frame.width)) / frame.scale };
+      air.map.fire('click', { point: p, lngLat: air.map.unproject([p.x, p.y]), originalEvent: new MouseEvent('click') });
+      return hit;
+    }
+    check(pick(solid, interior), 'Filled volume cannot be selected');
+    const hidden = await update({ volumeColor: '#ff0000', volumeOpacity: 0 });
+    check(redPixels(hidden).length === 0 && !pick(hidden, interior), 'Invisible volume remains drawn or pickable');
+    const wire = await update({ wireframe: true });
+    const edges = redPixels(wire);
+    check(edges.length > 50 && edges.length < solidPixels.length / 3, 'Wireframe-only view still has filled faces or no edges');
+    check(pick(wire, edges[Math.floor(edges.length / 3)]!), 'Wireframe-only volume cannot be selected');
     air.destroy();
   });
   status.dataset.state = 'passed';

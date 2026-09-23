@@ -118,7 +118,8 @@ viewport.upsert([{
     groundIfNoAltitude: true,
     attachments: [
       { id: 'camera', type: 'camera', bearing: 60, elevation: -35,
-        fovX: 60, fovY: 40, range: 2000 },
+        fovX: 60, fovY: 40, range: 2000,
+        volumeColor: '#176d46', volumeOpacity: 0.25, wireframe: true },
       { id: 'safety', type: 'sphere', radius: 150 },
       { id: 'search-area', type: 'circle', radius: 250 },
     ],
@@ -134,7 +135,9 @@ Ground zones support `circle` with `radius`, and `polygon` with an open `vertice
 
 `getEntityState(id)` returns placement, physical altitude and ground height, coverage availability, computation timestamp/duration, and footprint triangle count. Subscribe to `entitychange` for recomputed IDs. A missing altitude defaults to a ground marker; `groundIfNoAltitude: false` withholds it and reports `ALTITUDE_MISSING`. Explicit zero is a supplied altitude. Missing terrain retains a ground marker and withholds dependent geometry. Below-terrain altitude reports `BELOW_TERRAIN`, retains the ground marker, and withholds airborne geometry. The input altitude is never rewritten.
 
-Pointer events include `attachments: { entityId, attachmentId }[]` ordered by hit depth. The optional interaction helper carries those hits into `selectionrequest`, filtered to the selected owner. The consumer still owns selection policy.
+Camera appearance is per attachment: `volumeColor` overrides the volume's CSS color without changing its footprint, `volumeOpacity` sets face opacity from 0 to 1 (default `0.25`), and `wireframe` shows edges independently (default `true`). The volume color falls back to attachment `color`, then `#176d46`; the footprint continues to use attachment `color` or its existing green default. Zero opacity with wireframe enabled gives an outline-only camera. With both disabled, its volume is neither drawn nor pickable; a visible footprint remains selectable. The playground exposes these as a color picker, hex field, 0–100% fill-strength slider, and wireframe checkbox.
+
+Pointer events include `attachments: { entityId, attachmentId }[]` ordered by hit depth. Visible camera faces and wireframe edges select their owning attachment. The optional interaction helper carries those hits into `selectionrequest`, filtered to the selected owner. The consumer still owns selection policy.
 
 Coverage samples raw DEM data independently of MapLibre's displayed terrain, including when terrain is disabled. The built-in sampler supports Mapbox, Terrarium, and custom RGB encodings, uses bilinear pixel-centre interpolation across tile edges, requests at most six tiles concurrently, and retains at most 256 decoded tiles. It uses zoom 12 bounded by the provider's advertised zoom range. Tiles must allow browser fetch/CORS. Tile requests cover entity and attachment locations even outside the visible map; they reveal those areas to the configured provider. There is no persistent offline cache. `retryUpdates()` retries failed requests.
 

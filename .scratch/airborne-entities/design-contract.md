@@ -39,3 +39,7 @@ The comparison is `airborne-designs.html` in the task's authorized visualization
 Browser review covered all three layouts, attachment selection and fields, footprint visibility, missing altitude with both fallback settings, loading and unavailable elevation, below-terrain placement, sky-facing camera, and empty selection. All three layouts fit a 320-pixel review width without horizontal overflow. The inspected browser runs reported no warning or error logs. The embedded JavaScript passed a syntax check.
 
 These results verify the static comparison only. Geometry is illustrative and the terrain backdrop is an existing screenshot. Engineering findings and the remaining runtime checks are in [engineering-notes.md](engineering-notes.md).
+
+## Camera appearance follow-up
+
+The user selected A, Compact controls, from `camera-volume-controls.html`. The existing inspector now includes a color swatch and hex field, fill-strength slider, and independent wireframe checkbox. Initial values are `#176d46`, 25%, and wireframe enabled. Changes belong to the selected camera; the ground footprint retains its separate color. Zero fill supports wireframe-only viewing, and disabling both hides the volume. Controls wrap within the existing sidebar without adding panel chrome.

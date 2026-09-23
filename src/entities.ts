@@ -322,8 +322,11 @@ export class EntityScene<P extends Properties> {
           if (placement !== 'airborne') continue;
           if (visibility.volumes) {
             const { triangles: sides, lines } = cameraVolume(origin, attachment);
-            add(sides, 'triangles', [rgba[0], rgba[1], rgba[2], 0.08], attachment.id);
-            add(lines, 'lines', [rgba[0], rgba[1], rgba[2], 0.8], attachment.id);
+            const opacity = attachment.volumeOpacity ?? 0.25;
+            const volume = this.color(attachment.volumeColor ?? attachment.color ?? '#176d46', opacity);
+            if (opacity > 0) add(sides, 'triangles', volume, attachment.id);
+            if (attachment.wireframe ?? true)
+              add(lines, 'lines', [volume[0], volume[1], volume[2], 0.9], attachment.id);
           }
           if (visibility.footprints) {
             const footprint = cameraFootprint(origin, attachment, this.height);

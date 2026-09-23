@@ -25,6 +25,8 @@ Buildings are excluded. Spherical-Earth local coordinates handle antimeridian cr
 - Strict TypeScript checking, library build, and production playground build pass. The existing large-chunk warning remains.
 - The real-terrain playground was inspected with the selected expanded inspector. Production measurement details are in `docs/performance.md`.
 
+The camera-appearance follow-up passes 17 Node tests and 19 packed-consumer browser checks. Rendered-pixel assertions cover custom color and opacity, wireframe-only rendering and picking, and hidden volumes losing their hit target. Type checking and the production playground build pass. Live playground review covered compact controls at 492 and 1280 pixels, color/strength edits, the independent wireframe toggle, and appearance retained during movement. The existing large-chunk build warning remains.
+
 Desktop Safari, long-session memory profiling, external DEM outages during sustained motion, and precision against surveyed terrain remain unverified. Results do not establish a maximum load ceiling.
 
 ## Relevant renderer contracts

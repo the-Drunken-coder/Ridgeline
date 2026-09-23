@@ -143,6 +143,24 @@ test('entity validation remains atomic and keeps zero distinct from missing alti
   });
 });
 
+test('camera opacity accepts both endpoints and rejects invalid styles atomically', () => {
+  const store = new FeatureStore();
+  const feature: MapFeature = {
+    type: 'Feature', id: 'camera-style', properties: {},
+    geometry: { type: 'Point', coordinates: [0, 0] },
+    entity: { attachments: [{ ...camera, volumeOpacity: 0, wireframe: false }] },
+  };
+  store.upsert([feature]);
+  store.upsert([{ ...feature, entity: { attachments: [{ ...camera, volumeOpacity: 1 }] } }]);
+  for (const volumeOpacity of [-0.1, 1.1, NaN, Infinity]) {
+    assert.throws(() => store.upsert([
+      { ...feature, properties: { changed: true } },
+      { ...feature, id: 'invalid', entity: { attachments: [{ ...camera, volumeOpacity }] } },
+    ]), { code: 'INVALID_FEATURE' });
+    assert.equal(store.get(feature.id)?.properties.changed, undefined);
+  }
+});
+
 test('raw DEM decoding does not use any display exaggeration', () => {
   close(decodeElevation(128, 10, 128, 'terrarium'), 10.5);
   close(decodeElevation(1, 134, 160, 'mapbox'), 0);
