@@ -3,6 +3,7 @@ import type { LayerSpecification, MapMouseEvent, ErrorEvent as GLErrorEvent } fr
 import { createReporter, RidgelineError } from './errors';
 import { FeatureStore } from './features';
 import { hillshadePaint, resolveHillshade } from './hillshade';
+import { EntityScene, DEFAULT_ENTITY_VISIBILITY } from './entities';
 import type { FeatureStyle, IconDefinition, Interaction, MapConfiguration, MapFeature, Properties, Viewport, ViewportEvents, ViewportOptions } from './types';
 
 const SOURCE = 'rl:features';
@@ -40,10 +41,11 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     hillshadeOptions: {},
     exaggeration: options.exaggeration ?? 1,
     elevation: structuredClone(options.elevation ?? DEFAULT_ELEVATION),
+    entityVisibility: { ...DEFAULT_ENTITY_VISIBILITY, ...options.entityVisibility },
   };
   const listeners: { [K in keyof ViewportEvents<P>]: Set<(value: ViewportEvents<P>[K]) => void> } = {
     click: new Set(), hover: new Set(), contextmenu: new Set(), selectionrequest: new Set(),
-    datachange: new Set(), camerachange: new Set(), diagnostic: new Set(), destroy: new Set(),
+    datachange: new Set(), entitychange: new Set(), camerachange: new Set(), diagnostic: new Set(), destroy: new Set(),
   };
   function diagnostic(error: RidgelineError) {
     if (destroyed) return;
@@ -85,6 +87,13 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     diagnostic(error);
     throw error;
   }
+  const entities = new EntityScene<P>({ map, configuration: () => configuration, style: getStyle, sampler: options.elevationSampler, diagnostic,
+    changed: ids => {
+      for (const id of ids) { const feature = store.get(id); if (feature) pending.set(id, feature); }
+      schedule(); emit('entitychange', { ids });
+    },
+  });
+  entities.set(store.all());
   const timer = setTimeout(() => {
     if (!readySettled) failReady(new RidgelineError('INITIALIZATION_TIMEOUT', 'The initial map style did not become ready in time.', { operation: 'initialize', recoverable: false }));
   }, options.initializationTimeoutMs ?? 20_000);
@@ -99,6 +108,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   function getStyle(feature: MapFeature<P>): FeatureStyle { return options.style?.(feature) ?? {}; }
   function rendered(feature: MapFeature<P>): MapFeature {
     const style = getStyle(feature);
+    const marker = entities.marker(feature);
     return {
       type: 'Feature', id: feature.id, geometry: feature.geometry,
       properties: {
@@ -107,6 +117,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         _rl_width: style.lineWidth ?? 3, _rl_opacity: style.fillOpacity ?? 0.2,
         _rl_icon: style.icon && icons.has(style.icon) ? `rl:icon:${style.icon}` : '',
         _rl_label: style.label ?? '',
+        _rl_hidden: !marker.visible, _rl_airborne: !marker.ground, _rl_height: marker.offset,
       },
     };
   }
@@ -213,12 +224,13 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       const layers: LayerSpecification[] = [
         { id: 'rl:fill', type: 'fill', source: SOURCE, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': ['get', '_rl_color'], 'fill-opacity': ['case', ['boolean', ['feature-state', 'selected'], false], 0.45, ['get', '_rl_opacity']] } },
         { id: 'rl:line', type: 'line', source: SOURCE, filter: ['in', '$type', 'LineString', 'Polygon'], paint: { 'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', ['get', '_rl_color']], 'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 5, ['get', '_rl_width']] } },
-        { id: 'rl:points', type: 'circle', source: SOURCE, filter: ['==', '$type', 'Point'], paint: { 'circle-radius': ['case', ['boolean', ['feature-state', 'hover'], false], 12, ['get', '_rl_radius']], 'circle-color': ['get', '_rl_color'], 'circle-stroke-width': ['case', ['boolean', ['feature-state', 'selected'], false], 4, 2], 'circle-stroke-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', '#ffffff'] } },
-        { id: 'rl:icons', type: 'symbol', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_icon', '']], layout: { 'icon-image': ['get', '_rl_icon'], 'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true } },
-        { id: 'rl:labels', type: 'symbol', source: SOURCE, layout: { 'text-field': ['get', '_rl_label'], 'text-font': ['Noto Sans Regular'], 'text-size': 12, 'text-offset': [0, 1.8], 'text-anchor': 'top' }, paint: { 'text-color': '#203b32', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } },
+        { id: 'rl:points', type: 'circle', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_airborne', true], ['!=', '_rl_hidden', true]], paint: { 'circle-radius': ['case', ['boolean', ['feature-state', 'hover'], false], 12, ['get', '_rl_radius']], 'circle-color': ['get', '_rl_color'], 'circle-stroke-width': ['case', ['boolean', ['feature-state', 'selected'], false], 4, 2], 'circle-stroke-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', '#ffffff'] } },
+        { id: 'rl:icons', type: 'symbol', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_icon', ''], ['!=', '_rl_hidden', true]], layout: { 'icon-image': ['get', '_rl_icon'], 'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-height-offset': ['get', '_rl_height'] } },
+        { id: 'rl:labels', type: 'symbol', source: SOURCE, filter: ['!=', '_rl_hidden', true], layout: { 'text-field': ['get', '_rl_label'], 'text-font': ['Noto Sans Regular'], 'text-size': 12, 'text-offset': [0, 1.8], 'text-anchor': 'top', 'symbol-height-offset': ['get', '_rl_height'] }, paint: { 'text-color': '#203b32', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } },
       ];
       for (const layer of layers) if (!map.getLayer(layer.id)) map.addLayer(layer);
       applyElevation();
+      entities.attach();
       for (const id of selected) synchronizeState(id);
       if (previewId) synchronizeState(previewId);
       if (!readySettled) { readySettled = true; clearTimeout(timer); resolveReady(); }
@@ -229,17 +241,28 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   }
   function interaction(event: MapMouseEvent, tolerance: number): Interaction<P> {
     const features: MapFeature<P>[] = [];
+    const attachments: Interaction<P>['attachments'] = [];
     if (prepared) {
       const { x, y } = event.point;
       const hits = map.queryRenderedFeatures([[x - tolerance, y - tolerance], [x + tolerance, y + tolerance]], { layers: layerIds.filter(id => map.getLayer(id)) });
       const seen = new Set<string>();
+      const seenAttachments = new Set<string>();
+      for (const hit of entities.pick(x, y, tolerance)) {
+        const feature = store.get(hit.entityId);
+        if (!feature) continue;
+        if (!seen.has(feature.id)) { seen.add(feature.id); features.push(feature); }
+        if (hit.attachmentId) {
+          const key = JSON.stringify([feature.id, hit.attachmentId]);
+          if (!seenAttachments.has(key)) { seenAttachments.add(key); attachments.push({ entityId: feature.id, attachmentId: hit.attachmentId }); }
+        }
+      }
       for (const hit of hits) {
         if (typeof hit.id !== 'string' || seen.has(hit.id)) continue;
         const feature = store.get(hit.id);
         if (feature) { seen.add(hit.id); features.push(feature); }
       }
     }
-    return { features, point: { x: event.point.x, y: event.point.y }, lngLat: { lng: event.lngLat.lng, lat: event.lngLat.lat }, originalEvent: event.originalEvent };
+    return { features, attachments, point: { x: event.point.x, y: event.point.y }, lngLat: { lng: event.lngLat.lng, lat: event.lngLat.lat }, originalEvent: event.originalEvent };
   }
   function onError(event: GLErrorEvent) {
     const sourceId = 'sourceId' in event && typeof event.sourceId === 'string' ? event.sourceId : undefined;
@@ -270,6 +293,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       assertActive();
       try {
         const changed = store.upsert(features);
+        entities.set(changed);
         for (const feature of changed) { failed.delete(feature.id); pending.set(feature.id, feature); }
         schedule(); emit('datachange', { ids: changed.map(feature => feature.id), removed: [] });
       } catch (cause) {
@@ -279,6 +303,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     },
     remove(ids) {
       assertActive(); const removed = store.remove(ids);
+      entities.set([], removed);
       for (const id of removed) { failed.delete(id); pending.set(id, null); selected.delete(id); if (previewId === id) previewId = null; if (prepared) map.removeFeatureState({ source: SOURCE, id }); }
       schedule(); emit('datachange', { ids: [], removed });
     },
@@ -287,9 +312,10 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       assertActive();
       for (const id of failed) if (!pending.has(id)) pending.set(id, store.get(id) ?? null);
       failed.clear();
+      entities.retry();
       schedule();
     },
-    getFeature: id => store.get(id), getFeatures: () => store.all(), getName, getStyle,
+    getFeature: id => store.get(id), getFeatures: () => store.all(), getEntityState: id => entities.getState(id), getName, getStyle,
     getIcon: id => icons.get(id),
     registerIcon(id, definition) {
       assertActive();
@@ -305,6 +331,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     },
     setSelection(ids) {
       assertActive(); const previous = selected; selected = new Set(ids.filter(id => store.has(id)));
+      entities.selection([...selected]);
       for (const id of new Set([...previous, ...selected])) synchronizeState(id);
     },
     getSelection: () => [...selected],
@@ -313,7 +340,11 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       const previous = previewId; previewId = id && store.has(id) ? id : null;
       if (previous) synchronizeState(previous); if (previewId) synchronizeState(previewId);
     },
-    requestSelection(ids) { assertActive(); emit('selectionrequest', { ids: ids.filter(id => store.has(id)) }); },
+    requestSelection(ids, attachments = []) {
+      assertActive();
+      const selectedIds = ids.filter(id => store.has(id));
+      emit('selectionrequest', { ids: selectedIds, attachments: attachments.filter(hit => selectedIds.includes(hit.entityId) && store.get(hit.entityId)?.entity?.attachments?.some(a => a.id === hit.attachmentId)).map(hit => ({ ...hit })) });
+    },
     configure(next) {
       assertActive();
       if (next.exaggeration !== undefined && (!Number.isFinite(next.exaggeration) || next.exaggeration < 0)) {
@@ -332,7 +363,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         hillshadeOptions,
         exaggeration: next.exaggeration ?? configuration.exaggeration,
         elevation: structuredClone(next.elevation ?? configuration.elevation),
+        entityVisibility: { ...configuration.entityVisibility, ...next.entityVisibility },
       };
+      entities.configure(next.elevation !== undefined);
       if (styleChanged) { prepared = false; submitting = null; map.setStyle(configuration.basemap, { diff: false }); }
       else if (prepared) {
         map.setProjection({ type: configuration.projection === 'flat' ? 'mercator' : 'globe' });
@@ -348,6 +381,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       destroyed = true; prepared = false; emit('destroy', undefined);
       if (!readySettled) { readySettled = true; rejectReady(new RidgelineError('DESTROYED', 'Viewport was destroyed before initialization completed.', { operation: 'initialize', recoverable: false })); }
       clearTimeout(timer); cancelAnimationFrame(frame); resize.disconnect();
+      entities.destroy();
       map.getCanvas().removeEventListener('mouseleave', onLeave);
       map.remove(); pending.clear(); failed.clear(); icons.clear(); selected.clear(); store.remove(store.ids());
       for (const set of Object.values(listeners)) set.clear();

@@ -1,6 +1,7 @@
 import type { Position } from 'geojson';
 import { RidgelineError } from './errors';
 import type { MapFeature, Properties } from './types';
+import { validateEntity } from './entity-geometry';
 
 function positionValid(position: Position) {
   const [lng, lat] = position;
@@ -16,6 +17,10 @@ export function validateFeature<P extends Properties>(feature: MapFeature<P>) {
   if (!feature.properties || typeof feature.properties !== 'object' || Array.isArray(feature.properties)) fail('Feature properties must be an object.');
   const geometry = feature.geometry;
   if (!geometry) return fail('A feature needs Point, LineString, or Polygon geometry.');
+  if (feature.entity) {
+    if (geometry.type !== 'Point') fail('Only point features can carry entity data.');
+    validateEntity(feature.entity, fail);
+  }
   switch (geometry.type) {
     case 'Point':
       if (!positionValid(geometry.coordinates)) fail('Coordinates must be [longitude, latitude] within geographic bounds.');

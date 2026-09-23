@@ -1,5 +1,5 @@
 import { createViewport, attachInteractions, RidgelineError } from '@ridgeline/map';
-import type { MapFeature, Viewport } from '@ridgeline/map';
+import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
 import { GeoJSONSource, ErrorEvent as MapErrorEvent, setWorkerUrl } from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
@@ -167,7 +167,7 @@ async function suite() {
     viewport.configure({ basemap: style('#dce7dc') });
     await until(() => Boolean(viewport.map.getLayer('rl:points')) && hits().some(hit => hit.id === 'rebuild-healthy'), 'healthy feature after rebuild');
     check(!hits().some(hit => hit.id === 'rebuild-broken'), 'Broken feature rendered during rebuild');
-    check(failures.length === 2 && failures[1]?.context.featureId === 'rebuild-broken', 'Rebuild failure did not identify feature');
+    check(failures.length === 2 && failures[1]?.context.featureId === 'rebuild-broken', `Rebuild failure did not identify feature: ${failures.map(error => `${error.context.operation}/${error.context.featureId}: ${error.message}: ${error.cause}`).join('; ')}`);
     viewport.upsert([point('rebuild-later')]);
     await until(() => hits().some(hit => hit.id === 'rebuild-later'), 'update after partial rebuild');
     viewport.upsert([point('rebuild-broken')]);
@@ -284,6 +284,149 @@ async function suite() {
     check(!container.querySelector('canvas,.rl-ui'), 'DOM remains');
     try { viewport.upsert([point('late')]); throw new Error('Mutation unexpectedly succeeded'); }
     catch (error) { check(error instanceof RidgelineError && error.code === 'DESTROYED', 'Expected DESTROYED'); }
+  });
+  await run('Airborne placement, attachment lifecycle, fallbacks, and globe shaders work through the package', async () => {
+    let missing=false;
+    const errors: RidgelineError[]=[];
+    const air=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:14,pitch:55},elevationSampler:{sample:()=>missing?null:100},logger:()=>{},onError:error=>errors.push(error)});
+    current=air;
+    await air.ready;
+    const aircraft:MapFeature={...point('aircraft'),entity:{altitude:{meters:300,reference:'ground'},attachments:[{id:'camera',type:'camera',bearing:0,elevation:-45,fovX:60,fovY:40,range:1000},{id:'zone',type:'sphere',radius:100}]}};
+    air.upsert([aircraft]);
+    await until(()=>air.getEntityState('aircraft')?.coverage==='ready','airborne terrain ready');
+    check(air.getEntityState('aircraft')?.altitude===400,'AGL conversion lost ground height');
+    check((air.getEntityState('aircraft')?.footprintTriangles??0)>0,'Ground footprint absent');
+    const triangles=air.getEntityState('aircraft')!.footprintTriangles;
+    await new Promise<void>(resolve=>air.map.once('idle',()=>resolve()));
+    const ui = attachInteractions(air, {picker:false});
+    let selectedAttachment = '';
+    air.on('selectionrequest', event => { selectedAttachment = event.attachments[0]?.attachmentId ?? ''; });
+    // A nadir ground zone is selectable through the same public event path as a feature.
+    air.upsert([{...aircraft, entity:{...aircraft.entity, attachments:[{id:'ground-zone',type:'polygon',vertices:[[-200,-200],[200,-200],[200,200],[-200,200]]}]}}]);
+    await until(()=>air.getEntityState('aircraft')?.footprintTriangles===0,'zone replacement');
+    await new Promise<void>(resolve=>air.map.once('idle',()=>resolve()));
+    air.map.fire('click',{point:air.map.project([0.001,0]),lngLat:air.map.getCenter(),originalEvent:new MouseEvent('click')});
+    check(selectedAttachment==='ground-zone','Attachment identity lost in selection request');
+    ui.destroy();
+    air.upsert([aircraft]);
+    await until(()=>air.getEntityState('aircraft')?.footprintTriangles===triangles,'camera restored');
+    air.configure({exaggeration:2,projection:'globe'});
+    await until(()=>air.getEntityState('aircraft')?.footprintTriangles===triangles&&Boolean(air.map.getLayer('rl:entities')),'globe entity layer');
+    await new Promise<void>(resolve=>air.map.once('idle',()=>resolve()));
+    check(!errors.some(e=>e.context.operation==='entities'&&e.code==='UPDATE_FAILED'),errors.map(e=>`${e.message}: ${e.cause}`).join('\n'));
+    air.configure({basemap:style('#ffffff')});
+    await until(()=>Boolean(air.map.getLayer('rl:entities')),'entity layer restored after style replacement');
+    await new Promise<void>(resolve=>air.map.once('idle',()=>resolve()));
+    check(air.getEntityState('aircraft')?.footprintTriangles===triangles,'Style replacement changed coverage');
+    air.upsert([{...aircraft,entity:{...aircraft.entity,altitude:{meters:450,reference:'sea-level'}}}]);
+    await until(()=>air.getEntityState('aircraft')?.altitude===450,'MSL placement');
+    missing=true;air.retryUpdates();
+    await until(()=>air.getEntityState('aircraft')?.placement==='elevation-unavailable','missing terrain fallback');
+    missing=false;air.upsert([{...aircraft,entity:{groundIfNoAltitude:false}}]);
+    await until(()=>air.getEntityState('aircraft')?.placement==='withheld','missing altitude disabled');
+    air.upsert([{...aircraft,entity:{altitude:{meters:0,reference:'sea-level'}}}]);
+    await until(()=>air.getEntityState('aircraft')?.placement==='below-terrain','zero is an explicit below-terrain altitude');
+    air.remove(['aircraft']);check(!air.getEntityState('aircraft'),'Removed entity state remains');
+    air.destroy();
+  });
+  await run('Raw DEM placement and coverage remain physical with terrain off and exaggerated', async () => {
+    const dem=document.createElement('canvas'); dem.width=dem.height=256;
+    const context=dem.getContext('2d')!; context.fillStyle='rgb(1,0,0)'; context.fillRect(0,0,256,256);
+    const air=createViewport({container,basemap:style(),elevation:{tiles:[dem.toDataURL()],encoding:'custom',redFactor:100,greenFactor:0,blueFactor:0,baseShift:0,maxzoom:0},camera:{center:[0,0],zoom:14,pitch:50},logger:()=>{}});
+    current=air; await air.ready;
+    air.upsert([{...point('raw'),entity:{altitude:{meters:300,reference:'ground'},attachments:[{id:'camera',type:'camera',bearing:0,elevation:-45,fovX:50,fovY:30,range:1000},{id:'cylinder',type:'cylinder',radius:50,height:80}]}}]);
+    await until(()=>air.getEntityState('raw')?.coverage==='ready','raw DEM decoding');
+    check(air.getEntityState('raw')?.altitude===400,'Raw custom DEM did not decode to 100 metres');
+    const triangles=air.getEntityState('raw')!.footprintTriangles;
+    for(const exaggeration of [0.5,1,2]) {
+      const before=air.getEntityState('raw')!.computedAt;
+      air.configure({terrain:true,exaggeration});
+      await until(()=>air.getEntityState('raw')!.computedAt>before,'terrain display recomputation');
+      check(air.getEntityState('raw')?.footprintTriangles===triangles,'Terrain display changed physical coverage');
+      check(air.getEntityState('raw')?.altitude===400,'Exaggeration changed physical altitude');
+    }
+    air.configure({terrain:false});
+    air.remove(['raw']);
+    await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
+    let remaining=0; air.on('click',event=>{remaining=event.features.length;});
+    air.map.fire('click',{point:air.map.project([0,0]),lngLat:air.map.getCenter(),originalEvent:new MouseEvent('click')});
+    check(remaining===0,'Removed attachments still pickable');
+    air.destroy();
+  });
+  await run('Visible footprint stays filled when displayed terrain differs slightly from sampled terrain', async () => {
+    const dem=document.createElement('canvas'); dem.width=dem.height=256;
+    const context=dem.getContext('2d')!; context.fillStyle='rgb(105,0,0)'; context.fillRect(0,0,256,256);
+    const air=createViewport({container,basemap:style('#000000'),terrain:true,elevation:{tiles:[dem.toDataURL()],encoding:'custom',redFactor:1,greenFactor:0,blueFactor:0,baseShift:0,maxzoom:0},elevationSampler:{sample:()=>100},camera:{center:[0,0],zoom:17,pitch:0},entityVisibility:{volumes:false,footprints:true,zones:false,groundLines:false},logger:()=>{}});
+    current=air; await air.ready;
+    air.upsert([{...point('visible'),entity:{altitude:{meters:300,reference:'ground'},attachments:[{id:'camera',type:'camera',color:'#00ff00',bearing:0,elevation:-90,fovX:60,fovY:60,range:1000}]}}]);
+    await until(()=>air.getEntityState('visible')?.coverage==='ready' && Math.abs((air.map.queryTerrainElevation([0,0])??0)-105)<0.1,'synthetic terrain and coverage');
+    await new Promise<void>(resolve=>air.map.once('idle',()=>resolve()));
+    const pixels=await new Promise<number[]>(resolve=>{
+      air.map.once('render',()=>{
+        const canvas=air.map.getCanvas(), gl=canvas.getContext('webgl2')!, greens:number[]=[];
+        for(const lng of [-0.0006,0.0006]) for(const lat of [-0.0006,0.0006]) {
+          const p=air.map.project([lng,lat]), pixel=new Uint8Array(4), scale=canvas.width/canvas.clientWidth;
+          gl.readPixels(Math.round(p.x*scale),canvas.height-1-Math.round(p.y*scale),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+          greens.push(pixel[1]!);
+        }
+        resolve(greens);
+      });
+      air.map.triggerRepaint();
+    });
+    check(pixels.every(green=>green>50),`Visible ground has unpainted gaps: green pixels ${pixels.join(',')}`);
+    air.destroy();
+  });
+  await run('Camera color, fill strength, and wireframe independently control visible and pickable geometry', async () => {
+    const air = createViewport({ container, basemap: style('#000000'),
+      elevationSampler: { sample: () => 0 }, camera: { center: [0, 0], zoom: 16, pitch: 0 },
+      entityVisibility: { volumes: true, footprints: false, zones: false, groundLines: false }, logger: () => {} });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'camera', type: 'camera', bearing: 0, elevation: 90,
+      fovX: 60, fovY: 60, range: 200, volumeColor: '#ff0000', wireframe: false };
+    async function update(changes: Partial<CameraAttachment>) {
+      Object.assign(camera, changes);
+      const previous = air.getEntityState('styled')?.computedAt;
+      air.upsert([{ ...point('styled'), entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [camera] } }]);
+      await until(() => air.getEntityState('styled')?.computedAt !== previous, 'camera style update');
+      return new Promise<{ pixels: Uint8Array; width: number; height: number; scale: number }>(resolve => {
+        air.map.once('render', () => {
+          const canvas = air.map.getCanvas(), gl = canvas.getContext('webgl2')!;
+          const pixels = new Uint8Array(canvas.width * canvas.height * 4);
+          gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+          resolve({ pixels, width: canvas.width, height: canvas.height, scale: canvas.width / canvas.clientWidth });
+        });
+        air.map.triggerRepaint();
+      });
+    }
+    const faint = await update({ volumeOpacity: 0.1 });
+    const solid = await update({ volumeOpacity: 1 });
+    const redPixels = (frame: typeof solid) => {
+      const indices: number[] = [];
+      for (let i = 0; i < frame.pixels.length; i += 4)
+        if (frame.pixels[i]! > 20 && frame.pixels[i + 1]! < 5 && frame.pixels[i + 2]! < 5) indices.push(i);
+      return indices;
+    };
+    const solidPixels = redPixels(solid);
+    check(solidPixels.length > 500, 'Custom red volume was not rendered');
+    const interior = solidPixels[Math.floor(solidPixels.length / 3)]!;
+    check(solid.pixels[interior]! > faint.pixels[interior]! + 100, 'Fill strength did not change the rendered opacity');
+    const blue = await update({ volumeColor: '#0000ff' });
+    check(blue.pixels[interior]! < 5 && blue.pixels[interior + 2]! > 200, 'Volume color did not update');
+    let hit = false;
+    air.on('click', event => { hit = event.attachments.some(a => a.attachmentId === 'camera'); });
+    function pick(frame: typeof solid, index: number) {
+      const p = { x: (index / 4 % frame.width) / frame.scale, y: (frame.height - 1 - Math.floor(index / 4 / frame.width)) / frame.scale };
+      air.map.fire('click', { point: p, lngLat: air.map.unproject([p.x, p.y]), originalEvent: new MouseEvent('click') });
+      return hit;
+    }
+    check(pick(solid, interior), 'Filled volume cannot be selected');
+    const hidden = await update({ volumeColor: '#ff0000', volumeOpacity: 0 });
+    check(redPixels(hidden).length === 0 && !pick(hidden, interior), 'Invisible volume remains drawn or pickable');
+    const wire = await update({ wireframe: true });
+    const edges = redPixels(wire);
+    check(edges.length > 50 && edges.length < solidPixels.length / 3, 'Wireframe-only view still has filled faces or no edges');
+    check(pick(wire, edges[Math.floor(edges.length / 3)]!), 'Wireframe-only volume cannot be selected');
+    air.destroy();
   });
   status.dataset.state = 'passed';
   status.textContent = `${results.children.length} checks passed. Package imported through its published exports.`;
