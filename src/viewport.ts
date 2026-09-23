@@ -2,6 +2,7 @@ import { Map as GLMap, GeoJSONSource } from 'maplibre-gl';
 import type { LayerSpecification, MapMouseEvent, ErrorEvent as GLErrorEvent } from 'maplibre-gl';
 import { createReporter, RidgelineError } from './errors';
 import { FeatureStore } from './features';
+import { hillshadePaint, resolveHillshade } from './hillshade';
 import type { FeatureStyle, IconDefinition, Interaction, MapConfiguration, MapFeature, Properties, Viewport, ViewportEvents, ViewportOptions } from './types';
 
 const SOURCE = 'rl:features';
@@ -36,6 +37,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     projection: options.projection ?? 'flat',
     terrain: options.terrain ?? false,
     hillshade: options.hillshade ?? false,
+    hillshadeOptions: {},
     exaggeration: options.exaggeration ?? 1,
     elevation: structuredClone(options.elevation ?? DEFAULT_ELEVATION),
   };
@@ -68,6 +70,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   let map: GLMap;
   try {
     if (!Number.isFinite(configuration.exaggeration) || configuration.exaggeration < 0) throw new RidgelineError('INVALID_CONFIGURATION', 'Terrain exaggeration must be a finite nonnegative number.', { operation: 'create', recoverable: false });
+    configuration.hillshadeOptions = resolveHillshade(options.hillshadeOptions);
     if (options.features) store.upsert(options.features);
     map = new GLMap({
       container: options.container,
@@ -176,7 +179,11 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     map.setTerrain(configuration.terrain ? { source: TERRAIN, exaggeration: configuration.exaggeration } : null);
     if (configuration.hillshade && !map.getLayer(SHADE)) {
       const before = map.getStyle().layers?.find(layer => layer.type === 'symbol' || layer.id.startsWith('rl:'))?.id;
-      map.addLayer({ id: SHADE, type: 'hillshade', source: SHADE, paint: { 'hillshade-exaggeration': 0.35 } }, before);
+      map.addLayer({ id: SHADE, type: 'hillshade', source: SHADE, paint: hillshadePaint(configuration.hillshadeOptions) }, before);
+    }
+    if (configuration.hillshade && map.getLayer(SHADE)) {
+      const paint = hillshadePaint(configuration.hillshadeOptions);
+      for (const key of Object.keys(paint) as (keyof typeof paint)[]) map.setPaintProperty(SHADE, key, paint[key]);
     }
     if (!configuration.hillshade && map.getLayer(SHADE)) map.removeLayer(SHADE);
     if (!configuration.terrain && map.getSource(TERRAIN)) map.removeSource(TERRAIN);
@@ -313,12 +320,16 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         const error = new RidgelineError('INVALID_CONFIGURATION', 'Terrain exaggeration must be a finite nonnegative number.', { operation: 'configure', recoverable: true });
         diagnostic(error); throw error;
       }
+      let hillshadeOptions;
+      try { hillshadeOptions = resolveHillshade(next.hillshadeOptions, configuration.hillshadeOptions); }
+      catch (cause) { if (cause instanceof RidgelineError) diagnostic(cause); throw cause; }
       const styleChanged = next.basemap !== undefined && next.basemap !== configuration.basemap;
       configuration = {
         basemap: next.basemap ?? configuration.basemap,
         projection: next.projection ?? configuration.projection,
         terrain: next.terrain ?? configuration.terrain,
         hillshade: next.hillshade ?? configuration.hillshade,
+        hillshadeOptions,
         exaggeration: next.exaggeration ?? configuration.exaggeration,
         elevation: structuredClone(next.elevation ?? configuration.elevation),
       };

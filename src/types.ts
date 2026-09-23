@@ -1,5 +1,5 @@
 import type { Feature, LineString, Point, Polygon } from 'geojson';
-import type { CameraOptions, LngLatBoundsLike, Map as MapLibreMap, RasterDEMSourceSpecification, StyleSpecification } from 'maplibre-gl';
+import type { CameraOptions, HillshadeLayerSpecification, LngLatBoundsLike, Map as MapLibreMap, RasterDEMSourceSpecification, StyleSpecification } from 'maplibre-gl';
 import type { Logger, RidgelineError } from './errors';
 
 export type Properties = Record<string, unknown>;
@@ -13,11 +13,23 @@ export type FeatureStyle = {
   label?: string;
 };
 export type ElevationProvider = Omit<RasterDEMSourceSpecification, 'type'>;
+type HillshadePaint = NonNullable<HillshadeLayerSpecification['paint']>;
+export type HillshadeOptions = {
+  method?: Extract<HillshadePaint['hillshade-method'], string>;
+  direction?: number | number[];
+  altitude?: number | number[];
+  anchor?: 'map' | 'viewport';
+  intensity?: number;
+  shadowColor?: string;
+  highlightColor?: string;
+  accentColor?: string;
+};
 export type MapConfiguration = {
   basemap: string | StyleSpecification;
   projection: 'flat' | 'globe';
   terrain: boolean;
   hillshade: boolean;
+  hillshadeOptions: HillshadeOptions;
   exaggeration: number;
   elevation: ElevationProvider;
 };

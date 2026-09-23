@@ -126,6 +126,23 @@ Library defaults: OpenFreeMap Liberty, flat projection, terrain off, hillshade o
 
 `configure({ projection: 'globe', terrain: true, hillshade: false })` changes those capabilities independently. `elevation` accepts a MapLibre raster DEM configuration without its `type`; supply a TileJSON URL or tile URLs with the correct encoding. `basemap` accepts a style URL or style object. Camera, feature IDs, and selection survive these changes.
 
+Use `hillshadeOptions` at creation or through `configure()` to tune shading independently of the `hillshade` toggle:
+
+```ts
+viewport.configure({
+  hillshade: true,
+  hillshadeOptions: {
+    method: 'igor', direction: 315, altitude: 35,
+    anchor: 'map', intensity: 0.5,
+    shadowColor: '#253544', highlightColor: '#fff4df', accentColor: '#243a31',
+  },
+});
+```
+
+Methods are `standard`, `basic`, `combined`, `igor`, and `multidirectional`. Direction is 0–359 degrees, altitude is 0–90 degrees, and intensity is 0–1. Multiple directions or altitudes require `multidirectional`; use arrays for those light angles. Colors use MapLibre color strings. Settings follow [MapLibre's hillshade paint properties](https://maplibre.org/maplibre-style-spec/layers/#hillshade), whose visual effects depend on the selected method.
+
+Exported `DEFAULT_HILLSHADE` preserves the previous appearance: standard method, direction 335, altitude 45, viewport anchoring, intensity 0.35, black shadow/accent, and white highlight. Partial option updates preserve existing fields; `undefined` fields do nothing. Options persist while shading is disabled and across basemap or elevation changes. Terrain `exaggeration` remains separate. Pass `hillshadeOptions: DEFAULT_HILLSHADE` to reset shading.
+
 The default map assets need internet access, but no API key, account, or application backend. Public providers have their own availability and usage terms. Offline packaging, tile caching, geocoding, authentication, persistence, and application networking are outside this library. Consumer-owned feature data is not sent to tile providers; map views still cause tile requests revealing the viewed area.
 
 ## Readiness and diagnostics
@@ -138,7 +155,7 @@ Recoverable tile failures leave the rest of the map usable. The elevation-unavai
 
 ## Verification
 
-Focused Node tests cover replacement semantics, atomic invalid batches, snapshot ownership, geometry validation, and diagnostic deduplication. Install Chromium once, then run the browser checks with one command:
+Focused Node tests cover replacement semantics, atomic invalid batches, snapshot ownership, geometry validation, diagnostics, and hillshade option validation. Install Chromium once, then run the browser checks with one command:
 
 ```sh
 pnpm exec playwright install chromium
@@ -159,4 +176,4 @@ pnpm build
 pnpm dev
 ```
 
-Open that fixture at port 5174 to inspect its results. It has no source alias and includes focused recovery and picker-refresh regressions. See [measured results](docs/performance.md) for bundle size, workload observations, and validation limits.
+Open that fixture at port 5174 to inspect its results. It has no source alias and includes focused recovery, picker-refresh, and hillshade configuration regressions. See [measured results](docs/performance.md) for bundle size, workload observations, and validation limits.

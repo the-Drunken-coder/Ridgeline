@@ -1,12 +1,24 @@
 # Initial measurements and verification
 
-## Feature-update recovery verification
+## Recovery and hillshade follow-up
 
-The update-recovery and picker-refresh changes pass strict TypeScript checking, five Node tests, both builds, and fourteen packed-consumer browser checks. `pnpm test:browser` builds and installs a fresh tarball, then runs the fixture through Playwright 1.63.0 in headless Chromium with software WebGL. New checks cover isolated callback failures, explicit retries, retained removals, newer updates during renderer rejection, source error events, retired sources after basemap changes, a broken callback during rebuild and picker use, picker names/icons/availability/focus, and custom content disposal.
+Remeasured on 2026-09-23 after adding update recovery, picker refresh, typed hillshade settings, and the automated browser command. `pnpm build:playground && pnpm measure` reports:
 
-Restoring the original flush implementation made the new browser check fail with `Timed out: healthy changes survive`. Restoring the original picker data-change handler made the picker check fail with `Stale picker name`. Both commands exited with status 1. The fixes were restored afterward.
+| Artifact | Raw bytes | Gzip bytes |
+| --- | ---: | ---: |
+| Ridgeline ESM, excluding MapLibre | 26,574 | 8,533 |
+| Ridgeline interaction CSS | 2,468 | 919 |
+| Playground JS, including MapLibre's main-thread code | 1,044,943 | 280,944 |
+| MapLibre worker JS | 509,445 | 144,458 |
+| Playground CSS, including MapLibre and Ridgeline | 89,347 | 12,257 |
 
-These checks use local styles. They do not certify Safari or repeat the moving-workload performance measurements below. The bundle and workload measurements below describe the original baseline.
+The combined playground payload is 437,659 gzip bytes, excluding map assets and source maps. Playwright is a development dependency and is absent from the runtime bundle. Production playground controls have not changed; their proposed layouts await selection.
+
+Strict TypeScript checking, seven Node tests, both builds, and all fifteen packed-consumer browser checks passed. `pnpm test:browser` builds and installs a fresh tarball, then runs the fixture through Playwright 1.63.0 in headless Chromium with software WebGL. New checks cover isolated callback failures, explicit retries, retained removals, newer updates during renderer rejection, source error events, retired sources after basemap changes, a broken callback during rebuild and picker use, picker names/icons/availability/focus, custom content disposal, and hillshade persistence and validation.
+
+Restoring the original flush implementation made the new browser check fail with `Timed out: healthy changes survive`. Restoring the original picker data-change handler made the picker check fail with `Stale picker name`. Both commands exited with status 1. The implementations were restored and the complete suite passed afterward.
+
+These checks exercise rendering and configuration with local styles. They do not visually compare real DEM shading methods, certify Safari, or repeat the moving-workload performance measurements below. Hardware and GPU details remain unrecorded.
 
 ## Original baseline
 
