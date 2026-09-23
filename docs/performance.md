@@ -6,13 +6,14 @@ Remeasured on 2026-09-23 after adding update recovery, picker refresh, typed hil
 
 | Artifact | Raw bytes | Gzip bytes |
 | --- | ---: | ---: |
-| Ridgeline ESM, excluding MapLibre | 26,574 | 8,533 |
+| Ridgeline ESM, excluding MapLibre | 26,932 | 8,572 |
 | Ridgeline interaction CSS | 2,468 | 919 |
-| Playground JS, including MapLibre's main-thread code | 1,044,943 | 280,944 |
+| Playground JS, including MapLibre's main-thread code | 1,047,417 | 281,863 |
 | MapLibre worker JS | 509,445 | 144,458 |
-| Playground CSS, including MapLibre and Ridgeline | 89,347 | 12,257 |
+| SIDC Kit demo JS, loaded on demand | 871,547 | 200,513 |
+| Playground CSS, including MapLibre and Ridgeline | 90,999 | 12,619 |
 
-The combined playground payload is 437,659 gzip bytes, excluding map assets and source maps. Playwright is a development dependency and is absent from the runtime bundle. Production playground controls have not changed; their proposed layouts await selection.
+The combined playground payload is 639,453 gzip bytes if the SIDC Kit demo is loaded, excluding map assets and source maps. Without that on-demand chunk, it is 438,940 gzip bytes. Playwright is a development dependency and is absent from the runtime bundle. Production hillshade controls have not changed; their proposed layouts await selection.
 
 Strict TypeScript checking, seven Node tests, both builds, and all fifteen packed-consumer browser checks passed. `pnpm test:browser` builds and installs a fresh tarball, then runs the fixture through Playwright 1.63.0 in headless Chromium with software WebGL. New checks cover isolated callback failures, explicit retries, retained removals, newer updates during renderer rejection, source error events, retired sources after basemap changes, a broken callback during rebuild and picker use, picker names/icons/availability/focus, custom content disposal, and hillshade persistence and validation.
 
