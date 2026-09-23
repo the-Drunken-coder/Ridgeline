@@ -157,6 +157,25 @@ async function suite() {
     await until(() => hits().some(hit => hit.id === 'during-style'), 'new source still accepts updates');
     check(!hits().some(hit => hit.id === 'retired-update'), 'Old source resurrected removed data');
   });
+  await run('A broken style does not block basemap restoration or later updates', async () => {
+    const failures: RidgelineError[] = [];
+    const off = viewport.on('diagnostic', error => { if (error.code === 'UPDATE_FAILED') failures.push(error); });
+    viewport.upsert([point('rebuild-broken'), point('rebuild-healthy')]);
+    await until(() => hits().some(hit => hit.id === 'rebuild-broken') && hits().some(hit => hit.id === 'rebuild-healthy'), 'rebuild setup');
+    viewport.upsert([{ ...point('rebuild-broken'), properties: { name: 'Broken', broken: true } }]);
+    await until(() => failures.length === 1, 'broken style diagnostic');
+    viewport.configure({ basemap: style('#dce7dc') });
+    await until(() => Boolean(viewport.map.getLayer('rl:points')) && hits().some(hit => hit.id === 'rebuild-healthy'), 'healthy feature after rebuild');
+    check(!hits().some(hit => hit.id === 'rebuild-broken'), 'Broken feature rendered during rebuild');
+    check(failures.length === 2 && failures[1]?.context.featureId === 'rebuild-broken', 'Rebuild failure did not identify feature');
+    viewport.upsert([point('rebuild-later')]);
+    await until(() => hits().some(hit => hit.id === 'rebuild-later'), 'update after partial rebuild');
+    viewport.upsert([point('rebuild-broken')]);
+    await until(() => hits().some(hit => hit.id === 'rebuild-broken'), 'corrected feature after rebuild');
+    viewport.remove(['rebuild-broken', 'rebuild-healthy', 'rebuild-later']);
+    await until(() => !hits().some(hit => String(hit.id).startsWith('rebuild-')), 'rebuild cleanup');
+    off();
+  });
   await run('Escape reaches consumers unless a picker is open', async () => {
     const ui = attachInteractions(viewport);
     let bubbled = 0;
@@ -213,6 +232,25 @@ async function suite() {
     choice.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
     check(document.activeElement === buttons[1], 'Keyboard navigation broke after refresh');
     ui.destroy();
+  });
+  await run('A broken style falls back to names without interrupting the picker', async () => {
+    viewport.upsert([point('picker-broken'), point('picker-healthy')]);
+    await until(() => hits().some(hit => hit.id === 'picker-broken') && hits().some(hit => hit.id === 'picker-healthy'), 'picker failure setup');
+    viewport.upsert([{ ...point('picker-broken'), properties: { name: 'Broken candidate', broken: true } }]);
+    const ui = attachInteractions(viewport);
+    viewport.map.fire('click', { point: viewport.map.project([0,0]), lngLat: viewport.map.getCenter(), originalEvent: new MouseEvent('click') });
+    check(Boolean(container.querySelector('.rl-picker-hub button.rl-picker-close')), 'Picker stopped before drawing Close');
+    const broken = container.querySelector<HTMLButtonElement>('[data-feature-id="picker-broken"]');
+    const healthy = container.querySelector<HTMLButtonElement>('[data-feature-id="picker-healthy"]');
+    check(broken?.textContent === 'Broken candidate' && Boolean(healthy), 'Picker did not show the name fallback');
+    viewport.upsert([
+      { ...point('picker-broken'), properties: { name: 'Broken renamed', broken: true } },
+      { ...point('picker-healthy'), properties: { name: 'Healthy renamed' } },
+    ]);
+    check(broken?.textContent === 'Broken renamed' && healthy?.textContent === 'Healthy renamed', 'Broken style blocked another candidate refresh');
+    ui.destroy();
+    viewport.upsert([point('picker-broken')]);
+    viewport.remove(['picker-broken', 'picker-healthy']);
   });
   await run('Completed viewport releases DOM and rejects further mutation', async () => {
     viewport.destroy(); viewport.destroy();

@@ -37,13 +37,21 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
     for (const choice of choices.values()) release(choice.disposers);
     choices.clear();
   }
+  function iconFor(feature: MapFeature<P>) {
+    try {
+      const id = viewport.getStyle(feature).icon;
+      return id ? viewport.getIcon(id) : undefined;
+    } catch {
+      // A failed style callback leaves the candidate available by name.
+      return undefined;
+    }
+  }
   function refreshChoice(id: string) {
     const choice = choices.get(id);
     if (!choice) return;
     const feature = viewport.getFeature(id);
     const name = feature ? viewport.getName(feature) : undefined;
-    const iconId = feature && !options.renderFeature ? viewport.getStyle(feature).icon : undefined;
-    const icon = iconId ? viewport.getIcon(iconId) : undefined;
+    const icon = feature && !options.renderFeature ? iconFor(feature) : undefined;
     // Default presentation depends only on the name and registered icon, not position.
     if (!options.renderFeature && choice.name === name && choice.icon === icon && choice.label.hasChildNodes()) return;
     const disposers: (() => void)[] = [];
@@ -75,8 +83,7 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
     }
     const element = document.createElement('span');
     element.className = 'rl-feature-content';
-    const style = viewport.getStyle(feature);
-    const icon = style.icon && viewport.getIcon(style.icon);
+    const icon = iconFor(feature);
     if (icon) {
       if (icon.url) {
         const image = document.createElement('img'); image.src = icon.url; image.alt = ''; image.width = 20; image.height = 20; element.append(image);

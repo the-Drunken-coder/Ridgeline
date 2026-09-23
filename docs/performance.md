@@ -2,7 +2,7 @@
 
 ## Feature-update recovery verification
 
-The update-recovery and picker-refresh changes pass strict TypeScript checking, five Node tests, both builds, and twelve packed-consumer browser checks. `pnpm test:browser` builds and installs a fresh tarball, then runs the fixture through Playwright 1.63.0 in headless Chromium with software WebGL. New checks cover isolated callback failures, explicit retries, retained removals, newer updates during renderer rejection, source error events, retired sources after basemap changes, picker names/icons/availability/focus, and custom content disposal.
+The update-recovery and picker-refresh changes pass strict TypeScript checking, five Node tests, both builds, and fourteen packed-consumer browser checks. `pnpm test:browser` builds and installs a fresh tarball, then runs the fixture through Playwright 1.63.0 in headless Chromium with software WebGL. New checks cover isolated callback failures, explicit retries, retained removals, newer updates during renderer rejection, source error events, retired sources after basemap changes, a broken callback during rebuild and picker use, picker names/icons/availability/focus, and custom content disposal.
 
 Restoring the original flush implementation made the new browser check fail with `Timed out: healthy changes survive`. Restoring the original picker data-change handler made the picker check fail with `Stale picker name`. Both commands exited with status 1. The fixes were restored afterward.
 

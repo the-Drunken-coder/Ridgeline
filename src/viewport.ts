@@ -192,7 +192,17 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       failed.clear();
       map.setProjection({ type: configuration.projection === 'flat' ? 'mercator' : 'globe' });
       for (const [id, icon] of icons) if (!map.hasImage(`rl:icon:${id}`)) map.addImage(`rl:icon:${id}`, icon.image, { pixelRatio: icon.pixelRatio ?? 1 });
-      if (!map.getSource(SOURCE)) map.addSource(SOURCE, { type: 'geojson', promoteId: '_rl_id', data: { type: 'FeatureCollection', features: store.all().map(rendered) } });
+      if (!map.getSource(SOURCE)) {
+        const features: MapFeature[] = [];
+        for (const feature of store.all()) {
+          try { features.push(rendered(feature)); }
+          catch (cause) {
+            failed.add(feature.id);
+            diagnostic(new RidgelineError('UPDATE_FAILED', 'Unable to prepare a feature update. Update this feature or call retryUpdates() to retry.', { operation: 'upsert', recoverable: true, featureId: feature.id }, cause));
+          }
+        }
+        map.addSource(SOURCE, { type: 'geojson', promoteId: '_rl_id', data: { type: 'FeatureCollection', features } });
+      }
       const layers: LayerSpecification[] = [
         { id: 'rl:fill', type: 'fill', source: SOURCE, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': ['get', '_rl_color'], 'fill-opacity': ['case', ['boolean', ['feature-state', 'selected'], false], 0.45, ['get', '_rl_opacity']] } },
         { id: 'rl:line', type: 'line', source: SOURCE, filter: ['in', '$type', 'LineString', 'Polygon'], paint: { 'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', ['get', '_rl_color']], 'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 5, ['get', '_rl_width']] } },
