@@ -1,3 +1,4 @@
+import { Color } from '@maplibre/maplibre-gl-style-spec';
 import type { HillshadeLayerSpecification } from 'maplibre-gl';
 import { RidgelineError } from './errors';
 import type { HillshadeOptions } from './types';
@@ -19,7 +20,7 @@ export function resolveHillshade(next: HillshadeOptions = {}, previous: Hillshad
     || !['map', 'viewport'].includes(result.anchor)
     || !Number.isFinite(result.intensity) || result.intensity < 0 || result.intensity > 1
     || !validNumbers(result.direction, 359) || !validNumbers(result.altitude, 90)
-    || [result.shadowColor, result.highlightColor, result.accentColor].some(color => typeof color !== 'string' || !color.trim())) {
+    || [result.shadowColor, result.highlightColor, result.accentColor].some(color => typeof color !== 'string' || !Color.parse(color))) {
     throw new RidgelineError('INVALID_CONFIGURATION', 'Invalid hillshade settings. Check the method, light angles, intensity, and colors.', { operation: 'configure', recoverable: true });
   }
   return structuredClone(result);

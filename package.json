@@ -20,7 +20,7 @@
     "test:browser": "node scripts/test-browser.mjs",
     "measure": "node scripts/bundle-size.mjs"
   },
-  "dependencies": { "maplibre-gl": "6.11.0", "@types/geojson": "7946.0.16" },
+  "dependencies": { "maplibre-gl": "6.11.0", "@maplibre/maplibre-gl-style-spec": "26.4.4", "@types/geojson": "7946.0.16" },
   "devDependencies": {
     "@types/node": "^25.0.0",
     "sidc-kit": "0.3.2",

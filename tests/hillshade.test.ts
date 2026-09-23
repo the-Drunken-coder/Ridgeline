@@ -20,6 +20,7 @@ test('hillshade rejects invalid ranges and multiple lights for single-light meth
     { intensity: NaN }, { intensity: -1 }, { intensity: 1.01 },
     { direction: 360 }, { altitude: 91 }, { direction: [] },
     { direction: [225, 315] }, { altitude: [30, 60] },
+    { shadowColor: 'not-a-color' },
   ]) {
     assert.throws(() => resolveHillshade(settings), error => error instanceof RidgelineError && error.code === 'INVALID_CONFIGURATION');
   }
