@@ -1,6 +1,7 @@
 import type { Position } from 'geojson';
 import { RidgelineError } from './errors';
 import type { MapFeature, Properties } from './types';
+import { shapeGeometry, validateDrawingStyle, validateShape } from './drawing-geometry';
 import { validateEntity } from './entity-geometry';
 
 function positionValid(position: Position) {
@@ -17,6 +18,13 @@ export function validateFeature<P extends Properties>(feature: MapFeature<P>) {
   if (!feature.properties || typeof feature.properties !== 'object' || Array.isArray(feature.properties)) fail('Feature properties must be an object.');
   const geometry = feature.geometry;
   if (!geometry) return fail('A feature needs Point, LineString, or Polygon geometry.');
+  if (feature.drawing) {
+    if (feature.entity) fail('Drawings must be ground features without entity data.');
+    if (feature.drawing.version !== 1) fail('Unsupported drawing version.');
+    const error = validateShape(feature.drawing.shape) ?? validateDrawingStyle(feature.drawing.style);
+    if (error) fail(error);
+    if (JSON.stringify(shapeGeometry(feature.drawing.shape)) !== JSON.stringify(geometry)) fail('Drawing geometry must match its shape definition.');
+  }
   if (feature.entity) {
     if (geometry.type !== 'Point') fail('Only point features can carry entity data.');
     validateEntity(feature.entity, fail);

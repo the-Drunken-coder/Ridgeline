@@ -1,9 +1,10 @@
+import type { DrawingData } from './drawing-types';
 import type { Feature, LineString, Point, Polygon } from 'geojson';
 import type { CameraOptions, HillshadeLayerSpecification, LngLatBoundsLike, Map as MapLibreMap, RasterDEMSourceSpecification, StyleSpecification } from 'maplibre-gl';
 import type { Logger, RidgelineError } from './errors';
 
 export type Properties = Record<string, unknown>;
-export type MapFeature<P extends Properties = Properties> = Feature<Point | LineString | Polygon, P> & { id: string; entity?: Entity };
+export type MapFeature<P extends Properties = Properties> = Feature<Point | LineString | Polygon, P> & { id: string; entity?: Entity; drawing?: DrawingData };
 export type Altitude = { meters: number; reference: 'ground' | 'sea-level' };
 type AttachmentBase = { id: string; name?: string; color?: string };
 export type CameraAttachment = AttachmentBase & {
@@ -43,6 +44,8 @@ export type FeatureStyle = {
   radius?: number;
   lineWidth?: number;
   fillOpacity?: number;
+  fillColor?: string;
+  dashed?: boolean;
   icon?: string;
   label?: string;
 };
@@ -76,6 +79,8 @@ export type Interaction<P extends Properties> = {
   attachments: { entityId: string; attachmentId: string }[];
 };
 export type ViewportEvents<P extends Properties> = {
+  interactionchange: { owner: string | null };
+  selectionchange: { ids: string[] };
   click: Interaction<P>;
   hover: Interaction<P>;
   contextmenu: Interaction<P>;
@@ -108,6 +113,9 @@ export interface Viewport<P extends Properties = Properties> {
   readonly container: HTMLElement;
   /** Direct renderer access. The rl: prefix is reserved for Ridgeline resources. */
   readonly map: MapLibreMap;
+  /** Exclusively own feature interactions while leaving camera navigation available. */
+  acquireInteraction(owner: string): () => void;
+  getInteractionOwner(): string | null;
   upsert(features: readonly MapFeature<P>[]): void;
   remove(ids: readonly string[]): void;
   clear(): void;

@@ -108,7 +108,7 @@ Updates are accumulated by ID and submitted once per animation frame using MapLi
 
 Only one renderer submission runs at a time; updates arriving during it are coalesced for the next frame. A throwing style callback leaves that feature's last rendered version visible and reports `UPDATE_FAILED` with its `featureId`. Other features and removals in the batch still proceed. Renderer rejections and source error events retain the submitted IDs for recovery. No failed update retries automatically. Fix the callback or renderer problem, then call `retryUpdates()`, or replace the affected feature with `upsert()`. Retries use current data and cannot overwrite a newer queued change. A basemap rebuild restores features whose styling succeeds and retains failed IDs for retry. Store reads reflect accepted data immediately, so failed features may differ from the display until recovery succeeds.
 
-The `name` accessor defaults to `properties.name`, then the ID. The `style` accessor supports `color`, `radius`, `lineWidth`, `fillOpacity`, `icon`, and `label`. Register icons with `registerIcon(id, { image, pixelRatio, url? })`; `image` is decoded `ImageData`, `ImageBitmap`, or an image element. Ridgeline does not fetch application icons. An optional URL lets DOM UI reuse the same picture. Registration replaces an existing icon ID. Keep the application's registered icon set bounded; unregistering individual icons is deferred. Labels require the basemap's glyph configuration and a compatible `Noto Sans Regular` font.
+The `name` accessor defaults to `properties.name`, then the ID. The `style` accessor supports `color`, `radius`, `lineWidth`, `fillColor`, `fillOpacity`, `dashed`, `icon`, and `label`. Register icons with `registerIcon(id, { image, pixelRatio, url? })`; `image` is decoded `ImageData`, `ImageBitmap`, or an image element. Ridgeline does not fetch application icons. An optional URL lets DOM UI reuse the same picture. Registration replaces an existing icon ID. Keep the application's registered icon set bounded; unregistering individual icons is deferred. Labels require the basemap's glyph configuration and a compatible `Noto Sans Regular` font.
 
 ## Airborne entities and attachments
 
@@ -224,3 +224,50 @@ pnpm dev
 ```
 
 Open that fixture at port 5174 to inspect its results. It has no source alias and includes focused recovery, picker-refresh, and hillshade configuration regressions. See [measured results](docs/performance.md) for bundle size, workload observations, and validation limits.
+
+## Drawing and editing
+
+`attachDrawing` adds ground drawing gestures and a temporary draft layer. `attachDrawingControls` optionally mounts the labeled tool rail and fixed inspector into containers supplied by the application. The playground's **Drawing & editing** scenario demonstrates both and consumer-owned undo/redo.
+
+```ts
+import { attachDrawing, attachDrawingControls } from '@ridgeline/map';
+
+const drawing = attachDrawing(viewport, {
+  createFeature: geometry => ({
+    type: 'Feature', id: crypto.randomUUID(), geometry,
+    properties: { name: 'Drawing' },
+  }),
+  submit: async (change, signal) => {
+    // Application code: atomically compare change.before, then persist change.after.
+    // For deletion, change.after is absent. Do not upsert into the viewport here.
+    await saveDrawingChange(change, signal);
+    return { accepted: true };
+    // Return { accepted: false, reason: '...' } to retain an editable draft.
+  },
+  canEdit: (feature, operation) => mayChangeDrawing(feature.id, operation),
+  canSnap: feature => feature.properties.snappable !== false,
+});
+const controls = attachDrawingControls(viewport, drawing, {
+  tools: document.querySelector<HTMLElement>('#drawing-tools')!,
+  inspector: document.querySelector<HTMLElement>('#drawing-inspector')!,
+  units: 'metric',
+});
+// Consumer-defined functions above own application validation and persistence.
+// On unmount: controls.destroy(); drawing.destroy();
+```
+
+The API supports lines, polygons, rectangles, circles, and single-headed arrows. Existing ordinary points, lines, and polygons can also be edited with `drawing.edit(id)`. Entity geometry and polygons with holes stay outside this editor. `tools`, `styleFields`, and `defaults` let consumers restrict creation and appearance controls. `canEdit` is consulted before editing actions and submission; call `refreshPermissions()` when application permissions change while a draft is open.
+
+Click to add line or polygon vertices. Circles use a center and radius point. Rectangles use a center and a corner, then expose width, height, and bearing. Use Finish to submit and Cancel or Escape to discard. Drag handles to reshape, the central movement handle to move a line or polygon, and the center handle to move a circle or rectangle. Click a `+` handle to insert a vertex. Focused handles support arrow keys, Shift+arrows for a larger step, and Delete/Backspace for ordinary vertices. Hold Alt to bypass snapping while dragging or placing a point. Touch and pen drawing are not supported in this version; map navigation remains available.
+
+`getState()` returns detached snapshots with the phase, draft, validation message, draft history availability, and measurements. `onChange` subscribes to state changes. Programmatic editing uses `start`, `addPoint`, `setShape`, `setStyle`, `moveVertex`, `insertVertex`, `removeVertex`, `translate`, and `reverse`. `beginGesture` / `endGesture` group repeated changes into one draft undo action. `undo` and `redo` operate on the draft only, with up to 100 individual draft actions retained. The optional controls accept a consumer `history` object for accepted-change undo/redo. Consumers must invalidate accepted history entries affected by external updates; the playground demonstrates this.
+
+A pending request locks editing and duplicate submission. Rejections preserve the draft. An external update to the edited feature preserves the draft, aborts the submission signal, and blocks acceptance until `restart()` or cancellation. Removal requires cancellation. Unrelated updates do not interrupt editing. Destruction ignores late results and releases handles, layers, and interaction ownership. Consumers must enforce atomic version or baseline checks in their persistence layer: an abort signal alone cannot reverse a remote write that already happened. This library applies accepted changes to the viewport; the callback owns saving, not a second viewport mutation.
+
+Accepted features include a versioned GeoJSON foreign member, `drawing: { version: 1, shape, style }`. Keep it alongside ordinary `geometry` and application `properties` when saving. Circles retain center/radius; rectangles retain center/width/height/bearing; arrows retain their line vertices and direction. `shapeGeometry(shape)` produces the matching GeoJSON; `upsert` rejects mismatched geometry and shape definitions rather than guessing which one is authoritative. Ordinary imported geometry without `drawing` metadata remains ordinary geometry. Drawing appearance overrides the consumer style callback for the drawing's stroke, fill, width, opacity, dash, and label. Both the saved shape definition and geometry use bounded longitude/latitude; render-only coordinates are unrolled at the date line.
+
+Distances and areas use a spherical Earth radius of 6,371,008.8 m, independent of terrain slope, exaggeration, and camera zoom. Rectangles are defined by center-relative east/north dimensions rotated by bearing and projected geodesically onto the ground. Circle display geometry uses 96 segments; its area uses the spherical circle definition. Measurements are geographic estimates, not ellipsoidal survey measurements. Self-intersecting polygons, degenerate edges, pole-enclosing shapes, and hemisphere-scale shapes cannot be submitted. Metric and imperial units affect display only; stored dimensions are meters and bearings are degrees clockwise from north.
+
+`getMeasurements()` includes the current pointer preview. Subscribe to `onPreview()` for live measurement updates and `onChange()` for changes to draft state, history, and submission status.
+
+`viewport.acquireInteraction(owner)` reserves feature clicks, hover, context menus, and selection requests while leaving camera navigation available. It returns an idempotent release function. `interactionchange` lets other tools close their UI; `selectionchange` reports consumer-applied selection. Only one drawing adapter may attach to a viewport. Integrations that listen directly to MapLibre events must honor `getInteractionOwner()`; the separate control lab does not run in the playground.

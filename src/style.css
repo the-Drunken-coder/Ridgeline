@@ -38,3 +38,37 @@
 @media (prefers-color-scheme: dark) {
   .rl-ui { --rl-surface: #202a26; --rl-text: #e6ece8; --rl-border: #44564a; --rl-active: #344a3e; --rl-muted: #adbbb2; }
 }
+
+/* Optional drawing controls. Consumers place the rail and inspector around their viewport. */
+.rl-drawing-tools, .rl-drawing-inspector {
+  --draw-surface: #fafbf7; --draw-field: #fff; --draw-text: #243a31; --draw-border: #c7d2c8; --draw-accent: #32624c; --draw-on-accent: #fff;
+  background: var(--draw-surface); color: var(--draw-text); font: 13px/1.4 system-ui,sans-serif; box-sizing: border-box;
+}
+.rl-drawing-tools *, .rl-drawing-inspector * { box-sizing: border-box; }
+.rl-drawing-tools { display:flex;flex-direction:column;gap:4px;padding:8px;height:100%;border-right:1px solid var(--draw-border); }
+.rl-drawing-inspector { display:flex;flex-direction:column;gap:10px;padding:12px;min-width:0;height:100%;border-left:1px solid var(--draw-border);overflow-y:auto; }
+.rl-drawing-tools button, .rl-drawing-inspector button { font:inherit;background:var(--draw-field);color:inherit;border:1px solid var(--draw-border);border-radius:2px;padding:6px 9px;min-height:32px; }
+.rl-drawing-tools button { text-align:left;border-color:transparent; }
+.rl-drawing-tools button[aria-pressed=true], .rl-drawing-inspector .rl-drawing-finish { background:var(--draw-accent);color:var(--draw-on-accent);border-color:var(--draw-accent); }
+.rl-drawing-tools button:disabled, .rl-drawing-inspector button:disabled { opacity:.5; }
+.rl-drawing-tools button[aria-pressed=true]:disabled { opacity:1; }
+.rl-drawing-inspector h2 { font:600 13px/1.4 system-ui,sans-serif;margin:0; }
+.rl-drawing-inspector p { margin:0; }
+.rl-drawing-inspector label { display:flex;flex-direction:column;gap:4px;min-width:0; }
+.rl-drawing-inspector input:not([type=checkbox]), .rl-drawing-inspector select { width:100%;min-width:0;padding:5px 7px;background:var(--draw-field);color:inherit;font:inherit;border:1px solid var(--draw-border);border-radius:2px; }
+.rl-drawing-row { display:flex;gap:8px; }
+.rl-drawing-row > * { flex:1;min-width:0; }
+.rl-drawing-inspector .rl-drawing-snap { flex-direction:row;align-items:center;gap:8px; }
+.rl-drawing-measurements { padding:8px 0;border-block:1px solid var(--draw-border);font-variant-numeric:tabular-nums; }
+.rl-drawing-note { border-left:2px solid #b15624;padding-left:8px; }
+.rl-drawing-help { font-size:12px; }
+.rl-drawing-active { cursor:crosshair; }
+.rl-drawing-handle { width:14px;height:14px;min-width:14px;min-height:14px;padding:0;border:2px solid #854622;border-radius:0;background:#fff;color:#243a31;cursor:move;font:12px/10px system-ui; }
+.rl-drawing-handle::after { content:'';position:absolute;inset:-5px; }
+.rl-drawing-handle:focus-visible { outline:3px solid #216e5b;outline-offset:3px; }
+.rl-drawing-handle:disabled { cursor:default; }
+.rl-drawing-move { width:24px;height:24px;font-size:17px; }
+.rl-drawing-insert { width:16px;height:16px;border-width:1px;cursor:copy; }
+@media(prefers-color-scheme:dark) {
+  .rl-drawing-tools,.rl-drawing-inspector { --draw-surface:#222a25;--draw-field:#19231c;--draw-text:#eff3ed;--draw-border:#4b584e;--draw-accent:#a2c9a4;--draw-on-accent:#19231c; }
+}

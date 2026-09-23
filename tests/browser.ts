@@ -1,4 +1,4 @@
-import { createViewport, attachInteractions, RidgelineError } from '@ridgeline/map';
+import { createViewport, attachInteractions, attachDrawing, attachDrawingControls, shapeGeometry, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
 import { GeoJSONSource, ErrorEvent as MapErrorEvent, setWorkerUrl } from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
@@ -427,6 +427,55 @@ async function suite() {
     check(edges.length > 50 && edges.length < solidPixels.length / 3, 'Wireframe-only view still has filled faces or no edges');
     check(pick(wire, edges[Math.floor(edges.length / 3)]!), 'Wireframe-only volume cannot be selected');
     air.destroy();
+  });
+  await run('Drawing creates accepted features, owns clicks, edits with keyboard and survives style reload', async () => {
+    const draw = createViewport({ container, basemap: style(), camera: { center:[0,0], zoom:12 }, logger:()=>{} });
+    current = draw;
+    await draw.ready;
+    let clicks=0, accepts=0;
+    draw.on('click',()=>{clicks++;});
+    const editor=attachDrawing(draw,{
+      createFeature:geometry=>({type:'Feature',id:'drawn',geometry,properties:{name:'Drawn'}}),
+      submit:()=>{accepts++;return {accepted:true};},
+    });
+    const tools=document.createElement('div'),inspector=document.createElement('div');document.body.append(tools,inspector);
+    const controls=attachDrawingControls(draw,editor,{tools,inspector});
+    await until(()=>Boolean(draw.map.getSource('rl:draft')),'draft source attached');
+    editor.start('polygon');
+    for(const p of [[0,0],[.02,0],[.02,.02],[0,.02]] as [number,number][]){
+      const point=draw.map.project(p);
+      draw.map.fire('click',{point,lngLat:draw.map.unproject(point),originalEvent:new MouseEvent('click')});
+    }
+    check(clicks===0,'Drawing clicks escaped to consumer selection');
+    check(container.querySelectorAll('.rl-drawing-handle').length>=4,'Vertex handles missing');
+    check(!draw.getFeature('drawn'),'Unaccepted draft entered store');
+    check(inspector.textContent?.includes('Area'),'Measurements missing');
+    check(await editor.finish(),'Drawing was not accepted');
+    check(accepts===1&&draw.getFeature('drawn')?.geometry.type==='Polygon','Accepted polygon not stored');
+    editor.edit('drawn');
+    const original=JSON.stringify(editor.getState().draft?.shape);
+    const handle=container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]')!;
+    handle.focus();handle.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+    check(JSON.stringify(editor.getState().draft?.shape)!==original,'Keyboard did not move a vertex');
+    editor.undo();check(JSON.stringify(editor.getState().draft?.shape)===original,'Draft undo failed');
+    draw.configure({basemap:style('#dddddd'),projection:'globe'});
+    await until(()=>Boolean(draw.map.getLayer('rl:draft-fill')),'draft restored after style replacement');
+    check(Boolean(editor.getState().draft),'Style replacement discarded the draft');
+    check(draw.map.getFeatureState({source:'rl:features',id:'drawn'}).editing,'Original feature not hidden during edit');
+    editor.cancel();check(!draw.map.getFeatureState({source:'rl:features',id:'drawn'}).editing,'Cancel left original hidden');
+    controls.destroy();editor.destroy();check(!container.querySelector('.rl-drawing-handle'),'Handle leaked on destroy');
+    check(!draw.map.getSource('rl:draft'),'Draft source leaked on destroy');
+    draw.destroy();tools.remove();inspector.remove();
+  });
+  await run('Arrowheads follow accepted geometry updates and disappear on deletion', async () => {
+    const arrowShape = { kind:'arrow' as const, vertices:[[-.01,0],[.01,0]] as [number,number][] };
+    const arrow:MapFeature = { type:'Feature', id:'arrow', geometry:shapeGeometry(arrowShape), properties:{}, drawing:{version:1,shape:arrowShape,style:{color:'#ff0000',fillColor:'#ff0000',lineWidth:3,fillOpacity:0,dashed:false,label:''}} };
+    const draw=createViewport({container,basemap:style(),features:[arrow],camera:{center:[0,0],zoom:12},logger:()=>{}});current=draw;await draw.ready;
+    const heads=()=>draw.map.queryRenderedFeatures({layers:['rl:arrowheads']});
+    await until(()=>heads().some(f=>f.id==='arrow'),'initial arrowhead rendered');
+    arrow.drawing!.shape={kind:'arrow',vertices:[[0,-.01],[0,.01]]};arrow.geometry=shapeGeometry(arrow.drawing!.shape);draw.upsert([arrow]);
+    await until(()=>heads().some(f=>Math.abs(Number(f.properties.bearing))<1),'arrowhead follows direction');
+    draw.remove(['arrow']);await until(()=>heads().length===0,'arrowhead removed');draw.destroy();
   });
   status.dataset.state = 'passed';
   status.textContent = `${results.children.length} checks passed. Package imported through its published exports.`;
