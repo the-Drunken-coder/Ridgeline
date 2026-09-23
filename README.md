@@ -1,10 +1,21 @@
 # Ridgeline
 
-A framework-neutral TypeScript map viewport with an optional radial feature picker. One package, one playground, no application backend. MapLibre GL JS renders the map; Mapterhorn supplies the default elevation data.
+A framework-neutral TypeScript map viewport with an optional radial feature picker. Consumers supply data and own their application workflows. MapLibre GL JS renders the map; Mapterhorn supplies the default elevation data.
 
-The playground combines the approved Field desk sidebar with Map bench's in-map wheel. It starts over Chamonix with terrain and hillshade enabled. Choose overlapping features to try groups of 2, 3, 8, 10, and 20, or moving features for the 1,000-point workload.
+## Core design decisions
+
+Ridgeline is built for anyone who needs an easy-to-use, reusable map viewport. Core design decisions must serve consuming applications generally.
+
+- The playground is one consumer. Its job is to host the map, let people explore it, and exercise the same public API available to everyone.
+- The library must work without the playground's code, sidebar, sample data, scenario names, state, or workflows. Dependencies flow from the playground to the library.
+- Consumers choose their data, surrounding UI, styling, and application behavior. A playground request belongs in the library only when it solves a reusable mapping need; demonstration controls and scenario logic stay in the playground.
+- Keep integration simple through sensible defaults, a small documented API, and optional interaction tools. General usefulness does not require a speculative plugin framework or universal rendering-engine abstraction.
+
+Review each core change against this question: can another application use it without adopting the playground's structure or assumptions? Verify package usability in a separate consuming application, as well as in the playground.
 
 ## Run locally
+
+The playground combines the approved Field desk sidebar with Map bench's in-map wheel. It starts over Chamonix with terrain and hillshade enabled. Choose overlapping features to try groups of 2, 3, 8, 10, and 20, or moving features for the 1,000-point workload.
 
 Use Node 22.12+ and pnpm 11.
 

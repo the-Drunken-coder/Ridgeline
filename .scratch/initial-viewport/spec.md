@@ -2,6 +2,10 @@
 
 Status: Initial implementation completed locally using Field desk for the surrounding UI and Map bench for UI within the map. Package and playground builds, five unit tests, and six packaged-consumer browser checks pass. Safari validation remains outstanding; see `docs/performance.md`.
 
+## Core design decisions
+
+Ridgeline serves consuming applications generally. The playground hosts the map and lets people explore and test its public API; its layout, sample data, scenarios, and workflows must not become requirements of the library. Core features must solve reusable mapping needs and remain simple for another application to adopt. Keep playground-specific behavior in the playground, and verify usability through a separate package consumer. This boundary takes precedence over playground convenience; see [the consumer ownership decision](../../docs/adr/0001-consumer-owned-workflows.md).
+
 ## Confirmed brief
 
 - Independent, lightweight TypeScript mapping library with one package and one standalone playground.
