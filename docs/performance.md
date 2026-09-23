@@ -1,5 +1,15 @@
 # Initial measurements and verification
 
+## Feature-update recovery verification
+
+The update-recovery and picker-refresh changes pass strict TypeScript checking, five Node tests, both builds, and twelve packed-consumer browser checks. `pnpm test:browser` builds and installs a fresh tarball, then runs the fixture through Playwright 1.63.0 in headless Chromium with software WebGL. New checks cover isolated callback failures, explicit retries, retained removals, newer updates during renderer rejection, source error events, retired sources after basemap changes, picker names/icons/availability/focus, and custom content disposal.
+
+Restoring the original flush implementation made the new browser check fail with `Timed out: healthy changes survive`. Restoring the original picker data-change handler made the picker check fail with `Stale picker name`. Both commands exited with status 1. The fixes were restored afterward.
+
+These checks use local styles. They do not certify Safari or repeat the moving-workload performance measurements below. The bundle and workload measurements below describe the original baseline.
+
+## Original baseline
+
 Measured locally on 2026-09-23 with Node 25.9.0, pnpm 11.0.9, TypeScript 7.0.2, Vite 8.3.0, and MapLibre GL JS 6.11.0. Browser checks used Codex's Chromium-based in-app browser on macOS at 1280 × 720. Hardware and GPU model were not recorded. Safari remains unverified.
 
 ## Bundle size

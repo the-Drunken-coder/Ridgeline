@@ -1,4 +1,4 @@
-import type { Interaction, MapFeature, Properties, Viewport } from './types';
+import type { IconDefinition, Interaction, MapFeature, Properties, Viewport } from './types';
 
 export type OverlayContent = { element: HTMLElement; dispose?: () => void };
 export type InteractionOptions<P extends Properties> = {
@@ -25,6 +25,43 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
   let activeDisposers: (() => void)[] = [];
   let tooltipDisposers: (() => void)[] = [];
   let focusBeforeOpen: HTMLElement | null = null;
+  const choices = new Map<string, {
+    button: HTMLButtonElement;
+    label: HTMLElement;
+    disposers: (() => void)[];
+    name?: string;
+    icon?: IconDefinition;
+  }>();
+
+  function releaseChoices() {
+    for (const choice of choices.values()) release(choice.disposers);
+    choices.clear();
+  }
+  function refreshChoice(id: string) {
+    const choice = choices.get(id);
+    if (!choice) return;
+    const feature = viewport.getFeature(id);
+    const name = feature ? viewport.getName(feature) : undefined;
+    const iconId = feature && !options.renderFeature ? viewport.getStyle(feature).icon : undefined;
+    const icon = iconId ? viewport.getIcon(iconId) : undefined;
+    // Default presentation depends only on the name and registered icon, not position.
+    if (!options.renderFeature && choice.name === name && choice.icon === icon && choice.label.hasChildNodes()) return;
+    const disposers: (() => void)[] = [];
+    const replacement = feature ? content(feature, disposers) : document.createTextNode('Unavailable');
+    release(choice.disposers);
+    choice.disposers = disposers;
+    choice.label.replaceChildren(replacement);
+    choice.name = name; choice.icon = icon;
+    const hadFocus = document.activeElement === choice.button;
+    choice.button.disabled = !feature;
+    choice.button.setAttribute('aria-label', feature ? `Select ${name}` : 'Feature no longer available');
+    if (!feature && hadFocus) {
+      const buttons = [...choices.values()].map(item => item.button);
+      const index = buttons.indexOf(choice.button);
+      const next = [...buttons.slice(index + 1), ...buttons.slice(0, index)].find(button => !button.disabled);
+      (next ?? active?.querySelector<HTMLButtonElement>('.rl-picker-close'))?.focus({ preventScroll: true });
+    }
+  }
 
   function release(disposers: (() => void)[]) {
     for (const dispose of disposers.splice(0)) { try { dispose(); } catch { /* Finish disposing the remaining UI. */ } }
@@ -56,7 +93,7 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
   function hideTooltip() { tooltip?.remove(); tooltip = null; release(tooltipDisposers); viewport.preview(null); }
   function close(restoreFocus = false) {
     active?.remove(); active = null; candidates = [];
-    release(activeDisposers); hideTooltip();
+    releaseChoices(); release(activeDisposers); hideTooltip();
     if (restoreFocus && focusBeforeOpen?.isConnected) focusBeforeOpen.focus({ preventScroll: true });
     focusBeforeOpen = null;
   }
@@ -83,14 +120,13 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
   }
   function drawPicker(focus = false) {
     if (!active) return;
-    release(activeDisposers); active.replaceChildren();
+    releaseChoices(); release(activeDisposers); active.replaceChildren();
     const size = Math.min(360, viewport.container.clientWidth - 12, viewport.container.clientHeight - 12);
     active.style.width = `${size}px`; active.style.height = `${size}px`;
     const center = size / 2, radius = center - 3, inside = Math.min(60, radius * .4);
     const slice = candidates.slice(page * 8, page * 8 + 8);
     const buttons: HTMLButtonElement[] = [];
     slice.forEach((id, index) => {
-      const feature = viewport.getFeature(id);
       const angle = -Math.PI / 2 + index * Math.PI * 2 / slice.length;
       const start = angle - Math.PI / slice.length + .008;
       const end = angle + Math.PI / slice.length - .008;
@@ -106,14 +142,13 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
       const choice = button('', () => request(id));
       choice.className = 'rl-sector'; choice.dataset.featureId = id;
       choice.style.clipPath = `polygon(${points.join(',')})`;
-      choice.disabled = !feature;
-      choice.setAttribute('aria-label', feature ? `Select ${viewport.getName(feature)}` : 'Feature no longer available');
       const label = document.createElement('span'); label.className = 'rl-sector-label';
       const labelRadius = (radius + inside) / 2;
       label.style.left = `${center + Math.cos(angle) * labelRadius}px`;
       label.style.top = `${center + Math.sin(angle) * labelRadius}px`;
       if (size < 330) label.style.width = '68px';
-      if (feature) label.append(content(feature, activeDisposers)); else label.textContent = 'Unavailable';
+      choices.set(id, { button: choice, label, disposers: [] });
+      refreshChoice(id);
       choice.append(label);
       const show = () => { const current = viewport.getFeature(id); if (current) viewport.preview(id); };
       choice.addEventListener('mouseenter', show); choice.addEventListener('focus', show);
@@ -168,9 +203,7 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
   }));
   subscriptions.push(viewport.on('datachange', event => {
     if (event.removed.length) hideTooltip();
-    for (const element of root.querySelectorAll<HTMLButtonElement>('[data-feature-id]')) {
-      if (event.removed.includes(element.dataset.featureId ?? '')) { element.disabled = true; element.setAttribute('aria-label', 'Feature no longer available'); }
-    }
+    for (const id of new Set([...event.ids, ...event.removed])) refreshChoice(id);
   }));
   root.addEventListener('click', event => event.stopPropagation(), { signal: abort.signal });
   root.addEventListener('dblclick', event => event.stopPropagation(), { signal: abort.signal });

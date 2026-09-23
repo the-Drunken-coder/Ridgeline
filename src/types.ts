@@ -61,6 +61,8 @@ export interface Viewport<P extends Properties = Properties> {
   upsert(features: readonly MapFeature<P>[]): void;
   remove(ids: readonly string[]): void;
   clear(): void;
+  /** Retry failed feature updates once, using the latest stored data. */
+  retryUpdates(): void;
   getFeature(id: string): MapFeature<P> | undefined;
   getFeatures(): MapFeature<P>[];
   getName(feature: MapFeature<P>): string;

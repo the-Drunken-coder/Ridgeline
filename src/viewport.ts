@@ -22,6 +22,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   const report = createReporter(options.logger);
   const icons = new Map<string, IconDefinition>();
   const pending = new Map<string, MapFeature<P> | null>();
+  const failed = new Set<string>();
+  let submitting: symbol | null = null;
   let selected = new Set<string>();
   let previewId: string | null = null;
   let destroyed = false;
@@ -108,28 +110,57 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   function synchronizeState(id: string) {
     if (prepared && map.getSource(SOURCE) && store.has(id)) map.setFeatureState({ source: SOURCE, id }, { selected: selected.has(id), hover: previewId === id });
   }
-  function flush() {
+  async function flush() {
     frame = 0;
-    if (destroyed || !prepared) return;
+    if (destroyed || !prepared || submitting) return;
     const source = map.getSource(SOURCE);
-    if (!(source instanceof GeoJSONSource)) return;
+    if (!(source instanceof GeoJSONSource) || !pending.size) return;
+    const token = Symbol();
+    submitting = token;
+    const current = () => !destroyed && prepared && submitting === token && map.getSource(SOURCE) === source;
     const changes = [...pending.entries()];
     pending.clear();
-    if (!changes.length) return;
+    const add: MapFeature[] = [];
+    const remove: string[] = [];
+    const submitted: string[] = [];
+    let rejected = false;
+    function reject(cause: unknown) {
+      if (!current() || rejected) return;
+      rejected = true;
+      for (const id of submitted) if (!pending.has(id)) failed.add(id);
+      diagnostic(new RidgelineError('UPDATE_FAILED', 'The renderer could not apply a feature update. Call retryUpdates() to retry.', { operation: 'upsert', recoverable: true }, cause));
+    }
+    // MapLibre also reports worker failures as source errors without rejecting updateData().
+    const onSourceError = (event: GLErrorEvent) => reject(event.error);
     try {
-      const add = changes.flatMap(([, feature]) => feature ? [rendered(feature)] : []);
-      const remove = changes.filter(([, feature]) => feature === null).map(([id]) => id);
-      // updateData.add replaces an existing ID, including all geometry and properties.
-      void source.updateData({ add, remove }).then(() => {
-        if (!destroyed && map.getSource(SOURCE) === source) for (const [id] of changes) synchronizeState(id);
-      }).catch(cause => {
-        if (!destroyed && map.getSource(SOURCE) === source) diagnostic(new RidgelineError('UPDATE_FAILED', 'The renderer could not apply a feature update.', { operation: 'upsert', recoverable: true }, cause));
-      });
+      for (const [id, feature] of changes) {
+        failed.delete(id);
+        try {
+          if (feature) add.push(rendered(feature)); else remove.push(id);
+          submitted.push(id);
+        } catch (cause) {
+          if (!current()) return;
+          if (!pending.has(id)) failed.add(id);
+          diagnostic(new RidgelineError('UPDATE_FAILED', 'Unable to prepare a feature update. Update this feature or call retryUpdates() to retry.', { operation: 'upsert', recoverable: true, featureId: id }, cause));
+        }
+        if (!current()) return;
+      }
+      if (!submitted.length) return;
+      source.on('error', onSourceError);
+      // Full replacements and removals are safe to repeat after a partial renderer failure.
+      await source.updateData({ add, remove });
+      if (current() && !rejected) for (const id of submitted) synchronizeState(id);
     } catch (cause) {
-      diagnostic(new RidgelineError('UPDATE_FAILED', 'Unable to prepare a feature update.', { operation: 'upsert', recoverable: true }, cause));
+      reject(cause);
+    } finally {
+      source.off('error', onSourceError);
+      if (submitting === token) {
+        submitting = null;
+        if (pending.size) schedule();
+      }
     }
   }
-  function schedule() { if (!frame && prepared) frame = requestAnimationFrame(flush); }
+  function schedule() { if (!frame && prepared && !submitting) frame = requestAnimationFrame(() => { void flush(); }); }
 
   function applyElevation(replace = false) {
     if (!prepared) return;
@@ -156,7 +187,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     if (destroyed) return;
     try {
       prepared = true;
+      submitting = null;
       pending.clear();
+      failed.clear();
       map.setProjection({ type: configuration.projection === 'flat' ? 'mercator' : 'globe' });
       for (const [id, icon] of icons) if (!map.hasImage(`rl:icon:${id}`)) map.addImage(`rl:icon:${id}`, icon.image, { pixelRatio: icon.pixelRatio ?? 1 });
       if (!map.getSource(SOURCE)) map.addSource(SOURCE, { type: 'geojson', promoteId: '_rl_id', data: { type: 'FeatureCollection', features: store.all().map(rendered) } });
@@ -220,7 +253,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       assertActive();
       try {
         const changed = store.upsert(features);
-        for (const feature of changed) pending.set(feature.id, feature);
+        for (const feature of changed) { failed.delete(feature.id); pending.set(feature.id, feature); }
         schedule(); emit('datachange', { ids: changed.map(feature => feature.id), removed: [] });
       } catch (cause) {
         const error = cause instanceof RidgelineError ? cause : new RidgelineError('INVALID_FEATURE', 'Feature data could not be copied.', { operation: 'upsert', recoverable: true }, cause);
@@ -229,10 +262,16 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     },
     remove(ids) {
       assertActive(); const removed = store.remove(ids);
-      for (const id of removed) { pending.set(id, null); selected.delete(id); if (previewId === id) previewId = null; if (prepared) map.removeFeatureState({ source: SOURCE, id }); }
+      for (const id of removed) { failed.delete(id); pending.set(id, null); selected.delete(id); if (previewId === id) previewId = null; if (prepared) map.removeFeatureState({ source: SOURCE, id }); }
       schedule(); emit('datachange', { ids: [], removed });
     },
     clear() { viewport.remove(store.ids()); },
+    retryUpdates() {
+      assertActive();
+      for (const id of failed) if (!pending.has(id)) pending.set(id, store.get(id) ?? null);
+      failed.clear();
+      schedule();
+    },
     getFeature: id => store.get(id), getFeatures: () => store.all(), getName, getStyle,
     getIcon: id => icons.get(id),
     registerIcon(id, definition) {
@@ -273,7 +312,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         exaggeration: next.exaggeration ?? configuration.exaggeration,
         elevation: structuredClone(next.elevation ?? configuration.elevation),
       };
-      if (styleChanged) { prepared = false; map.setStyle(configuration.basemap, { diff: false }); }
+      if (styleChanged) { prepared = false; submitting = null; map.setStyle(configuration.basemap, { diff: false }); }
       else if (prepared) {
         map.setProjection({ type: configuration.projection === 'flat' ? 'mercator' : 'globe' });
         applyElevation(next.elevation !== undefined);
@@ -289,7 +328,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (!readySettled) { readySettled = true; rejectReady(new RidgelineError('DESTROYED', 'Viewport was destroyed before initialization completed.', { operation: 'initialize', recoverable: false })); }
       clearTimeout(timer); cancelAnimationFrame(frame); resize.disconnect();
       map.getCanvas().removeEventListener('mouseleave', onLeave);
-      map.remove(); pending.clear(); icons.clear(); selected.clear(); store.remove(store.ids());
+      map.remove(); pending.clear(); failed.clear(); icons.clear(); selected.clear(); store.remove(store.ids());
       for (const set of Object.values(listeners)) set.clear();
     },
   };
