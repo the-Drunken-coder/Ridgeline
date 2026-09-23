@@ -83,11 +83,11 @@ Give the container an explicit height and `position: relative`. This is a browse
 
 ## Features and updates
 
-`MapFeature<YourProperties>` is GeoJSON `Point`, `LineString`, or `Polygon`, with a required nonempty string ID. Coordinates are `[longitude, latitude]`, within geographic bounds; polygon rings must close. Only 2D positions are supported. Features attach to the ground when terrain is enabled.
+`MapFeature<YourProperties>` is GeoJSON `Point`, `LineString`, or `Polygon`, with a required nonempty string ID. Coordinates are `[longitude, latitude]`, within geographic bounds; polygon rings must close. Geometry coordinates stay two-dimensional. Ordinary features attach to the ground when terrain is enabled; point features can additionally supply `entity` altitude and attachments.
 
 | Operation | Contract |
 | --- | --- |
-| `upsert(features)` | Validate and copy the entire batch, then replace geometry and properties for each ID. Last duplicate in a batch wins. |
+| `upsert(features)` | Validate and copy the entire batch, then replace geometry, properties, and entity data for each ID. Last duplicate in a batch wins. |
 | `remove(ids)` / `clear()` | Remove features and their selection highlights. Unknown IDs are harmless. |
 | `retryUpdates()` | Retry failed incremental changes once using the latest stored data, including pending removals. |
 | `getFeature(id)` / `getFeatures()` | Return snapshots, not mutable internal objects. |
@@ -104,9 +104,47 @@ Only one renderer submission runs at a time; updates arriving during it are coal
 
 The `name` accessor defaults to `properties.name`, then the ID. The `style` accessor supports `color`, `radius`, `lineWidth`, `fillOpacity`, `icon`, and `label`. Register icons with `registerIcon(id, { image, pixelRatio, url? })`; `image` is decoded `ImageData`, `ImageBitmap`, or an image element. Ridgeline does not fetch application icons. An optional URL lets DOM UI reuse the same picture. Registration replaces an existing icon ID. Keep the application's registered icon set bounded; unregistering individual icons is deferred. Labels require the basemap's glyph configuration and a compatible `Noto Sans Regular` font.
 
+## Airborne entities and attachments
+
+The **Single flying asset** scenario shows one moving aircraft with its camera, safety sphere, and ground zone. The **Airborne entities** scenario retains the larger workload. Both demonstrate the expanded inspector: select an entity, edit altitude and camera direction/FOV, choose an attachment, or try the missing-altitude and below-terrain examples. Movement remains application-owned, using the same `upsert` workflow as ordinary points.
+
+```ts
+viewport.upsert([{
+  type: 'Feature', id: 'aircraft-1',
+  geometry: { type: 'Point', coordinates: [6.87, 45.92] },
+  properties: { name: 'Kestrel 01' },
+  entity: {
+    altitude: { meters: 300, reference: 'ground' },
+    groundIfNoAltitude: true,
+    attachments: [
+      { id: 'camera', type: 'camera', bearing: 60, elevation: -35,
+        fovX: 60, fovY: 40, range: 2000 },
+      { id: 'safety', type: 'sphere', radius: 150 },
+      { id: 'search-area', type: 'circle', radius: 250 },
+    ],
+  },
+}]);
+```
+
+Altitude is in meters above local ground (`ground`) or in the elevation provider's sea-level datum (`sea-level`). Bearing is clockwise from geographic north, independently of movement. Elevation is degrees from local level, positive upward. FOV angles must be strictly between 0° and 180°; range is maximum slant distance in meters. All attachments originate at the entity center and have unique IDs within that entity. Optional `name` and CSS `color` describe attachments.
+
+Ground zones support `circle` with `radius`, and `polygon` with an open `vertices: [eastMeters, northMeters][]` boundary. Concave simple polygons are supported. Airborne zones support `sphere` with `radius`, and `cylinder` with `radius` and full `height`, centered vertically on the entity. A camera renders its viewing volume and a separate terrain footprint. Ground footprints and zones use native terrain-draped polygons, so differences between the sampled DEM and displayed terrain do not bury the overlay. Removing or replacing the owning entity removes its old attachments.
+
+`entityVisibility` independently controls `volumes` (cameras), `footprints`, `zones`, and `groundLines`. Defaults are all visible except ground lines; `DEFAULT_ENTITY_VISIBILITY` is exported. Read current values with `getConfiguration()` when changing a single flag. Terrain display, projection, hillshade, and exaggeration do not alter physical coverage. With terrain hidden, ground footprints and zones are displayed on the flat map. Exaggeration changes displayed heights only.
+
+`getEntityState(id)` returns placement, physical altitude and ground height, coverage availability, computation timestamp/duration, and footprint triangle count. Subscribe to `entitychange` for recomputed IDs. A missing altitude defaults to a ground marker; `groundIfNoAltitude: false` withholds it and reports `ALTITUDE_MISSING`. Explicit zero is a supplied altitude. Missing terrain retains a ground marker and withholds dependent geometry. Below-terrain altitude reports `BELOW_TERRAIN`, retains the ground marker, and withholds airborne geometry. The input altitude is never rewritten.
+
+Pointer events include `attachments: { entityId, attachmentId }[]` ordered by hit depth. The optional interaction helper carries those hits into `selectionrequest`, filtered to the selected owner. The consumer still owns selection policy.
+
+Coverage samples raw DEM data independently of MapLibre's displayed terrain, including when terrain is disabled. The built-in sampler supports Mapbox, Terrarium, and custom RGB encodings, uses bilinear pixel-centre interpolation across tile edges, requests at most six tiles concurrently, and retains at most 256 decoded tiles. It uses zoom 12 bounded by the provider's advertised zoom range. Tiles must allow browser fetch/CORS. Tile requests cover entity and attachment locations even outside the visible map; they reveal those areas to the configured provider. There is no persistent offline cache. `retryUpdates()` retries failed requests.
+
+An optional `elevationSampler` supplies raw unexaggerated meters through `sample(lng, lat): number | null`; its optional asynchronous `prepare(positions, signal)` loads the needed area. Return null for unknown terrain. Once asynchronously loaded data changes, call `retryUpdates()` unless the source's `prepare` promise is completing. This source changes computation, not the map's displayed DEM, so keep their datums and data aligned.
+
+Footprints are a terrain-based approximation: 21 × 15 rays march up to 128 steps and refine the first crossing eight times. Faces spanning a large depth jump are omitted to reduce bridging across ridges. Narrow ridges, holes between rays, and small terrain details can be missed; this is not a survey-grade visibility solver. Ground zones subdivide toward 50 m edges with a six-level cap. DEM resolution, range, and FOV affect error. Buildings, mount offsets, long-range ellipsoidal/geoid corrections, and polar raster coverage beyond approximately ±85.05° are outside this implementation. Native symbols and raw-DEM meshes can differ slightly because displayed terrain uses its own level of detail. See [performance and verification](docs/performance.md) for measured costs.
+
 ## Interaction and application UI
 
-Core events are `click`, `hover`, `contextmenu`, `selectionrequest`, `datachange`, `camerachange`, `diagnostic`, and `destroy`. Pointer interactions include original consumer features in topmost-first order, screen coordinates, geographic coordinates, and the original mouse event. Click picking includes features within 12 CSS pixels. Hover reports changes to the top feature. The core never changes application selection on its own.
+Core events are `click`, `hover`, `contextmenu`, `selectionrequest`, `datachange`, `entitychange`, `camerachange`, `diagnostic`, and `destroy`. Pointer interactions include original consumer features in topmost-first order, screen coordinates, geographic coordinates, and the original mouse event. Click picking includes features within 12 CSS pixels. Hover reports changes to the top feature. The core never changes application selection on its own.
 
 `attachInteractions(viewport, options)` is optional. It adds name/icon hover UI and an eight-per-page radial picker. Arrow keys move between candidates; Enter selects; Escape closes. Hovering previews without selecting. Candidate slots stay fixed while features move; removed choices become disabled. Closing the picker, clicking outside it, or moving the map preserves selection. Set `hover: false` or `picker: false` to disable either behavior; without the picker, a click requests the top candidate.
 

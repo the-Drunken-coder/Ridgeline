@@ -66,6 +66,19 @@ footer { min-height: 31px; display: flex; align-items: center; justify-content: 
 #sidc-placement { margin-top: 12px; padding: 8px; border: 1px solid var(--line); }
 #sidc-placement p { margin-top: 0; }
 .placing-symbol .maplibregl-canvas-container .maplibregl-canvas { cursor: crosshair; }
+#airborne-demo h2:not(:first-child) { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+#airborne-demo .setting input[type=number] { width: 92px; padding: 4px; border: 1px solid var(--line); border-radius: 3px; background: var(--surface); }
+#airborne-demo .setting select { width: 118px; }
+.airborne-visibility { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.airborne-visibility label { display: flex; align-items: center; gap: 5px; font-size: 12px; }
+.airborne-visibility input { accent-color: var(--accent); }
+.map-settings summary { font-size: 12px; font-weight: 600; margin-bottom: 10px; }
+.airborne-scenario .workspace { grid-template-columns: 280px minmax(0,1fr); }
+.airborne-scenario .sidebar { gap: 12px; }
+.airborne-scenario .sidebar section + section { padding-top: 10px; }
+.airborne-scenario .setting { min-height: 31px; }
+#airborne-demo dl { grid-template-columns: 1fr auto; }
+#airborne-demo [data-state] { font-size: 12px; }
 [hidden] { display: none !important; }
 @media(prefers-color-scheme:dark) { :root { --surface:#202925; --line:#3d5144; --ink:#e7eee9; --muted:#abbcaf; --accent:#8dd0a9; color:var(--ink); background:#18221d; } }
 @media(max-width:760px) { .workspace { grid-template-columns:210px minmax(0,1fr); }.sidebar { padding:13px; }footer span:last-child { display:none; } }

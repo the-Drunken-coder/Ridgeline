@@ -1,5 +1,38 @@
 # Initial measurements and verification
 
+## Ground footprint rendering correction
+
+The footprint gap regression is covered by a rendered-pixel browser test: coverage over unobstructed terrain must remain painted when the displayed DEM is five metres above the calculation DEM. The original custom mesh failed with four black samples; matching DEM heights passed. Native terrain-draped fill/line layers now pass the mismatched-height case. All 18 packed-consumer checks and the 16 Node tests pass. The physical visibility solver is unchanged.
+
+The workload and bundle measurements below predate this ground-rendering correction and the single-asset scenario. They are historical measurements, not measurements of the updated path.
+
+## Airborne entities follow-up
+
+Measured on 2026-09-23 from `codex/airborne-entities`, based on `b6abf671700f0e17519c60fab6ada5637cbb3005`. Production playground, Codex's Chromium in-app browser on macOS, 1280 × 720, standard basemap, flat projection, terrain and hillshade on, pitch 60°, zoom 13.5. Hardware/GPU and competing system load were not recorded.
+
+The scenario holds 1,000 total points, updates 100 airborne entities on a requested 100 ms interval, and shows ten camera volumes/footprints plus a sphere and a terrain-following circle. All four entity display switches were enabled. The table is one completed warm ten-second observation using monotonic timestamps:
+
+| UI frame callbacks/s | p95 UI frame interval | Map render events/s | p95 update submission | Submitted batches | p95 entity computation/batch | p95 coverage age |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 7 | 449.5 ms | 6.7 | 4.60 ms | 42 | 357.1 ms | 321 ms |
+
+This final run **did not sustain the requested 10 Hz workload**. Terrain computation runs on the main thread, and the geometry is costly enough to delay both movement timers and rendering. Earlier observations varied considerably: the pre-final implementation submitted 100 batches, while another final-geometry run submitted 94. Those are not evidence of a reliable capacity ceiling. The final workload needs further optimization before claiming smooth 100-entity/10-camera operation at 10 Hz. Hiding geometry reduces work; no automatic accuracy reduction or interpolation was introduced.
+
+Coverage age samples the oldest computed state among the ten cameras only when all report ready. Computation duration sums entity build time per flush; it excludes buffer upload, asynchronous GeoJSON worker completion, and GPU duration. Update submission includes validation and cloning. Age is time since computation, not end-to-end display latency. An interrupted narrow-viewport run and a wall-clock-based age result were discarded; the implementation now uses monotonic time for the age calculation. These observations are not directly comparable to the ground-only baseline below.
+
+`pnpm build:playground && pnpm measure` after the airborne addition:
+
+| Artifact | Raw bytes | Gzip bytes |
+| --- | ---: | ---: |
+| Ridgeline ESM, excluding MapLibre | 68,894 | 21,519 |
+| Ridgeline CSS | 2,468 | 919 |
+| Playground main JS | 1,085,122 | 295,559 |
+| MapLibre worker JS | 509,445 | 144,458 |
+| SIDC Kit on-demand JS | 871,547 | 200,513 |
+| Playground CSS | 91,885 | 12,784 |
+
+The Node suite now has 16 passing tests, and the packed-consumer browser suite has 17 passing checks. Type checking and both builds pass. New checks cover geometry orientation, ridge obstruction, range, fallbacks, DEM encoding, concave zones, interior ground sampling, owner/attachment selection, globe shaders, basemap restoration, removal, and terrain/exaggeration-independent physical coverage. Numerical resolution and platform limits are documented in the README and `.scratch/airborne-entities/engineering-notes.md`.
+
 ## Recovery and hillshade follow-up
 
 Remeasured on 2026-09-23 after adding update recovery, picker refresh, typed hillshade settings, and the automated browser command. `pnpm build:playground && pnpm measure` reports:

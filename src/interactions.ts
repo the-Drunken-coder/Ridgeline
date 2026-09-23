@@ -116,9 +116,10 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
     position(tooltip, { x: point.x + 16, y: point.y + 18 });
     viewport.preview(feature.id);
   }
+  let clickedAttachments: Interaction<P>['attachments'] = [];
   function request(id: string) {
     if (!viewport.getFeature(id)) return;
-    close(true); viewport.requestSelection([id]);
+    close(true); viewport.requestSelection([id], clickedAttachments);
   }
   function button(label: string, action: () => void) {
     const element = document.createElement('button'); element.type = 'button'; element.textContent = label;
@@ -184,12 +185,13 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
   subscriptions.push(viewport.on('click', event => {
     if (active) { close(); return; }
     hideTooltip();
+    clickedAttachments = event.attachments;
     if (event.features.length > 1 && options.picker !== false) {
       candidates = event.features.map(feature => feature.id); anchor = event.point; page = 0;
       focusBeforeOpen = document.activeElement instanceof HTMLElement ? document.activeElement : viewport.map.getCanvas();
       active = document.createElement('div'); active.className = 'rl-picker'; active.setAttribute('role', 'group'); active.setAttribute('aria-label', 'Choose a feature');
       root.append(active); drawPicker(true);
-    } else viewport.requestSelection(event.features[0] ? [event.features[0].id] : []);
+    } else viewport.requestSelection(event.features[0] ? [event.features[0].id] : [], event.attachments);
   }));
   subscriptions.push(viewport.on('hover', event => {
     if (active || options.hover === false) return;
