@@ -44,7 +44,30 @@ main { position: relative; min-width: 0; }
 #error-message { font-size: 12px; overflow-wrap: anywhere; }
 #error-code { display: block; font-size: 11px; margin: 10px 0; }
 footer { min-height: 31px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 16px; border-top: 1px solid var(--line); background: var(--surface); font-size: 11px; }
+.sidc-scenario .workspace { grid-template-columns: 290px minmax(0,1fr); }
+.sidc-boundary { margin: 0 0 16px; font-size: 12px; }
+.sidc-boundary a { color: inherit; }
+#sidc-content label { display: block; font-weight: 600; margin-bottom: 8px; }
+#sidc-search { width: 100%; padding: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 3px; }
+#sidc-results { margin-top: 10px; font-size: 12px; }
+.sidc-result { display: flex; gap: 9px; align-items: center; text-align: left; width: 100%; padding: 9px 4px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+.sidc-result[aria-pressed=true] { background: color-mix(in srgb,var(--accent) 14%,var(--surface)); }
+.sidc-symbol { width: 36px; height: 36px; object-fit: contain; flex-shrink: 0; filter: drop-shadow(0 0 1px #fafbf7); }
+.sidc-symbol-name { display: flex; align-items: center; gap: 9px; font-weight: 600; overflow-wrap: anywhere; margin-bottom: 8px; }
+.sidc-preview .sidc-symbol { width: 52px; height: 52px; }
+#sidc-content .sidc-preview, #sidc-content .sidc-inspector { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
+#sidc-content code { display: block; overflow-wrap: anywhere; font-size: 11px; }
+#sidc-content dl { grid-template-columns: 78px minmax(0,1fr); }
+#sidc-preview-status, #sidc-status { font-size: 12px; }
+#sidc-preview-status { margin: 8px 0 10px; }
+#sidc-status { margin-top: 16px; }
+#sidc-place { margin-top: 6px; }
+.sidc-primary { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+#sidc-placement { margin-top: 12px; padding: 8px; border: 1px solid var(--line); }
+#sidc-placement p { margin-top: 0; }
+.placing-symbol .maplibregl-canvas-container .maplibregl-canvas { cursor: crosshair; }
 [hidden] { display: none !important; }
 @media(prefers-color-scheme:dark) { :root { --surface:#202925; --line:#3d5144; --ink:#e7eee9; --muted:#abbcaf; --accent:#8dd0a9; color:var(--ink); background:#18221d; } }
 @media(max-width:760px) { .workspace { grid-template-columns:210px minmax(0,1fr); }.sidebar { padding:13px; }footer span:last-child { display:none; } }
 @media(max-width:540px) { .workspace { display:flex; flex-direction:column; height:auto; }.sidebar { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border-right:0;gap:16px; }.sidebar section + section { padding-top:0;border:0; }main { height:600px; }.event-section { display:none; }#motion { grid-column:1/-1; }#map-status { font-size:11px; }.app-header { gap:10px;padding:0 12px; } }
+@media(max-width:540px) { .sidc-scenario .sidebar { display:block; }.sidc-scenario .sidebar > section + section { margin-top:16px; } }

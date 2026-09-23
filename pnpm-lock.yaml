@@ -18,6 +18,9 @@ importers:
       '@types/node':
         specifier: ^25.0.0
         version: 25.9.8
+      sidc-kit:
+        specifier: 0.3.2
+        version: 0.3.2
       tsx:
         specifier: ^4.20.6
         version: 4.23.15
@@ -559,6 +562,9 @@ packages:
     resolution: {integrity: sha512-BWf1V0eKEK7NpIyjVSFrTWjF2CE9zhVvS0JLvyAS19lR0HnHtvPFRS5M9QVJeLcoMT1WyCU0Sm9vj53BBxtWYg==}
     engines: {node: '>=16.14.0', npm: '>=8.1.0'}
 
+  milsymbol@3.0.4:
+    resolution: {integrity: sha512-Jrs1RBCag2IzyEJwI476i2+pNHdi8WMwAp2mDD23g3TR48ERdHmdQgPXZUosRKyhPMr58/eOPyyLE53lMPPAgw==}
+
   minimist@1.2.8:
     resolution: {integrity: sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==}
 
@@ -605,6 +611,10 @@ packages:
     resolution: {integrity: sha512-hx/Pv0N1haXRb11qkfnK5MXB/iqr7i0yjWQqmO9uHqZpBgQSqzc8UsSnEpalsh+j1I8qQ2CkXAkJC8Br3dKSlg==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
+
+  sidc-kit@0.3.2:
+    resolution: {integrity: sha512-OgipjbN1oQY1Fo/5E22of3/frj+6Dj+Crgp5wuL3TvwlJ9ChQIEeuHi4KvHPR08aWNjpdtzdNf5JfciWV0IhdQ==}
+    engines: {node: '>=20'}
 
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
@@ -1025,6 +1035,8 @@ snapshots:
       quickselect: 3.0.0
       tinyqueue: 3.0.0
 
+  milsymbol@3.0.4: {}
+
   minimist@1.2.8: {}
 
   murmurhash-js@1.0.0: {}
@@ -1077,6 +1089,10 @@ snapshots:
       '@rolldown/binding-openharmony-arm64': 1.2.9
       '@rolldown/binding-win32-arm64-msvc': 1.2.9
       '@rolldown/binding-win32-x64-msvc': 1.2.9
+
+  sidc-kit@0.3.2:
+    dependencies:
+      milsymbol: 3.0.4
 
   source-map-js@1.2.1: {}
 
