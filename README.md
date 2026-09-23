@@ -28,6 +28,7 @@ pnpm install
 pnpm dev
 pnpm check
 pnpm test
+pnpm test:browser
 pnpm build:playground
 pnpm measure
 ```
@@ -88,6 +89,7 @@ Give the container an explicit height and `position: relative`. This is a browse
 | --- | --- |
 | `upsert(features)` | Validate and copy the entire batch, then replace geometry and properties for each ID. Last duplicate in a batch wins. |
 | `remove(ids)` / `clear()` | Remove features and their selection highlights. Unknown IDs are harmless. |
+| `retryUpdates()` | Retry failed incremental changes once using the latest stored data, including pending removals. |
 | `getFeature(id)` / `getFeatures()` | Return snapshots, not mutable internal objects. |
 | `setSelection(ids)` | Show the application's chosen IDs. Unknown IDs are ignored. |
 | `setCamera(camera, { duration })` | Move immediately unless an animation duration is explicitly supplied. |
@@ -98,6 +100,8 @@ Give the container an explicit height and `position: relative`. This is a browse
 
 Updates are accumulated by ID and submitted once per animation frame using MapLibre's incremental GeoJSON API. Moving a feature never moves the camera. The library snapshots data, so properties must be structured-cloneable. Replacing an ID also replaces its name and styling inputs. Use immutable IDs separate from display names.
 
+Only one renderer submission runs at a time; updates arriving during it are coalesced for the next frame. A throwing style callback leaves that feature's last rendered version visible and reports `UPDATE_FAILED` with its `featureId`. Other features and removals in the batch still proceed. Renderer rejections and source error events retain the submitted IDs for recovery. No failed update retries automatically. Fix the callback or renderer problem, then call `retryUpdates()`, or replace the affected feature with `upsert()`. Retries use current data and cannot overwrite a newer queued change. A basemap rebuild restores features whose styling succeeds and retains failed IDs for retry. Store reads reflect accepted data immediately, so failed features may differ from the display until recovery succeeds.
+
 The `name` accessor defaults to `properties.name`, then the ID. The `style` accessor supports `color`, `radius`, `lineWidth`, `fillOpacity`, `icon`, and `label`. Register icons with `registerIcon(id, { image, pixelRatio, url? })`; `image` is decoded `ImageData`, `ImageBitmap`, or an image element. Ridgeline does not fetch application icons. An optional URL lets DOM UI reuse the same picture. Registration replaces an existing icon ID. Keep the application's registered icon set bounded; unregistering individual icons is deferred. Labels require the basemap's glyph configuration and a compatible `Noto Sans Regular` font.
 
 ## Interaction and application UI
@@ -105,6 +109,10 @@ The `name` accessor defaults to `properties.name`, then the ID. The `style` acce
 Core events are `click`, `hover`, `contextmenu`, `selectionrequest`, `datachange`, `camerachange`, `diagnostic`, and `destroy`. Pointer interactions include original consumer features in topmost-first order, screen coordinates, geographic coordinates, and the original mouse event. Click picking includes features within 12 CSS pixels. Hover reports changes to the top feature. The core never changes application selection on its own.
 
 `attachInteractions(viewport, options)` is optional. It adds name/icon hover UI and an eight-per-page radial picker. Arrow keys move between candidates; Enter selects; Escape closes. Hovering previews without selecting. Candidate slots stay fixed while features move; removed choices become disabled. Closing the picker, clicking outside it, or moving the map preserves selection. Set `hover: false` or `picker: false` to disable either behavior; without the picker, a click requests the top candidate.
+
+Open picker choices refresh their names, icons, and availability when their feature changes. Reintroducing an ID enables its existing button. Default content stays intact on position-only updates. Custom `renderFeature` content is recreated for affected visible candidates and its previous `dispose` hook runs once; the button, candidate order, and button focus remain intact.
+
+If a feature's style callback throws while its picker is open, the choice remains available by name without an icon. Other candidates still refresh.
 
 Use `renderFeature(feature)` to supply custom name/icon markup. Use `contextMenu(interaction, close)` to supply application actions. Either hook can return an element or `{ element, dispose }`, for framework mounting and cleanup. The context hook may return `null`. Display names use text content by default. The playground demonstrates a consumer-owned right-click menu.
 
@@ -130,7 +138,16 @@ Recoverable tile failures leave the rest of the map usable. The elevation-unavai
 
 ## Verification
 
-Focused Node tests cover replacement semantics, atomic invalid batches, snapshot ownership, geometry validation, and diagnostic deduplication. A separate consumer fixture verifies real WebGL rendering, string IDs, incremental updates, style restoration, early and repeated disposal, and optional UI cleanup against a packed tarball:
+Focused Node tests cover replacement semantics, atomic invalid batches, snapshot ownership, geometry validation, and diagnostic deduplication. Install Chromium once, then run the browser checks with one command:
+
+```sh
+pnpm exec playwright install chromium
+pnpm test:browser
+```
+
+The command builds and packs the library, installs it in a fresh separate consumer, checks its declarations, builds that consumer, and runs the existing fixture in headless Chromium with software WebGL. It exits nonzero for a failed check, uncaught browser error, timeout, or build/setup failure. It uses a local background style and no external map services. Dependency and browser installation require network access on a fresh machine. Playwright is a development dependency only.
+
+For interactive debugging, the same fixture can still be prepared manually:
 
 ```sh
 pnpm build
@@ -142,4 +159,4 @@ pnpm build
 pnpm dev
 ```
 
-Open that fixture at port 5174 and read its six checks. It has no source alias and uses a local background style, so its map checks do not depend on external tile services. See [measured results](docs/performance.md) for bundle size, workload observations, and validation limits.
+Open that fixture at port 5174 to inspect its results. It has no source alias and includes focused recovery and picker-refresh regressions. See [measured results](docs/performance.md) for bundle size, workload observations, and validation limits.

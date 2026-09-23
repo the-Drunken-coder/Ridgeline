@@ -17,12 +17,14 @@
     "build:playground": "pnpm build && vite build --config vite.playground.config.ts",
     "check": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
+    "test:browser": "node scripts/test-browser.mjs",
     "measure": "node scripts/bundle-size.mjs"
   },
   "dependencies": { "maplibre-gl": "6.11.0", "@types/geojson": "7946.0.16" },
   "devDependencies": {
     "@types/node": "^25.0.0",
     "sidc-kit": "0.3.2",
+    "playwright": "^1.63.0",
     "tsx": "^4.20.6",
     "typescript": "7.0.2",
     "vite": "8.3.0"
