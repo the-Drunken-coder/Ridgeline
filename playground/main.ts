@@ -41,6 +41,10 @@ let benchmarkFrame = 0;
 let measuring = false;
 let renderedFrames = 0;
 const updateCosts: number[] = [];
+let sidcDemo: ReturnType<typeof import('./sidc-demo').mountSidcDemo> | undefined;
+let scenarioRevision = 0;
+let disposed = false;
+let placingSymbol = false;
 
 function showError(error: RidgelineError) {
   diagnostics.hidden = false;
@@ -61,6 +65,7 @@ registerSampleIcons(viewport);
 viewport.map.on('render', () => { if (measuring) renderedFrames++; });
 
 function renderSelection() {
+  sidcDemo?.renderSelection();
   const id = viewport.getSelection()[0];
   const feature = id ? viewport.getFeature(id) : undefined;
   selectionName.replaceChildren();
@@ -83,7 +88,7 @@ function locate(feature: MapFeature<Sample>) {
     viewport.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]]);
   }
 }
-attachInteractions(viewport, {
+function createInteractions() { return attachInteractions(viewport, {
   contextMenu: (event, close) => {
     const feature = event.features[0];
     if (!feature) return null;
@@ -99,7 +104,15 @@ attachInteractions(viewport, {
     }
     return menu;
   },
-});
+}); }
+let interactions: ReturnType<typeof attachInteractions> | undefined = createInteractions();
+function setSymbolPlacement(active: boolean) {
+  placingSymbol = active;
+  mapContainer.classList.toggle('placing-symbol', active);
+  if (active) { interactions?.destroy(); interactions = undefined; }
+  // Reattach after the placement click finishes dispatching so it cannot also select.
+  else queueMicrotask(() => { if (!disposed && !placingSymbol && !interactions) interactions = createInteractions(); });
+}
 viewport.on('selectionrequest', ({ ids }) => { viewport.setSelection(ids); renderSelection(); lastEvent.textContent = ids[0] ? `Selected ${viewport.getName(viewport.getFeature(ids[0])!)}` : 'Selection cleared'; });
 viewport.on('click', event => { if (event.features.length > 1) lastEvent.textContent = `${event.features.length} candidates at this location`; });
 const featureIds = new Set<string>();
@@ -115,12 +128,18 @@ viewport.map.on('idle', () => { if (mapStatus.textContent === 'Retrying elevatio
 function stopBenchmark() { measuring = false; cancelAnimationFrame(benchmarkFrame); measureButton.disabled = false; }
 function stopMotion() { if (motionTimer) clearInterval(motionTimer); motionTimer = undefined; stopBenchmark(); }
 function resetCamera() {
-  if (currentScenario === 'overlap') viewport.setCamera({ center: [6.869,45.925], zoom: 14.3, pitch: 0, bearing: 0 });
+  if (currentScenario === 'sidc') viewport.setCamera({ center: [6.87,45.924], zoom: 13.5, pitch: 0, bearing: 0 });
+  else if (currentScenario === 'overlap') viewport.setCamera({ center: [6.869,45.925], zoom: 14.3, pitch: 0, bearing: 0 });
   else if (currentScenario === 'moving') viewport.setCamera({ center: [6.869,45.92], zoom: 12.9, pitch: 0, bearing: 0 });
   else viewport.setCamera({ center: [6.88,45.92], zoom: 12.5, pitch: 55, bearing: -20 });
 }
 function loadScenario() {
+  const revision = ++scenarioRevision;
+  sidcDemo?.destroy(); sidcDemo = undefined;
   stopMotion(); currentScenario = scenario.value; tick = 0; paused = false;
+  document.body.classList.toggle('sidc-scenario', currentScenario === 'sidc');
+  element('#sidc-demo', HTMLElement).hidden = currentScenario !== 'sidc';
+  element('#selection', HTMLElement).hidden = currentScenario === 'sidc';
   pauseButton.textContent = 'Pause'; measurement.textContent = 'No measurement yet'; diagnostics.hidden = true;
   element('#groups', HTMLDivElement).hidden = currentScenario !== 'overlap';
   element('#motion', HTMLElement).hidden = currentScenario !== 'moving';
@@ -142,6 +161,17 @@ function loadScenario() {
       const start = performance.now(); viewport.upsert(updates);
       if (measuring) updateCosts.push(performance.now() - start);
     }, 100);
+  } else if (currentScenario === 'sidc') {
+    const content = element('#sidc-content', HTMLDivElement);
+    content.textContent = 'Loading SIDC Kit…';
+    void import('./sidc-demo').then(({ mountSidcDemo }) => {
+      if (disposed || revision !== scenarioRevision) return;
+      sidcDemo = mountSidcDemo({ viewport, container: content, onPlacementChange: setSymbolPlacement, onSelectionChange: renderSelection });
+    }).catch(() => {
+      if (disposed || revision !== scenarioRevision) return;
+      content.textContent = 'SIDC Kit could not load. ';
+      const retry = document.createElement('button'); retry.textContent = 'Retry demo'; retry.onclick = loadScenario; content.append(retry);
+    });
   } else if (currentScenario !== 'empty') viewport.upsert(terrainFeatures());
   notice.hidden = currentScenario !== 'empty'; notice.textContent = 'No features. Choose a test scenario to add sample data.';
   resetCamera(); lastEvent.textContent = scenario.selectedOptions[0]?.textContent ?? 'Scenario changed';
@@ -183,6 +213,6 @@ listen(measureButton, 'click', () => {
   benchmarkFrame = requestAnimationFrame(sample);
 });
 void viewport.ready.then(loadScenario).catch(error => { notice.textContent = 'The map could not start. See the diagnostic for details.'; if (error instanceof Error) console.error(error); });
-function dispose() { stopMotion(); lifetime.abort(); viewport.destroy(); }
+function dispose() { disposed = true; ++scenarioRevision; sidcDemo?.destroy(); interactions?.destroy(); stopMotion(); lifetime.abort(); viewport.destroy(); }
 window.addEventListener('pagehide', dispose, { once: true });
 if (import.meta.hot) import.meta.hot.dispose(dispose);

@@ -22,6 +22,7 @@
   "dependencies": { "maplibre-gl": "6.11.0", "@types/geojson": "7946.0.16" },
   "devDependencies": {
     "@types/node": "^25.0.0",
+    "sidc-kit": "0.3.2",
     "tsx": "^4.20.6",
     "typescript": "7.0.2",
     "vite": "8.3.0"
