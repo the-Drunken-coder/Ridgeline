@@ -66,6 +66,25 @@ async function suite() {
     await until(() => Boolean(viewport.map.getLayer('rl:points')) && hits().some(hit => hit.id === 'during-style'), 'style rehydration');
     check(viewport.getSelection()[0] === 'queued', 'Selected ID lost');
     check(viewport.map.getFeatureState({ source: 'rl:features', id: 'queued' }).selected, 'Selection display lost');
+    const before = viewport.getConfiguration();
+    viewport.configure({ basemap: undefined, terrain: undefined, hillshade: undefined });
+    const after = viewport.getConfiguration();
+    check(JSON.stringify(after) === JSON.stringify(before), 'Undefined settings changed configuration');
+    check(Boolean(viewport.map.getLayer('rl:points')), 'Undefined basemap replaced the style');
+  });
+  await run('Escape reaches consumers unless a picker is open', async () => {
+    const ui = attachInteractions(viewport);
+    let bubbled = 0;
+    const onKeydown = () => { bubbled++; };
+    document.addEventListener('keydown', onKeydown);
+    container.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    check(bubbled === 1, 'Escape was intercepted without an overlay');
+    viewport.map.fire('click', { point: viewport.map.project([0,0]), lngLat: viewport.map.getCenter(), originalEvent: new MouseEvent('click') });
+    check(Boolean(container.querySelector('.rl-picker')), 'Picker did not open');
+    container.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    check(!container.querySelector('.rl-picker') && bubbled === 1, 'Escape did not stay with the open picker');
+    document.removeEventListener('keydown', onKeydown);
+    ui.destroy();
   });
   await run('Picker candidates stay stable during movement; UI disposes once', async () => {
     let disposals = 0;
@@ -84,6 +103,6 @@ async function suite() {
     try { viewport.upsert([point('late')]); throw new Error('Mutation unexpectedly succeeded'); }
     catch (error) { check(error instanceof RidgelineError && error.code === 'DESTROYED', 'Expected DESTROYED'); }
   });
-  status.textContent = '6 checks passed. Package imported through its published exports.';
+  status.textContent = '7 checks passed. Package imported through its published exports.';
 }
 void suite().catch(error => { status.textContent = `Failed: ${String(error)}`; current?.destroy(); });

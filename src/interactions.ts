@@ -179,7 +179,11 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
   root.addEventListener('mousedown', event => event.stopPropagation(), { signal: abort.signal });
   root.addEventListener('touchstart', event => event.stopPropagation(), { signal: abort.signal });
   root.addEventListener('wheel', event => event.stopPropagation(), { signal: abort.signal });
-  viewport.container.addEventListener('keydown', event => { if (event.key === 'Escape') { close(true); event.stopPropagation(); } }, { signal: abort.signal });
+  viewport.container.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    if (active) { close(true); event.stopPropagation(); }
+    else hideTooltip();
+  }, { signal: abort.signal });
   viewport.container.addEventListener('mouseleave', hideTooltip, { signal: abort.signal });
   document.addEventListener('pointerdown', event => {
     if (event.target instanceof Node && !viewport.container.contains(event.target)) close();

@@ -265,7 +265,14 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         diagnostic(error); throw error;
       }
       const styleChanged = next.basemap !== undefined && next.basemap !== configuration.basemap;
-      configuration = { ...configuration, ...next, elevation: structuredClone(next.elevation ?? configuration.elevation) };
+      configuration = {
+        basemap: next.basemap ?? configuration.basemap,
+        projection: next.projection ?? configuration.projection,
+        terrain: next.terrain ?? configuration.terrain,
+        hillshade: next.hillshade ?? configuration.hillshade,
+        exaggeration: next.exaggeration ?? configuration.exaggeration,
+        elevation: structuredClone(next.elevation ?? configuration.elevation),
+      };
       if (styleChanged) { prepared = false; map.setStyle(configuration.basemap, { diff: false }); }
       else if (prepared) {
         map.setProjection({ type: configuration.projection === 'flat' ? 'mercator' : 'globe' });

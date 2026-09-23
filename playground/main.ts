@@ -44,6 +44,7 @@ const updateCosts: number[] = [];
 
 function showError(error: RidgelineError) {
   diagnostics.hidden = false;
+  if (error.context.operation === 'create') notice.textContent = 'The map could not start. See the diagnostic for details.';
   element('#error-title', HTMLElement).textContent = error.context.recoverable ? 'Map resource unavailable' : 'Map could not start';
   element('#error-message', HTMLParagraphElement).textContent = error.message;
   element('#error-code', HTMLElement).textContent = `${error.code} · ${error.context.operation}`;

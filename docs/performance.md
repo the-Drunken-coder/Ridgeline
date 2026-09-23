@@ -8,13 +8,13 @@ Measured locally on 2026-09-23 with Node 25.9.0, pnpm 11.0.9, TypeScript 7.0.2, 
 
 | Artifact | Raw bytes | Gzip bytes |
 | --- | ---: | ---: |
-| Ridgeline ESM, excluding MapLibre | 22,948 | 7,422 |
+| Ridgeline ESM, excluding MapLibre | 23,155 | 7,476 |
 | Ridgeline interaction CSS | 2,468 | 919 |
-| Playground JS, including MapLibre's main-thread code | 1,042,013 | 280,003 |
+| Playground JS, including MapLibre's main-thread code | 1,042,294 | 280,050 |
 | MapLibre worker JS | 509,445 | 144,458 |
 | Playground CSS, including MapLibre and Ridgeline | 89,347 | 12,257 |
 
-The complete playground is approximately 436,700 gzip bytes for JS, worker, and CSS combined. Map styles, tiles, glyphs, and sprites are separate network requests and are not included. MapLibre dominates the payload. Vite reports its standard large-chunk warning; a small wrapper does not make the renderer itself small. There is no second renderer or UI framework dependency.
+The complete playground is approximately 436,800 gzip bytes for JS, worker, and CSS combined. Map styles, tiles, glyphs, and sprites are separate network requests and are not included. MapLibre dominates the payload. Vite reports its standard large-chunk warning; a small wrapper does not make the renderer itself small. There is no second renderer or UI framework dependency.
 
 ## Moving workload
 
@@ -33,7 +33,7 @@ Use the playground's **Moving features → Measure 10s** control to repeat a run
 
 - Five focused Node tests passed: complete replacement, atomic invalid batches, snapshot isolation and duplicate IDs, geometry validation, and diagnostic cause/log behavior.
 - Strict TypeScript checking and both production builds passed.
-- A separate Vite application installed the packed tarball, type-checked its declarations, and built with no source aliases. Its six real-browser checks passed: early/reentrant/repeated cleanup; queued string IDs and picking; incremental replace/remove with stable camera; style restoration and selection; stable picker slots and custom UI disposal; teardown with rejection of later mutations.
+- A separate Vite application installed the packed tarball, type-checked its declarations, and built with no source aliases. Its seven real-browser checks passed: early/reentrant/repeated cleanup; queued string IDs and picking; incremental replace/remove with stable camera; style restoration and selection; undefined configuration fields; Escape propagation with and without an open picker; stable picker slots and custom UI disposal; teardown with rejection of later mutations.
 - Browser interaction checks exercised groups of 2, 3, 8, 10, and 20; pagination through the final page; icon/name display; hover names; right-click selection; keyboard selection and Escape; empty data; basemap changes; independent terrain/hillshade/projection toggles (including globe with both enabled); and the deliberate elevation failure and retry. The desktop layout was inspected at 1280 × 720 and 1024 × 768.
 
 The initial string-ID picking failure was reproduced in the browser and corrected by explicitly promoting the stable ID into MapLibre's rendered feature identity. The package fixture covers that behavior. The MapLibre 6 worker is explicitly bundled; both development and production startup were checked.
