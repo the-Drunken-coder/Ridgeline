@@ -16,7 +16,7 @@ export type CameraAttachment = AttachmentBase & {
   range: number;
   /** Visible fill color uses the attachment color; opacity is between 0 and 1. */
   fillOpacity?: number;
-  /** Enable GPU terrain visibility within the four-corner footprint. */
+  /** Enable GPU terrain visibility within the camera's finite frustum and range. */
   terrainVisibility?: boolean;
   blockedColor?: string;
   blockedOpacity?: number;
@@ -106,7 +106,6 @@ export type ViewportOptions<P extends Properties> = Partial<MapConfiguration> & 
   style?: (feature: MapFeature<P>) => FeatureStyle;
   logger?: Logger;
   onError?: (error: RidgelineError) => void;
-  /** Enables detailed camera lifecycle and mask-change measurements. Disabled by default. */
   initializationTimeoutMs?: number;
   elevationSampler?: ElevationSampler;
 };

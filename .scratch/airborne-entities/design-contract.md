@@ -1,45 +1,25 @@
-# Airborne entity playground review
+# Airborne entity playground design contract
 
-Status: The user selected A, Expanded inspector. Implemented in the playground and verified against the checks in engineering-notes.md.
+Status: Accepted and implemented with the expanded inspector.
 
 ## Purpose
 
-Inspect a moving airborne entity and see how its altitude, attached zones, and sensor direction relate to the terrain. The primary action is selecting an attachment and inspecting its parameters and displayed geometry.
+Inspect a moving airborne entity and see how its altitude, attached zones, and sensor direction relate to terrain. Selecting an entity shows its camera controls.
 
-## Existing design to preserve
+## Accepted layout
 
-Retain the accepted Field desk sidebar and surrounding chrome. Selection remains in the sidebar. Retain the map as the dominant view and the existing earthy green palette, compact system typography, and structural dividers. The existing radial picker remains unchanged.
+Keep the approved Field desk sidebar and surrounding chrome. The map remains the dominant view, selection stays in the sidebar, and the existing radial picker is unchanged. Entity altitude and the selected camera's fields remain in one sidebar flow, suitable for inspecting one sensor at a time.
 
-No decorative cards or pills, section subtitles, em dashes, continuous animation, or new dashboard shell. Desktop is the product target; the review must remain readable at narrow conversation widths without claiming mobile product support.
-
-## Alternatives
-
-- A, Expanded inspector: entity altitude and all camera fields remain visible in a single sidebar flow. Suitable for one sensor at a time.
-- B, Attachment list: the sidebar lists the entity's camera and zones, with fields for the selected attachment underneath. Suitable for multiple attachments. This was the agent's recommendation; the user selected A instead.
-- C, Map editor: selection and altitude stay in the sidebar, while a compact editor for the selected attachment sits at the map edge. Trades unobstructed map area for proximity to the geometry.
+Preserve the existing earthy green palette, compact system typography, structural dividers, and desktop product target. The layout must remain readable at narrow review widths without claiming mobile product support.
 
 ## Required states
 
-Normal terrain footprint; missing altitude with ground fallback enabled and disabled; missing terrain height; supplied position below terrain; camera facing away from the ground; loading elevation; no selected entity. Visibility controls must independently affect volumes, footprints, zones, and ground guide lines in the static preview.
+The playground must expose normal terrain coverage, missing altitude with ground fallback enabled and disabled, missing terrain height, below-terrain placement, a skyward camera, loading elevation, and no selected entity. The shared `entityVisibility` controls must show the effects of hiding footprints, zones, or ground lines.
 
-## Reference boundary
+## Camera appearance
 
-The source playground's existing design contract is the primary visual reference. A fresh UIZZE catalogue search was attempted, but the previously documented DailyArt and Google Maps reference pages were inaccessible and a third reference returned 410. Do not claim those screens were freshly visually reviewed. Preserve the already accepted design rather than inventing a new reference-driven style.
+The inspector includes separate visible and blocked colors and opacities, a footprint outline, cone shading, and a wireframe toggle and width. Volume opacity and wireframe visibility are independent. The camera-overlay switch hides the footprint and volume together. Controls fit within the existing sidebar without adding panel chrome.
 
-The map backdrop is the existing `docs/images/terrain.jpg` from inspected `origin/main`, displayed with its map area framed by CSS. Retain attribution to Mapterhorn, OpenFreeMap, OpenMapTiles, and OpenStreetMap. Overlay positions, sensor outlines, and values are invented sample geometry for layout review, not terrain calculations or live operational data.
+## Constraints
 
-## Review boundary
-
-These are static-data alternatives with local controls for comparison. They do not validate MapLibre integration, terrain intersection accuracy, throughput, or frame rate. That review phase ended when the user selected A; implementation now uses the existing playground components.
-
-## Artifact and verification
-
-The comparison is `airborne-designs.html` in the task's authorized visualization directory. Its A/B/C controls switch among all three layouts; the playground scenario selector exposes the required data states. The source is self-contained and below the 1 MB inline size limit.
-
-Browser review covered all three layouts, attachment selection and fields, footprint visibility, missing altitude with both fallback settings, loading and unavailable elevation, below-terrain placement, sky-facing camera, and empty selection. All three layouts fit a 320-pixel review width without horizontal overflow. The inspected browser runs reported no warning or error logs. The embedded JavaScript passed a syntax check.
-
-These results verify the static comparison only. Geometry is illustrative and the terrain backdrop is an existing screenshot. Engineering findings and the remaining runtime checks are in [engineering-notes.md](engineering-notes.md).
-
-## Camera appearance follow-up
-
-The user selected A, Compact controls, from `camera-volume-controls.html`. The existing inspector now includes a color swatch and hex field, fill-strength slider, and independent wireframe checkbox. Initial values are `#176d46`, 25%, and wireframe enabled. Changes belong to the selected camera; the ground footprint retains its separate color. Zero fill supports wireframe-only viewing, and disabling both hides the volume. Controls wrap within the existing sidebar without adding panel chrome.
+Do not add decorative cards or pills, section subtitles, continuous animation, or a new dashboard shell. Static layout review uses illustrative geometry only; runtime terrain and rendering behavior are validated by the library checks.

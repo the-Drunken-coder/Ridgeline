@@ -4,7 +4,6 @@ import { resolve } from 'node:path';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
 
-
 const root = resolve(import.meta.dirname, '..');
 const consumer = resolve(root, '.artifacts/consumer');
 function run(args, cwd = root) {
@@ -27,14 +26,8 @@ try {
   browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const errors = [];
-  const logs = [];
-  page.on('console', message => logs.push({ level: message.type(), text: message.text() }));
   page.on('pageerror', error => errors.push(error.message));
-  const query = new URLSearchParams();
-
-  const selected = process.argv.find(arg => arg.startsWith('--scenario='))?.slice('--scenario='.length);
-  if (selected) query.set('scenario', selected);
-  await page.goto(server.resolvedUrls.local[0] + '?' + query);
+  await page.goto(server.resolvedUrls.local[0]);
   try {
     await page.waitForFunction(() => ['passed', 'failed'].includes(document.querySelector('#status')?.dataset.state), undefined, { timeout: 60_000 });
   } catch (error) { errors.push(String(error)); }

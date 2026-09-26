@@ -105,7 +105,6 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
           const footprint = cameraFootprint(origin, attachment, ground);
           if ((attachment.volumeOpacity ?? 0) > 0 || attachment.wireframe) {
             // Preserve each corner ray even when it reaches range before the ground.
-            const local = localFrame(origin);
             const corners = ([[-1,-1],[1,-1],[1,1],[-1,1]] as const).map(([x,y]) => {
               const ray=cameraRay(attachment,x,y);
               const distance=ray[2]<0 ? Math.min(attachment.range,(origin[2]-ground)/-ray[2]) : attachment.range;
@@ -118,10 +117,8 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
           }
 
           const visibleColor: Primitive['color'] = [rgba[0], rgba[1], rgba[2], attachment.fillOpacity ?? .25];
-          if (!attachment.terrainVisibility) {
-            footprintTriangles += footprint.length ? 2 : 0;
-            add(footprint, 'polygon', visibleColor, attachment.id, true);
-          }
+          footprintTriangles += footprint.length ? 2 : 0;
+          add(footprint, 'polygon', visibleColor, attachment.id, true);
           if (attachment.outline ?? true) add(footprint.flatMap((point, i) => [point, footprint[(i + 1) % footprint.length]!]), 'lines', [rgba[0], rgba[1], rgba[2], .95], attachment.id, true, attachment.outlineWidth ?? 3);
         }
       } else if (visibility.zones) {

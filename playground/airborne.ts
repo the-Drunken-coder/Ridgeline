@@ -43,15 +43,6 @@ export const defaultAirborneSettings: AirborneSettings = {
   example: 'normal',
 };
 
-/** Saved high-altitude camera setup from the September 24 playground screenshots. */
-export const highAltitudeCameraPreset: AirborneSettings = {
-  ...defaultAirborneSettings,
-  altitude: 2000,
-  bearing: 105,
-  elevation: -10,
-  range: 6001,
-};
-
 export function airborneFeatures(
   tick: number,
   count: number,

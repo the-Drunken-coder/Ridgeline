@@ -78,7 +78,7 @@ void main(){
   if(sampleValue.a>.5){known++;visible+=sampleValue.r;}
  }
  // Unknown coverage cannot certify an entire grid cell.
- color=vec4(visible/9.,float(known)/9.,visible>=4.5 ? 1. : 0.,1.);
+ color=vec4(visible/9.,float(known)/9.,0.,1.);
 }`;
 
 /** Re-test terrain depth near coarse boundaries, then integrate subpixel edge coverage. */
@@ -86,9 +86,7 @@ export const boundaryFragment = `#version 300 es
 ${sensorShader}
 ${visibilityShader}
 uniform highp sampler2D u_votes;
-uniform vec4 u_color,u_blocked;
 uniform vec2 u_outputSize;
-uniform bool u_classification;
 in vec3 v_position;
 out vec4 color;
 void main(){
@@ -105,7 +103,7 @@ void main(){
   allOutside=allOutside&&vote.g<.001;
  }
  if(allOutside){color=vec4(0.);return;}
- if(allVisible||allBlocked){color=u_classification ? vec4(allVisible?1.:0.,allBlocked?1.:0.,0.,1.) : (allVisible?u_color:u_blocked);return;}
+ if(allVisible||allBlocked){color=vec4(allVisible?1.:0.,allBlocked?1.:0.,0.,1.);return;}
  // Boundary pixels get 64 fresh depth comparisons, at 1/8 of a display texel.
  // This measures coverage of the contour; it does not blur neighboring classifications.
  float visible=0.,blocked=0.;
@@ -114,10 +112,7 @@ void main(){
   float result=visibility(v_position+dx*offset.x+dy*offset.y,normal);
   if(result>=0.){visible+=result;blocked+=1.-result;}
  }
- if(u_classification){color=vec4(visible/64.,blocked/64.,0.,(visible+blocked)/64.);return;}
- float alpha=(visible*u_color.a+blocked*u_blocked.a)/64.;
- vec3 rgb=alpha>0. ? (visible*u_color.rgb*u_color.a+blocked*u_blocked.rgb*u_blocked.a)/(64.*alpha) : vec3(0.);
- color=vec4(rgb,alpha);
+ color=vec4(visible/64.,blocked/64.,0.,(visible+blocked)/64.);
 }`;
 
 /** Suppress small visibility islands before styling; retain the original footprint coverage. */

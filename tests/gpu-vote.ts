@@ -23,14 +23,15 @@ export function checkGpuVote() {
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,3,3,0,gl.RGBA,gl.UNSIGNED_BYTE,samples);
       gl.drawArrays(gl.TRIANGLES,0,3);
       const pixel=new Uint8Array(4);gl.readPixels(0,0,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
-      if(pixel[2] !== (blocked>=5?0:255))throw new Error(`Wrong majority for ${blocked} blocked samples: ${pixel}`);
+      const expected=Math.round((9-blocked)*255/9);
+      if(Math.abs(pixel[0]! - expected)>2||pixel[1]!==255)throw new Error(`Wrong vote for ${blocked} blocked samples: ${pixel}`);
     }
     const unknown=new Uint8Array(36);unknown.fill(255);unknown[3]=0;
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,3,3,0,gl.RGBA,gl.UNSIGNED_BYTE,unknown);
     gl.drawArrays(gl.TRIANGLES,0,3);
     const pixel=new Uint8Array(4);gl.readPixels(0,0,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
     if(pixel[1]===255)throw new Error('Unknown terrain was marked complete');
-    const boundary=gl.createProgram()!,votes=gl.createTexture()!,vertices=gl.createBuffer()!;
+    const boundary=gl.createProgram()!,votes=gl.createTexture()!,region=gl.createTexture()!,regionFrame=gl.createFramebuffer()!,vertices=gl.createBuffer()!;
     try {
       for(const [type,source] of [[gl.VERTEX_SHADER,coverageVertex],[gl.FRAGMENT_SHADER,boundaryFragment]] as const){
         const shader=gl.createShader(type)!;gl.shaderSource(shader,source);gl.compileShader(shader);
@@ -46,22 +47,29 @@ export function checkGpuVote() {
       gl.uniform3f(u('u_sensor'),0,0,10);gl.uniform3f(u('u_forward'),0,0,-1);
       gl.uniform3f(u('u_right'),1,0,0);gl.uniform3f(u('u_up'),0,1,0);
       gl.uniform2f(u('u_tan'),.1,.1);gl.uniform1f(u('u_range'),20);gl.uniform1f(u('u_near'),.1);
-      gl.uniform2fv(u('u_corners[0]'),[-2,-2,2,-2,2,2,-2,2]);
-      gl.uniform4f(u('u_color'),0,1,0,1);gl.uniform4f(u('u_blocked'),1,0,0,1);
       gl.bindBuffer(gl.ARRAY_BUFFER,vertices);
       gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,0,1,-1,0,-1,1,0,1,-1,0,1,1,0,-1,1,0]),gl.STATIC_DRAW);
       gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,3,gl.FLOAT,false,12,0);
       gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,votes);
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,region);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,16,16,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER,regionFrame);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,region,0);
+      if(gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE)throw new Error('Boundary test framebuffer is incomplete');
       // A mixed coarse cell supplies no location information about the actual boundary.
+      gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,votes);
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([128,255,255,255]));
-      gl.activeTexture(gl.TEXTURE0);
+      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);
       const depths=new Float32Array(SENSOR_SIZE*SENSOR_SIZE),pixels=new Uint8Array(16*16*4);
       const render=(shift:number)=>{
         for(let y=0;y<SENSOR_SIZE;y++)for(let x=0;x<SENSOR_SIZE;x++)
           depths[y*SENSOR_SIZE+x]=(x+y)/SENSOR_SIZE>1+shift?5:10;
+        gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);
         gl.texImage2D(gl.TEXTURE_2D,0,gl.R32F,SENSOR_SIZE,SENSOR_SIZE,0,gl.RED,gl.FLOAT,depths);
+        gl.bindFramebuffer(gl.FRAMEBUFFER,regionFrame);
         gl.drawArrays(gl.TRIANGLES,0,6);gl.readPixels(0,0,16,16,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
         return pixels.slice();
       };
@@ -69,15 +77,29 @@ export function checkGpuVote() {
       let red=0,green=0,mixed=0,changed=0;
       for(let i=0;i<first.length;i+=4){
         if(first[i]===255)red++;else if(first[i+1]===255)green++;else mixed++;
-        if(first[i]!==second[i])changed++;
+        if(first[i]!==second[i]||first[i+1]!==second[i+1])changed++;
       }
-      if(!red||!green||!mixed||mixed>32)throw new Error(`Expected a narrow measured contour: ${red} red, ${green} green, ${mixed} edge`);
+      if(!red||!green||!mixed||mixed>32)throw new Error(`Expected a narrow measured contour: ${red} visible, ${green} blocked, ${mixed} edge`);
       if(!changed)throw new Error('Subpixel depth-boundary movement did not change coverage');
-      // Styling is applied after measuring area; transparent blocked regions cannot tint green.
-      gl.uniform4f(u('u_blocked'),1,0,0,0);
-      gl.drawArrays(gl.TRIANGLES,0,6);gl.readPixels(0,0,16,16,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
-      for(let i=0;i<pixels.length;i+=4)if(pixels[i+3]!>0&&pixels[i]!==0)throw new Error('Transparent blocked color contaminated edge');
-    } finally {gl.deleteProgram(boundary);gl.deleteTexture(votes);gl.deleteBuffer(vertices);}
+      const styling=gl.createProgram()!;
+      try {
+        for(const [type,source] of [[gl.VERTEX_SHADER,voteVertex],[gl.FRAGMENT_SHADER,regionStyleFragment]] as const){
+          const shader=gl.createShader(type)!;gl.shaderSource(shader,source);gl.compileShader(shader);
+          if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(shader)!);
+          gl.attachShader(styling,shader);gl.deleteShader(shader);
+        }
+        gl.linkProgram(styling);
+        if(!gl.getProgramParameter(styling,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(styling)!);
+        gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.useProgram(styling);gl.viewport(0,0,16,16);
+        gl.uniform1i(gl.getUniformLocation(styling,'u_regions'),0);
+        gl.uniform4f(gl.getUniformLocation(styling,'u_color'),0,1,0,1);
+        gl.uniform4f(gl.getUniformLocation(styling,'u_blocked'),1,0,0,0);
+        gl.uniform1f(gl.getUniformLocation(styling,'u_borderWidth'),0);
+        gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,region);
+        gl.drawArrays(gl.TRIANGLES,0,3);gl.readPixels(0,0,16,16,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+        for(let i=0;i<pixels.length;i+=4)if(pixels[i+3]!>0&&pixels[i]!==0)throw new Error('Transparent blocked color contaminated edge');
+      } finally {gl.deleteProgram(styling);}
+    } finally {gl.deleteProgram(boundary);gl.deleteTexture(votes);gl.deleteTexture(region);gl.deleteFramebuffer(regionFrame);gl.deleteBuffer(vertices);}
 
     const continuity=gl.createProgram()!;
     try {
@@ -96,9 +118,9 @@ export function checkGpuVote() {
       gl.uniform1i(u('u_depth'),0);gl.uniform3f(u('u_sensor'),0,0,10);
       gl.uniform3f(u('u_forward'),0,0,-1);gl.uniform3f(u('u_right'),1,0,0);gl.uniform3f(u('u_up'),0,1,0);
       gl.uniform2f(u('u_tan'),.1,.1);gl.uniform1f(u('u_range'),20);gl.uniform1f(u('u_near'),.1);
-      gl.uniform2fv(u('u_corners[0]'),[-2,-2,2,-2,2,2,-2,2]);
       const depths=new Float32Array(SENSOR_SIZE*SENSOR_SIZE);
       for(let y=0;y<SENSOR_SIZE;y++)for(let x=0;x<SENSOR_SIZE;x++)depths[y*SENSOR_SIZE+x]=x<SENSOR_SIZE/2?5:10;
+      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);
       gl.texImage2D(gl.TEXTURE_2D,0,gl.R32F,SENSOR_SIZE,SENSOR_SIZE,0,gl.RED,gl.FLOAT,depths);
       const values:number[]=[];
       for(const offset of [-.5,0,.5]){

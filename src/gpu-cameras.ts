@@ -14,7 +14,6 @@ export type GpuCamera = {
   camera: CameraAttachment;
   origin: GeoPoint;
   terrain: CameraTerrain;
-  footprints: boolean;
   volume: CameraVolume;
   geometry: Primitive[];
 };
@@ -28,9 +27,7 @@ type Camera = {
   regionFrame?: WebGLFramebuffer;
   regionTexture?: WebGLTexture;
   submitted?: { value: GpuCamera; appearance: string };
-  revision: number;
   uploaded?: CameraTerrain;
-  displayed?: CameraTerrain;
   published?: GpuCamera;
   buffer?: WebGLBuffer;
   depth?: WebGLTexture;
@@ -97,13 +94,6 @@ export class GpuCameras implements CustomLayerInterface {
   private maskFrame?: WebGLFramebuffer;
   private maskTexture?: WebGLTexture;
   private failed = false;
-  private counters = { analyses: 0, styles: 0, publications: 0 };
-
-  /** Counts submitted work, not GPU timings. Useful when inspecting live camera updates. */
-  getDiagnostics() {
-    return { ...this.counters, cameras: this.cameras.size,
-      frames: [...this.cameras.values()].flatMap(item => item.published ? [{entityId:item.published.entityId, cameraId:item.published.camera.id, origin:[...item.published.origin]}] : []) };
-  }
 
   constructor(private map: GLMap, private completed: (value: GpuCamera) => void, private report: (cause: unknown) => void) {}
 
@@ -114,11 +104,11 @@ export class GpuCameras implements CustomLayerInterface {
       let item = this.cameras.get(key);
       if (!item) {
         item = { value, source: `rl:camera-mask:${++this.sequence}`, image: new ImageData(DISPLAY_SIZE, DISPLAY_SIZE),
-          dirty: true, revision: 0 };
+          dirty: true };
         this.cameras.set(key, item);
       }
       if (item.value !== value) {
-        item.dirty ||= item.value.terrain !== value.terrain || item.value.footprints !== value.footprints
+        item.dirty ||= item.value.terrain !== value.terrain
           || analysisKey(item.value) !== analysisKey(value) || appearanceKey(item.value) !== appearanceKey(value)
           || JSON.stringify(item.value.geometry) !== JSON.stringify(value.geometry);
         item.value = value;
@@ -128,15 +118,21 @@ export class GpuCameras implements CustomLayerInterface {
     for (const [key, item] of this.cameras) if (!retained.has(key)) {
       this.removeMask(item); this.release(item); this.cameras.delete(key);
     }
+    if (values.length) this.ensureLayer();
+    else if (this.map.getLayer(this.id)) this.map.removeLayer(this.id);
     if (values.length) this.map.triggerRepaint();
   }
   attach() {
     for (const item of this.cameras.values()) this.attachMask(item);
-    if (!this.map.getLayer(this.id)) this.map.addLayer(this);
+    this.ensureLayer();
+  }
+  private ensureLayer() {
+    if (!this.cameras.size || (!this.map.isStyleLoaded() && !this.map.getLayer('rl:points')) || this.map.getLayer(this.id)) return;
+    this.map.addLayer(this);
   }
   private attachMask(item: Camera) {
     if (!this.map.isStyleLoaded() && !this.map.getLayer('rl:points')) return;
-    if (!item.value.footprints || !item.value.terrain.ready) { this.removeMask(item); return; }
+    if (!item.value.terrain.ready) { this.removeMask(item); return; }
     if (!this.map.getSource(item.source)) {
       this.map.addSource(item.source, { type: 'image', coordinates: terrainCoordinates(item.value.terrain) });
       this.map.addLayer({ id: item.source, type: 'raster', source: item.source,
@@ -238,67 +234,58 @@ export class GpuCameras implements CustomLayerInterface {
           gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.clearDepth(1); gl.clear(gl.DEPTH_BUFFER_BIT); gl.clearBufferfv(gl.COLOR,0,new Float32Array([item.value.camera.range,0,0,0])); gl.bindTexture(gl.TEXTURE_2D, null);
           this.uniforms(this.depthProgram!, item); this.bind(item.buffer!); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.terrainIndices!);
           gl.drawElements(gl.TRIANGLES, TERRAIN_CELLS ** 2 * 6, gl.UNSIGNED_INT, 0);
-          if (item.value.footprints) {
-            gl.bindFramebuffer(gl.FRAMEBUFFER, this.sampleFrame!);
-            gl.activeTexture(gl.TEXTURE0);
-            gl.viewport(0, 0, COVERAGE_SIZE * 3, COVERAGE_SIZE * 3);
-            gl.disable(gl.DEPTH_TEST); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
-            gl.bindTexture(gl.TEXTURE_2D, item.linear!); this.uniforms(this.maskProgram!, item);
-            this.clipRange(item, COVERAGE_SIZE * 3);
-            gl.drawElements(gl.TRIANGLES, TERRAIN_CELLS ** 2 * 6, gl.UNSIGNED_INT, 0);
-            gl.disable(gl.SCISSOR_TEST);
-            gl.bindFramebuffer(gl.FRAMEBUFFER,this.voteFrame!);
-            gl.viewport(0,0,COVERAGE_SIZE,COVERAGE_SIZE);
-            gl.bindTexture(gl.TEXTURE_2D,this.sampleTexture!);
-            gl.useProgram(this.voteProgram!);
-            gl.uniform1i(gl.getUniformLocation(this.voteProgram!,'u_samples'),0);
-            gl.drawArrays(gl.TRIANGLES,0,3);
-            gl.bindFramebuffer(gl.FRAMEBUFFER,this.rawRegionFrame!);
-            gl.viewport(0,0,DISPLAY_SIZE,DISPLAY_SIZE);
-            gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,this.voteTexture!);
-            gl.activeTexture(gl.TEXTURE0);
-            gl.bindTexture(gl.TEXTURE_2D,item.linear!);
-            this.uniforms(this.boundaryProgram!,item);
-            gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
-            gl.uniform1i(gl.getUniformLocation(this.boundaryProgram!,'u_votes'),1);
-            gl.uniform1i(gl.getUniformLocation(this.boundaryProgram!,'u_classification'),1);
-            gl.uniform2f(gl.getUniformLocation(this.boundaryProgram!,'u_outputSize'),DISPLAY_SIZE,DISPLAY_SIZE);
-            gl.uniform4fv(gl.getUniformLocation(this.boundaryProgram!,'u_color'),color(item.value.camera.color??'#1ad96b',item.value.camera.fillOpacity??.25));
-            gl.uniform4fv(gl.getUniformLocation(this.boundaryProgram!,'u_blocked'),color(item.value.camera.blockedColor??'#ff382e',item.value.camera.blockedOpacity??.25));
-            this.clipRange(item, DISPLAY_SIZE);
-            gl.drawElements(gl.TRIANGLES,TERRAIN_CELLS ** 2 * 6,gl.UNSIGNED_INT,0);
-            gl.disable(gl.SCISSOR_TEST);
-            gl.bindFramebuffer(gl.FRAMEBUFFER,item.regionFrame!);
-            gl.bindTexture(gl.TEXTURE_2D,this.rawRegionTexture!);
-            gl.useProgram(this.smoothProgram!);
-            gl.uniform1i(gl.getUniformLocation(this.smoothProgram!,'u_regions'),0);
-            gl.drawArrays(gl.TRIANGLES,0,3);
-          }
+          gl.bindFramebuffer(gl.FRAMEBUFFER, this.sampleFrame!);
+          gl.activeTexture(gl.TEXTURE0);
+          gl.viewport(0, 0, COVERAGE_SIZE * 3, COVERAGE_SIZE * 3);
+          gl.disable(gl.DEPTH_TEST); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+          gl.bindTexture(gl.TEXTURE_2D, item.linear!); this.uniforms(this.maskProgram!, item);
+          this.clipRange(item, COVERAGE_SIZE * 3);
+          gl.drawElements(gl.TRIANGLES, TERRAIN_CELLS ** 2 * 6, gl.UNSIGNED_INT, 0);
+          gl.disable(gl.SCISSOR_TEST);
+          gl.bindFramebuffer(gl.FRAMEBUFFER,this.voteFrame!);
+          gl.viewport(0,0,COVERAGE_SIZE,COVERAGE_SIZE);
+          gl.bindTexture(gl.TEXTURE_2D,this.sampleTexture!);
+          gl.useProgram(this.voteProgram!);
+          gl.uniform1i(gl.getUniformLocation(this.voteProgram!,'u_samples'),0);
+          gl.drawArrays(gl.TRIANGLES,0,3);
+          gl.bindFramebuffer(gl.FRAMEBUFFER,this.rawRegionFrame!);
+          gl.viewport(0,0,DISPLAY_SIZE,DISPLAY_SIZE);
+          gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,this.voteTexture!);
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D,item.linear!);
+          this.uniforms(this.boundaryProgram!,item);
+          gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+          gl.uniform1i(gl.getUniformLocation(this.boundaryProgram!,'u_votes'),1);
+          gl.uniform2f(gl.getUniformLocation(this.boundaryProgram!,'u_outputSize'),DISPLAY_SIZE,DISPLAY_SIZE);
+          this.clipRange(item, DISPLAY_SIZE);
+          gl.drawElements(gl.TRIANGLES,TERRAIN_CELLS ** 2 * 6,gl.UNSIGNED_INT,0);
+          gl.disable(gl.SCISSOR_TEST);
+          gl.bindFramebuffer(gl.FRAMEBUFFER,item.regionFrame!);
+          gl.bindTexture(gl.TEXTURE_2D,this.rawRegionTexture!);
+          gl.useProgram(this.smoothProgram!);
+          gl.uniform1i(gl.getUniformLocation(this.smoothProgram!,'u_regions'),0);
+          gl.drawArrays(gl.TRIANGLES,0,3);
           item.analysisKey = analysis;
           item.analysisTerrain = item.value.terrain;
-          this.counters.analyses++;
         }
-        if (item.value.footprints) {
-          // Appearance edits reuse this camera's measured coverage, including its contour.
-          gl.disable(gl.DEPTH_TEST);
-          gl.viewport(0,0,DISPLAY_SIZE,DISPLAY_SIZE);
-          gl.activeTexture(gl.TEXTURE0);
-          gl.bindFramebuffer(gl.FRAMEBUFFER,this.maskFrame!);
-          gl.bindTexture(gl.TEXTURE_2D,item.regionTexture!);
-          gl.useProgram(this.styleProgram!);
-          gl.uniform1i(gl.getUniformLocation(this.styleProgram!,'u_regions'),0);
-          gl.uniform1f(gl.getUniformLocation(this.styleProgram!,'u_borderWidth'),item.value.camera.outline===false?0:(item.value.camera.outlineWidth??3)/2);
-          gl.uniform4fv(gl.getUniformLocation(this.styleProgram!,'u_color'),color(item.value.camera.color??'#1ad96b',item.value.camera.fillOpacity??.25));
-          gl.uniform4fv(gl.getUniformLocation(this.styleProgram!,'u_blocked'),color(item.value.camera.blockedColor??'#ff382e',item.value.camera.blockedOpacity??.25));
-          gl.drawArrays(gl.TRIANGLES,0,3);
-          this.counters.styles++;
-          gl.bindBuffer(gl.PIXEL_PACK_BUFFER,item.pixels!);
-          gl.readPixels(0, 0, DISPLAY_SIZE, DISPLAY_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, 0);
-          gl.bindBuffer(gl.PIXEL_PACK_BUFFER,null);
-          item.submitted={value:item.value,appearance:appearanceKey(item.value)};
-          item.pending=gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0)!;
-          gl.flush();this.map.triggerRepaint();
-        }
+        // Appearance edits reuse this camera's measured coverage, including its contour.
+        gl.disable(gl.DEPTH_TEST);
+        gl.viewport(0,0,DISPLAY_SIZE,DISPLAY_SIZE);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER,this.maskFrame!);
+        gl.bindTexture(gl.TEXTURE_2D,item.regionTexture!);
+        gl.useProgram(this.styleProgram!);
+        gl.uniform1i(gl.getUniformLocation(this.styleProgram!,'u_regions'),0);
+        gl.uniform1f(gl.getUniformLocation(this.styleProgram!,'u_borderWidth'),item.value.camera.outline===false?0:(item.value.camera.outlineWidth??3)/2);
+        gl.uniform4fv(gl.getUniformLocation(this.styleProgram!,'u_color'),color(item.value.camera.color??'#1ad96b',item.value.camera.fillOpacity??.25));
+        gl.uniform4fv(gl.getUniformLocation(this.styleProgram!,'u_blocked'),color(item.value.camera.blockedColor??'#ff382e',item.value.camera.blockedOpacity??.25));
+        gl.drawArrays(gl.TRIANGLES,0,3);
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER,item.pixels!);
+        gl.readPixels(0, 0, DISPLAY_SIZE, DISPLAY_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, 0);
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER,null);
+        item.submitted={value:item.value,appearance:appearanceKey(item.value)};
+        item.pending=gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0)!;
+        gl.flush();this.map.triggerRepaint();
         item.dirty = false;
       }
     } catch (error) { this.fail(error); }
@@ -324,9 +311,8 @@ export class GpuCameras implements CustomLayerInterface {
             gl.getBufferSubData(gl.PIXEL_PACK_BUFFER,0,new Uint8Array(item.image.data.buffer));
             gl.bindBuffer(gl.PIXEL_PACK_BUFFER,null);
             this.map.getSource<ImageSource>(item.source)?.updateImage({image:item.image,coordinates:terrainCoordinates(submitted.value.terrain)});
-            item.displayed=submitted.value.terrain;
             item.published=submitted.value;
-            item.revision++;this.counters.publications++;this.completed(submitted.value);
+            this.completed(submitted.value);
           }
         }
       }
@@ -360,9 +346,8 @@ export class GpuCameras implements CustomLayerInterface {
   pick(x: number, y: number) {
     const point = MercatorCoordinate.fromLngLat(this.map.unproject([x, y]));
     return [...this.cameras.values()].flatMap(item => {
-      if (!item.revision || !item.value.terrain.ready) return [];
-      const terrain = item.displayed;
-      if (!terrain) return [];
+      const terrain = item.published?.terrain;
+      if (!terrain || !item.value.terrain.ready) return [];
       let dx = point.x-terrain.centre.x; dx -= Math.round(dx);
       const px = Math.floor((dx/terrain.scale/terrain.half+1)*.5*DISPLAY_SIZE);
       const py = Math.floor(((point.y-terrain.centre.y)/terrain.scale/terrain.half+1)*.5*DISPLAY_SIZE);
@@ -401,7 +386,7 @@ export class GpuCameras implements CustomLayerInterface {
     item.analysisKey=undefined;item.analysisTerrain=undefined;item.submitted=undefined;item.published=undefined;
     item.pending=undefined;item.pixels=undefined;item.linear=undefined;
     if (item.buffer) gl.deleteBuffer(item.buffer); if (item.depth) gl.deleteTexture(item.depth); if (item.frame) gl.deleteFramebuffer(item.frame);
-    item.buffer = undefined; item.depth = undefined; item.frame = undefined; item.uploaded = undefined; item.revision = 0; item.dirty = true;
+    item.buffer = undefined; item.depth = undefined; item.frame = undefined; item.uploaded = undefined; item.dirty = true;
   }
   onRemove() {
     this.map.off('render', this.publish);
@@ -411,12 +396,23 @@ export class GpuCameras implements CustomLayerInterface {
     for (const b of [this.terrainIndices]) if (b) gl.deleteBuffer(b);
     for (const f of [this.maskFrame, this.sampleFrame, this.voteFrame, this.rawRegionFrame]) if (f) gl.deleteFramebuffer(f);
     for (const t of [this.maskTexture, this.sampleTexture, this.voteTexture, this.rawRegionTexture]) if (t) gl.deleteTexture(t);
-    if (this.vao) gl.deleteVertexArray(this.vao); this.gl = undefined;
+    if (this.vao) gl.deleteVertexArray(this.vao);
+    this.depthProgram = undefined; this.maskProgram = undefined; this.voteProgram = undefined;
+    this.boundaryProgram = undefined; this.smoothProgram = undefined; this.styleProgram = undefined;
+    this.terrainIndices = undefined;
+    this.maskFrame = undefined; this.sampleFrame = undefined; this.voteFrame = undefined; this.rawRegionFrame = undefined;
+    this.maskTexture = undefined; this.sampleTexture = undefined; this.voteTexture = undefined; this.rawRegionTexture = undefined;
+    this.vao = undefined; this.gl = undefined;
   }
   retry() {
     if (!this.failed) return;
     if (this.map.getLayer(this.id)) this.map.removeLayer(this.id);
     this.attach();
   }
-  destroy() { for (const item of this.cameras.values()) this.removeMask(item); if (this.map.getLayer(this.id)) this.map.removeLayer(this.id); this.onRemove(); this.cameras.clear(); }
+  destroy() {
+    for (const item of this.cameras.values()) this.removeMask(item);
+    if (this.map.getLayer(this.id)) this.map.removeLayer(this.id);
+    this.onRemove();
+    this.cameras.clear();
+  }
 }

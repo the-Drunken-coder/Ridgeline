@@ -8,7 +8,7 @@ import '@ridgeline/map/style.css';
 import './style.css';
 import { groups, movingFeatures, overlapFeatures, registerSampleIcons, terrainFeatures } from './samples';
 import type { Sample } from './samples';
-import { airborneFeatures, defaultAirborneSettings, highAltitudeCameraPreset, mountAirborneInspector } from './airborne';
+import { airborneFeatures, defaultAirborneSettings, mountAirborneInspector } from './airborne';
 import type { AirborneSettings } from './airborne';
 
 setWorkerUrl(workerUrl);
@@ -144,13 +144,12 @@ viewport.map.on('idle', () => { if (mapStatus.textContent === 'Retrying elevatio
 
 function stopBenchmark() { measuring = false; cancelAnimationFrame(benchmarkFrame); measureButton.disabled = false; }
 function stopMotion() { cancelAnimationFrame(motionFrame); motionFrame = 0; if (motionTimer) clearInterval(motionTimer); motionTimer = undefined; stopBenchmark(); }
-function isSingleAirborneScenario() { return currentScenario === 'airborne-single' || currentScenario === 'airborne-high-altitude'; }
-function isAirborneScenario() { return currentScenario === 'airborne' || isSingleAirborneScenario(); }
+function isAirborneScenario() { return currentScenario === 'airborne' || currentScenario === 'airborne-single'; }
 function resetCamera() {
   if (currentScenario === 'sidc') viewport.setCamera({ center: [6.87,45.924], zoom: 13.5, pitch: 0, bearing: 0 });
   else if (currentScenario === 'overlap') viewport.setCamera({ center: [6.869,45.925], zoom: 14.3, pitch: 0, bearing: 0 });
   else if (currentScenario === 'moving') viewport.setCamera({ center: [6.869,45.92], zoom: 12.9, pitch: 0, bearing: 0 });
-  else if (isSingleAirborneScenario()) viewport.setCamera({ center: [6.867,45.920], zoom: 14, pitch: 60, bearing: -20 });
+  else if (currentScenario === 'airborne-single') viewport.setCamera({ center: [6.867,45.920], zoom: 14, pitch: 60, bearing: -20 });
   else if (currentScenario === 'airborne') viewport.setCamera({ center: [6.872,45.92], zoom: 13.5, pitch: 60, bearing: -20 });
   else viewport.setCamera({ center: [6.88,45.92], zoom: 12.5, pitch: 55, bearing: -20 });
 }
@@ -171,8 +170,8 @@ function loadScenario() {
   element('#selection', HTMLElement).hidden = currentScenario === 'sidc';
   pauseButton.textContent = 'Pause'; measurement.textContent = 'No measurement yet'; diagnostics.hidden = true;
   element('#groups', HTMLDivElement).hidden = currentScenario !== 'overlap';
-  element('#motion', HTMLElement).hidden = !['moving', 'airborne', 'airborne-single', 'airborne-high-altitude'].includes(currentScenario);
-  element('#motion-description', HTMLElement).textContent = isSingleAirborneScenario() ? '1 flying asset · 1 camera · frame-synced motion' : currentScenario === 'airborne' ? '1,000 points · 100 moving · 10 cameras · 10 updates/s' : '1,000 points · 100 moving · 10 updates/s';
+  element('#motion', HTMLElement).hidden = !['moving', 'airborne', 'airborne-single'].includes(currentScenario);
+  element('#motion-description', HTMLElement).textContent = currentScenario === 'airborne-single' ? '1 flying asset · 1 camera · frame-synced motion' : currentScenario === 'airborne' ? '1,000 points · 100 moving · 10 cameras · 10 updates/s' : '1,000 points · 100 moving · 10 updates/s';
   viewport.clear(); viewport.setSelection([]); renderSelection();
   const nextFailingElevation = currentScenario === 'error';
   if (failingElevation !== nextFailingElevation) {
@@ -197,9 +196,8 @@ function loadScenario() {
       if (measuring) updateCosts.push(performance.now() - start);
     }, 100);
   } else if (isAirborneScenario()) {
-    const movingCount = isSingleAirborneScenario() ? 1 : 100;
+    const movingCount = currentScenario === 'airborne-single' ? 1 : 100;
     airborneSettings.clear();
-    if (movingCount === 1) airborneSettings.set('moving-0', { ...(currentScenario === 'airborne-high-altitude' ? highAltitudeCameraPreset : defaultAirborneSettings) });
     viewport.configure({ entityVisibility: { footprints: true, zones: movingCount !== 1, groundLines: movingCount !== 1 } });
     viewport.upsert(airborneFeatures(0, movingCount === 1 ? 1 : 1_000, airborneSettings));
     viewport.setSelection(['moving-0']);
@@ -257,7 +255,7 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('[data-group]'
   if (group) viewport.setCamera({ center: [group.center[0]!, group.center[1]!], zoom: 17, pitch: 0, bearing: 0 });
 });
 listen(measureButton, 'click', () => {
-  if (!['moving', 'airborne', 'airborne-single', 'airborne-high-altitude'].includes(currentScenario)) return;
+  if (!['moving', 'airborne', 'airborne-single'].includes(currentScenario)) return;
   stopBenchmark(); paused = false; pauseButton.textContent = 'Pause'; measuring = true; renderedFrames = 0; measureButton.disabled = true; updateCosts.length = 0; entityCosts.length = 0; coverageAges.length = 0;
   measurement.textContent = 'Measuring for 10 seconds…';
   const start = performance.now(), intervals: number[] = []; let last = start;
@@ -267,7 +265,7 @@ listen(measureButton, 'click', () => {
     if (document.hidden) { measurement.textContent = 'Measurement canceled because this tab was hidden.'; stopBenchmark(); return; }
     intervals.push(now - last); last = now;
     if (isAirborneScenario()) {
-      const states = Array.from({ length: isSingleAirborneScenario() ? 1 : 10 }, (_, index) => viewport.getEntityState(`moving-${index}`));
+      const states = Array.from({ length: currentScenario === 'airborne-single' ? 1 : 10 }, (_, index) => viewport.getEntityState(`moving-${index}`));
       if (states.every(state => state?.coverage === 'ready')) coverageAges.push(Math.max(...states.map(state => Math.max(0, performance.timeOrigin + performance.now() - state!.computedAt))));
     }
     if (now - start < 10_000) { benchmarkFrame = requestAnimationFrame(sample); return; }

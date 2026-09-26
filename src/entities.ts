@@ -55,7 +55,6 @@ export class EntityScene<P extends Properties> {
   private displayedCameras = new Map<string, GpuCamera>();
   private gpuValues = new Map<string, GpuCamera[]>();
   private terrainPatches = new Map<string, { terrain: CameraTerrain; time: number }>();
-  private gpuReady = new Set<string>();
   private gpuFailed = false;
   private diagnosticKeys = new Map<string, string>();
   constructor(private options: SceneOptions<P>) {
@@ -74,9 +73,8 @@ export class EntityScene<P extends Properties> {
       const id = value.entityId;
       this.displayedCameras.set(JSON.stringify([id,value.camera.id]),value);
       this.renderLayers();
-      this.gpuReady.add(id);
       const state = this.states.get(id);
-      if (state) { state.coverage = 'ready'; options.changed([id]); }
+      if (state && this.coverageReady(this.gpuValues.get(id) ?? [])) { state.coverage = 'ready'; options.changed([id]); }
     }, cause => {
       this.gpuFailed = true;
       options.diagnostic(new RidgelineError('UPDATE_FAILED', 'GPU camera visibility is unavailable.', {operation:'entities',recoverable:true},cause));
@@ -102,7 +100,7 @@ export class EntityScene<P extends Properties> {
   }
   set(features: readonly MapFeature<P>[], removed: readonly string[] = []) {
     for (const id of removed) {
-      this.gpuValues.delete(id); this.terrainPatches.delete(id); this.gpuReady.delete(id);
+      this.gpuValues.delete(id); this.terrainPatches.delete(id);
       this.features.delete(id);
       this.states.delete(id);
       this.positions.delete(id);
@@ -115,7 +113,7 @@ export class EntityScene<P extends Properties> {
         this.features.set(feature.id, feature);
         this.dirty.add(feature.id);
       } else {
-        this.gpuValues.delete(feature.id); this.terrainPatches.delete(feature.id); this.gpuReady.delete(feature.id);
+        this.gpuValues.delete(feature.id); this.terrainPatches.delete(feature.id);
         this.features.delete(feature.id);
         this.states.delete(feature.id);
         this.positions.delete(feature.id);
@@ -165,8 +163,8 @@ export class EntityScene<P extends Properties> {
     }
   }
   configure(elevationChanged = false) {
-    if (elevationChanged) { this.terrainPatches.clear(); this.gpuReady.clear(); }
     if (elevationChanged) {
+      this.terrainPatches.clear();
       this.raster.destroy();
       this.raster = this.createSampler();
       this.customGeneration.abort();
@@ -217,7 +215,7 @@ export class EntityScene<P extends Properties> {
   destroy() {
     clearTimeout(this.terrainTimer);
     this.gpu.destroy();
-    this.terrainPatches.clear(); this.gpuReady.clear(); this.displayedCameras.clear();
+    this.terrainPatches.clear(); this.displayedCameras.clear();
     this.destroyed = true;
     cancelAnimationFrame(this.frame);
     this.customGeneration.abort();
@@ -268,32 +266,36 @@ export class EntityScene<P extends Properties> {
     const result = computeEntity(input, this.height, () => this.raster.unavailable());
     const values: GpuCamera[] = [];
     if (!this.gpuFailed && result.state.placement === 'airborne' && input.configuration.entityVisibility.footprints) {
-      const cameras = feature.entity?.attachments?.filter(a => a.type === 'camera' && a.terrainVisibility) ?? [];
-      const range = Math.max(0, ...cameras.map(a => a.type === 'camera' ? a.range : 0));
+      const cameras = feature.entity?.attachments?.flatMap(a => a.type === 'camera' && a.terrainVisibility ? [a] : []) ?? [];
+      const range = Math.max(0, ...cameras.map(camera => camera.range));
       if (range > 0) {
         const now = performance.now(), cached = this.terrainPatches.get(feature.id);
         const terrain = cached && !cached.terrain.ready && now-cached.time<250 ? cached.terrain
           : cameraTerrain(result.position[0], result.position[1], range, this.height, cached?.terrain);
         if (!cached || terrain !== cached.terrain) {
-          this.terrainPatches.set(feature.id, {terrain,time:now}); this.gpuReady.delete(feature.id);
+          this.terrainPatches.set(feature.id, {terrain,time:now});
         }
         if (!terrain.ready && !this.raster.unavailable() && !this.terrainTimer) this.terrainTimer = setTimeout(() => {
           this.terrainTimer=undefined; this.invalidate();
         },250);
         if (terrain.ready && result.state.altitude! > result.state.ground! + .01) {
-          for (const camera of cameras) if (camera.type === 'camera') {
+          for (const camera of cameras) {
             const origin: [number,number,number]=[...result.position,result.state.altitude!];
             const volume=cameraVolume(origin,camera,terrain);
-            values.push({entityId:feature.id,camera,origin,terrain,footprints:true,volume,
+            values.push({entityId:feature.id,camera,origin,terrain,volume,
               geometry:cameraVolumePrimitives(feature.id,origin,camera,volume,input.configuration,terrain)});
           }
         }
-        result.state.coverage = this.gpuReady.has(feature.id) ? 'ready' : this.raster.unavailable() ? 'unavailable' : 'loading';
+        result.state.coverage = this.coverageReady(values) ? 'ready' : this.raster.unavailable() ? 'unavailable' : 'loading';
       }
     }
     if (this.gpuFailed) result.state.coverage = 'unavailable';
     this.gpuValues.set(feature.id, values);
     this.apply(feature.id, result);
+  }
+  private coverageReady(values: readonly GpuCamera[]) {
+    return values.length > 0 && values.every(value =>
+      this.displayedCameras.get(JSON.stringify([value.entityId, value.camera.id]))?.terrain === value.terrain);
   }
 
   private apply(id: string, result: EntityComputationResult) {
