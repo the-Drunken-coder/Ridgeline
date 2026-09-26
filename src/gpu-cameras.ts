@@ -121,7 +121,7 @@ export class GpuCameras implements CustomLayerInterface {
         this.cameras.set(key, item);
       }
       if (item.value !== value) {
-        item.dirty ||= !sameCamera(item.value, value);
+        item.dirty ||= item.value.lifecycle !== value.lifecycle || !sameCamera(item.value, value);
         item.value = value;
       }
       this.attachMask(item);

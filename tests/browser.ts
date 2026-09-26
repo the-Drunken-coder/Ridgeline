@@ -397,6 +397,26 @@ async function suite() {
     await until(() => air.getEntityState('prepared-patch')?.coverage === 'ready', 'completed terrain preparation');
     air.destroy();
   });
+  await run('Mixed terrain cameras retain shared preparation for non-camera attachments', async () => {
+    let available = false;
+    const preparationExtents: number[] = [];
+    const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+      sample: () => available ? 0 : null,
+      prepare: async positions => {
+        preparationExtents.push(Math.max(...positions.map(([lng, lat]) => Math.max(Math.abs(lng), Math.abs(lat)) * 111195)));
+        available = true;
+      },
+    } });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('mixed-prepared'), entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [
+      { id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 10 },
+      { id: 'zone', type: 'circle', radius: 100 },
+    ] } };
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'mixed terrain preparation');
+    check(preparationExtents.some(extent => extent > 90), `Shared preparation omitted the non-camera terrain extent: ${preparationExtents}`);
+    air.destroy();
+  });
   await run('Custom elevation preparation also covers entities with only plain cameras', async () => {
     let prepared = false, prepareCalls = 0;
     const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
@@ -831,10 +851,14 @@ async function suite() {
     source.setData=(...args)=>{groundUploads++;return setData(...args);};
     let first: WebGLSync | undefined;
     let releaseSecond = false;
+    let heldWaits = 0;
     let completionBudget: number | undefined;
     gl.clientWaitSync = (sync, flags, timeout) => {
       first ??= sync;
-      if (sync !== first && (!releaseSecond || completionBudget === 0)) return gl.TIMEOUT_EXPIRED;
+      if (sync !== first && (!releaseSecond || completionBudget === 0)) {
+        heldWaits++;
+        return gl.TIMEOUT_EXPIRED;
+      }
       const status = clientWaitSync(sync, flags, timeout);
       if (sync !== first && status !== gl.TIMEOUT_EXPIRED && completionBudget !== undefined) completionBudget--;
       return status;
@@ -876,19 +900,31 @@ async function suite() {
       releaseSecond = false;
       const oldSignature = maskSignature();
       check(oldSignature.length === 2, 'Initial camera images missing');
+      heldWaits = 0;
       let before = air.getEntityState(feature.id)!.computedAt;
-      for (const lng of [.0001, .0002, .0003]) {
+      air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [.0001,0] } }]);
+      await until(() => air.getEntityState(feature.id)!.computedAt > before, 'camera replacement before equivalent configuration');
+      await until(() => heldWaits > 0, 'camera replacement fence held');
+      air.configure({ projection: 'flat', terrain: false, exaggeration: 1 });
+      check(air.getEntityState(feature.id)?.coverage === 'loading', 'Equivalent configuration lost the pending camera state');
+      check(JSON.stringify(maskSignature()) === JSON.stringify(oldSignature), 'Equivalent configuration dropped completed camera coverage');
+      releaseSecond = true;
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'equivalent configuration republishes camera coverage');
+      releaseSecond = false;
+      const movedSignature = maskSignature();
+      before = air.getEntityState(feature.id)!.computedAt;
+      for (const lng of [.0002, .0003]) {
         air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [lng,0] } }]);
         await until(() => air.getEntityState(feature.id)!.computedAt > before, 'moved camera submitted');
         before = air.getEntityState(feature.id)!.computedAt;
         check(air.getEntityState(feature.id)?.coverage === 'loading', 'Old camera pose was reported ready for new input');
-        check(JSON.stringify(maskSignature()) === JSON.stringify(oldSignature), 'Previous camera result disappeared while replacement was pending');
+        check(JSON.stringify(maskSignature()) === JSON.stringify(movedSignature), 'Previous camera result disappeared while replacement was pending');
       }
       completionBudget = 1;
       releaseSecond = true;
       await until(() => {
         const current = maskSignature();
-        return current.length === 2 && current[0] !== oldSignature[0];
+        return current.length === 2 && current[0] !== movedSignature[0];
       }, 'intermediate camera result published');
       check(air.getEntityState(feature.id)?.coverage === 'loading', 'Intermediate camera result marked the newest request ready');
       completionBudget = undefined;

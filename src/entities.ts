@@ -142,9 +142,12 @@ export class EntityScene<P extends Properties> {
     this.schedule();
     const sharedPreparation = features.filter(feature => {
       const attachments = feature.entity?.attachments ?? [];
+      const hasTerrainCamera = attachments.some(attachment => attachment.type === 'camera' && attachment.terrainVisibility);
+      const hasSharedAttachment = attachments.some(attachment => attachment.type !== 'camera');
       // Terrain-visibility cameras own their wider patch preparation. Plain
-      // cameras still need the shared center sample for entity placement.
-      return feature.entity && !attachments.some(attachment => attachment.type === 'camera' && attachment.terrainVisibility);
+      // cameras still need the shared center sample for entity placement;
+      // non-camera attachments also need their own terrain samples.
+      return feature.entity && (!hasTerrainCamera || hasSharedAttachment);
     });
     if (this.options.sampler?.prepare && sharedPreparation.length) {
       const positions: [number, number][] = [];
