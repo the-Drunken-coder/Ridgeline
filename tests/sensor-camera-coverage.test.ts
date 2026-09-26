@@ -209,8 +209,10 @@ test('keeps a pending terrain replacement loading, then settles prepared terrain
   resolvePreparation();
   await preparation;
   await Promise.resolve();
+  await Promise.resolve();
   assert.equal(coverage.update(input({
     origin: [0.02, 0, 100],
+    placement: 'elevation-unavailable',
     elevationUnavailable: true,
   })).coverage, 'unavailable');
   assert.equal(prepareCalls, 1, 'Settled unknown terrain must not repeatedly prepare');
