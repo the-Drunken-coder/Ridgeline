@@ -1,10 +1,6 @@
 import type { EntityAttachment, EntityState, FeatureStyle, MapConfiguration, MapFeature } from './types';
 import type { Primitive } from './entity-layer';
 import { groundZone, localFrame } from './entity-geometry';
-import { visibleCameraEdges } from './camera-volume';
-import type { CameraVolume } from './camera-volume';
-import type { CameraTerrain } from './gpu-camera-terrain';
-import type { CameraAttachment } from './types';
 import type { GeoPoint, HeightAt } from './entity-geometry';
 
 export type EntityComputationInput = {
@@ -175,18 +171,4 @@ function color(value: string, alpha: number): Primitive['color'] {
   const rgba: Primitive['color'] = [p[0]! / 255, p[1]! / 255, p[2]! / 255, alpha];
   colors.set(key, rgba);
   return rgba;
-}
-
-/** Side planes match GPU clipping; wireframe segments stop at terrain occlusion. */
-export function cameraVolumePrimitives(entityId: string, origin: GeoPoint, camera: CameraAttachment, volume: CameraVolume, config: MapConfiguration, terrain: CameraTerrain): Primitive[] {
-  const display=(p:GeoPoint):GeoPoint=>[p[0],p[1],config.terrain?p[2]*config.exaggeration:p[2]];
-  const faces:GeoPoint[]=[];
-  volume.corners.forEach((a,i)=>{
-    const b=volume.corners[(i+1)%4]!;
-    faces.push(origin,a,b);
-  });
-  const result:Primitive[]=[];
-  if((camera.volumeOpacity??0)>0)result.push({entityId,attachmentId:camera.id,mode:'triangles',vertices:faces.map(display),color:color(camera.color??'#288b59',camera.volumeOpacity!)});
-  if(camera.wireframe)result.push({entityId,attachmentId:camera.id,mode:'lines',vertices:visibleCameraEdges(origin,volume,terrain).map(display),color:color('#8bab97',1),size:camera.wireframeWidth??3});
-  return result;
 }

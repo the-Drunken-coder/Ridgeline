@@ -2,12 +2,11 @@ import type { Map as GLMap } from 'maplibre-gl';
 import type { CameraAttachment, EntityState, MapConfiguration } from './types';
 import type { HeightAt, GeoPoint } from './entity-geometry';
 import { cameraFootprint, cameraRay, localFrame } from './entity-geometry';
-import { cameraVolume } from './camera-volume';
+import { cameraVolume, visibleCameraEdges } from './camera-volume';
 import { cameraTerrain } from './gpu-camera-terrain';
 import type { CameraTerrain } from './gpu-camera-terrain';
-import { cameraVolumePrimitives } from './entity-computation';
 import type { Primitive } from './entity-layer';
-import { GpuCameras, sameCamera } from './gpu-cameras';
+import { GpuCameras, sameCamera, sameCameraAppearance } from './gpu-cameras';
 import type { GpuCamera } from './gpu-cameras';
 
 type Color = Primitive['color'];
@@ -136,6 +135,45 @@ function plainCameraPrimitives(
   return { geometry, footprintTriangles: footprint.length ? 2 : 0 };
 }
 
+function cameraVolumePrimitives(
+  entityId: string,
+  origin: GeoPoint,
+  camera: CameraAttachment,
+  volume: ReturnType<typeof cameraVolume>,
+  configuration: MapConfiguration,
+  terrain: CameraTerrain,
+): Primitive[] {
+  const display = (point: GeoPoint): GeoPoint => [
+    point[0],
+    point[1],
+    configuration.terrain ? point[2] * configuration.exaggeration : point[2],
+  ];
+  const faces: GeoPoint[] = [];
+  volume.corners.forEach((a, index) => {
+    const b = volume.corners[(index + 1) % 4]!;
+    faces.push(origin, a, b);
+  });
+  const geometry: Primitive[] = [];
+  if ((camera.volumeOpacity ?? 0) > 0)
+    geometry.push({
+      entityId,
+      attachmentId: camera.id,
+      mode: 'triangles',
+      vertices: faces.map(display),
+      color: color(camera.color ?? '#288b59', camera.volumeOpacity!),
+    });
+  if (camera.wireframe)
+    geometry.push({
+      entityId,
+      attachmentId: camera.id,
+      mode: 'lines',
+      vertices: visibleCameraEdges(origin, volume, terrain).map(display),
+      color: color('#8bab97', 1),
+      size: camera.wireframeWidth ?? 3,
+    });
+  return geometry;
+}
+
 /** Coordinates all sensor-camera display lifecycles while keeping GPU details private. */
 export class SensorCameraCoverage {
   private readonly adapter: SensorCameraAdapter;
@@ -145,7 +183,7 @@ export class SensorCameraCoverage {
   private readonly requested = new Map<string, GpuCamera>();
   private readonly displayed = new Map<string, Displayed>();
   private readonly lifecycle = new Map<string, number>();
-  private readonly lifecycleCounters = new Map<string, number>();
+  private lifecycleSequence = 0;
   private readonly statuses = new Map<string, EntityState['coverage']>();
   private readonly terrainPending = new Set<string>();
   private readonly preparationSettled = new Map<string, { origin: [number, number]; range: number }>();
@@ -259,11 +297,12 @@ export class SensorCameraCoverage {
 
   /** Invalidate queued adapter work while retaining the last displayed result. */
   invalidate(entityId?: string) {
-    for (const key of this.lifecycle.keys()) {
+    for (const key of [...this.lifecycle.keys()]) {
       if (entityId !== undefined && !belongsTo(key, entityId)) continue;
-      const next = (this.lifecycleCounters.get(key) ?? this.lifecycle.get(key) ?? 0) + 1;
-      this.lifecycleCounters.set(key, next);
+      const next = ++this.lifecycleSequence;
       this.lifecycle.set(key, next);
+      const request = this.requested.get(key);
+      if (request) this.requested.set(key, { ...request, lifecycle: next });
     }
   }
 
@@ -323,7 +362,6 @@ export class SensorCameraCoverage {
     this.displayed.clear();
     this.terrainPending.clear();
     this.lifecycle.clear();
-    this.lifecycleCounters.clear();
     this.statuses.clear();
   }
 
@@ -414,7 +452,8 @@ export class SensorCameraCoverage {
 
   private complete(value: GpuCamera, publish: () => void) {
     const key = keyOf(value.entityId, value.camera.id);
-    if (this.destroyed || this.failed || this.lifecycle.get(key) !== value.lifecycle || !this.requested.has(key)) return false;
+    const request = this.requested.get(key);
+    if (this.destroyed || this.failed || this.lifecycle.get(key) !== value.lifecycle || !request || !sameCameraAppearance(value, request)) return false;
     publish();
     this.displayed.set(key, { geometry: value.geometry, terrain: true, value });
     const input = this.entities.get(value.entityId);
@@ -465,9 +504,7 @@ export class SensorCameraCoverage {
 
   private activate(input: SensorCameraInput, active: Set<string>) {
     for (const key of active) if (!this.lifecycle.has(key)) {
-      const next = (this.lifecycleCounters.get(key) ?? 0) + 1;
-      this.lifecycleCounters.set(key, next);
-      this.lifecycle.set(key, next);
+      this.lifecycle.set(key, ++this.lifecycleSequence);
     }
     for (const key of [...this.lifecycle.keys()]) if (belongsTo(key, input.entityId) && !active.has(key)) this.lifecycle.delete(key);
   }

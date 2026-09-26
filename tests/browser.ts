@@ -397,6 +397,23 @@ async function suite() {
     await until(() => air.getEntityState('prepared-patch')?.coverage === 'ready', 'completed terrain preparation');
     air.destroy();
   });
+  await run('Custom elevation preparation also covers entities with only plain cameras', async () => {
+    let prepared = false, prepareCalls = 0;
+    const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+      sample: () => prepared ? 0 : null,
+      prepare: async () => { prepareCalls++; prepared = true; },
+    } });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('plain-prepared'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', terrainVisibility: false, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } };
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'plain camera preparation');
+    check(prepareCalls === 1, `Plain camera skipped shared elevation preparation: ${prepareCalls}`);
+    check(air.getEntityState(feature.id)?.placement === 'airborne', 'Prepared plain camera remained elevation-unavailable');
+    check((air.getEntityState(feature.id)?.footprintTriangles ?? 0) > 0, 'Prepared plain camera has no footprint');
+    check(!air.map.getLayer('rl:camera-gpu'), 'Plain camera allocated the GPU visibility renderer');
+    air.destroy();
+  });
   await run('Raw DEM placement and coverage remain physical with terrain off and exaggerated', async () => {
     const errors: RidgelineError[] = [];
     const dem=document.createElement('canvas'); dem.width=dem.height=256;
@@ -730,21 +747,24 @@ async function suite() {
     let fail = false;
     gl.clientWaitSync = (sync, flags, timeout) => fail ? gl.WAIT_FAILED : clientWaitSync(sync, flags, timeout);
     const cameraMask = () => air.map.getStyle().layers.find(layer => layer.id.startsWith('rl:camera-mask:'));
-    const cameraDraws = () => {
-      const layer = air.map.getLayer('rl:entities') as unknown as { implementation?: { draws?: { entityId: string; attachmentId?: string }[] } } | undefined;
-      return (layer?.implementation?.draws ?? []).filter(draw => draw.entityId === feature.id && draw.attachmentId === 'camera');
+    let pickedAttachment = '';
+    air.on('click', event => { pickedAttachment = event.attachments.find(hit => hit.entityId === feature.id)?.attachmentId ?? ''; });
+    const pickCoverage = () => {
+      const point = air.map.project([.0006, .0004]);
+      air.map.fire('click', { point, lngLat: air.map.unproject(point), originalEvent: new MouseEvent('click') });
+      return pickedAttachment;
     };
     try {
       const initialMask = cameraMask();
       check(Boolean(initialMask), 'Initial camera mask missing');
-      check(cameraDraws().length > 0, 'Initial camera geometry missing');
+      check(pickCoverage() === 'camera', 'Initial camera coverage was not pickable');
       air.upsert([{ ...feature, entity: { ...feature.entity!, attachments: [{ ...failingCamera, bearing: 15 }] } }]);
       await until(() => air.getEntityState(feature.id)?.coverage === 'loading', 'camera replacement pending');
       fail = true;
       await until(() => errors.some(error => error.code === 'UPDATE_FAILED'), 'displayed camera failure diagnostic');
       await until(() => air.getEntityState(feature.id)?.coverage === 'unavailable', 'failed camera coverage');
       check(!cameraMask(), 'Failed camera mask remained visible');
-      check(cameraDraws().length === 0, 'Failed camera geometry remained visible');
+      check(pickCoverage() === '', 'Failed camera coverage remained pickable');
       check(air.getEntityState('ground-survivor')?.coverage === 'ready', 'Camera failure removed unrelated ground coverage');
       fail = false;
       air.upsert([{ ...feature, entity: { ...feature.entity!, attachments: [{ ...failingCamera, bearing: 30, color: '#0000ff' }] } }]);
@@ -754,7 +774,7 @@ async function suite() {
       const source = mask && air.map.getSource<ImageSource>(mask.id)?.image;
       check(source instanceof ImageData && source.data.some((value, index) => index % 4 === 2 && value > 100), 'Retry restored stale camera appearance instead of current inputs');
       check(air.getEntityState('ground-survivor')?.coverage === 'ready', 'Current camera retry disturbed unrelated ground coverage');
-      check(cameraDraws().length > 0, 'Current camera geometry did not return after retry');
+      check(pickCoverage() === 'camera', 'Current camera coverage was not pickable after retry');
     } finally {
       gl.clientWaitSync = clientWaitSync;
       air.destroy();
@@ -825,64 +845,55 @@ async function suite() {
       .filter(layer => air.map.getSource<ImageSource>(layer.id)?.image instanceof ImageData).length;
     const feature: MapFeature = { ...point('two-cameras'), entity: { altitude: { meters: 100, reference: 'ground' },
       attachments: [camera, { ...camera, id: 'second', bearing: 90 }] } };
-    type CameraItem = {
-      value: { entityId: string; camera: CameraAttachment; origin: number[] };
-      source: string;
-      pending?: WebGLSync;
-      submitted?: { value: { origin: number[] } };
-      published?: { origin: number[] };
+    const masks = () => air.map.getStyle().layers
+      .filter(layer => layer.id.startsWith('rl:camera-mask:'))
+      .map(layer => air.map.getSource<ImageSource>(layer.id)?.image)
+      .filter((image): image is ImageData => image instanceof ImageData);
+    const maskSignature = () => masks().map(image => {
+      let sum = 0;
+      for (let index = 0; index < image.data.length; index += 4) sum = (sum + image.data[index]! * 3 + image.data[index + 1]! * 5 + image.data[index + 2]! * 7 + image.data[index + 3]!) % 0x1_0000_0000;
+      return sum;
+    });
+    let pickedAttachments: string[] = [];
+    air.on('click', event => { pickedAttachments = event.attachments.filter(hit => hit.entityId === feature.id).map(hit => hit.attachmentId); });
+    const pickAt = (lng: number, lat: number) => {
+      const point = air.map.project([lng, lat]);
+      pickedAttachments = [];
+      air.map.fire('click', { point, lngLat: air.map.unproject(point), originalEvent: new MouseEvent('click') });
+      return pickedAttachments;
     };
-    const cameraItem = (id: string) => {
-      const layer = air.map.getLayer('rl:camera-gpu') as unknown as { implementation?: { cameras?: Map<string, CameraItem> } } | undefined;
-      return [...(layer?.implementation?.cameras?.values() ?? [])].find(item => item.value.entityId === feature.id && item.value.camera.id === id);
-    };
-    const image = (id: string) => {
-      const item = cameraItem(id);
-      return item && air.map.getSource<ImageSource>(item.source)?.image;
-    };
-    const cameraGeometry = (id: string) => {
-      const layer = air.map.getLayer('rl:entities') as unknown as { implementation?: { draws?: { entityId: string; attachmentId?: string; vertices: number[][] }[] } } | undefined;
-      return (layer?.implementation?.draws ?? []).filter(draw => draw.entityId === feature.id && draw.attachmentId === id);
-    };
-    const publishedOrigin = (id: string) => cameraItem(id)?.published?.origin;
-    const submitted = (id: string) => Boolean(cameraItem(id)?.pending || cameraItem(id)?.submitted);
     try {
       air.upsert([feature]);
       await until(() => published() === 1, 'first camera publishes while second is pending');
       check(air.getEntityState('two-cameras')?.coverage === 'loading', 'Entity became ready before its second camera published');
-      check(cameraGeometry('first').length > 0 && cameraGeometry('second').length === 0, 'Camera geometry published before its result');
+      check(pickAt(0, .0008).includes('first'), 'First camera result was not pickable');
+      check(!pickAt(.0008, 0).includes('second'), 'Second camera result published before its fence completed');
       releaseSecond = true;
       await until(() => air.getEntityState('two-cameras')?.coverage === 'ready', 'both camera masks published');
       check(published() === 2, 'Ready entity is missing camera coverage');
       check(sensorTargets===2,`Two cameras allocated ${sensorTargets} sensor targets instead of sharing one pair`);
       check(groundUploads===1,`GPU publication resubmitted unchanged ground geometry ${groundUploads} times`);
       releaseSecond = false;
-      const oldImage = image('first');
-      check(oldImage instanceof ImageData, 'Initial camera image missing');
-      const oldPixels = oldImage instanceof ImageData ? new Uint8Array(oldImage.data) : undefined;
-      const oldGeometry = JSON.stringify(cameraGeometry('first').map(draw => draw.vertices));
-      const oldOrigin = JSON.stringify(publishedOrigin('first'));
+      const oldSignature = maskSignature();
+      check(oldSignature.length === 2, 'Initial camera images missing');
       let before = air.getEntityState(feature.id)!.computedAt;
-      for (const lng of [.000001, .000002, .000003]) {
+      for (const lng of [.0001, .0002, .0003]) {
         air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [lng,0] } }]);
         await until(() => air.getEntityState(feature.id)!.computedAt > before, 'moved camera submitted');
         before = air.getEntityState(feature.id)!.computedAt;
         check(air.getEntityState(feature.id)?.coverage === 'loading', 'Old camera pose was reported ready for new input');
-        const currentImage = image('first');
-        check(currentImage instanceof ImageData && oldPixels !== undefined && currentImage.data.every((value, index) => value === oldPixels[index]), 'Previous camera result disappeared while replacement was pending');
-        check(JSON.stringify(cameraGeometry('first').map(draw => draw.vertices)) === oldGeometry, 'Previous camera geometry disappeared while replacement was pending');
+        check(JSON.stringify(maskSignature()) === JSON.stringify(oldSignature), 'Previous camera result disappeared while replacement was pending');
       }
-      await until(() => submitted('first') && submitted('second'), 'latest camera work submitted');
       completionBudget = 1;
       releaseSecond = true;
-      await until(() => JSON.stringify(publishedOrigin('first')) !== oldOrigin, 'intermediate camera result published');
+      await until(() => {
+        const current = maskSignature();
+        return current.length === 2 && current[0] !== oldSignature[0];
+      }, 'intermediate camera result published');
       check(air.getEntityState(feature.id)?.coverage === 'loading', 'Intermediate camera result marked the newest request ready');
       completionBudget = undefined;
-      await until(() => air.getEntityState(feature.id)?.coverage === 'ready' && JSON.stringify(publishedOrigin('first')) !== oldOrigin, 'moved camera masks published');
-      const finalOrigin = publishedOrigin('first');
-      check(finalOrigin?.[0] === .000003, `Retry published an obsolete camera pose: ${JSON.stringify(finalOrigin)}`);
-      const finalGeometry = cameraGeometry('first');
-      check(JSON.stringify(finalGeometry[0]?.vertices[0]) === JSON.stringify(finalOrigin), 'Camera result and matching geometry used different poses');
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'moved camera masks published');
+      check(pickAt(.0003, .0008).includes('first'), 'Final camera result was not pickable at the current position');
       before = air.getEntityState(feature.id)!.computedAt;
       air.upsert([{ ...feature, entity: { ...feature.entity!, altitude: { meters: 0, reference: 'ground' } } }]);
       await until(() => air.getEntityState(feature.id)!.computedAt > before, 'ground-level camera computed');

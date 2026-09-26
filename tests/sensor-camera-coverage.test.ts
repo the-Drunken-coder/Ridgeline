@@ -174,6 +174,27 @@ test('retains the completed unit while moving and accepts an intermediate result
   assert.deepEqual(coverage.output('entity'), current.geometry);
 });
 
+test('owner suppresses an obsolete appearance while retaining a valid intermediate pose', () => {
+  const adapter = controlledAdapter();
+  const { coverage } = owner(adapter);
+  coverage.update(input());
+  const initial = latestRequest(adapter);
+  assert.equal(adapter.complete(initial), true);
+  const previous = coverage.output('entity');
+
+  coverage.update(input({ origin: [0.001, 0, 100] }));
+  const intermediate = latestRequest(adapter);
+  coverage.update(input({ origin: [0.002, 0, 100], cameras: [{ ...camera(), color: '#ff0000' }] }));
+  const current = latestRequest(adapter);
+
+  assert.equal(adapter.complete(intermediate), false, 'An obsolete appearance must not publish');
+  assert.deepEqual(coverage.output('entity'), previous, 'Rejecting an obsolete appearance must retain the last complete unit');
+  assert.equal(coverage.status('entity'), 'loading');
+  assert.equal(adapter.complete(current), true);
+  assert.deepEqual(coverage.output('entity'), current.geometry);
+  assert.equal(coverage.status('entity'), 'ready');
+});
+
 test('publishes attached cameras independently while readiness waits for all current results', () => {
   const adapter = controlledAdapter();
   const { coverage } = owner(adapter);

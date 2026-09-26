@@ -127,9 +127,6 @@ export class EntityScene<P extends Properties> {
     }
     for (const feature of features) {
       if (feature.entity) {
-        // Reject an adapter completion from the previous snapshot even when
-        // this replacement is flushed on a later animation frame.
-        this.coverage.invalidate(feature.id);
         this.features.set(feature.id, feature);
         this.dirty.add(feature.id);
       } else {
@@ -145,7 +142,9 @@ export class EntityScene<P extends Properties> {
     this.schedule();
     const sharedPreparation = features.filter(feature => {
       const attachments = feature.entity?.attachments ?? [];
-      return feature.entity && (!attachments.length || attachments.some(attachment => attachment.type !== 'camera'));
+      // Terrain-visibility cameras own their wider patch preparation. Plain
+      // cameras still need the shared center sample for entity placement.
+      return feature.entity && !attachments.some(attachment => attachment.type === 'camera' && attachment.terrainVisibility);
     });
     if (this.options.sampler?.prepare && sharedPreparation.length) {
       const positions: [number, number][] = [];

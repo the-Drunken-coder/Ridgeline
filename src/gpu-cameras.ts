@@ -28,7 +28,7 @@ type Camera = {
   analysisTerrain?: CameraTerrain;
   regionFrame?: WebGLFramebuffer;
   regionTexture?: WebGLTexture;
-  submitted?: { value: GpuCamera; appearance: string };
+  submitted?: { value: GpuCamera };
   uploaded?: CameraTerrain;
   published?: GpuCamera;
   buffer?: WebGLBuffer;
@@ -42,6 +42,9 @@ function analysisKey({ origin, camera, volume }: GpuCamera) {
 }
 function appearanceKey({ camera }: GpuCamera) {
   return JSON.stringify([camera.color, camera.fillOpacity, camera.blockedColor, camera.blockedOpacity, camera.outline, camera.outlineWidth]);
+}
+export function sameCameraAppearance(a: GpuCamera, b: GpuCamera) {
+  return appearanceKey(a) === appearanceKey(b);
 }
 export function sameCamera(a: GpuCamera, b: GpuCamera) {
   return a.terrain === b.terrain && analysisKey(a) === analysisKey(b)
@@ -308,7 +311,7 @@ export class GpuCameras implements CustomLayerInterface {
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER,item.pixels!);
         gl.readPixels(0, 0, DISPLAY_SIZE, DISPLAY_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, 0);
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER,null);
-        item.submitted={value:item.value,appearance:appearanceKey(item.value)};
+        item.submitted={value:item.value};
         item.pending=gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0)!;
         gl.flush();this.map.triggerRepaint();
         item.dirty = false;
@@ -331,7 +334,7 @@ export class GpuCameras implements CustomLayerInterface {
           const submitted = item.submitted!;
           item.submitted = undefined;
           // A completed frame belongs to its submitted terrain and style, not the latest input.
-          if (submitted.appearance === appearanceKey(item.value) && item.value.terrain.ready && this.map.getSource(item.source)) {
+          if (submitted.value.terrain.ready && this.map.getSource(item.source)) {
             gl.bindBuffer(gl.PIXEL_PACK_BUFFER,item.pixels!);
             gl.getBufferSubData(gl.PIXEL_PACK_BUFFER,0,new Uint8Array(item.image.data.buffer));
             gl.bindBuffer(gl.PIXEL_PACK_BUFFER,null);
