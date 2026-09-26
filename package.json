@@ -13,10 +13,13 @@
   "sideEffects": ["**/*.css"],
   "scripts": {
     "dev": "vite --config vite.playground.config.ts --host 127.0.0.1",
+    "dev:controls": "pnpm --dir control-lab dev",
+    "build:controls": "pnpm --dir control-lab build",
+    "test:controls": "pnpm --dir control-lab test",
     "build": "vite build && tsc -p tsconfig.build.json",
     "build:playground": "pnpm build && vite build --config vite.playground.config.ts",
-    "check": "tsc --noEmit",
-    "test": "node --import tsx --test tests/*.test.ts",
+    "check": "tsc --noEmit && pnpm --dir control-lab typecheck",
+    "test": "node --import tsx --test tests/*.test.ts && pnpm test:controls",
     "test:browser": "node scripts/test-browser.mjs",
     "measure": "node scripts/bundle-size.mjs"
   },
