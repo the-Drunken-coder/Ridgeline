@@ -276,6 +276,28 @@ test('keeps a pending terrain replacement loading, then settles prepared terrain
   assert.deepEqual(coverage.output('entity'), []);
 });
 
+test('detaches preparation for an obsolete camera range', async () => {
+  let rejectPreparation!: (cause: unknown) => void;
+  const preparation = new Promise<void>((_resolve, reject) => { rejectPreparation = reject; });
+  const adapter = controlledAdapter();
+  const { coverage, diagnostics } = owner(adapter, {
+    height: () => null,
+    prepare: async () => { await preparation; },
+  });
+
+  coverage.update(input());
+  await Promise.resolve();
+  assert.equal(coverage.isPreparing('entity'), true);
+
+  coverage.update(input({ cameras: [] }));
+  assert.equal(coverage.isPreparing('entity'), false);
+
+  rejectPreparation(new Error('obsolete range failed'));
+  await preparation.catch(() => {});
+  await Promise.resolve();
+  assert.deepEqual(diagnostics, [], 'Detached preparation must not report a diagnostic');
+});
+
 test('failure clears displayed camera output, retry uses current input, and stale identity cannot return', () => {
   const adapter = controlledAdapter();
   const { coverage, diagnostics } = owner(adapter);

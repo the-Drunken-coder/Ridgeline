@@ -51,6 +51,14 @@ const patchKeyOf = (entityId: string, range: number) => JSON.stringify([entityId
 const belongsTo = (key: string, entityId: string) => {
   try { return JSON.parse(key)[0] === entityId; } catch { return false; }
 };
+const rangeOfPatchKey = (key: string) => {
+  try {
+    const range = JSON.parse(key)[1];
+    return typeof range === 'number' ? range : undefined;
+  } catch {
+    return undefined;
+  }
+};
 const colors = new Map<string, Color>();
 
 function color(css: string, opacity: number): Color {
@@ -218,6 +226,10 @@ export class SensorCameraCoverage {
     const visible = input.configuration.entityVisibility.footprints;
     const usable = input.placement === 'airborne' && input.origin[2] > input.ground + 0.01 && visible;
     let footprintTriangles = 0;
+    const terrainRanges = usable || input.placement === 'elevation-unavailable'
+      ? new Set(input.cameras.filter(camera => camera.terrainVisibility).map(camera => camera.range))
+      : new Set<number>();
+    this.pruneTerrainWork(input.entityId, terrainRanges);
 
     if (usable) {
       for (const camera of input.cameras) {
@@ -443,7 +455,7 @@ export class SensorCameraCoverage {
     this.preparing.set(key, preparation);
     void preparation
       .catch(cause => {
-        if (!generation.signal.aborted) this.options.diagnostic(cause);
+        if (!generation.signal.aborted && this.preparing.get(key) === preparation) this.options.diagnostic(cause);
       })
       .finally(() => {
         if (generation.signal.aborted) return;
@@ -538,6 +550,27 @@ export class SensorCameraCoverage {
     const timer = this.timers.get(entityId);
     if (timer) clearTimeout(timer);
     this.timers.delete(entityId);
+  }
+
+  private pruneTerrainWork(entityId: string, ranges: ReadonlySet<number>) {
+    const patches = this.terrainPatches.get(entityId);
+    if (patches) {
+      for (const range of patches.keys()) if (!ranges.has(range)) patches.delete(range);
+      if (!patches.size) this.terrainPatches.delete(entityId);
+    }
+    for (const key of [...this.preparing.keys()]) {
+      const range = rangeOfPatchKey(key);
+      if (belongsTo(key, entityId) && (range === undefined || !ranges.has(range))) this.preparing.delete(key);
+    }
+    for (const key of [...this.preparationSettled.keys()]) {
+      const range = rangeOfPatchKey(key);
+      if (belongsTo(key, entityId) && (range === undefined || !ranges.has(range))) this.preparationSettled.delete(key);
+    }
+    if (!ranges.size) {
+      const timer = this.timers.get(entityId);
+      if (timer) clearTimeout(timer);
+      this.timers.delete(entityId);
+    }
   }
 
   private clearTerrainPending(entityId: string) {
