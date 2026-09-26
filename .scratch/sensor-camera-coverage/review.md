@@ -34,4 +34,14 @@ Spec review found no scope creep. Six confirmed behavior defects across initial 
 
 ## Disposition
 
-All findings are assigned to one repair implementer. Final validation and commit evidence will be recorded after repairs.
+All six behavior findings and both standards findings were repaired. The standards reviewer confirmed both original findings were addressed. The final repair also prunes obsolete range-specific terrain caches and detaches their preparation callbacks.
+
+Repair commits after rebase: `9bb16e6`, `1f84fe1`, `9dc0f5c`, `e0a7b6c`. Code validated at `e0a7b6c46496fb277e0b439b5947780e8321e0d0`:
+
+- `pnpm check`: passed.
+- `pnpm test`: 51 library tests and 15 control-lab tests passed.
+- `pnpm build:playground`: production package, declarations, and playground builds passed.
+- `pnpm test:browser`: 39 checks passed against the packed package in Chromium with SwiftShader.
+- `git diff --check`: passed.
+
+No checks were unavailable. Existing bundle-size warnings remain. The checks establish the supported test environment, not new GPU/browser support or performance claims.
