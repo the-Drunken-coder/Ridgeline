@@ -1,14 +1,20 @@
+import { GpuCameras } from './gpu-cameras';
+import type { GpuCamera } from './gpu-cameras';
+import { cameraTerrain } from './gpu-camera-terrain';
+import type { CameraTerrain } from './gpu-camera-terrain';
 import type { Map as GLMap } from 'maplibre-gl';
 import { EntityLayer } from './entity-layer';
 import { EntityGround } from './entity-ground';
 import type { Primitive } from './entity-layer';
-import { cameraFootprint, cameraVolume, groundZone, localFrame } from './entity-geometry';
-import type { GeoPoint } from './entity-geometry';
+import { localFrame } from './entity-geometry';
+import { cameraVolume } from './camera-volume';
+import { computeEntity, cameraVolumePrimitives } from './entity-computation';
+import type { EntityComputationResult } from './entity-computation';
+import type { HeightAt } from './entity-geometry';
 import { RasterElevationSampler } from './elevation-sampler';
 import { RidgelineError } from './errors';
 import type {
   ElevationSampler,
-  EntityAttachment,
   EntityState,
   FeatureStyle,
   MapConfiguration,
@@ -17,7 +23,6 @@ import type {
 } from './types';
 
 export const DEFAULT_ENTITY_VISIBILITY = {
-  volumes: true,
   footprints: true,
   zones: true,
   groundLines: false,
@@ -36,15 +41,23 @@ export class EntityScene<P extends Properties> {
   private groundLayer: EntityGround;
   private features = new Map<string, MapFeature<P>>();
   private states = new Map<string, EntityState>();
+  private positions = new Map<string, [number, number]>();
   private geometry = new Map<string, Primitive[]>();
+  private geometryDirty = false;
   private dirty = new Set<string>();
   private selected = new Set<string>();
   private frame = 0;
   private destroyed = false;
   private raster: RasterElevationSampler;
   private customGeneration = new AbortController();
+  private terrainTimer?: ReturnType<typeof setTimeout>;
+  private gpu: GpuCameras;
+  private displayedCameras = new Map<string, GpuCamera>();
+  private gpuValues = new Map<string, GpuCamera[]>();
+  private terrainPatches = new Map<string, { terrain: CameraTerrain; time: number }>();
+  private gpuReady = new Set<string>();
+  private gpuFailed = false;
   private diagnosticKeys = new Map<string, string>();
-  private colors = new Map<string, Primitive['color']>();
   constructor(private options: SceneOptions<P>) {
     this.groundLayer = new EntityGround(options.map);
     this.layer = new EntityLayer((cause) =>
@@ -57,12 +70,25 @@ export class EntityScene<P extends Properties> {
         ),
       ),
     );
+    this.gpu = new GpuCameras(options.map, value => {
+      const id = value.entityId;
+      this.displayedCameras.set(JSON.stringify([id,value.camera.id]),value);
+      this.renderLayers();
+      this.gpuReady.add(id);
+      const state = this.states.get(id);
+      if (state) { state.coverage = 'ready'; options.changed([id]); }
+    }, cause => {
+      this.gpuFailed = true;
+      options.diagnostic(new RidgelineError('UPDATE_FAILED', 'GPU camera visibility is unavailable.', {operation:'entities',recoverable:true},cause));
+      this.invalidate();
+    });
     this.raster = this.createSampler();
+    if (!options.sampler) this.height.maximum = (west, south, east, north) => this.raster.maximum(west, south, east, north);
   }
   private createSampler() {
     return new RasterElevationSampler(
       this.options.configuration().elevation,
-      () => this.invalidate(),
+      () => { this.invalidate(); },
       (cause) =>
         this.options.diagnostic(
           new RidgelineError(
@@ -76,9 +102,11 @@ export class EntityScene<P extends Properties> {
   }
   set(features: readonly MapFeature<P>[], removed: readonly string[] = []) {
     for (const id of removed) {
+      this.gpuValues.delete(id); this.terrainPatches.delete(id); this.gpuReady.delete(id);
       this.features.delete(id);
       this.states.delete(id);
-      this.geometry.delete(id);
+      this.positions.delete(id);
+      this.geometryDirty = this.geometry.delete(id) || this.geometryDirty;
       this.dirty.delete(id);
       this.diagnosticKeys.delete(id);
     }
@@ -87,9 +115,11 @@ export class EntityScene<P extends Properties> {
         this.features.set(feature.id, feature);
         this.dirty.add(feature.id);
       } else {
+        this.gpuValues.delete(feature.id); this.terrainPatches.delete(feature.id); this.gpuReady.delete(feature.id);
         this.features.delete(feature.id);
         this.states.delete(feature.id);
-        this.geometry.delete(feature.id);
+        this.positions.delete(feature.id);
+        this.geometryDirty = this.geometry.delete(feature.id) || this.geometryDirty;
         this.diagnosticKeys.delete(feature.id);
       }
     }
@@ -103,10 +133,9 @@ export class EntityScene<P extends Properties> {
           positions.push([lng, lat]);
           const local = localFrame([lng, lat, 0]);
           for (const a of f.entity.attachments ?? []) {
+            if (a.type === 'camera' && !a.terrainVisibility) continue;
             const range =
-              a.type === 'camera'
-                ? a.range
-                : a.type === 'polygon'
+              a.type === 'camera' ? a.range : a.type === 'polygon'
                   ? Math.max(...a.vertices.map((p) => Math.hypot(...p)))
                   : a.radius;
             for (const x of [-range, 0, range])
@@ -136,6 +165,7 @@ export class EntityScene<P extends Properties> {
     }
   }
   configure(elevationChanged = false) {
+    if (elevationChanged) { this.terrainPatches.clear(); this.gpuReady.clear(); }
     if (elevationChanged) {
       this.raster.destroy();
       this.raster = this.createSampler();
@@ -145,6 +175,8 @@ export class EntityScene<P extends Properties> {
     this.invalidate();
   }
   retry() {
+    this.gpuFailed = false;
+    this.gpu.retry();
     this.raster.retry();
     this.set([...this.features.values()]);
     this.invalidate();
@@ -169,18 +201,23 @@ export class EntityScene<P extends Properties> {
     return {
       visible: true,
       ground: !airborne,
+      position: this.positions.get(feature.id),
       offset: airborne ? (config.terrain ? (altitude - ground) * config.exaggeration : altitude) : 0,
     };
   }
   pick(x: number, y: number, tolerance: number) {
-    return [...this.layer.pick(x, y, tolerance), ...this.groundLayer.pick(x, y, tolerance)];
+    return [...this.layer.pick(x, y, tolerance), ...this.groundLayer.pick(x, y, tolerance), ...this.gpu.pick(x, y)];
   }
   attach() {
     this.groundLayer.attach();
+    this.gpu.attach();
     if (!this.options.map.getLayer(this.layer.id)) this.options.map.addLayer(this.layer);
     this.invalidate();
   }
   destroy() {
+    clearTimeout(this.terrainTimer);
+    this.gpu.destroy();
+    this.terrainPatches.clear(); this.gpuReady.clear(); this.displayedCameras.clear();
     this.destroyed = true;
     cancelAnimationFrame(this.frame);
     this.customGeneration.abort();
@@ -188,6 +225,7 @@ export class EntityScene<P extends Properties> {
     this.features.clear();
     this.geometry.clear();
     this.states.clear();
+    this.positions.clear();
   }
   private invalidate() {
     for (const id of this.features.keys()) this.dirty.add(id);
@@ -196,7 +234,7 @@ export class EntityScene<P extends Properties> {
   private schedule() {
     if (!this.frame && !this.destroyed) this.frame = requestAnimationFrame(() => this.flush());
   }
-  private height = (lng: number, lat: number) => {
+  private height: HeightAt = (lng, lat) => {
     const value = this.options.sampler ? this.options.sampler.sample(lng, lat) : this.raster.sample(lng, lat);
     return value !== null && Number.isFinite(value) ? value : null;
   };
@@ -211,7 +249,7 @@ export class EntityScene<P extends Properties> {
       try {
         this.build(feature);
       } catch (cause) {
-        this.geometry.delete(id);
+        this.geometryDirty = this.geometry.delete(id) || this.geometryDirty;
         this.options.diagnostic(
           new RidgelineError(
             'UPDATE_FAILED',
@@ -222,194 +260,68 @@ export class EntityScene<P extends Properties> {
         );
       }
     }
-    const primitives = [...this.geometry.values()].flat();
-    this.layer.set(primitives.filter((p) => !p.surface));
-    this.groundLayer.set(primitives.filter((p) => p.surface));
+    this.render();
     if (ids.length) this.options.changed(ids);
   }
   private build(feature: MapFeature<P>) {
-    if (feature.geometry.type !== 'Point' || !feature.entity) return;
-    const started = performance.now(),
-      lng = feature.geometry.coordinates[0]!,
-      lat = feature.geometry.coordinates[1]!,
-      entity = feature.entity;
-    const config = this.options.configuration(),
-      visibility = config.entityVisibility;
-    const ground = this.height(lng, lat);
-    let placement: EntityState['placement'] = 'ground';
-    let altitude = ground ?? undefined;
-    if (!entity.altitude) {
-      if (entity.groundIfNoAltitude === false) placement = 'withheld';
-    } else if (ground === null) placement = 'elevation-unavailable';
-    else {
-      altitude = entity.altitude.meters + (entity.altitude.reference === 'ground' ? ground : 0);
-      placement = altitude < ground ? 'below-terrain' : 'airborne';
-    }
-    const diagnostic =
-      placement === 'withheld'
-        ? 'ALTITUDE_MISSING'
-        : placement === 'below-terrain'
-          ? 'BELOW_TERRAIN'
-          : undefined;
-    if (diagnostic && this.diagnosticKeys.get(feature.id) !== diagnostic)
-      this.options.diagnostic(
-        new RidgelineError(
-          diagnostic,
-          diagnostic === 'ALTITUDE_MISSING'
-            ? 'Entity altitude is missing and ground fallback is disabled.'
-            : 'Entity altitude is below terrain; only its ground position is shown.',
-          { operation: 'entities', recoverable: true, featureId: feature.id },
-        ),
-      );
-    if (diagnostic) this.diagnosticKeys.set(feature.id, diagnostic);
-    else this.diagnosticKeys.delete(feature.id);
-    const primitives: Primitive[] = [];
-    let footprintTriangles = 0,
-      missing = ground === null;
-    const style = this.options.style(feature),
-      color = this.color(style.color ?? '#216e5b', 1);
-    const display = (p: GeoPoint): GeoPoint => [
-      p[0],
-      p[1],
-      config.terrain ? p[2] * config.exaggeration : p[2],
-    ];
-    const add = (
-      vertices: GeoPoint[],
-      mode: Primitive['mode'],
-      rgba: Primitive['color'],
-      attachmentId?: string,
-      surface = false,
-      size?: number,
-    ) => {
-      if (vertices.length)
-        primitives.push({
-          entityId: feature.id,
-          attachmentId,
-          mode,
-          vertices: surface ? vertices : vertices.map(display),
-          color: rgba,
-          size,
-          surface,
-        });
-    };
-    if (placement === 'airborne' && altitude !== undefined) {
-      const origin: GeoPoint = [lng, lat, altitude],
-        radius = style.radius ?? 6;
-      add(
-        [origin],
-        'points',
-        this.selected.has(feature.id) ? [1, 0.65, 0.2, 1] : [1, 1, 1, 1],
-        undefined,
-        false,
-        radius * 2 + 5,
-      );
-      add([origin], 'points', color, undefined, false, radius * 2);
-      if (visibility.groundLines && ground !== null)
-        add([origin, [lng, lat, config.terrain ? ground : 0]], 'lines', [
-          ...color.slice(0, 3),
-          0.7,
-        ] as Primitive['color']);
-    }
-    if (altitude !== undefined && ground !== null && placement !== 'withheld') {
-      const origin: GeoPoint = [lng, lat, placement === 'airborne' ? altitude : ground],
-        local = localFrame(origin);
-      for (const attachment of entity.attachments ?? []) {
-        const rgba = this.color(
-          attachment.color ?? (attachment.type === 'camera' ? '#288b59' : '#8060ae'),
-          0.22,
-        );
-        if (attachment.type === 'camera') {
-          if (placement !== 'airborne') continue;
-          if (visibility.volumes) {
-            const { triangles: sides, lines } = cameraVolume(origin, attachment);
-            const opacity = attachment.volumeOpacity ?? 0.25;
-            const volume = this.color(attachment.volumeColor ?? attachment.color ?? '#176d46', opacity);
-            if (opacity > 0) add(sides, 'triangles', volume, attachment.id);
-            if (attachment.wireframe ?? true)
-              add(lines, 'lines', [volume[0], volume[1], volume[2], 0.9], attachment.id);
-          }
-          if (visibility.footprints) {
-            const footprint = cameraFootprint(origin, attachment, this.height);
-            missing ||= footprint.missing;
-            footprintTriangles += footprint.triangles.length / 3;
-            add(footprint.triangles, 'triangles', [rgba[0], rgba[1], rgba[2], 0.45], attachment.id, true);
-          }
-        } else if (visibility.zones) {
-          if (attachment.type === 'circle' || attachment.type === 'polygon') {
-            const boundary =
-              attachment.type === 'polygon'
-                ? attachment.vertices
-                : Array.from({ length: 48 }, (_, i): [number, number] => [
-                    Math.sin((i * Math.PI) / 24) * attachment.radius,
-                    Math.cos((i * Math.PI) / 24) * attachment.radius,
-                  ]);
-            const zone = groundZone(origin, boundary, this.height);
-            missing ||= zone.missing;
-            add(zone.triangles, 'triangles', rgba, attachment.id, true);
-            add(zone.lines, 'lines', [rgba[0], rgba[1], rgba[2], 0.9], attachment.id, true);
-          } else if (placement === 'airborne') {
-            const mesh = this.volume(attachment, local);
-            add(mesh, 'triangles', rgba, attachment.id);
+    const input = { feature, configuration: this.options.configuration(), style: this.options.style(feature), selected: this.selected.has(feature.id) };
+    const result = computeEntity(input, this.height, () => this.raster.unavailable());
+    const values: GpuCamera[] = [];
+    if (!this.gpuFailed && result.state.placement === 'airborne' && input.configuration.entityVisibility.footprints) {
+      const cameras = feature.entity?.attachments?.filter(a => a.type === 'camera' && a.terrainVisibility) ?? [];
+      const range = Math.max(0, ...cameras.map(a => a.type === 'camera' ? a.range : 0));
+      if (range > 0) {
+        const now = performance.now(), cached = this.terrainPatches.get(feature.id);
+        const terrain = cached && !cached.terrain.ready && now-cached.time<250 ? cached.terrain
+          : cameraTerrain(result.position[0], result.position[1], range, this.height, cached?.terrain);
+        if (!cached || terrain !== cached.terrain) {
+          this.terrainPatches.set(feature.id, {terrain,time:now}); this.gpuReady.delete(feature.id);
+        }
+        if (!terrain.ready && !this.raster.unavailable() && !this.terrainTimer) this.terrainTimer = setTimeout(() => {
+          this.terrainTimer=undefined; this.invalidate();
+        },250);
+        if (terrain.ready && result.state.altitude! > result.state.ground! + .01) {
+          for (const camera of cameras) if (camera.type === 'camera') {
+            const origin: [number,number,number]=[...result.position,result.state.altitude!];
+            const volume=cameraVolume(origin,camera,terrain);
+            values.push({entityId:feature.id,camera,origin,terrain,footprints:true,volume,
+              geometry:cameraVolumePrimitives(feature.id,origin,camera,volume,input.configuration,terrain)});
           }
         }
+        result.state.coverage = this.gpuReady.has(feature.id) ? 'ready' : this.raster.unavailable() ? 'unavailable' : 'loading';
       }
     }
-    this.geometry.set(feature.id, primitives);
-    this.states.set(feature.id, {
-      placement,
-      altitude,
-      ground: ground ?? undefined,
-      coverage: missing ? (this.raster.unavailable() ? 'unavailable' : 'loading') : 'ready',
-      footprintTriangles,
-      computedAt: performance.timeOrigin + performance.now(),
-      computationMs: performance.now() - started,
-    });
+    if (this.gpuFailed) result.state.coverage = 'unavailable';
+    this.gpuValues.set(feature.id, values);
+    this.apply(feature.id, result);
   }
-  private volume(
-    attachment: Extract<EntityAttachment, { type: 'sphere' | 'cylinder' }>,
-    local: ReturnType<typeof localFrame>,
-  ) {
-    const mesh: GeoPoint[] = [],
-      rings = attachment.type === 'sphere' ? 12 : 1,
-      segments = 32;
-    const point = (i: number, j: number) => {
-      const angle = (i * 2 * Math.PI) / segments,
-        t = j / rings;
-      const radius =
-        attachment.type === 'sphere' ? Math.sin(t * Math.PI) * attachment.radius : attachment.radius;
-      const z =
-        attachment.type === 'sphere'
-          ? Math.cos(t * Math.PI) * attachment.radius
-          : (t - 0.5) * attachment.height;
-      return local(Math.sin(angle) * radius, Math.cos(angle) * radius, z);
-    };
-    for (let j = 0; j < rings; j++)
-      for (let i = 0; i < segments; i++) {
-        const a = point(i, j),
-          b = point(i + 1, j),
-          c = point(i, j + 1),
-          d = point(i + 1, j + 1);
-        mesh.push(a, b, c, b, d, c);
-      }
-    if (attachment.type === 'cylinder')
-      for (let i = 0; i < segments; i++) {
-        mesh.push(local(0, 0, -attachment.height / 2), point(i, 0), point(i + 1, 0));
-        mesh.push(local(0, 0, attachment.height / 2), point(i, 1), point(i + 1, 1));
-      }
-    return mesh;
+
+  private apply(id: string, result: EntityComputationResult) {
+    if (this.destroyed || !this.features.has(id)) return;
+    this.geometry.set(id, result.primitives);
+    this.geometryDirty = true;
+    this.states.set(id, result.state);
+    this.positions.set(id, result.position);
+    const diagnostic = result.diagnostic;
+    if (diagnostic && this.diagnosticKeys.get(id) !== diagnostic)
+      this.options.diagnostic(new RidgelineError(diagnostic,
+        diagnostic === 'ALTITUDE_MISSING' ? 'Entity altitude is missing and ground fallback is disabled.' : 'Entity is below terrain; only its ground position is shown.',
+        { operation: 'entities', recoverable: true, featureId: id }));
+    if (diagnostic) this.diagnosticKeys.set(id, diagnostic);
+    else this.diagnosticKeys.delete(id);
   }
-  private color(value: string, alpha: number): Primitive['color'] {
-    const key = `${value}:${alpha}`,
-      cached = this.colors.get(key);
-    if (cached) return cached;
-    const context = new OffscreenCanvas(1, 1).getContext('2d');
-    if (!context) return [0.13, 0.43, 0.36, alpha];
-    context.fillStyle = '#216e5b';
-    context.fillStyle = value;
-    context.fillRect(0, 0, 1, 1);
-    const p = context.getImageData(0, 0, 1, 1).data;
-    const rgba: Primitive['color'] = [p[0]! / 255, p[1]! / 255, p[2]! / 255, alpha];
-    this.colors.set(key, rgba);
-    return rgba;
+  private render() {
+    if (!this.geometryDirty) return;
+    this.geometryDirty = false;
+    const values=[...this.gpuValues.values()].flat();
+    const retained=new Set(values.map(v=>JSON.stringify([v.entityId,v.camera.id])));
+    for(const key of this.displayedCameras.keys())if(!retained.has(key))this.displayedCameras.delete(key);
+    this.gpu.set(values);
+    this.renderLayers();
+  }
+  private renderLayers() {
+    const primitives = [...this.geometry.values()].flat().concat([...this.displayedCameras.values()].flatMap(v=>v.geometry));
+    this.layer.set(primitives.filter(p => !p.surface));
+    this.groundLayer.set(primitives.filter(p => p.surface));
   }
 }

@@ -78,11 +78,11 @@ The sensor's horizontal pointing direction clockwise from geographic north, inde
 **Sensor elevation angle**:
 The sensor's vertical pointing direction relative to the local level horizon, with positive angles upward and negative angles downward. It is an angle, distinct from altitude or terrain elevation.
 
-**Viewing volume**:
-The three-dimensional region represented by a sensor camera's field-of-view angles, pointing direction, and maximum display range. It does not by itself establish unobstructed visibility.
+**Camera overlay**:
+A four-sided directional polygon draped on terrain. Its boundary describes the camera direction and extent; optional terrain visibility divides its interior into approximately visible and hill-blocked regions.
 
-**Ground footprint**:
-The terrain area reached by a sensor camera's viewing volume within its maximum range, excluding ground hidden behind nearer terrain. Buildings are not included in this terrain visibility calculation.
+**Terrain visibility**:
+An estimate of whether hills obstruct the camera’s line of sight to ground inside its footprint. Missing elevation is unknown, not visible or blocked.
 
 ## Drawing
 

@@ -5,7 +5,7 @@ import type { GeoPoint } from './entity-geometry';
 export type Primitive = {
   entityId: string;
   attachmentId?: string;
-  mode: 'triangles' | 'lines' | 'points';
+  mode: 'triangles' | 'lines' | 'points' | 'polygon';
   vertices: GeoPoint[];
   color: [number, number, number, number];
   size?: number;
@@ -47,7 +47,7 @@ export class EntityLayer implements CustomLayerInterface {
   set(primitives: Primitive[]) {
     let first = 0;
     this.draws = primitives.map((p) => {
-      const d = { ...p, first, count: p.vertices.length };
+      const d = { ...p, first, count: p.mode === 'lines' ? p.vertices.length * 3 : p.vertices.length };
       first += d.count;
       return d;
     });
@@ -89,17 +89,22 @@ export class EntityLayer implements CustomLayerInterface {
           : new MercatorCoordinate(0, 0, 0);
         this.origin = [center.x, center.y];
         const values: number[] = [];
-        for (const draw of this.draws)
-          for (const p of draw.vertices) {
-            const m = MercatorCoordinate.fromLngLat([
-              p[0],
-              Math.max(-85.05112878, Math.min(85.05112878, p[1])),
-            ]);
-            let x = m.x - center.x;
-            if (x > 0.5) x--;
-            if (x < -0.5) x++;
-            values.push(x, m.y - center.y, p[2], m.meterInMercatorCoordinateUnits(), ...draw.color);
-          }
+        const position = (p: GeoPoint) => {
+          const m = MercatorCoordinate.fromLngLat([p[0], Math.max(-85.05112878, Math.min(85.05112878, p[1]))]);
+          let x = m.x - center.x;
+          if (x > .5) x--;
+          if (x < -.5) x++;
+          return [x, m.y - center.y, p[2], m.meterInMercatorCoordinateUnits()];
+        };
+        for (const draw of this.draws) {
+          if (draw.mode === 'lines') {
+            for (let i = 0; i < draw.vertices.length; i += 2) {
+              const a = position(draw.vertices[i]!), b = position(draw.vertices[i + 1]!);
+              for (const [t, side] of [[0,-1],[1,-1],[0,1],[0,1],[1,-1],[1,1]])
+                values.push(...a, ...draw.color, ...b, t!, side!);
+            }
+          } else for (const p of draw.vertices) values.push(...position(p), ...draw.color, 0,0,0,0,0,0);
+        }
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(values), gl.DYNAMIC_DRAW);
         this.dirty = false;
       }
@@ -124,24 +129,28 @@ export class EntityLayer implements CustomLayerInterface {
       gl.uniform4fv(uniform('u_projection_clipping_plane'), d.clippingPlane);
       gl.uniform1f(uniform('u_projection_transition'), 1);
       gl.uniform1f(uniform('u_blend'), d.projectionTransition);
+      gl.uniform2f(uniform('u_viewport'), gl.drawingBufferWidth, gl.drawingBufferHeight);
       for (const [location, size, offset] of [
         [program.position, 3, 0],
         [program.scale, 1, 12],
         [program.color, 4, 16],
+        [gl.getAttribLocation(program.program, 'a_end'), 4, 32],
+        [gl.getAttribLocation(program.program, 'a_line'), 2, 48],
       ])
         if (location !== undefined && location >= 0) {
           gl.enableVertexAttribArray(location);
-          gl.vertexAttribPointer(location, size!, gl.FLOAT, false, 32, offset!);
+          gl.vertexAttribPointer(location, size!, gl.FLOAT, false, 56, offset!);
         }
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       gl.disable(gl.CULL_FACE);
       gl.depthMask(false);
       for (const draw of this.draws) {
+        gl.uniform1f(uniform('u_line_width'), (draw.size ?? 1) * devicePixelRatio);
         gl.uniform1f(uniform('u_point_size'), (draw.size ?? 10) * devicePixelRatio);
         gl.uniform1i(uniform('u_point'), draw.mode === 'points' ? 1 : 0);
         gl.drawArrays(
-          draw.mode === 'triangles' ? gl.TRIANGLES : draw.mode === 'lines' ? gl.LINES : gl.POINTS,
+          draw.mode === 'triangles' || draw.mode === 'lines' ? gl.TRIANGLES : gl.POINTS,
           draw.first,
           draw.count,
         );
@@ -157,17 +166,36 @@ export class EntityLayer implements CustomLayerInterface {
 precision highp float;
 ${input.shaderData.vertexShaderPrelude}
 ${input.shaderData.define}
-in vec3 a_position; in float a_scale; in vec4 a_color;
+in vec3 a_position; in float a_scale; in vec4 a_color; in vec4 a_end; in vec2 a_line;
+uniform vec2 u_viewport; uniform float u_line_width;
 uniform mat4 u_flat; uniform float u_blend; uniform float u_point_size;
 out vec4 v_color;
-void main(){
+vec4 projectPosition(vec3 position,float scale){
 #ifdef GLOBE
-  vec4 sphere=projectTileFor3D(a_position.xy,a_position.z);
-  vec4 flatPosition=u_flat*vec4(a_position.xy,a_position.z*a_scale,1.0);
-  gl_Position=mix(flatPosition,sphere,u_blend);
+  vec4 sphere=projectTileFor3D(position.xy,position.z);
+  vec4 flatPosition=u_flat*vec4(position.xy,position.z*scale,1.0);
+  return mix(flatPosition,sphere,u_blend);
 #else
-  gl_Position=projectTileFor3D(a_position.xy,a_position.z*a_scale);
+  return projectTileFor3D(position.xy,position.z*scale);
 #endif
+}
+void main(){
+  vec4 start=projectPosition(a_position,a_scale);
+  gl_Position=start;
+  if(a_line.y!=0.){
+    vec4 end=projectPosition(a_end.xyz,a_end.w);
+    // Clip segments to the near plane before screen-space extrusion.
+    float da=start.z+start.w,db=end.z+end.w;
+    if(da<0.&&db<0.){gl_Position=vec4(2.,2.,2.,1.);}
+    else {
+      if(da<0.)start=mix(start,end,da/(da-db));
+      if(db<0.)end=mix(end,start,db/(db-max(da,0.)));
+      vec2 delta=(end.xy/end.w-start.xy/start.w)*u_viewport;
+      vec2 normal=vec2(-delta.y,delta.x)/max(length(delta),.0001);
+      gl_Position=mix(start,end,a_line.x);
+      gl_Position.xy+=normal*a_line.y*u_line_width/u_viewport*gl_Position.w;
+    }
+  }
   gl_PointSize=u_point_size;v_color=a_color;
 }`;
     const fragment = `#version 300 es

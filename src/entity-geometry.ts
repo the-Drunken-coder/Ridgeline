@@ -2,7 +2,9 @@ import type { CameraAttachment, Entity } from './types';
 
 export type Vec3 = [number, number, number];
 export type GeoPoint = [number, number, number];
-export type HeightAt = (lng: number, lat: number) => number | null;
+export type HeightAt = ((lng: number, lat: number) => number | null) & {
+  maximum?: (west: number, south: number, east: number, north: number) => number | null;
+};
 const R = 6_371_008.8;
 const rad = Math.PI / 180;
 export const normalize = (v: Vec3): Vec3 => {
@@ -38,13 +40,13 @@ export function validateEntity(entity: Entity, fail: (message: string) => never)
           fail(
             'Camera angles must be finite, elevation within ±90°, FOV between 0° and 180°, and range positive.',
           );
-        if (
-          attachment.volumeOpacity !== undefined &&
-          (!Number.isFinite(attachment.volumeOpacity) || attachment.volumeOpacity < 0 || attachment.volumeOpacity > 1)
-        )
-          fail('Camera volume opacity must be between 0 and 1.');
-        if (attachment.wireframe !== undefined && typeof attachment.wireframe !== 'boolean')
-          fail('Camera wireframe must be a boolean.');
+        if (attachment.terrainVisibility !== undefined && typeof attachment.terrainVisibility !== 'boolean') fail('Camera terrain visibility must be a boolean.');
+        if (attachment.blockedOpacity !== undefined && (!Number.isFinite(attachment.blockedOpacity) || attachment.blockedOpacity < 0 || attachment.blockedOpacity > 1)) fail('Camera blocked opacity must be between 0 and 1.');
+        if (attachment.fillOpacity !== undefined && (!Number.isFinite(attachment.fillOpacity) || attachment.fillOpacity < 0 || attachment.fillOpacity > 1)) fail('Camera fill opacity must be between 0 and 1.');
+        if (attachment.outline !== undefined && typeof attachment.outline !== 'boolean') fail('Camera outline must be a boolean.');
+        if (attachment.volumeOpacity !== undefined && (!Number.isFinite(attachment.volumeOpacity) || attachment.volumeOpacity < 0 || attachment.volumeOpacity > 1)) fail('Camera volume opacity must be between 0 and 1.');
+        if (attachment.wireframeWidth !== undefined && (!Number.isFinite(attachment.wireframeWidth) || attachment.wireframeWidth < 1 || attachment.wireframeWidth > 12)) fail('Camera wireframe width must be between 1 and 12 pixels.');
+        if (attachment.outlineWidth !== undefined && (!Number.isFinite(attachment.outlineWidth) || attachment.outlineWidth < 1 || attachment.outlineWidth > 12)) fail('Camera outline width must be between 1 and 12 pixels.');
         break;
       case 'sphere':
       case 'circle':
@@ -100,90 +102,31 @@ export function cameraRay(camera: CameraAttachment, x: number, y: number): Vec3 
   ]);
 }
 
-/** First terrain crossing, with an explicit unknown result rather than a fabricated zero height. */
-export function terrainRay(
-  origin: GeoPoint,
-  ray: Vec3,
-  range: number,
-  height: HeightAt,
-  steps = 128,
-): { point: GeoPoint; distance: number } | null | undefined {
-  const point = localFrame(origin);
-  let previous = 0;
-  for (let step = 1; step <= steps; step++) {
-    const distance = (range * step) / steps;
-    const p = point(ray[0] * distance, ray[1] * distance, ray[2] * distance);
-    const ground = height(p[0], p[1]);
-    if (ground === null) return undefined;
-    if (p[2] <= ground) {
-      let lo = previous,
-        hi = distance;
-      for (let i = 0; i < 8; i++) {
-        const middle = (lo + hi) / 2,
-          q = point(ray[0] * middle, ray[1] * middle, ray[2] * middle);
-        const elevation = height(q[0], q[1]);
-        if (elevation === null) return undefined;
-        if (q[2] > elevation) lo = middle;
-        else hi = middle;
-      }
-      const hit = point(ray[0] * hi, ray[1] * hi, ray[2] * hi);
-      const z = height(hit[0], hit[1]);
-      if (z === null) return undefined;
-      return { point: [hit[0], hit[1], z], distance: hi };
-    }
-    previous = distance;
-  }
-  return null;
+/** Four corner projection onto the local ground plane. Terrain only drapes the result. */
+export function cameraFootprint(origin: GeoPoint, camera: CameraAttachment, ground: number) {
+  const rays = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([x, y]) => cameraRay(camera, x!, y!));
+  if (origin[2] <= ground || rays.every(ray => ray[2] >= 0)) return [];
+  const local = localFrame(origin);
+  const corners = rays.map(ray => {
+    const distance = ray[2] < 0 ? Math.min(camera.range, (origin[2] - ground) / -ray[2]) : camera.range;
+    const point = local(ray[0] * distance, ray[1] * distance, ground - origin[2]);
+    return [point[0], point[1], ground] as GeoPoint;
+  });
+  return corners;
 }
 
-export function cameraFootprint(
-  origin: GeoPoint,
-  camera: CameraAttachment,
-  height: HeightAt,
-  columns = 20,
-  rows = 14,
-) {
-  const hits: ReturnType<typeof terrainRay>[] = [];
-  let missing = false;
-  for (let y = 0; y <= rows; y++)
-    for (let x = 0; x <= columns; x++) {
-      const hit = terrainRay(
-        origin,
-        cameraRay(camera, (x * 2) / columns - 1, (y * 2) / rows - 1),
-        camera.range,
-        height,
-      );
-      if (hit === undefined) missing = true;
-      hits.push(hit);
-    }
-  // Do not bridge a near ridge to distant terrain. Retain separate visible patches.
-  const triangles: GeoPoint[] = [];
-  for (let y = 0; y < rows; y++)
-    for (let x = 0; x < columns; x++) {
-      const i = y * (columns + 1) + x;
-      const a = hits[i],
-        b = hits[i + 1],
-        c = hits[i + columns + 1],
-        d = hits[i + columns + 2];
-      for (const tri of [
-        [a, b, c],
-        [b, d, c],
-      ]) {
-        if (!tri.every((p): p is NonNullable<typeof p> => Boolean(p))) continue;
-        const distances = tri.map((p) => p.distance);
-        if (Math.max(...distances) - Math.min(...distances) > camera.range / 6) continue;
-        triangles.push(...tri.map((p) => p.point));
-      }
-    }
-  return { triangles: missing ? [] : triangles, missing };
-}
-
-/** Sample the zone interior as well as its edge so large faces follow hills. */
-export function groundZone(origin: GeoPoint, boundary: readonly [number, number][], height: HeightAt) {
+export function groundZone(origin: GeoPoint, boundary: readonly [number, number][], height: HeightAt, draped = false) {
   const local = localFrame(origin),
     triangles: GeoPoint[] = [],
     lines: GeoPoint[] = [];
   let missing = false;
+  // Native draping supplies interior heights. A complete DEM bound proves the area is known,
+  // so it does not need thousands of redundant CPU triangles just to follow terrain.
+  const corners = boundary.map(p => local(p[0], p[1], 0));
+  const reference = origin[0];
+  const longitudes = corners.map(p => p[0] + Math.round((reference - p[0]) / 360) * 360);
+  const complete = draped && height.maximum && height.maximum(Math.min(...longitudes), Math.min(...corners.map(p => p[1])),
+    Math.max(...longitudes), Math.max(...corners.map(p => p[1]))) !== null;
   const sample = (p: [number, number]): GeoPoint => {
     const world = local(p[0], p[1], 0),
       z = height(world[0], world[1]);
@@ -196,7 +139,7 @@ export function groundZone(origin: GeoPoint, boundary: readonly [number, number]
   ];
   const length = (a: [number, number], b: [number, number]) => Math.hypot(a[0] - b[0], a[1] - b[1]);
   const face = (a: [number, number], b: [number, number], c: [number, number], depth: number) => {
-    if (depth < 6 && Math.max(length(a, b), length(b, c), length(c, a)) > 50) {
+    if (!complete && depth < 6 && Math.max(length(a, b), length(b, c), length(c, a)) > 50) {
       const ab = middle(a, b),
         bc = middle(b, c),
         ca = middle(c, a);
@@ -220,42 +163,6 @@ export function groundZone(origin: GeoPoint, boundary: readonly [number, number]
   return { triangles: missing ? [] : triangles, lines: missing ? [] : lines, missing };
 }
 
-/** A rectangular angular aperture clipped by maximum slant range. */
-export function cameraVolume(origin: GeoPoint, camera: CameraAttachment) {
-  const local = localFrame(origin),
-    triangles: GeoPoint[] = [],
-    lines: GeoPoint[] = [];
-  const columns = 20,
-    rows = 14;
-  const point = (x: number, y: number) => {
-    const ray = cameraRay(camera, (x * 2) / columns - 1, (y * 2) / rows - 1);
-    return local(ray[0] * camera.range, ray[1] * camera.range, ray[2] * camera.range);
-  };
-  for (let y = 0; y < rows; y++)
-    for (let x = 0; x < columns; x++) {
-      const a = point(x, y),
-        b = point(x + 1, y),
-        c = point(x, y + 1),
-        d = point(x + 1, y + 1);
-      triangles.push(a, b, c, b, d, c);
-    }
-  const edge = (a: GeoPoint, b: GeoPoint) => {
-    triangles.push(origin, a, b);
-    lines.push(a, b);
-  };
-  for (let x = 0; x < columns; x++) {
-    edge(point(x, 0), point(x + 1, 0));
-    edge(point(x, rows), point(x + 1, rows));
-  }
-  for (let y = 0; y < rows; y++) {
-    edge(point(0, y), point(0, y + 1));
-    edge(point(columns, y), point(columns, y + 1));
-  }
-  for (const x of [0, columns]) for (const y of [0, rows]) lines.push(origin, point(x, y));
-  return { triangles, lines };
-}
-
-/** Ear clipping keeps concave ground zones intact. Reject crossed or degenerate boundaries. */
 export function triangulate(vertices: readonly [number, number][]): number[] {
   const cross = (a: number, b: number, c: number) => {
     const p = vertices[a]!,

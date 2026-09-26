@@ -1,3 +1,5 @@
+> Camera scope was reset to an unoccluded four-corner terrain overlay on September 24. Earlier visibility requirements and results below are historical. Current contract: `docs/camera-lessons-learned.md`.
+
 # Airborne entities and attached geometry
 
 Status: Implemented locally with A, Expanded inspector. Verification and numerical limits are recorded in engineering-notes.md and docs/performance.md.
@@ -36,6 +38,7 @@ The user accepted all remaining first-round recommendations. The implementation 
 
 - Initial ground areas support circles and custom polygons.
 - Initial airborne zones support spheres and cylinders, in addition to sensor viewing volumes. Arbitrary 3D shapes are deferred.
+- The viewing volume and its rim stop at the first terrain intersection in each direction. The maximum-range boundary is deformed by hills.
 - Each sensor camera has an explicit maximum display range. No ground footprint is shown where its viewing volume does not reach the ground within that range.
 
 ### Missing data

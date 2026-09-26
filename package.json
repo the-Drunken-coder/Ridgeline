@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "A small interactive map viewport for TypeScript applications.",
-  "files": ["dist", "README.md", "docs/performance.md"],
+  "files": ["dist", "README.md", "docs/performance.md", "docs/camera-diagnostics.md", "docs/camera-lessons-learned.md"],
   "types": "./dist/index.d.ts",
   "exports": {
     ".": { "types": "./dist/index.d.ts", "import": "./dist/ridgeline.js" },

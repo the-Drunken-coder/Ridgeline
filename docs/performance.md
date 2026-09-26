@@ -1,8 +1,44 @@
-# Initial measurements and verification
+> Historical measurements below describe earlier implementations, including the now-removed visibility renderer. They are not benchmarks of the current four-corner overlay. See [camera lessons learned](camera-lessons-learned.md).
+
+# Measurements and verification
+
+## GPU integration
+
+The GPU prototype and the complete map have different costs. The prototype rendered one shared mesh and reached 120 sensor updates/s; the full map also performs terrain compositing, feature updates, picking, and overlay transfer. UI frame rate is not the camera update rate.
+
+The integrated renderer reports Camera 01 fresh sensor updates/s separately. Its CPU preparation duration excludes GPU work. Coverage age uses the GPU sensor timestamp when available and does not include asynchronous mask-transfer or final presentation latency. The footprint image can trail the volume by several frames.
+
+The single-asset scenario now advances once per animation frame using elapsed time. It no longer requests a fixed 10 Hz input rate, so its submitted-batch count is not directly comparable with the earlier runs below. The 100-entity scenario still requests 10 Hz.
+
+A warm production run on 2026-09-23 at 1280 × 720 in the macOS Codex Chromium browser, with the standard basemap, terrain, hillshade, camera volume/footprint, safety sphere, ground circle, and guide line enabled, measured **41.6 fresh sensor updates/s**, 42 UI callbacks/s, p95 UI interval 33.2 ms, and 417 submitted motion batches in ten seconds. CPU preparation p95 was 0.7 ms. This was measured after the browser test process exited. The reported 7 ms sensor age is time since GPU command submission, not the mask presentation delay.
+
+After the moving-footprint fix and spatial edge filtering, the same production scenario measured 36.6 sensor updates/s, 37 UI callbacks/s, and a 34.3 ms p95 UI interval. CPU preparation p95 was 1.3 ms. This run establishes current observed timing; the polish changes are not a frame-rate improvement. The movement regression checks footprint position and area continuity separately from throughput.
+
+Earlier full-map measurements during integration ranged from 23 to 41 sensor updates/s; some overlapped test/build activity and are not clean comparisons. The final path removes synchronous mask readback, avoids redundant ground-zone subdivisions, crops the mask upload, and uses frame-synchronized motion. It is faster than the old approximately 250 ms camera computation, but the full map does not match the isolated prototype's 120 updates/s.
+
+Strict TypeScript, 31 Node tests, 24 packed-consumer browser checks, and both builds pass. The existing large-chunk warning remains. Validation includes isolated footprint-speckle suppression, deterministic GPU ground-shadow and clipped-volume pixels, terrain-off behavior, appearance/picking, mask removal, and style replacement. Safari, multi-camera throughput limits, long-session GPU memory use, and end-to-end display latency remain unmeasured.
+
+## Terrain obstruction correction
+
+The terrain solver and volume mesh changed after PR #5. Camera volumes now end at terrain hits, and footprint triangles check interior visibility before rendering. Correctness checks cover a smooth hill shadow, narrow ridges at long range, grazing crests, and a volume that must stop before a ridge even when its maximum-range boundary would lie above ground beyond it. The browser pixel check retains green on the visible approach and removes it from the hidden slope.
+
+Before the performance repair below, a paused single-asset scene in the development browser took roughly 68 ms for its volume and 388 ms for its footprint after the sampler optimization. A camera pointed toward more complex hills took longer. These are individual CPU observations with temporary instrumentation, not a production frame-rate benchmark. At that stage geometry ran on the main thread and high-rate movement stalled rendering. These timings describe the earlier synchronous implementation. Temporary timing logs and pause overrides were removed.
+
+## Historical worker performance repair
+
+Before the GPU integration, the built-in raster path computed geometry in a dedicated worker. Pending updates coalesce per entity, and the native marker and camera geometry use the same completed position. Render uploads occur only when geometry changes. Custom JavaScript sampler callbacks remain synchronous.
+
+Conservative DEM maxima allow ray segments wholly above terrain to skip fine samples. A deterministic flat-ground fixture retains identical footprint and volume meshes with 118,971 height calls instead of 905,869. Unknown bounds fall back to fine sampling; the narrow-ridge obstruction tests still pass.
+
+On 2026-09-23, the development single-asset scenario in the macOS Codex Chromium browser measured 10 UI frame callbacks/s, p95 frame interval 200.5 ms, and 51 movement batches over ten seconds after sampling optimization alone. Moving computation to the worker raised that observation to 104 callbacks/s, p95 16.7 ms, and 100 batches. Worker computation p95 was 247.2 ms; coverage age p95 was 220 ms. Both observations used the natural narrow app viewport, standard basemap, terrain and hillshade enabled, and the scenario's default camera. These are individual warm runs, not a capacity guarantee.
+
+That worker production build, based on `7698e957a38bfd2330f648358455082d692c1295` with local changes, measured **119 UI frame callbacks/s**, p95 frame interval **9.2 ms**, 110.5 map render events/s, p95 submission 0.20 ms, and **100 movement batches** over ten seconds in the same single-asset scenario. Entity computation p95 was 256.4 ms and coverage age p95 was 226 ms. Browser errors were empty. The final checks pass strict TypeScript, 28 Node tests, 20 packed-consumer browser tests including worker startup without synchronous fallback, and both production builds. The existing large-chunk warning remains.
+
+Coverage age measures time since computation completed. It excludes the age of the input when that computation began and is not end-to-end display latency. The worker preserves UI responsiveness while terrain calculations finish; it does not establish 10 Hz coverage recomputation or smooth 100-entity operation.
 
 ## Ground footprint rendering correction
 
-The footprint gap regression is covered by a rendered-pixel browser test: coverage over unobstructed terrain must remain painted when the displayed DEM is five metres above the calculation DEM. The original custom mesh failed with four black samples; matching DEM heights passed. Native terrain-draped fill/line layers now pass the mismatched-height case. All 18 packed-consumer checks and the 16 Node tests pass. The physical visibility solver is unchanged.
+The footprint gap regression is covered by a rendered-pixel browser test: coverage over unobstructed terrain must remain painted when the displayed DEM is five metres above the calculation DEM. The original custom mesh failed with four black samples; matching DEM heights passed. Native terrain-draped fill/line layers now pass the mismatched-height case. At that stage, all 18 packed-consumer checks and 16 Node tests passed. That correction left the physical visibility solver unchanged; the later obstruction correction above changes it.
 
 The workload and bundle measurements below predate this ground-rendering correction and the single-asset scenario. They are historical measurements, not measurements of the updated path.
 

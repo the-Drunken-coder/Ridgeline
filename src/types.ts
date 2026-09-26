@@ -14,12 +14,18 @@ export type CameraAttachment = AttachmentBase & {
   fovX: number;
   fovY: number;
   range: number;
-  /** CSS color for the volume only; defaults to color, then #176d46. */
-  volumeColor?: string;
-  /** Face opacity from 0 to 1. Defaults to 0.25; zero hides the faces. */
+  /** Visible fill color uses the attachment color; opacity is between 0 and 1. */
+  fillOpacity?: number;
+  /** Enable GPU terrain visibility within the four-corner footprint. */
+  terrainVisibility?: boolean;
+  blockedColor?: string;
+  blockedOpacity?: number;
+  outline?: boolean;
+  outlineWidth?: number;
+  /** Shaded sides from the asset to the terrain footprint. */
   volumeOpacity?: number;
-  /** Show the volume edges independently of face opacity. Defaults to true. */
   wireframe?: boolean;
+  wireframeWidth?: number;
 };
 export type EntityAttachment = CameraAttachment
   | AttachmentBase & { type: 'sphere'; radius: number }
@@ -27,7 +33,7 @@ export type EntityAttachment = CameraAttachment
   | AttachmentBase & { type: 'circle'; radius: number }
   | AttachmentBase & { type: 'polygon'; /** Open boundary in east/north meters relative to the entity. */ vertices: [number, number][] };
 export type Entity = { altitude?: Altitude; groundIfNoAltitude?: boolean; attachments?: EntityAttachment[] };
-export type EntityVisibility = { volumes: boolean; footprints: boolean; zones: boolean; groundLines: boolean };
+export type EntityVisibility = { footprints: boolean; zones: boolean; groundLines: boolean };
 export type EntityState = {
   placement: 'airborne' | 'ground' | 'withheld' | 'elevation-unavailable' | 'below-terrain';
   altitude?: number;
@@ -35,6 +41,7 @@ export type EntityState = {
   coverage: 'ready' | 'loading' | 'unavailable';
   computedAt: number;
   computationMs: number;
+  /** Number of triangles represented by the ground overlay. */
   footprintTriangles: number;
 };
 /** An optional raw, unexaggerated terrain source, useful for offline data and deterministic tests. */
@@ -99,6 +106,7 @@ export type ViewportOptions<P extends Properties> = Partial<MapConfiguration> & 
   style?: (feature: MapFeature<P>) => FeatureStyle;
   logger?: Logger;
   onError?: (error: RidgelineError) => void;
+  /** Enables detailed camera lifecycle and mask-change measurements. Disabled by default. */
   initializationTimeoutMs?: number;
   elevationSampler?: ElevationSampler;
 };

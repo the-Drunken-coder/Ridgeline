@@ -3,10 +3,8 @@ import assert from 'node:assert/strict';
 import {
   cameraFootprint,
   cameraRay,
-  cameraVolume,
   groundZone,
   localFrame,
-  terrainRay,
   triangulate,
 } from '../src/entity-geometry';
 import { decodeElevation, tilePosition } from '../src/elevation-sampler';
@@ -37,39 +35,6 @@ test('camera directions use north and level, including straight down', () => {
   close(down[2], -1);
   const edge = cameraRay({ ...camera, elevation: 0 }, 1, 0);
   close((Math.atan2(edge[0], edge[1]) * 180) / Math.PI, 30);
-});
-
-test('range limits, skyward rays, and unknown terrain never manufacture a footprint', () => {
-  assert.equal(
-    terrainRay([0, 0, 300], [0, 0, -1], 200, () => 0),
-    null,
-  );
-  assert.equal(
-    terrainRay([0, 0, 300], [0, 0, 1], 2000, () => 0),
-    null,
-  );
-  assert.equal(
-    terrainRay([0, 0, 300], [0, 0, -1], 2000, () => null),
-    undefined,
-  );
-  const hit = terrainRay([0, 0, 300], [0, 0, -1], 2000, () => 0);
-  assert.ok(hit);
-  close(hit.distance, 300, 0.1);
-  close(hit.point[2], 0);
-  const footprint = cameraFootprint([0, 0, 300], camera, () => null);
-  assert.equal(footprint.missing, true);
-  assert.deepEqual(footprint.triangles, []);
-});
-
-test('a ridge blocks the farther ground instead of merely draping a trapezoid over it', () => {
-  const flat = cameraFootprint([0, 0, 300], { ...camera, elevation: -20, fovY: 30 }, () => 0);
-  const ridge = cameraFootprint([0, 0, 300], { ...camera, elevation: -20, fovY: 30 }, (_lng, lat) => {
-    const north = ((lat * Math.PI) / 180) * 6371008.8;
-    return north >= 300 && north <= 450 ? 400 : 0;
-  });
-  assert.ok(flat.triangles.some((p) => ((p[1] * Math.PI) / 180) * 6371008.8 > 450));
-  assert.ok(ridge.triangles.length > 0);
-  assert.ok(ridge.triangles.every((p) => ((p[1] * Math.PI) / 180) * 6371008.8 < 451));
 });
 
 test('local geometry crosses the antimeridian and remains finite at high latitude', () => {
@@ -148,14 +113,14 @@ test('camera opacity accepts both endpoints and rejects invalid styles atomicall
   const feature: MapFeature = {
     type: 'Feature', id: 'camera-style', properties: {},
     geometry: { type: 'Point', coordinates: [0, 0] },
-    entity: { attachments: [{ ...camera, volumeOpacity: 0, wireframe: false }] },
+    entity: { attachments: [{ ...camera, fillOpacity: 0, outline: false }] },
   };
   store.upsert([feature]);
-  store.upsert([{ ...feature, entity: { attachments: [{ ...camera, volumeOpacity: 1 }] } }]);
-  for (const volumeOpacity of [-0.1, 1.1, NaN, Infinity]) {
+  store.upsert([{ ...feature, entity: { attachments: [{ ...camera, fillOpacity: 1 }] } }]);
+  for (const fillOpacity of [-0.1, 1.1, NaN, Infinity]) {
     assert.throws(() => store.upsert([
       { ...feature, properties: { changed: true } },
-      { ...feature, id: 'invalid', entity: { attachments: [{ ...camera, volumeOpacity }] } },
+      { ...feature, id: 'invalid', entity: { attachments: [{ ...camera, fillOpacity }] } },
     ]), { code: 'INVALID_FEATURE' });
     assert.equal(store.get(feature.id)?.properties.changed, undefined);
   }
@@ -170,12 +135,6 @@ test('raw DEM decoding does not use any display exaggeration', () => {
   );
 });
 
-test('camera volume includes the centre ray at full slant range', () => {
-  const volume = cameraVolume([0, 0, 300], { ...camera, elevation: -90 });
-  assert.ok(volume.triangles.some((p) => Math.abs(p[2] + 1700) < 0.001));
-  assert.ok(volume.triangles.every((p) => p.every(Number.isFinite)));
-});
-
 test('ground zones sample hills inside their boundary and withhold incomplete terrain', () => {
   const boundary: [number, number][] = [
     [-100, -100],
@@ -188,4 +147,26 @@ test('ground zones sample hills inside their boundary and withhold incomplete te
   );
   assert.ok(zone.triangles.some((p) => p[2] === 100));
   assert.equal(groundZone([0, 0, 300], boundary, () => null).triangles.length, 0);
+});
+
+
+
+test('camera overlay projects four corners, caps range, and omits skyward cameras', () => {
+  const footprint = cameraFootprint([0, 0, 300], { ...camera, elevation: -90 }, 0);
+  assert.equal(footprint.length, 4);
+  assert.equal(new Set(footprint.map(p => JSON.stringify(p))).size, 4);
+  assert.ok(footprint.every(p => p[2] === 0));
+  assert.equal(cameraFootprint([0, 0, 300], { ...camera, elevation: 90 }, 0).length, 0);
+  const short = cameraFootprint([0, 0, 300], { ...camera, range: 100 }, 0);
+  assert.ok(short.every(p => Math.hypot(p[0], p[1]) * 111320 < 101));
+});
+
+test('camera aim and horizontal/vertical FOV remain independent', () => {
+  const angle = (a: number[], b: number[]) => Math.acos(Math.max(-1, Math.min(1, a.reduce((sum, value, i) => sum + value * b[i]!, 0)))) * 180 / Math.PI;
+  for (const bearing of [0, 90, 165]) for (const elevation of [-90, -30, 0, 90]) {
+    const pose = { ...camera, bearing, elevation };
+    close(angle(cameraRay(pose, -1, 0), cameraRay(pose, 1, 0)), pose.fovX);
+    close(angle(cameraRay(pose, 0, -1), cameraRay(pose, 0, 1)), pose.fovY);
+    assert.deepEqual(cameraRay({ ...pose, fovX: 110, fovY: 80 }, 0, 0), cameraRay(pose, 0, 0));
+  }
 });
