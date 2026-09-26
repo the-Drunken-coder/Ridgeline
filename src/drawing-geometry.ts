@@ -228,17 +228,25 @@ export function validateShape(shape: DrawingShape): string | undefined {
   if (closed) {
     if (Math.abs(signedArea(points)) >= 2 * Math.PI * R * R)
       return "Shapes covering more than half the Earth are not supported.";
-    for (let i = 0; i < edges; i++)
-      for (let j = i + 1; j < edges; j++) {
-        if (j === i + 1 || (i === 0 && j === edges - 1)) continue;
-        if (
-          intersects(
-            points[i]!,
-            points[(i + 1) % edges]!,
-            points[j]!,
-            points[(j + 1) % edges]!,
-          )
-        )
+    // Only overlapping edge bounds can intersect. Sweep in longitude order.
+    const segments = points
+      .map((a, index) => {
+        const b = points[(index + 1) % edges]!;
+        return {
+          a, b, index,
+          minX: Math.min(a[0], b[0]), maxX: Math.max(a[0], b[0]),
+          minY: Math.min(a[1], b[1]), maxY: Math.max(a[1], b[1]),
+        };
+      })
+      .sort((a, b) => a.minX - b.minX);
+    for (let i = 0; i < segments.length; i++)
+      for (let j = i + 1; j < segments.length; j++) {
+        const a = segments[i]!, b = segments[j]!;
+        if (b.minX > a.maxX) break;
+        const gap = Math.abs(a.index - b.index);
+        if (gap === 1 || gap === edges - 1 || b.minY > a.maxY || b.maxY < a.minY)
+          continue;
+        if (intersects(a.a, a.b, b.a, b.b))
           return "Edges cross. Adjust a vertex before finishing.";
       }
     if (Math.abs(signedArea(points)) < 0.01)

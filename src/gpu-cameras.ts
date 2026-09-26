@@ -30,9 +30,6 @@ type Camera = {
   uploaded?: CameraTerrain;
   published?: GpuCamera;
   buffer?: WebGLBuffer;
-  depth?: WebGLTexture;
-  frame?: WebGLFramebuffer;
-  linear?: WebGLTexture;
   pending?: WebGLSync;
   pixels?: WebGLBuffer;
 };
@@ -94,6 +91,9 @@ export class GpuCameras implements CustomLayerInterface {
   private voteTexture?: WebGLTexture;
   private sampleFrame?: WebGLFramebuffer;
   private sampleTexture?: WebGLTexture;
+  private sensorFrame?: WebGLFramebuffer;
+  private sensorDepth?: WebGLTexture;
+  private sensorLinear?: WebGLTexture;
   private terrainIndices?: WebGLBuffer;
   private maskFrame?: WebGLFramebuffer;
   private maskTexture?: WebGLTexture;
@@ -171,6 +171,7 @@ export class GpuCameras implements CustomLayerInterface {
       [this.maskFrame, this.maskTexture] = this.colorTarget(DISPLAY_SIZE);
       [this.voteFrame, this.voteTexture] = this.colorTarget(COVERAGE_SIZE);
       [this.sampleFrame, this.sampleTexture] = this.colorTarget(COVERAGE_SIZE * 3);
+      [this.sensorFrame, this.sensorDepth, this.sensorLinear] = this.sensorTarget();
       gl.bindTexture(gl.TEXTURE_2D,this.sampleTexture);
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
@@ -195,6 +196,27 @@ export class GpuCameras implements CustomLayerInterface {
       throw error;
     }
   }
+  private sensorTarget(): [WebGLFramebuffer, WebGLTexture, WebGLTexture] {
+    const gl = this.gl!, frame = gl.createFramebuffer(), depth = gl.createTexture(), linear = gl.createTexture();
+    try {
+      if (!frame || !depth || !linear) throw new Error('Cannot allocate camera sensor target.');
+      gl.bindTexture(gl.TEXTURE_2D, depth);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, SENSOR_SIZE, SENSOR_SIZE, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.bindTexture(gl.TEXTURE_2D, linear);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, SENSOR_SIZE, SENSOR_SIZE, 0, gl.RED, gl.FLOAT, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, frame);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depth, 0);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, linear, 0);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('Sensor depth framebuffer is incomplete.');
+      return [frame, depth, linear];
+    } catch (error) {
+      gl.deleteFramebuffer(frame); gl.deleteTexture(depth); gl.deleteTexture(linear);
+      throw error;
+    }
+  }
   private prepare(item: Camera) {
     const gl = this.gl!;
     if (!item.regionFrame) {
@@ -205,22 +227,11 @@ export class GpuCameras implements CustomLayerInterface {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     }
     if (!item.buffer) {
-      item.buffer = gl.createBuffer()!; item.depth = gl.createTexture()!; item.frame = gl.createFramebuffer()!;
-      gl.bindTexture(gl.TEXTURE_2D, item.depth); gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, SENSOR_SIZE, SENSOR_SIZE, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, item.frame); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, item.depth, 0);
-      item.linear = gl.createTexture()!;
-      gl.bindTexture(gl.TEXTURE_2D,item.linear);
-      gl.texImage2D(gl.TEXTURE_2D,0,gl.R32F,SENSOR_SIZE,SENSOR_SIZE,0,gl.RED,gl.FLOAT,null);
-      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,item.linear,0);
+      item.buffer = gl.createBuffer()!;
       item.pixels=gl.createBuffer()!;
       gl.bindBuffer(gl.PIXEL_PACK_BUFFER,item.pixels);
       gl.bufferData(gl.PIXEL_PACK_BUFFER,DISPLAY_SIZE*DISPLAY_SIZE*4,gl.STREAM_READ);
       gl.bindBuffer(gl.PIXEL_PACK_BUFFER,null);
-      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('Sensor depth framebuffer is incomplete.');
     }
     if (item.uploaded !== item.value.terrain) {
       gl.bindBuffer(gl.ARRAY_BUFFER, item.buffer); gl.bufferData(gl.ARRAY_BUFFER, item.value.terrain.vertices, gl.STATIC_DRAW); item.uploaded = item.value.terrain;
@@ -238,7 +249,7 @@ export class GpuCameras implements CustomLayerInterface {
         this.prepare(item);
         const analysis = analysisKey(item.value);
         if (analysis !== item.analysisKey || item.analysisTerrain !== item.value.terrain) {
-          gl.bindFramebuffer(gl.FRAMEBUFFER, item.frame!); gl.viewport(0, 0, SENSOR_SIZE, SENSOR_SIZE);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, this.sensorFrame!); gl.viewport(0, 0, SENSOR_SIZE, SENSOR_SIZE);
           gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.clearDepth(1); gl.clear(gl.DEPTH_BUFFER_BIT); gl.clearBufferfv(gl.COLOR,0,new Float32Array([item.value.camera.range,0,0,0])); gl.bindTexture(gl.TEXTURE_2D, null);
           this.uniforms(this.depthProgram!, item); this.bind(item.buffer!); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.terrainIndices!);
           gl.drawElements(gl.TRIANGLES, TERRAIN_CELLS ** 2 * 6, gl.UNSIGNED_INT, 0);
@@ -246,7 +257,7 @@ export class GpuCameras implements CustomLayerInterface {
           gl.activeTexture(gl.TEXTURE0);
           gl.viewport(0, 0, COVERAGE_SIZE * 3, COVERAGE_SIZE * 3);
           gl.disable(gl.DEPTH_TEST); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
-          gl.bindTexture(gl.TEXTURE_2D, item.linear!); this.uniforms(this.maskProgram!, item);
+          gl.bindTexture(gl.TEXTURE_2D, this.sensorLinear!); this.uniforms(this.maskProgram!, item);
           this.clipRange(item, COVERAGE_SIZE * 3);
           gl.drawElements(gl.TRIANGLES, TERRAIN_CELLS ** 2 * 6, gl.UNSIGNED_INT, 0);
           gl.disable(gl.SCISSOR_TEST);
@@ -260,7 +271,7 @@ export class GpuCameras implements CustomLayerInterface {
           gl.viewport(0,0,DISPLAY_SIZE,DISPLAY_SIZE);
           gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,this.voteTexture!);
           gl.activeTexture(gl.TEXTURE0);
-          gl.bindTexture(gl.TEXTURE_2D,item.linear!);
+          gl.bindTexture(gl.TEXTURE_2D,this.sensorLinear!);
           this.uniforms(this.boundaryProgram!,item);
           gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
           gl.uniform1i(gl.getUniformLocation(this.boundaryProgram!,'u_votes'),1);
@@ -387,14 +398,14 @@ export class GpuCameras implements CustomLayerInterface {
   private fail(cause: unknown) { this.failed = true; this.report(cause); }
   private release(item: Camera) {
     const gl = this.gl; if (!gl) return;
-    if(item.pending)gl.deleteSync(item.pending);if(item.pixels)gl.deleteBuffer(item.pixels);if(item.linear)gl.deleteTexture(item.linear);
+    if(item.pending)gl.deleteSync(item.pending);if(item.pixels)gl.deleteBuffer(item.pixels);
     if(item.regionFrame)gl.deleteFramebuffer(item.regionFrame);
     if(item.regionTexture)gl.deleteTexture(item.regionTexture);
     item.regionFrame=undefined;item.regionTexture=undefined;
     item.analysisKey=undefined;item.analysisTerrain=undefined;item.submitted=undefined;item.published=undefined;
-    item.pending=undefined;item.pixels=undefined;item.linear=undefined;
-    if (item.buffer) gl.deleteBuffer(item.buffer); if (item.depth) gl.deleteTexture(item.depth); if (item.frame) gl.deleteFramebuffer(item.frame);
-    item.buffer = undefined; item.depth = undefined; item.frame = undefined; item.uploaded = undefined; item.dirty = true;
+    item.pending=undefined;item.pixels=undefined;
+    if (item.buffer) gl.deleteBuffer(item.buffer);
+    item.buffer = undefined; item.uploaded = undefined; item.dirty = true;
   }
   onRemove() {
     this.map.off('render', this.publish);
@@ -404,12 +415,16 @@ export class GpuCameras implements CustomLayerInterface {
     for (const b of [this.terrainIndices]) if (b) gl.deleteBuffer(b);
     for (const f of [this.maskFrame, this.sampleFrame, this.voteFrame, this.rawRegionFrame]) if (f) gl.deleteFramebuffer(f);
     for (const t of [this.maskTexture, this.sampleTexture, this.voteTexture, this.rawRegionTexture]) if (t) gl.deleteTexture(t);
+    if (this.sensorFrame) gl.deleteFramebuffer(this.sensorFrame);
+    if (this.sensorDepth) gl.deleteTexture(this.sensorDepth);
+    if (this.sensorLinear) gl.deleteTexture(this.sensorLinear);
     if (this.vao) gl.deleteVertexArray(this.vao);
     this.depthProgram = undefined; this.maskProgram = undefined; this.voteProgram = undefined;
     this.boundaryProgram = undefined; this.smoothProgram = undefined; this.styleProgram = undefined;
     this.terrainIndices = undefined;
     this.maskFrame = undefined; this.sampleFrame = undefined; this.voteFrame = undefined; this.rawRegionFrame = undefined;
     this.maskTexture = undefined; this.sampleTexture = undefined; this.voteTexture = undefined; this.rawRegionTexture = undefined;
+    this.sensorFrame = undefined; this.sensorDepth = undefined; this.sensorLinear = undefined;
     this.vao = undefined; this.gl = undefined;
   }
   retry() {

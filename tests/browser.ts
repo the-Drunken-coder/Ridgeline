@@ -530,6 +530,42 @@ async function suite() {
     check(!draw.map.getSource('rl:draft'),'Draft source leaked on destroy');
     draw.destroy();tools.remove();inspector.remove();
   });
+  await run('Ordinary edits preserve dynamic styles, delete-only controls, and hover recovery', async () => {
+    const line: MapFeature = {type:'Feature',id:'line',geometry:{type:'LineString',coordinates:[[-.01,0],[.01,0]]},properties:{closed:false}};
+    const draw=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:12},features:[line,point('hover',.02)],
+      style:feature=>({color:feature.properties.closed?'#cc2222':'#008855',dashed:true,lineWidth:2}),logger:()=>{}});
+    current=draw;await draw.ready;
+    await until(()=>draw.map.queryRenderedFeatures({layers:['rl:points']}).length>0,'hover target rendered');
+    let hovers=0; draw.on('hover',()=>hovers++);
+    const hover=()=>draw.map.fire('mousemove',{point:draw.map.project([.02,0]),lngLat:draw.map.getCenter(),originalEvent:new MouseEvent('mousemove')});
+    hover();const previous=hovers,release=draw.acquireInteraction('test');hover();release();hover();
+    check(hovers===previous+1,'Hover did not resume after releasing interaction ownership');
+    const orangePixels=()=>new Promise<number>(resolve=>{
+      draw.map.once('render',()=>{
+        const canvas=draw.map.getCanvas(),gl=canvas.getContext('webgl2')!,scale=canvas.width/canvas.clientWidth,p=draw.map.project([0,0]);
+        const pixels=new Uint8Array(100*24*4);
+        gl.readPixels(Math.round(p.x*scale)-50,canvas.height-Math.round(p.y*scale)-12,100,24,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+        let count=0;for(let i=0;i<pixels.length;i+=4)if(Math.abs(pixels[i]!-219)<3&&Math.abs(pixels[i+1]!-106)<3&&Math.abs(pixels[i+2]!-32)<3)count++;
+        resolve(count);
+      });draw.map.triggerRepaint();
+    });
+    draw.preview('line');const hovered=await orangePixels();
+    draw.setSelection(['line']);const selected=await orangePixels();
+    check(hovered>0&&selected>hovered,'Dashed line did not show hover color and selection width');
+    let deleteOnly=false;
+    const editor=attachDrawing(draw,{createFeature:()=>({id:'new',properties:{}}),styleFields:[],canEdit:(_f,op)=>!deleteOnly||op==='delete',submit:()=>({accepted:true})});
+    const tools=document.createElement('div'),inspector=document.createElement('div');container.append(tools,inspector);
+    const controls=attachDrawingControls(draw,editor,{tools,inspector});
+    editor.edit('line');editor.moveVertex(1,[.015,0]);check(await editor.finish(),'Ordinary edit failed');
+    check(!draw.getFeature('line')?.drawing,'Geometry-only edit added fixed appearance');
+    draw.upsert([{...draw.getFeature('line')!,properties:{closed:true}}]);
+    check(draw.getStyle(draw.getFeature('line')!).color==='#cc2222','Consumer style stopped following properties');
+    deleteOnly=true;editor.edit('line');
+    const button=inspector.querySelector<HTMLButtonElement>('[data-field="action:Delete drawing"]')!;
+    check(!button.disabled,'Delete-only permission disabled the Delete control');button.click();
+    await until(()=>!draw.getFeature('line'),'delete-only action applied');
+    controls.destroy();editor.destroy();draw.destroy();tools.remove();inspector.remove();
+  });
   await run('Drawing snapping visits only nearby rendered candidates', async () => {
     const draw=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:12},features:[point('near',0),point('far',0.04)],logger:()=>{}});
     current=draw;await draw.ready;
@@ -543,6 +579,27 @@ async function suite() {
     const shape=editor.getState().draft?.shape;
     check(shape?.kind==='line'&&shape.vertices[0]?.[0]===0&&shape.vertices[0]?.[1]===0,'Nearby vertex did not snap');
     check(visited.length===1&&visited[0]==='near','Snapping inspected features outside its pointer radius');
+    editor.destroy();draw.destroy();
+  });
+  await run('Dragging a vertex back to its unchanged snap target restores its handle', async () => {
+    const line:MapFeature={type:'Feature',id:'line',properties:{},geometry:{type:'LineString',coordinates:[[0,0],[.01,0]]}};
+    const draw=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:13},features:[line,point('anchor',0)],logger:()=>{}});
+    current=draw;await draw.ready;
+    await until(()=>draw.map.queryRenderedFeatures({layers:['rl:points']}).length>0,'snap anchor rendered');
+    const editor=attachDrawing(draw,{createFeature:()=>({id:'new',properties:{}}),submit:()=>({accepted:true})});editor.edit('line');
+    await until(()=>draw.map.loaded(),'handle map ready');
+    const handle=container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]')!;
+    const rect=handle.getBoundingClientRect(),x=rect.x+rect.width/2,y=rect.y+rect.height/2;
+    handle.dispatchEvent(new MouseEvent('mousedown',{clientX:x,clientY:y,button:0,buttons:1,bubbles:true,cancelable:true,view:window}));
+    for(const step of [3,6,7]){
+      draw.map.getCanvas().dispatchEvent(new MouseEvent('mousemove',{clientX:x+step,clientY:y,buttons:1,bubbles:true,view:window}));
+      await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
+    }
+    draw.map.getCanvas().dispatchEvent(new MouseEvent('mouseup',{clientX:x+7,clientY:y,button:0,bubbles:true,view:window}));
+    await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
+    const shape=editor.getState().draft?.shape,end=handle.getBoundingClientRect();
+    check(shape?.kind==='line'&&shape.vertices[0]?.[0]===0&&shape.vertices[0]?.[1]===0,'Dragged vertex did not snap back to its anchor');
+    check(Math.abs(end.x+end.width/2-x)<0.5&&Math.abs(end.y+end.height/2-y)<0.5,'Handle stayed displaced from its unchanged snap target');
     editor.destroy();draw.destroy();
   });
   await run('Whole-shape dragging follows the pointer without snapping to its own vertices', async () => {
@@ -639,11 +696,29 @@ async function suite() {
     check(pixel[1]!>100&&pixel[0]!<25,`Finite camera volume excluded visible hillside: ${pixel}`);
     air.destroy();
   });
+  await run('Raster tile arrivals recover camera coverage despite unrelated missing terrain', async () => {
+    const dem=document.createElement('canvas');dem.width=dem.height=256;
+    const context=dem.getContext('2d')!;context.fillStyle='#000000';context.fillRect(0,0,256,256);
+    const air=createViewport({container,basemap:style(),elevation:{tiles:[dem.toDataURL()],encoding:'custom',redFactor:0,greenFactor:0,blueFactor:0,baseShift:0,maxzoom:12},logger:()=>{}});
+    current=air;await air.ready;
+    air.upsert([{...point('outside'),geometry:{type:'Point',coordinates:[0,86]},entity:{}}]);
+    await until(()=>air.getEntityState('outside')?.coverage==='unavailable','out-of-range terrain');
+    air.remove(['outside']);
+    const location:MapFeature={...point('warm'),geometry:{type:'Point',coordinates:[.07,.044]},entity:{}};
+    air.upsert([location]);await until(()=>air.getEntityState('warm')?.ground===0,'camera center tile');
+    air.upsert([{...location,id:'border-camera',entity:{altitude:{meters:100,reference:'ground'},attachments:[{
+      id:'camera',type:'camera',terrainVisibility:true,bearing:0,elevation:-45,fovX:60,fovY:40,range:2000,
+    }]}}]);
+    await until(()=>air.getEntityState('border-camera')?.coverage==='ready','neighboring terrain patch recovers without retry');
+    air.destroy();
+  });
   await run('Failed GPU target allocation releases its resources and retries', async () => {
     const errors: RidgelineError[] = [];
     const air = createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 },
       logger: () => {}, onError: error => errors.push(error) });
     current = air; await air.ready;
+    air.upsert([{...point('plain-zone'),entity:{attachments:[{id:'zone',type:'circle',radius:50}]}}]);
+    await until(()=>air.getEntityState('plain-zone')?.coverage==='ready','plain zone ready');
     const gl = air.map.getCanvas().getContext('webgl2')!;
     const createFramebuffer = gl.createFramebuffer.bind(gl), deleteFramebuffer = gl.deleteFramebuffer.bind(gl);
     const createTexture = gl.createTexture.bind(gl), deleteTexture = gl.deleteTexture.bind(gl);
@@ -658,6 +733,7 @@ async function suite() {
       air.upsert([{ ...point('gpu-failure'), entity: { altitude: { meters: 100, reference: 'ground' },
         attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } }]);
       await until(() => air.getEntityState('gpu-failure')?.coverage === 'unavailable', 'GPU allocation failure');
+      check(air.getEntityState('plain-zone')?.coverage==='ready','GPU failure changed unrelated ground coverage');
       check(errors.some(error => error.code === 'UPDATE_FAILED'), 'GPU failure did not report a diagnostic');
       check(frames.size === 0 && textures.size === 0, `Failed GPU allocation leaked ${frames.size} framebuffers and ${textures.size} textures`);
       gl.checkFramebufferStatus = checkFramebufferStatus;
@@ -673,8 +749,18 @@ async function suite() {
   await run('Coverage readiness follows every camera, pose changes, and ground placement', async () => {
     const air = createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 }, logger: () => {} });
     current = air; await air.ready;
+    air.upsert([{...point('ground'),entity:{attachments:[{id:'zone',type:'circle',radius:50}]}}]);
+    await until(()=>air.getEntityState('ground')?.coverage==='ready','ground geometry ready');
     const gl = air.map.getCanvas().getContext('webgl2')!;
     const clientWaitSync = gl.clientWaitSync.bind(gl);
+    const texImage2D = gl.texImage2D;
+    const source=air.map.getSource<GeoJSONSource>('rl:entity-ground')!,setData=source.setData.bind(source);
+    let sensorTargets=0,groundUploads=0;
+    gl.texImage2D=new Proxy(texImage2D,{apply(target,context:WebGL2RenderingContext,args:unknown[]){
+      if(args[3]===2048&&args[4]===2048)sensorTargets++;
+      return Reflect.apply(target,context,args);
+    }});
+    source.setData=(...args)=>{groundUploads++;return setData(...args);};
     let first: WebGLSync | undefined;
     let releaseSecond = false;
     gl.clientWaitSync = (sync, flags, timeout) => {
@@ -694,6 +780,8 @@ async function suite() {
       releaseSecond = true;
       await until(() => air.getEntityState('two-cameras')?.coverage === 'ready', 'both camera masks published');
       check(published() === 2, 'Ready entity is missing camera coverage');
+      check(sensorTargets===2,`Two cameras allocated ${sensorTargets} sensor targets instead of sharing one pair`);
+      check(groundUploads===1,`GPU publication resubmitted unchanged ground geometry ${groundUploads} times`);
       releaseSecond = false;
       let before = air.getEntityState(feature.id)!.computedAt;
       air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [.000001,0] } }]);
@@ -706,7 +794,7 @@ async function suite() {
       await until(() => air.getEntityState(feature.id)!.computedAt > before, 'ground-level camera computed');
       check(air.getEntityState(feature.id)?.coverage === 'ready', 'Known ground-level camera stayed loading');
       check(!air.map.getLayer('rl:camera-gpu'), 'Ground-level camera retained GPU geometry');
-    } finally { gl.clientWaitSync = clientWaitSync; air.destroy(); }
+    } finally { gl.clientWaitSync = clientWaitSync; gl.texImage2D=texImage2D;source.setData=setData;air.destroy(); }
   });
   await run('GPU visibility preserves flat-ground coverage at long range and caches terrain during movement', async () => {
     const meters = Math.PI / 180 * 6371008.8;

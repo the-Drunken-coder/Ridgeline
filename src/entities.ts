@@ -73,7 +73,7 @@ export class EntityScene<P extends Properties> {
     this.gpu = new GpuCameras(options.map, value => {
       const id = value.entityId;
       this.displayedCameras.set(JSON.stringify([id,value.camera.id]),value);
-      this.renderLayers();
+      this.renderLayers(false);
       const state = this.states.get(id);
       if (state && this.coverageReady(this.gpuValues.get(id) ?? [])) { state.coverage = 'ready'; options.changed([id]); }
     }, cause => {
@@ -87,7 +87,11 @@ export class EntityScene<P extends Properties> {
   private createSampler() {
     return new RasterElevationSampler(
       this.options.configuration().elevation,
-      () => { this.invalidate(); },
+      () => {
+        for (const [id, patch] of this.terrainPatches)
+          if (!patch.terrain.ready) this.terrainPatches.delete(id);
+        this.invalidate();
+      },
       (cause) =>
         this.options.diagnostic(
           new RidgelineError(
@@ -278,7 +282,10 @@ export class EntityScene<P extends Properties> {
     const unavailable = () => this.options.sampler ? !this.preparing.has(feature.id) : this.raster.unavailable();
     const result = computeEntity(input, this.height, unavailable);
     const values: GpuCamera[] = [];
-    if (!this.gpuFailed && result.state.placement === 'airborne' && result.state.altitude! > result.state.ground! + .01 && input.configuration.entityVisibility.footprints) {
+    const gpuRequired = result.state.placement === 'airborne' && result.state.altitude! > result.state.ground! + .01
+      && input.configuration.entityVisibility.footprints
+      && (feature.entity?.attachments?.some(a => a.type === 'camera' && a.terrainVisibility) ?? false);
+    if (!this.gpuFailed && gpuRequired) {
       const cameras = feature.entity?.attachments?.flatMap(a => a.type === 'camera' && a.terrainVisibility ? [a] : []) ?? [];
       const range = Math.max(0, ...cameras.map(camera => camera.range));
       if (range > 0) {
@@ -302,7 +309,7 @@ export class EntityScene<P extends Properties> {
         result.state.coverage = this.coverageReady(values) ? 'ready' : !terrain.ready && unavailable() ? 'unavailable' : 'loading';
       }
     }
-    if (this.gpuFailed) result.state.coverage = 'unavailable';
+    if (this.gpuFailed && gpuRequired) result.state.coverage = 'unavailable';
     this.gpuValues.set(feature.id, values);
     this.apply(feature.id, result);
   }
@@ -336,9 +343,9 @@ export class EntityScene<P extends Properties> {
     this.gpu.set(values);
     this.renderLayers();
   }
-  private renderLayers() {
+  private renderLayers(includeGround = true) {
     const primitives = [...this.geometry.values()].flat().concat([...this.displayedCameras.values()].flatMap(v=>v.geometry));
     this.layer.set(primitives.filter(p => !p.surface));
-    this.groundLayer.set(primitives.filter(p => p.surface));
+    if (includeGround) this.groundLayer.set(primitives.filter(p => p.surface));
   }
 }
