@@ -211,6 +211,34 @@ test('publishes attached cameras independently while readiness waits for all cur
   assert.equal(coverage.output('entity').filter(value => value.attachmentId === 'second').length, second.geometry.length);
 });
 
+test('keeps a near camera current when a farther camera lacks terrain', () => {
+  const adapter = controlledAdapter();
+  const { coverage } = owner(adapter, {
+    height: (lng, lat) => Math.hypot(lng * 111195, lat * 111195) <= 20 ? 0 : null,
+  });
+  const near = camera('near');
+  const far = { ...camera('far', 90), range: 100 };
+  const two = input({ cameras: [{ ...near, range: 10 }, far] });
+
+  assert.equal(coverage.update(two).coverage, 'loading');
+  const nearRequest = latestRequest(adapter, 'entity', 'near');
+  assert.equal([...adapter.values()].some(value => value.camera.id === 'far'), false, 'Unknown far terrain submitted a fabricated request');
+  assert.equal(adapter.complete(nearRequest), true);
+  assert.equal(coverage.status('entity'), 'loading', 'A far pending camera incorrectly made the entity ready');
+  assert.ok(coverage.output('entity').some(value => value.attachmentId === 'near'), 'Near camera did not publish independently');
+
+  const unavailable = input({ cameras: [{ ...near, range: 10 }, far], placement: 'elevation-unavailable', elevationUnavailable: true });
+  assert.equal(coverage.update(unavailable).coverage, 'unavailable');
+  assert.ok(coverage.output('entity').some(value => value.attachmentId === 'near'), 'Far unavailability removed completed near coverage');
+
+  const moved = input({ origin: [0.00005, 0, 100], cameras: [{ ...near, range: 10 }, far] });
+  assert.equal(coverage.update(moved).coverage, 'loading');
+  const movedNear = latestRequest(adapter, 'entity', 'near');
+  assert.equal(adapter.complete(movedNear), true);
+  assert.equal(coverage.status('entity'), 'loading');
+  assert.ok(coverage.output('entity').some(value => value.attachmentId === 'near'), 'Near camera could not advance while far terrain was unavailable');
+});
+
 test('keeps a pending terrain replacement loading, then settles prepared terrain without polling', async () => {
   let missing = false;
   let prepareCalls = 0;
