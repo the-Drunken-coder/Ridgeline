@@ -178,8 +178,13 @@ export function useControls(
       if (delta) { event.preventDefault(); dispatch({ type: 'pan', delta }); }
     }, options);
     window.addEventListener('keyup', event => { if (event.key === ' ') space = false; }, options);
-    window.addEventListener('blur', cancel, options);
-    document.addEventListener('visibilitychange', () => { if (document.hidden) cancel(); }, options);
+    const interrupt = () => {
+      const active = gesture;
+      clearGesture(); stopEdge(); space = false; setContext(null);
+      if (active) dispatch({ type: 'cancel' });
+    };
+    window.addEventListener('blur', interrupt, options);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) interrupt(); }, options);
     return () => { abort.abort(); clearGesture(); stopEdge(); setContext(null); };
   }, [stageRef, surfaceRef, scene.scheme, dispatch, viewport, edgePan]);
 

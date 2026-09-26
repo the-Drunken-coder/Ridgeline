@@ -17,6 +17,8 @@ pnpm dev:controls
 
 Run those commands from the repository root and open the local URL printed by Vite. `pnpm build:controls` checks TypeScript and builds `control-lab/dist/`. `pnpm test:controls` checks selection, order execution, command parsing, formation placement, and camera geometry.
 
+The root `pnpm check` and `pnpm test` commands also check this workspace.
+
 ## Control schemes
 
 | Scheme | Main interaction |
@@ -35,6 +37,8 @@ Run those commands from the repository root and open the local URL printed by Vi
 Scroll zooms toward the pointer in every scheme. Space-drag and middle-drag pan. Escape cancels unfinished gestures and action modes. Shift-click toggles individual units. Grid destinations refer to cells in the current viewport. Keyboard shortcuts apply while focus is in the map area and never intercept command input.
 
 Switching schemes preserves unit positions, the camera, and queued orders. Route and formation previews clear when the scheme or selection changes. Reset scene restores the sample units and clears orders. Hold removes only the selected recipients from queued group orders.
+
+Switching windows preserves completed previews. An unfinished pointer gesture is cancelled when the window loses focus.
 
 The app remembers the selected scheme, shortlist, and edge-pan setting in local storage. Unit positions and orders reset on reload. The app still works when storage is unavailable.
 
