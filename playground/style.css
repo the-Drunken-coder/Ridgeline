@@ -92,3 +92,27 @@ footer { min-height: 31px; display: flex; align-items: center; justify-content: 
 @media(max-width:760px) { .workspace { grid-template-columns:210px minmax(0,1fr); }.sidebar { padding:13px; }footer span:last-child { display:none; } }
 @media(max-width:540px) { .workspace { display:flex; flex-direction:column; height:auto; }.sidebar { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border-right:0;gap:16px; }.sidebar section + section { padding-top:0;border:0; }main { height:600px; }.event-section { display:none; }#motion { grid-column:1/-1; }#map-status { font-size:11px; }.app-header { gap:10px;padding:0 12px; } }
 @media(max-width:540px) { .sidc-scenario .sidebar { display:block; }.sidc-scenario .sidebar > section + section { margin-top:16px; } }
+
+.drawing-scenario .workspace { grid-template-columns:120px minmax(0,1fr) 244px;grid-template-rows:auto minmax(0,1fr); }
+.drawing-scenario .sidebar { grid-column:1/-1;grid-row:1;padding:8px 12px;display:flex;flex-direction:row;align-items:center;border-bottom:1px solid var(--line);overflow:visible; }
+.drawing-scenario .sidebar > section { display:none; }
+.drawing-scenario .sidebar > section:first-child { display:flex;align-items:center;gap:10px; }
+.drawing-scenario label[for=scenario] { margin:0;white-space:nowrap; }
+.drawing-scenario .sidebar #scenario { width:220px; }
+.drawing-scenario .sidebar .map-settings { display:block;margin:0 0 0 auto;border:0;padding:0;position:relative; }
+.drawing-scenario .sidebar .map-settings details[open] { position:absolute;right:0;top:0;z-index:6;background:var(--surface);border:1px solid var(--line);padding:10px;width:240px; }
+#drawing-tools { grid-column:1;grid-row:2;min-height:0; }
+.drawing-scenario main { grid-column:2;grid-row:2;min-height:0; }
+#drawing-inspector { grid-column:3;grid-row:2;min-height:0; }
+@media(max-width:700px) { .drawing-scenario .workspace { grid-template-columns:90px minmax(0,1fr) 210px; } .drawing-scenario .rl-drawing-tools { padding:4px; } }
+@media(max-width:540px) {
+ .drawing-scenario .workspace { display:flex;height:auto; }
+ .drawing-scenario .sidebar { display:flex;flex-wrap:wrap; }
+ .drawing-scenario #drawing-tools .rl-drawing-tools { flex-direction:row;flex-wrap:wrap; }
+ .drawing-scenario main { height:420px;flex:none; }
+ .drawing-scenario #drawing-inspector { width:100%; }
+}
+@media(max-width:540px) {
+ .drawing-scenario .sidebar > section:first-child { flex-wrap:wrap;max-width:100%; }
+ .drawing-scenario .sidebar #scenario { max-width:100%; }
+}

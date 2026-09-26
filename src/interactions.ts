@@ -240,6 +240,7 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
     for (const unsubscribe of subscriptions) unsubscribe();
     root.remove();
   }
+  subscriptions.push(viewport.on('interactionchange', () => close()));
   subscriptions.push(viewport.on('destroy', destroy));
   return { destroy, close: () => close() };
 }

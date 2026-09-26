@@ -5,7 +5,7 @@
     <header class="app-header"><strong>Ridgeline</strong><span>Playground</span><span id="map-status" role="status">Loading map…</span></header>
     <div class="workspace">
       <aside class="sidebar">
-        <section><label for="scenario">Test scenario</label><select id="scenario"><option value="terrain">Terrain &amp; hillshade</option><option value="overlap">Overlapping features</option><option value="moving">Moving features</option><option value="airborne-single">Single flying asset</option><option value="airborne">Airborne entities</option><option value="empty">Empty map</option><option value="error">Elevation unavailable</option><option value="sidc">SIDC Kit integration</option></select>
+        <section><label for="scenario">Test scenario</label><select id="scenario"><option value="drawing">Drawing &amp; editing</option><option value="terrain" selected>Terrain &amp; hillshade</option><option value="overlap">Overlapping features</option><option value="moving">Moving features</option><option value="airborne-single">Single flying asset</option><option value="airborne">Airborne entities</option><option value="empty">Empty map</option><option value="error">Elevation unavailable</option><option value="sidc">SIDC Kit integration</option></select>
           <div id="groups" hidden><h2>Locate group</h2><div class="group-buttons"><button data-group="2">2</button><button data-group="3">3</button><button data-group="8">8</button><button data-group="10">10</button><button data-group="20">20</button></div><button id="show-all">Show all groups</button></div>
         </section>
         <section id="sidc-demo" hidden aria-label="SIDC Kit integration"><p class="sidc-boundary">Playground integration with <a href="https://github.com/the-Drunken-coder/sidc-kit" target="_blank" rel="noreferrer">SIDC Kit</a>. SIDC features belong to this demo.</p><div id="sidc-content"></div></section>
@@ -15,7 +15,9 @@
         <section id="motion" hidden><h2>Moving features</h2><p id="motion-description">1,000 points · 100 moving · 10 updates/s</p><div class="action-row"><button id="pause">Pause</button><button id="measure">Measure 10s</button></div><output id="measurement">No measurement yet</output></section>
         <section class="event-section"><h2>Last interaction</h2><p id="last-event" aria-live="polite">Waiting for the map</p><p id="feature-count">0 features</p></section>
       </aside>
+      <div id="drawing-tools" hidden></div>
       <main><div id="map" aria-label="Interactive map"></div><div id="notice" role="status">Loading map…</div><div id="diagnostics" hidden><div><strong id="error-title"></strong><button id="dismiss-error" aria-label="Dismiss diagnostic">×</button></div><p id="error-message"></p><code id="error-code"></code><button id="retry-elevation">Retry default elevation</button></div></main>
+      <div id="drawing-inspector" hidden></div>
     </div>
     <footer><span id="footer-state">MapLibre · Mapterhorn elevation</span><span>Click to select · hover for a name · right-click for actions</span></footer>
     <script type="module" src="/main.ts"></script>

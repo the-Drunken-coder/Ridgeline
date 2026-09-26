@@ -1,3 +1,5 @@
+import { shapeGeometry } from './drawing-geometry';
+import { addArrowImage, arrowFeatures, ARROW_IMAGE } from './drawing-render';
 import { Map as GLMap, GeoJSONSource } from 'maplibre-gl';
 import type { LayerSpecification, MapMouseEvent, ErrorEvent as GLErrorEvent } from 'maplibre-gl';
 import { createReporter, RidgelineError } from './errors';
@@ -9,7 +11,7 @@ import type { FeatureStyle, IconDefinition, Interaction, MapConfiguration, MapFe
 const SOURCE = 'rl:features';
 const TERRAIN = 'rl:terrain';
 const SHADE = 'rl:hillshade';
-const layerIds = ['rl:fill', 'rl:line', 'rl:points', 'rl:icons', 'rl:labels'];
+const layerIds = ['rl:fill', 'rl:line', 'rl:dashed', 'rl:arrowheads', 'rl:points', 'rl:icons', 'rl:labels'];
 
 export const DEFAULT_BASEMAP = 'https://tiles.openfreemap.org/styles/liberty';
 export const DEFAULT_ELEVATION = {
@@ -21,6 +23,8 @@ export const DEFAULT_ELEVATION = {
 /** Creates one viewport. Data may be supplied before ready; destroy is always safe. */
 export function createViewport<P extends Properties = Properties>(options: ViewportOptions<P>): Viewport<P> {
   const store = new FeatureStore<P>();
+  const arrowIds = new Set<string>();
+  let arrowsDirty = false;
   const report = createReporter(options.logger);
   const icons = new Map<string, IconDefinition>();
   const pending = new Map<string, MapFeature<P> | null>();
@@ -28,6 +32,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   let submitting: symbol | null = null;
   let selected = new Set<string>();
   let previewId: string | null = null;
+  let interactionOwner: string | null = null;
   let destroyed = false;
   let prepared = false;
   let readySettled = false;
@@ -44,7 +49,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     entityVisibility: { ...DEFAULT_ENTITY_VISIBILITY, ...options.entityVisibility },
   };
   const listeners: { [K in keyof ViewportEvents<P>]: Set<(value: ViewportEvents<P>[K]) => void> } = {
-    click: new Set(), hover: new Set(), contextmenu: new Set(), selectionrequest: new Set(),
+    interactionchange: new Set(), selectionchange: new Set(), click: new Set(), hover: new Set(), contextmenu: new Set(), selectionrequest: new Set(),
     datachange: new Set(), entitychange: new Set(), camerachange: new Set(), diagnostic: new Set(), destroy: new Set(),
   };
   function diagnostic(error: RidgelineError) {
@@ -73,7 +78,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   try {
     if (!Number.isFinite(configuration.exaggeration) || configuration.exaggeration < 0) throw new RidgelineError('INVALID_CONFIGURATION', 'Terrain exaggeration must be a finite nonnegative number.', { operation: 'create', recoverable: false });
     configuration.hillshadeOptions = resolveHillshade(options.hillshadeOptions);
-    if (options.features) store.upsert(options.features);
+    if (options.features) { store.upsert(options.features); for (const feature of store.all()) if (feature.drawing?.shape.kind === 'arrow') arrowIds.add(feature.id); }
     map = new GLMap({
       container: options.container,
       style: configuration.basemap,
@@ -105,15 +110,15 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     const name = options.name?.(feature) ?? feature.properties.name;
     return typeof name === 'string' && name.trim() ? name : feature.id;
   }
-  function getStyle(feature: MapFeature<P>): FeatureStyle { return options.style?.(feature) ?? {}; }
+  function getStyle(feature: MapFeature<P>): FeatureStyle { return { ...options.style?.(feature), ...feature.drawing?.style }; }
   function rendered(feature: MapFeature<P>): MapFeature {
     const style = getStyle(feature);
     const marker = entities.marker(feature);
     return {
-      type: 'Feature', id: feature.id, geometry: feature.geometry,
+      type: 'Feature', id: feature.id, geometry: feature.drawing ? shapeGeometry(feature.drawing.shape, true) : feature.geometry,
       properties: {
         _rl_id: feature.id,
-        _rl_color: style.color ?? '#216e5b', _rl_radius: style.radius ?? 6,
+        _rl_color: style.color ?? '#216e5b', _rl_fill: style.fillColor ?? style.color ?? '#216e5b', _rl_dashed: style.dashed ?? false, _rl_radius: style.radius ?? 6,
         _rl_width: style.lineWidth ?? 3, _rl_opacity: style.fillOpacity ?? 0.2,
         _rl_icon: style.icon && icons.has(style.icon) ? `rl:icon:${style.icon}` : '',
         _rl_label: style.label ?? '',
@@ -160,6 +165,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         if (!current()) return;
       }
       if (!submitted.length) return;
+      if (arrowsDirty) { syncArrows(); arrowsDirty = false; }
       source.on('error', onSourceError);
       // Full replacements and removals are safe to repeat after a partial renderer failure.
       await source.updateData({ add, remove });
@@ -201,6 +207,16 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     if (!configuration.hillshade && map.getSource(SHADE)) map.removeSource(SHADE);
   }
 
+  function syncArrows() {
+    if (!prepared) return;
+    addArrowImage(map);
+    const arrows = arrowFeatures([...arrowIds].flatMap(id => { const feature = store.get(id); return feature ? [feature] : []; }));
+    const source = map.getSource('rl:arrows');
+    if (source instanceof GeoJSONSource) source.setData(arrows);
+    else map.addSource('rl:arrows', { type: 'geojson', promoteId: '_rl_id', data: arrows });
+    if (!map.getLayer('rl:arrowheads')) map.addLayer({ id: 'rl:arrowheads', type: 'symbol', source: 'rl:arrows', layout: { 'icon-image': ARROW_IMAGE, 'icon-rotate': ['get', 'bearing'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true }, paint: { 'icon-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'icon-color': ['get', 'color'] } });
+  }
+
   function prepareStyle() {
     if (destroyed) return;
     try {
@@ -222,13 +238,15 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         map.addSource(SOURCE, { type: 'geojson', promoteId: '_rl_id', data: { type: 'FeatureCollection', features } });
       }
       const layers: LayerSpecification[] = [
-        { id: 'rl:fill', type: 'fill', source: SOURCE, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': ['get', '_rl_color'], 'fill-opacity': ['case', ['boolean', ['feature-state', 'selected'], false], 0.45, ['get', '_rl_opacity']] } },
-        { id: 'rl:line', type: 'line', source: SOURCE, filter: ['in', '$type', 'LineString', 'Polygon'], paint: { 'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', ['get', '_rl_color']], 'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 5, ['get', '_rl_width']] } },
-        { id: 'rl:points', type: 'circle', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_airborne', true], ['!=', '_rl_hidden', true]], paint: { 'circle-radius': ['case', ['boolean', ['feature-state', 'hover'], false], 12, ['get', '_rl_radius']], 'circle-color': ['get', '_rl_color'], 'circle-stroke-width': ['case', ['boolean', ['feature-state', 'selected'], false], 4, 2], 'circle-stroke-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', '#ffffff'] } },
-        { id: 'rl:icons', type: 'symbol', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_icon', ''], ['!=', '_rl_hidden', true]], layout: { 'icon-image': ['get', '_rl_icon'], 'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-height-offset': ['get', '_rl_height'] } },
-        { id: 'rl:labels', type: 'symbol', source: SOURCE, filter: ['!=', '_rl_hidden', true], layout: { 'text-field': ['get', '_rl_label'], 'text-font': ['Noto Sans Regular'], 'text-size': 12, 'text-offset': [0, 1.8], 'text-anchor': 'top', 'symbol-height-offset': ['get', '_rl_height'] }, paint: { 'text-color': '#203b32', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } },
+        { id: 'rl:fill', type: 'fill', source: SOURCE, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': ['get', '_rl_fill'], 'fill-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, ['boolean', ['feature-state', 'selected'], false], 0.45, ['get', '_rl_opacity']] } },
+        { id: 'rl:line', type: 'line', source: SOURCE, filter: ['all', ['in', '$type', 'LineString', 'Polygon'], ['!=', '_rl_dashed', true]], paint: { 'line-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', ['get', '_rl_color']], 'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 5, ['get', '_rl_width']] } },
+        { id: 'rl:dashed', type: 'line', source: SOURCE, filter: ['all', ['in', '$type', 'LineString', 'Polygon'], ['==', '_rl_dashed', true]], paint: { 'line-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'line-color': ['get', '_rl_color'], 'line-width': ['get', '_rl_width'], 'line-dasharray': [3, 2] } },
+        { id: 'rl:points', type: 'circle', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_airborne', true], ['!=', '_rl_hidden', true]], paint: { 'circle-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'circle-stroke-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'circle-radius': ['case', ['boolean', ['feature-state', 'hover'], false], 12, ['get', '_rl_radius']], 'circle-color': ['get', '_rl_color'], 'circle-stroke-width': ['case', ['boolean', ['feature-state', 'selected'], false], 4, 2], 'circle-stroke-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', '#ffffff'] } },
+        { id: 'rl:icons', type: 'symbol', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_icon', ''], ['!=', '_rl_hidden', true]], layout: { 'icon-image': ['get', '_rl_icon'], 'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-height-offset': ['get', '_rl_height'] }, paint: { 'icon-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1] } },
+        { id: 'rl:labels', type: 'symbol', source: SOURCE, filter: ['!=', '_rl_hidden', true], layout: { 'text-field': ['get', '_rl_label'], 'text-font': ['Noto Sans Regular'], 'text-size': 12, 'text-offset': [0, 1.8], 'text-anchor': 'top', 'symbol-height-offset': ['get', '_rl_height'] }, paint: { 'text-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'text-color': '#203b32', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } },
       ];
       for (const layer of layers) if (!map.getLayer(layer.id)) map.addLayer(layer);
+      syncArrows();
       applyElevation();
       entities.attach();
       for (const id of selected) synchronizeState(id);
@@ -274,9 +292,10 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   }
   map.on('style.load', prepareStyle);
   map.on('error', onError);
-  map.on('click', event => emit('click', interaction(event, 12)));
-  map.on('contextmenu', event => emit('contextmenu', interaction(event, 6)));
+  map.on('click', event => { if (!interactionOwner) emit('click', interaction(event, 12)); });
+  map.on('contextmenu', event => { if (!interactionOwner) emit('contextmenu', interaction(event, 6)); });
   map.on('mousemove', event => {
+    if (interactionOwner) return;
     const value = interaction(event, 3);
     const id = value.features[0]?.id ?? '';
     if (id !== hovered) { hovered = id; emit('hover', value); }
@@ -289,10 +308,23 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
 
   const viewport: Viewport<P> = {
     ready, container: options.container, map,
+    getInteractionOwner: () => interactionOwner,
+    acquireInteraction(owner) {
+      assertActive();
+      if (interactionOwner) throw new Error(`Map interaction is owned by ${interactionOwner}.`);
+      if (!owner.trim()) throw new Error('An interaction owner needs a name.');
+      interactionOwner = owner; viewport.preview(null); emit('interactionchange', { owner });
+      let released = false;
+      return () => { if (released) return; released = true; interactionOwner = null; if (!destroyed) emit('interactionchange', { owner: null }); };
+    },
     upsert(features) {
       assertActive();
       try {
         const changed = store.upsert(features);
+        for (const feature of changed) {
+          if (arrowIds.delete(feature.id)) arrowsDirty = true;
+          if (feature.drawing?.shape.kind === 'arrow') { arrowIds.add(feature.id); arrowsDirty = true; }
+        }
         entities.set(changed);
         for (const feature of changed) { failed.delete(feature.id); pending.set(feature.id, feature); }
         schedule(); emit('datachange', { ids: changed.map(feature => feature.id), removed: [] });
@@ -304,7 +336,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     remove(ids) {
       assertActive(); const removed = store.remove(ids);
       entities.set([], removed);
-      for (const id of removed) { failed.delete(id); pending.set(id, null); selected.delete(id); if (previewId === id) previewId = null; if (prepared) map.removeFeatureState({ source: SOURCE, id }); }
+      for (const id of removed) { if (arrowIds.delete(id)) arrowsDirty = true; failed.delete(id); pending.set(id, null); selected.delete(id); if (previewId === id) previewId = null; if (prepared) map.removeFeatureState({ source: SOURCE, id }); }
       schedule(); emit('datachange', { ids: [], removed });
     },
     clear() { viewport.remove(store.ids()); },
@@ -333,6 +365,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       assertActive(); const previous = selected; selected = new Set(ids.filter(id => store.has(id)));
       entities.selection([...selected]);
       for (const id of new Set([...previous, ...selected])) synchronizeState(id);
+      emit('selectionchange', { ids: [...selected] });
     },
     getSelection: () => [...selected],
     preview(id) {
@@ -341,7 +374,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (previous) synchronizeState(previous); if (previewId) synchronizeState(previewId);
     },
     requestSelection(ids, attachments = []) {
-      assertActive();
+      assertActive(); if (interactionOwner) return;
       const selectedIds = ids.filter(id => store.has(id));
       emit('selectionrequest', { ids: selectedIds, attachments: attachments.filter(hit => selectedIds.includes(hit.entityId) && store.get(hit.entityId)?.entity?.attachments?.some(a => a.id === hit.attachmentId)).map(hit => ({ ...hit })) });
     },

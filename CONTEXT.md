@@ -83,3 +83,26 @@ The three-dimensional region represented by a sensor camera's field-of-view angl
 
 **Ground footprint**:
 The terrain area reached by a sensor camera's viewing volume within its maximum range, excluding ground hidden behind nearer terrain. Buildings are not included in this terrain visibility calculation.
+
+## Drawing
+
+**Drawing**:
+A geographic feature created through map drawing tools. Its meaning, such as a route or boundary, is assigned by the consumer.
+
+**Ground drawing**:
+A drawing whose geometry lies on the ground. It has no independent altitude or attachment to a moving feature.
+
+**Drawing draft**:
+A temporary version of a new or existing drawing that the consumer has not accepted. Discarding a draft leaves the accepted features unchanged.
+
+**Shape definition**:
+The defining geometry of a drawing, such as a circle's center and radius or an arrow's line. It preserves the drawing's shape-specific editing behavior.
+
+**Accepted drawing change**:
+A completed drawing change approved by the consumer. It is one application-history action, distinct from the individual actions used to prepare its draft.
+
+**Editing session**:
+Work on one drawing draft, including its geometry, appearance, and label. It ends when the consumer accepts the change or the user discards the draft.
+
+**Vertex snapping**:
+Positioning a drawing vertex at an eligible visible vertex. It copies the position without creating an attachment between features.

@@ -1,3 +1,4 @@
+import { mountDrawingDemo, drawingFeatures } from './drawing';
 import { attachInteractions, createViewport, DEFAULT_ELEVATION } from '@ridgeline/map';
 import type { MapFeature, RidgelineError } from '@ridgeline/map';
 import { setWorkerUrl } from 'maplibre-gl';
@@ -34,6 +35,7 @@ const pauseButton = element('#pause', HTMLButtonElement);
 const locateButton = element('#locate', HTMLButtonElement);
 const clearButton = element('#clear-selection', HTMLButtonElement);
 const lifetime = new AbortController();
+let drawingDemo:ReturnType<typeof mountDrawingDemo>|undefined;
 let currentScenario = 'terrain';
 let failingElevation = false;
 let motionTimer: ReturnType<typeof setInterval> | undefined;
@@ -152,12 +154,16 @@ function resetCamera() {
 }
 function loadScenario() {
   const revision = ++scenarioRevision;
+  drawingDemo?.destroy(); drawingDemo=undefined;
   sidcDemo?.destroy(); sidcDemo = undefined;
   airborneInspector?.destroy(); airborneInspector = undefined;
   stopMotion(); currentScenario = scenario.value; tick = 0; paused = false;
+  document.body.classList.toggle('drawing-scenario', currentScenario === 'drawing');
+  element('#drawing-tools',HTMLDivElement).hidden=currentScenario!=='drawing';
+  element('#drawing-inspector',HTMLDivElement).hidden=currentScenario!=='drawing';
   document.body.classList.toggle('sidc-scenario', currentScenario === 'sidc');
   document.body.classList.toggle('airborne-scenario', isAirborneScenario());
-  element('#map-settings', HTMLDetailsElement).open = !isAirborneScenario();
+  element('#map-settings', HTMLDetailsElement).open = !isAirborneScenario() && currentScenario !== 'drawing';
   element('#sidc-demo', HTMLElement).hidden = currentScenario !== 'sidc';
   element('#airborne-demo', HTMLElement).hidden = !isAirborneScenario();
   element('#selection', HTMLElement).hidden = currentScenario === 'sidc';
@@ -174,7 +180,12 @@ function loadScenario() {
     failingElevation = nextFailingElevation;
   }
   if (currentScenario === 'error') { terrain.checked = true; viewport.configure({ terrain: true }); }
-  if (currentScenario === 'overlap') viewport.upsert(overlapFeatures());
+  if (currentScenario === 'drawing') {
+    viewport.upsert(drawingFeatures());
+    drawingDemo=mountDrawingDemo(viewport,element('#drawing-tools',HTMLDivElement),element('#drawing-inspector',HTMLDivElement));
+    viewport.setSelection(['drawing-0']);
+  }
+  else if (currentScenario === 'overlap') viewport.upsert(overlapFeatures());
   else if (currentScenario === 'moving') {
     viewport.upsert([...movingFeatures(), ...terrainFeatures().filter(feature => feature.geometry.type !== 'Point')]);
     motionTimer = setInterval(() => {
@@ -255,7 +266,8 @@ listen(measureButton, 'click', () => {
   };
   benchmarkFrame = requestAnimationFrame(sample);
 });
+if(new URLSearchParams(location.search).get('scenario')==='drawing')scenario.value='drawing';
 void viewport.ready.then(loadScenario).catch(error => { notice.textContent = 'The map could not start. See the diagnostic for details.'; if (error instanceof Error) console.error(error); });
-function dispose() { disposed = true; ++scenarioRevision; airborneInspector?.destroy(); sidcDemo?.destroy(); interactions?.destroy(); stopMotion(); lifetime.abort(); viewport.destroy(); }
+function dispose() { drawingDemo?.destroy(); disposed = true; ++scenarioRevision; airborneInspector?.destroy(); sidcDemo?.destroy(); interactions?.destroy(); stopMotion(); lifetime.abort(); viewport.destroy(); }
 window.addEventListener('pagehide', dispose, { once: true });
 if (import.meta.hot) import.meta.hot.dispose(dispose);
