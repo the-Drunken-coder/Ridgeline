@@ -1,6 +1,6 @@
 import type { EntityAttachment, EntityState, FeatureStyle, MapConfiguration, MapFeature } from './types';
 import type { Primitive } from './entity-layer';
-import { cameraFootprint, cameraRay, groundZone, localFrame } from './entity-geometry';
+import { groundZone, localFrame } from './entity-geometry';
 import { visibleCameraEdges } from './camera-volume';
 import type { CameraVolume } from './camera-volume';
 import type { CameraTerrain } from './gpu-camera-terrain';
@@ -46,8 +46,7 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
         ? 'BELOW_TERRAIN'
         : undefined;
   const primitives: Primitive[] = [];
-  let footprintTriangles = 0,
-    missing = ground === null;
+  let missing = ground === null;
   const entityColor = color(style.color ?? '#216e5b', 1);
   const display = (p: GeoPoint): GeoPoint => [
     p[0],
@@ -99,29 +98,8 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
         attachment.color ?? (attachment.type === 'camera' ? '#288b59' : '#8060ae'),
         0.22,
       );
-      if (attachment.type === 'camera') {
-        if (placement !== 'airborne' || attachment.terrainVisibility) continue;
-        if (visibility.footprints) {
-          const footprint = cameraFootprint(origin, attachment, ground);
-          if ((attachment.volumeOpacity ?? 0) > 0 || attachment.wireframe) {
-            // Preserve each corner ray even when it reaches range before the ground.
-            const corners = ([[-1,-1],[1,-1],[1,1],[-1,1]] as const).map(([x,y]) => {
-              const ray=cameraRay(attachment,x,y);
-              const distance=ray[2]<0 ? Math.min(attachment.range,(origin[2]-ground)/-ray[2]) : attachment.range;
-              return local(ray[0]*distance,ray[1]*distance,ray[2]*distance);
-            });
-            const faces:GeoPoint[]=[],rays:GeoPoint[]=[];
-            corners.forEach((a,i)=>{const b=corners[(i+1)%4]!;faces.push(origin,a,b);rays.push(origin,a,a,b);});
-            if((attachment.volumeOpacity??0)>0)add(faces,'triangles',[rgba[0],rgba[1],rgba[2],attachment.volumeOpacity!],attachment.id);
-            if(attachment.wireframe)add(rays,'lines',color('#8bab97',1),attachment.id,false,attachment.wireframeWidth??3);
-          }
-
-          const visibleColor: Primitive['color'] = [rgba[0], rgba[1], rgba[2], attachment.fillOpacity ?? .25];
-          footprintTriangles += footprint.length ? 2 : 0;
-          add(footprint, 'polygon', visibleColor, attachment.id, true);
-          if (attachment.outline ?? true) add(footprint.flatMap((point, i) => [point, footprint[(i + 1) % footprint.length]!]), 'lines', [rgba[0], rgba[1], rgba[2], .95], attachment.id, true, attachment.outlineWidth ?? 3);
-        }
-      } else if (visibility.zones) {
+      if (attachment.type === 'camera') continue;
+      if (visibility.zones) {
         if (attachment.type === 'circle' || attachment.type === 'polygon') {
           const boundary =
             attachment.type === 'polygon'
@@ -146,7 +124,7 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
     altitude,
     ground: ground ?? undefined,
     coverage: missing ? (unavailable() ? 'unavailable' : 'loading') : 'ready',
-    footprintTriangles,
+    footprintTriangles: 0,
     computedAt: performance.timeOrigin + performance.now(),
     computationMs: performance.now() - started,
   } };

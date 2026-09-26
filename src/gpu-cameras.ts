@@ -12,6 +12,8 @@ type Color = [number, number, number, number];
 export type GpuCamera = {
   entityId: string;
   camera: CameraAttachment;
+  /** Owner lifecycle token used to reject completions from a removed attachment. */
+  lifecycle: number;
   origin: GeoPoint;
   terrain: CameraTerrain;
   volume: CameraVolume;
@@ -99,7 +101,11 @@ export class GpuCameras implements CustomLayerInterface {
   private maskTexture?: WebGLTexture;
   private failed = false;
 
-  constructor(private map: GLMap, private completed: (value: GpuCamera) => void, private report: (cause: unknown) => void) {}
+  constructor(
+    private map: GLMap,
+    private completed: (value: GpuCamera, publish: () => void) => boolean,
+    private report: (cause: unknown) => void,
+  ) {}
 
   set(values: GpuCamera[]) {
     const retained = new Set<string>();
@@ -329,9 +335,10 @@ export class GpuCameras implements CustomLayerInterface {
             gl.bindBuffer(gl.PIXEL_PACK_BUFFER,item.pixels!);
             gl.getBufferSubData(gl.PIXEL_PACK_BUFFER,0,new Uint8Array(item.image.data.buffer));
             gl.bindBuffer(gl.PIXEL_PACK_BUFFER,null);
-            this.map.getSource<ImageSource>(item.source)?.updateImage({image:item.image,coordinates:terrainCoordinates(submitted.value.terrain)});
-            item.published=submitted.value;
-            this.completed(submitted.value);
+            this.completed(submitted.value, () => {
+              this.map.getSource<ImageSource>(item.source)?.updateImage({image:item.image,coordinates:terrainCoordinates(submitted.value.terrain)});
+              item.published=submitted.value;
+            });
           }
         }
       }
