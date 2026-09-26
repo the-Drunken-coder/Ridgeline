@@ -158,8 +158,8 @@ export class EntityScene<P extends Properties> {
           for (const a of f.entity.attachments ?? []) {
             if (a.type === 'camera') continue;
             const range = a.type === 'polygon'
-                ? Math.max(...a.vertices.map((p) => Math.hypot(...p)))
-                : a.radius;
+              ? Math.max(...a.vertices.map((p) => Math.hypot(...p)))
+              : a.radius;
             for (const x of [-range, 0, range])
               for (const y of [-range, 0, range]) {
                 const p = local(x, y, 0);

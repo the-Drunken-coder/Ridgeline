@@ -102,25 +102,25 @@ function plainCameraPrimitives(
 
   const footprint = cameraFootprint(origin, camera, ground);
   if ((camera.volumeOpacity ?? 0) > 0 || camera.wireframe) {
-      const local = localFrame(origin);
-      const corners = ([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([x, y]) => {
-        const ray = cameraRay(camera, x, y);
-        const distance = ray[2] < 0
-          ? Math.min(camera.range, (origin[2] - ground) / -ray[2])
-          : camera.range;
-        return local(ray[0] * distance, ray[1] * distance, ray[2] * distance);
-      });
-      const faces: GeoPoint[] = [];
-      const rays: GeoPoint[] = [];
-      corners.forEach((a, index) => {
-        const b = corners[(index + 1) % corners.length]!;
-        faces.push(origin, a, b);
-        rays.push(origin, a, a, b);
-      });
-      if ((camera.volumeOpacity ?? 0) > 0)
-        add(faces, 'triangles', [rgba[0], rgba[1], rgba[2], camera.volumeOpacity!]);
-      if (camera.wireframe)
-        add(rays, 'lines', color('#8bab97', 1), false, camera.wireframeWidth ?? 3);
+    const local = localFrame(origin);
+    const corners = ([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([x, y]) => {
+      const ray = cameraRay(camera, x, y);
+      const distance = ray[2] < 0
+        ? Math.min(camera.range, (origin[2] - ground) / -ray[2])
+        : camera.range;
+      return local(ray[0] * distance, ray[1] * distance, ray[2] * distance);
+    });
+    const faces: GeoPoint[] = [];
+    const rays: GeoPoint[] = [];
+    corners.forEach((a, index) => {
+      const b = corners[(index + 1) % corners.length]!;
+      faces.push(origin, a, b);
+      rays.push(origin, a, a, b);
+    });
+    if ((camera.volumeOpacity ?? 0) > 0)
+      add(faces, 'triangles', [rgba[0], rgba[1], rgba[2], camera.volumeOpacity!]);
+    if (camera.wireframe)
+      add(rays, 'lines', color('#8bab97', 1), false, camera.wireframeWidth ?? 3);
   }
   if (footprint.length) {
     add(footprint, 'polygon', [rgba[0], rgba[1], rgba[2], camera.fillOpacity ?? 0.25], true);
@@ -202,10 +202,10 @@ export class SensorCameraCoverage {
       this.activate(input, active);
       this.updateTerrain(input, active);
     } else if (input.placement === 'elevation-unavailable') {
-      for (const camera of input.cameras) active.add(keyOf(input.entityId, camera.id));
-      if (input.cameras.some(camera => camera.terrainVisibility)) this.terrainPending.add(input.entityId);
+      if (visible) for (const camera of input.cameras) active.add(keyOf(input.entityId, camera.id));
+      if (visible && input.cameras.some(camera => camera.terrainVisibility)) this.terrainPending.add(input.entityId);
       this.activate(input, active);
-      if (input.cameras.some(camera => camera.terrainVisibility)) this.updateTerrain(input, active);
+      if (visible && input.cameras.some(camera => camera.terrainVisibility)) this.updateTerrain(input, active);
       if (input.elevationUnavailable && !this.preparing.has(input.entityId)) {
         for (const camera of input.cameras) if (!camera.terrainVisibility)
           this.displayed.delete(keyOf(input.entityId, camera.id));
@@ -395,7 +395,7 @@ export class SensorCameraCoverage {
       positions.push([point[0], point[1]]);
     }
     const generation = this.preparationGeneration;
-    const preparation = this.options.prepare(positions, generation.signal);
+    const preparation = Promise.resolve().then(() => this.options.prepare!(positions, generation.signal));
     this.preparing.set(input.entityId, preparation);
     void preparation
       .catch(cause => {
