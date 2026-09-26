@@ -115,7 +115,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     const style = getStyle(feature);
     const marker = entities.marker(feature);
     return {
-      type: 'Feature', id: feature.id, geometry: feature.drawing ? shapeGeometry(feature.drawing.shape, true) : feature.geometry,
+      type: 'Feature', id: feature.id,
+      geometry: feature.drawing ? shapeGeometry(feature.drawing.shape, true)
+        : marker.position ? { type: 'Point', coordinates: marker.position } : feature.geometry,
       properties: {
         _rl_id: feature.id,
         _rl_color: style.color ?? '#216e5b', _rl_fill: style.fillColor ?? style.color ?? '#216e5b', _rl_dashed: style.dashed ?? false, _rl_radius: style.radius ?? 6,

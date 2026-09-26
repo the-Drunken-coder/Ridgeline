@@ -1,6 +1,7 @@
 import type { ElevationProvider } from './types';
+import { ElevationBounds } from './elevation-bounds';
 
-type Tile = { size: number; values: Float32Array };
+type Tile = { size: number; values: Float32Array; bounds: ElevationBounds };
 const MAX_LAT = 85.05112878;
 export function tilePosition(lng: number, lat: number, zoom: number) {
   const n = 2 ** zoom,
@@ -68,6 +69,16 @@ export class RasterElevationSampler {
       iy = Math.floor(py),
       fx = px - ix,
       fy = py - iy;
+    // Most ray samples stay inside one tile. Avoid four neighbour lookups in this hot path.
+    if (ix >= 0 && iy >= 0 && ix + 1 < tile.size && iy + 1 < tile.size) {
+      const i = iy * tile.size + ix;
+      const result = tile.values[i]! * (1 - fx) * (1 - fy) +
+        tile.values[i + 1]! * fx * (1 - fy) +
+        tile.values[i + tile.size]! * (1 - fx) * fy +
+        tile.values[i + tile.size + 1]! * fx * fy;
+      if (!Number.isFinite(result)) this.failed.add('nodata');
+      return Number.isFinite(result) ? result : null;
+    }
     const value = (xx: number, yy: number) => {
       const dx = Math.floor(xx / tile.size),
         dy = Math.floor(yy / tile.size);
@@ -84,6 +95,28 @@ export class RasterElevationSampler {
       value(ix, iy + 1) * (1 - fx) * fy +
       value(ix + 1, iy + 1) * fx * fy;
     return Number.isFinite(result) ? result : null;
+  }
+  /** Upper bound for every bilinear sample in a geographic rectangle, including tile borders. */
+  maximum(west: number, south: number, east: number, north: number): number | null {
+    if (!this.ready || south < -MAX_LAT || north > MAX_LAT || east - west >= 360) return null;
+    const start = tilePosition(west, north, this.zoom), endY = tilePosition(east, south, this.zoom).y;
+    const first = this.getTile(Math.floor(start.x), Math.floor(start.y));
+    if (!first) return null;
+    const size = first.size, endX = start.x + (east - west) / 360 * 2 ** this.zoom;
+    // Include every pixel supporting bilinear interpolation, not just pixel centres inside the box.
+    const x0 = Math.floor(start.x * size - 0.5), x1 = Math.floor(endX * size - 0.5) + 1;
+    const y0 = Math.floor(start.y * size - 0.5), y1 = Math.floor(endY * size - 0.5) + 1;
+    let maximum = -Infinity;
+    for (let y = Math.floor(y0 / size); y <= Math.floor(y1 / size); y++)
+      for (let x = Math.floor(x0 / size); x <= Math.floor(x1 / size); x++) {
+        const tile = this.getTile(x, y);
+        if (!tile || tile.size !== size) return null;
+        maximum = Math.max(maximum, tile.bounds.maximum(
+          Math.max(0, x0 - x * size), Math.max(0, y0 - y * size),
+          Math.min(size - 1, x1 - x * size), Math.min(size - 1, y1 - y * size),
+        ));
+      }
+    return Number.isFinite(maximum) ? maximum : null;
   }
   private getTile(x: number, y: number) {
     const n = 2 ** this.zoom;
@@ -214,7 +247,7 @@ export class RasterElevationSampler {
                 this.provider.encoding,
                 this.provider,
               );
-      return { size: bitmap.width, values };
+      return { size: bitmap.width, values, bounds: new ElevationBounds(values, bitmap.width) };
     } finally {
       bitmap.close();
     }

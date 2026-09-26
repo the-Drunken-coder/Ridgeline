@@ -39,6 +39,7 @@ let drawingDemo:ReturnType<typeof mountDrawingDemo>|undefined;
 let currentScenario = 'terrain';
 let failingElevation = false;
 let motionTimer: ReturnType<typeof setInterval> | undefined;
+let motionFrame = 0;
 let tick = 0;
 let paused = false;
 let benchmarkFrame = 0;
@@ -142,7 +143,7 @@ viewport.on('camerachange', camera => { pitch.value = String(Math.round(camera.p
 viewport.map.on('idle', () => { if (mapStatus.textContent === 'Retrying elevation' && diagnostics.hidden) mapStatus.textContent = 'Ready'; });
 
 function stopBenchmark() { measuring = false; cancelAnimationFrame(benchmarkFrame); measureButton.disabled = false; }
-function stopMotion() { if (motionTimer) clearInterval(motionTimer); motionTimer = undefined; stopBenchmark(); }
+function stopMotion() { cancelAnimationFrame(motionFrame); motionFrame = 0; if (motionTimer) clearInterval(motionTimer); motionTimer = undefined; stopBenchmark(); }
 function isAirborneScenario() { return currentScenario === 'airborne' || currentScenario === 'airborne-single'; }
 function resetCamera() {
   if (currentScenario === 'sidc') viewport.setCamera({ center: [6.87,45.924], zoom: 13.5, pitch: 0, bearing: 0 });
@@ -170,7 +171,7 @@ function loadScenario() {
   pauseButton.textContent = 'Pause'; measurement.textContent = 'No measurement yet'; diagnostics.hidden = true;
   element('#groups', HTMLDivElement).hidden = currentScenario !== 'overlap';
   element('#motion', HTMLElement).hidden = !['moving', 'airborne', 'airborne-single'].includes(currentScenario);
-  element('#motion-description', HTMLElement).textContent = currentScenario === 'airborne-single' ? '1 flying asset · 1 camera · 10 updates/s' : currentScenario === 'airborne' ? '1,000 points · 100 moving · 10 cameras · 10 updates/s' : '1,000 points · 100 moving · 10 updates/s';
+  element('#motion-description', HTMLElement).textContent = currentScenario === 'airborne-single' ? '1 flying asset · 1 camera · frame-synced motion' : currentScenario === 'airborne' ? '1,000 points · 100 moving · 10 cameras · 10 updates/s' : '1,000 points · 100 moving · 10 updates/s';
   viewport.clear(); viewport.setSelection([]); renderSelection();
   const nextFailingElevation = currentScenario === 'error';
   if (failingElevation !== nextFailingElevation) {
@@ -197,19 +198,28 @@ function loadScenario() {
   } else if (isAirborneScenario()) {
     const movingCount = currentScenario === 'airborne-single' ? 1 : 100;
     airborneSettings.clear();
-    viewport.configure({ entityVisibility: { volumes: true, footprints: true, zones: true, groundLines: true } });
+    viewport.configure({ entityVisibility: { footprints: true, zones: movingCount !== 1, groundLines: movingCount !== 1 } });
     viewport.upsert(airborneFeatures(0, movingCount === 1 ? 1 : 1_000, airborneSettings));
     viewport.setSelection(['moving-0']);
     airborneInspector = mountAirborneInspector(viewport, element('#airborne-demo', HTMLElement), id => airborneSettings.get(id) ?? defaultAirborneSettings, (id, settings) => {
       airborneSettings.set(id, settings); viewport.upsert(airborneFeatures(tick, movingCount, airborneSettings));
     });
     renderSelection();
-    motionTimer = setInterval(() => {
+    const advance = (delta: number) => {
       if (paused || document.hidden) return;
-      const updates = airborneFeatures(++tick, movingCount, airborneSettings);
+      tick += delta;
+      const updates = airborneFeatures(tick, movingCount, airborneSettings);
       const start = performance.now(); viewport.upsert(updates);
       if (measuring) updateCosts.push(performance.now() - start);
-    }, 100);
+    };
+    if (movingCount === 1) {
+      let previous = performance.now();
+      const animate = (now: number) => {
+        advance(Math.min(100, now - previous) / 100); previous = now;
+        motionFrame = requestAnimationFrame(animate);
+      };
+      motionFrame = requestAnimationFrame(animate);
+    } else motionTimer = setInterval(() => advance(1), 100);
   } else if (currentScenario === 'sidc') {
     const content = element('#sidc-content', HTMLDivElement);
     content.textContent = 'Loading SIDC Kit…';
@@ -260,7 +270,7 @@ listen(measureButton, 'click', () => {
     }
     if (now - start < 10_000) { benchmarkFrame = requestAnimationFrame(sample); return; }
     const seconds = (now - start) / 1_000;
-    measurement.textContent = `${Math.round(intervals.length / seconds)} UI frames/s · p95 UI frame ${percentile(intervals).toFixed(1)} ms · ${(renderedFrames / seconds).toFixed(1)} map renders/s · p95 update submission ${percentile(updateCosts).toFixed(2)} ms · ${updateCosts.length} batches. Map renders are demand-driven; worker/GPU duration is not measured.`;
+    measurement.textContent = `${Math.round(intervals.length / seconds)} UI frames/s · p95 UI frame ${percentile(intervals).toFixed(1)} ms · ${(renderedFrames / seconds).toFixed(1)} map renders/s · p95 update submission ${percentile(updateCosts).toFixed(2)} ms · ${updateCosts.length} batches. Map renders are demand-driven; GPU duration is not measured.`;
     if (isAirborneScenario()) measurement.textContent += ` Entity computation p95 ${percentile(entityCosts).toFixed(1)} ms per batch; ${coverageAges.length ? `coverage age p95 ${percentile(coverageAges).toFixed(0)} ms` : 'coverage not ready for age measurement'}.`;
     stopBenchmark();
   };

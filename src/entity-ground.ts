@@ -1,12 +1,12 @@
-import type { FeatureCollection, MultiLineString, MultiPolygon, Position } from 'geojson';
+import type { FeatureCollection, MultiLineString, MultiPolygon, Polygon, Position } from 'geojson';
 import type { GeoJSONSource, Map as GLMap } from 'maplibre-gl';
 import type { Primitive } from './entity-layer';
 
 const SOURCE = 'rl:entity-ground';
 const FILL = 'rl:entity-ground-fill';
 const LINE = 'rl:entity-ground-line';
-type GroundProperties = { entityId: string; attachmentId: string; color: string; opacity: number };
-type GroundData = FeatureCollection<MultiPolygon | MultiLineString, GroundProperties>;
+type GroundProperties = { entityId: string; attachmentId: string; color: string; opacity: number; width: number };
+type GroundData = FeatureCollection<Polygon | MultiPolygon | MultiLineString, GroundProperties>;
 
 /** Let the renderer drape coverage onto its terrain instead of depth-testing a second terrain mesh. */
 export class EntityGround {
@@ -37,7 +37,7 @@ export class EntityGround {
           type: 'line',
           source: SOURCE,
           filter: ['==', '$type', 'LineString'],
-          paint: { 'line-color': ['get', 'color'], 'line-opacity': ['get', 'opacity'], 'line-width': 1 },
+          paint: { 'line-color': ['get', 'color'], 'line-opacity': ['get', 'opacity'], 'line-width': ['get', 'width'] },
         },
         'rl:points',
       );
@@ -46,7 +46,7 @@ export class EntityGround {
   set(primitives: readonly Primitive[]) {
     const features: GroundData['features'] = [];
     for (const primitive of primitives) {
-      if (!primitive.attachmentId || primitive.mode === 'points') continue;
+      if (!primitive.attachmentId || primitive.mode === 'points' || primitive.color[3] <= 0) continue;
       const { vertices, color, entityId, attachmentId } = primitive;
       // Keep small shapes crossing the antimeridian local rather than spanning the whole map.
       const reference = vertices[0]?.[0] ?? 0;
@@ -62,8 +62,11 @@ export class EntityGround {
           .map((v) => Math.round(v * 255))
           .join(',')})`,
         opacity: color[3],
+        width: primitive.size ?? 1,
       };
-      if (primitive.mode === 'triangles') {
+      if (primitive.mode === 'polygon') {
+        features.push({ type: 'Feature', properties, geometry: { type: 'Polygon', coordinates: [[...points, points[0]!]] } });
+      } else if (primitive.mode === 'triangles') {
         const coordinates: MultiPolygon['coordinates'] = [];
         for (let i = 0; i < points.length; i += 3)
           coordinates.push([[points[i]!, points[i + 1]!, points[i + 2]!, points[i]!]]);

@@ -1,7 +1,8 @@
+import { checkGpuVote } from './gpu-vote';
 import { createViewport, attachInteractions, attachDrawing, attachDrawingControls, shapeGeometry, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
 import { GeoJSONSource, ErrorEvent as MapErrorEvent, setWorkerUrl } from 'maplibre-gl';
-import type { StyleSpecification } from 'maplibre-gl';
+import type { ImageSource, StyleSpecification } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import '@ridgeline/map/style.css';
@@ -42,6 +43,7 @@ async function suite() {
   await run('Queued features render with stable string IDs and click events', async () => {
     viewport.upsert([point('queued')]);
     await viewport.ready;
+    check(!viewport.map.getLayer('rl:camera-gpu'), 'Ground-only viewport allocated the camera renderer');
     await until(() => hits().some(hit => hit.id === 'queued'), 'queued feature rendered');
     check(hits().some(hit => hit.id === 'initial'), 'Initial feature missing');
     let ids: string[] = [];
@@ -291,11 +293,12 @@ async function suite() {
     const air=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:14,pitch:55},elevationSampler:{sample:()=>missing?null:100},logger:()=>{},onError:error=>errors.push(error)});
     current=air;
     await air.ready;
-    const aircraft:MapFeature={...point('aircraft'),entity:{altitude:{meters:300,reference:'ground'},attachments:[{id:'camera',type:'camera',bearing:0,elevation:-45,fovX:60,fovY:40,range:1000},{id:'zone',type:'sphere',radius:100}]}};
+    const aircraft:MapFeature={...point('aircraft'),entity:{altitude:{meters:300,reference:'ground'},attachments:[{id:'camera',type:'camera',bearing:0,elevation:-45,fovX:60,fovY:40,range:1000,volumeOpacity:.28,wireframe:true,wireframeWidth:5},{id:'zone',type:'sphere',radius:100}]}};
     air.upsert([aircraft]);
     await until(()=>air.getEntityState('aircraft')?.coverage==='ready','airborne terrain ready');
     check(air.getEntityState('aircraft')?.altitude===400,'AGL conversion lost ground height');
     check((air.getEntityState('aircraft')?.footprintTriangles??0)>0,'Ground footprint absent');
+    check(!air.map.getLayer('rl:camera-gpu'), 'Plain camera overlay allocated the GPU visibility renderer');
     const triangles=air.getEntityState('aircraft')!.footprintTriangles;
     await new Promise<void>(resolve=>air.map.once('idle',()=>resolve()));
     const ui = attachInteractions(air, {picker:false});
@@ -329,10 +332,76 @@ async function suite() {
     air.remove(['aircraft']);check(!air.getEntityState('aircraft'),'Removed entity state remains');
     air.destroy();
   });
+  await run('Wireframe-only camera interiors do not intercept clicks', async () => {
+    const air = createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 },
+      camera: { center: [0,0], zoom: 17, pitch: 0 }, logger: () => {} });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'camera', type: 'camera', bearing: 0, elevation: -90,
+      fovX: 60, fovY: 60, range: 1000, fillOpacity: 0, outline: false, wireframe: true, volumeOpacity: .2 };
+    const feature: MapFeature = { ...point('wireframe'), entity: { altitude: { meters: 300, reference: 'ground' }, attachments: [camera] } };
+    let attachment = '';
+    air.on('click', event => { attachment = event.attachments[0]?.attachmentId ?? ''; });
+    const click = () => air.map.fire('click', { point: air.map.project([.0006,.0004]),
+      lngLat: air.map.getCenter(), originalEvent: new MouseEvent('click') });
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'camera volume');
+    await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+    click(); check(attachment === camera.id, 'Visible camera face was not selectable');
+    const before = air.getEntityState(feature.id)!.computedAt;
+    air.upsert([{ ...feature, entity: { ...feature.entity!, attachments: [{ ...camera, volumeOpacity: 0 }] } }]);
+    await until(() => air.getEntityState(feature.id)!.computedAt > before, 'wireframe-only update');
+    await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+    click(); check(attachment === '', 'Invisible camera face intercepted a click');
+    air.destroy();
+  });
+  await run('Incomplete custom camera terrain settles without polling and retries explicitly', async () => {
+    let samples = 0, available = false;
+    const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+      sample: (lng, lat) => { samples++; return available || (lng === 0 && lat === 0) ? 0 : null; },
+    } });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('missing-patch'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } };
+    air.upsert([feature]);
+    await until(() => samples > 66000, 'incomplete patch sampled');
+    const initialSamples = samples;
+    await new Promise(resolve => setTimeout(resolve, 700));
+    check(samples === initialSamples, `Unknown terrain kept polling: ${samples - initialSamples} extra samples`);
+    check(air.getEntityState(feature.id)?.coverage === 'unavailable', 'Unknown custom terrain stayed loading');
+    available = true; air.retryUpdates();
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'explicit terrain retry');
+    available = false; air.retryUpdates();
+    await until(() => air.getEntityState(feature.id)?.coverage === 'unavailable', 'retry discards stale terrain');
+    check(!air.map.getLayer('rl:camera-gpu'), 'Unknown terrain retained its previous mask');
+    air.destroy();
+  });
+  await run('Custom terrain preparation settles missing data and refreshes the cached patch', async () => {
+    let available = false, finish = () => {}, extent = 0;
+    const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+      sample: (lng, lat) => available || (lng === 0 && lat === 0) ? 0 : null,
+      prepare: positions => new Promise<void>(resolve => {
+        finish = resolve;
+        extent = Math.max(...positions.map(([lng, lat]) => Math.max(Math.abs(lng), Math.abs(lat)) * 111195));
+      }),
+    } });
+    current = air; await air.ready;
+    air.upsert([{ ...point('prepared-patch'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } }]);
+    await until(() => air.getEntityState('prepared-patch')?.coverage === 'loading', 'pending terrain preparation');
+    check(extent > 389, 'Preparation omitted the terrain patch movement margin');
+    finish();
+    await until(() => air.getEntityState('prepared-patch')?.coverage === 'unavailable', 'settled incomplete preparation');
+    air.retryUpdates();
+    await until(() => air.getEntityState('prepared-patch')?.coverage === 'loading', 'retry prepares terrain');
+    available = true; finish();
+    await until(() => air.getEntityState('prepared-patch')?.coverage === 'ready', 'completed terrain preparation');
+    air.destroy();
+  });
   await run('Raw DEM placement and coverage remain physical with terrain off and exaggerated', async () => {
+    const errors: RidgelineError[] = [];
     const dem=document.createElement('canvas'); dem.width=dem.height=256;
     const context=dem.getContext('2d')!; context.fillStyle='rgb(1,0,0)'; context.fillRect(0,0,256,256);
-    const air=createViewport({container,basemap:style(),elevation:{tiles:[dem.toDataURL()],encoding:'custom',redFactor:100,greenFactor:0,blueFactor:0,baseShift:0,maxzoom:0},camera:{center:[0,0],zoom:14,pitch:50},logger:()=>{}});
+    const air=createViewport({container,basemap:style(),elevation:{tiles:[dem.toDataURL()],encoding:'custom',redFactor:100,greenFactor:0,blueFactor:0,baseShift:0,maxzoom:0},camera:{center:[0,0],zoom:14,pitch:50},onError:error=>errors.push(error),logger:()=>{}});
     current=air; await air.ready;
     air.upsert([{...point('raw'),entity:{altitude:{meters:300,reference:'ground'},attachments:[{id:'camera',type:'camera',bearing:0,elevation:-45,fovX:50,fovY:30,range:1000},{id:'cylinder',type:'cylinder',radius:50,height:80}]}}]);
     await until(()=>air.getEntityState('raw')?.coverage==='ready','raw DEM decoding');
@@ -345,18 +414,23 @@ async function suite() {
       check(air.getEntityState('raw')?.footprintTriangles===triangles,'Terrain display changed physical coverage');
       check(air.getEntityState('raw')?.altitude===400,'Exaggeration changed physical altitude');
     }
-    air.configure({terrain:false});
+    air.configure({ projection: 'globe' });
+    await until(() => air.getEntityState('raw')?.coverage === 'ready', 'globe camera overlay');
+    check((air.getEntityState('raw')?.footprintTriangles ?? 0) > 0, 'Globe lost camera coverage');
+    air.configure({ projection: 'flat', terrain: false });
+    await until(() => air.getEntityState('raw')?.coverage === 'ready', 'Overlay restored after globe');
     air.remove(['raw']);
     await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
     let remaining=0; air.on('click',event=>{remaining=event.features.length;});
     air.map.fire('click',{point:air.map.project([0,0]),lngLat:air.map.getCenter(),originalEvent:new MouseEvent('click')});
     check(remaining===0,'Removed attachments still pickable');
+    check(!errors.some(error=>error.code==='UPDATE_FAILED'), 'Entity overlay reported an update failure: '+errors.map(error=>error.message).join(', '));
     air.destroy();
   });
   await run('Visible footprint stays filled when displayed terrain differs slightly from sampled terrain', async () => {
     const dem=document.createElement('canvas'); dem.width=dem.height=256;
     const context=dem.getContext('2d')!; context.fillStyle='rgb(105,0,0)'; context.fillRect(0,0,256,256);
-    const air=createViewport({container,basemap:style('#000000'),terrain:true,elevation:{tiles:[dem.toDataURL()],encoding:'custom',redFactor:1,greenFactor:0,blueFactor:0,baseShift:0,maxzoom:0},elevationSampler:{sample:()=>100},camera:{center:[0,0],zoom:17,pitch:0},entityVisibility:{volumes:false,footprints:true,zones:false,groundLines:false},logger:()=>{}});
+    const air=createViewport({container,basemap:style('#000000'),terrain:true,elevation:{tiles:[dem.toDataURL()],encoding:'custom',redFactor:1,greenFactor:0,blueFactor:0,baseShift:0,maxzoom:0},elevationSampler:{sample:()=>100},camera:{center:[0,0],zoom:17,pitch:0},entityVisibility:{footprints:true,zones:false,groundLines:false},logger:()=>{}});
     current=air; await air.ready;
     air.upsert([{...point('visible'),entity:{altitude:{meters:300,reference:'ground'},attachments:[{id:'camera',type:'camera',color:'#00ff00',bearing:0,elevation:-90,fovX:60,fovY:60,range:1000}]}}]);
     await until(()=>air.getEntityState('visible')?.coverage==='ready' && Math.abs((air.map.queryTerrainElevation([0,0])??0)-105)<0.1,'synthetic terrain and coverage');
@@ -376,56 +450,31 @@ async function suite() {
     check(pixels.every(green=>green>50),`Visible ground has unpainted gaps: green pixels ${pixels.join(',')}`);
     air.destroy();
   });
-  await run('Camera color, fill strength, and wireframe independently control visible and pickable geometry', async () => {
+  await run('Camera overlay remains filled across a hill without testing occlusion', async () => {
+    const meters = Math.PI / 180 * 6371008.8;
+    const hill = (_lng: number, lat: number) => 20 * Math.exp(-(((lat * meters - 300) / 40) ** 2));
     const air = createViewport({ container, basemap: style('#000000'),
-      elevationSampler: { sample: () => 0 }, camera: { center: [0, 0], zoom: 16, pitch: 0 },
-      entityVisibility: { volumes: true, footprints: false, zones: false, groundLines: false }, logger: () => {} });
+      elevationSampler: { sample: hill }, camera: { center: [0, 310 / meters], zoom: 17, pitch: 0 },
+      entityVisibility: { footprints: true, zones: false, groundLines: false }, logger: () => {} });
     current = air; await air.ready;
-    const camera: CameraAttachment = { id: 'camera', type: 'camera', bearing: 0, elevation: 90,
-      fovX: 60, fovY: 60, range: 200, volumeColor: '#ff0000', wireframe: false };
-    async function update(changes: Partial<CameraAttachment>) {
-      Object.assign(camera, changes);
-      const previous = air.getEntityState('styled')?.computedAt;
-      air.upsert([{ ...point('styled'), entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [camera] } }]);
-      await until(() => air.getEntityState('styled')?.computedAt !== previous, 'camera style update');
-      return new Promise<{ pixels: Uint8Array; width: number; height: number; scale: number }>(resolve => {
-        air.map.once('render', () => {
-          const canvas = air.map.getCanvas(), gl = canvas.getContext('webgl2')!;
-          const pixels = new Uint8Array(canvas.width * canvas.height * 4);
-          gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-          resolve({ pixels, width: canvas.width, height: canvas.height, scale: canvas.width / canvas.clientWidth });
-        });
-        air.map.triggerRepaint();
+    air.upsert([{ ...point('hill-shadow'), entity: { altitude: { meters: 100, reference: 'sea-level' },
+      attachments: [{ id: 'camera', type: 'camera', color: '#00ff00', bearing: 0, elevation: -15, fovX: 60, fovY: 40, range: 2000 }] } }]);
+    await until(() => air.getEntityState('hill-shadow')?.coverage === 'ready', 'hill coverage');
+    await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+    const pixels = await new Promise<number[]>(resolve => {
+      air.map.once('render', () => {
+        const canvas = air.map.getCanvas(), gl = canvas.getContext('webgl2')!, greens: number[] = [];
+        for (const north of [250, 355]) {
+          const p = air.map.project([0, north / meters]), pixel = new Uint8Array(4), scale = canvas.width / canvas.clientWidth;
+          gl.readPixels(Math.round(p.x * scale), canvas.height - 1 - Math.round(p.y * scale), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+          greens.push(pixel[1]!);
+        }
+        resolve(greens);
       });
-    }
-    const faint = await update({ volumeOpacity: 0.1 });
-    const solid = await update({ volumeOpacity: 1 });
-    const redPixels = (frame: typeof solid) => {
-      const indices: number[] = [];
-      for (let i = 0; i < frame.pixels.length; i += 4)
-        if (frame.pixels[i]! > 20 && frame.pixels[i + 1]! < 5 && frame.pixels[i + 2]! < 5) indices.push(i);
-      return indices;
-    };
-    const solidPixels = redPixels(solid);
-    check(solidPixels.length > 500, 'Custom red volume was not rendered');
-    const interior = solidPixels[Math.floor(solidPixels.length / 3)]!;
-    check(solid.pixels[interior]! > faint.pixels[interior]! + 100, 'Fill strength did not change the rendered opacity');
-    const blue = await update({ volumeColor: '#0000ff' });
-    check(blue.pixels[interior]! < 5 && blue.pixels[interior + 2]! > 200, 'Volume color did not update');
-    let hit = false;
-    air.on('click', event => { hit = event.attachments.some(a => a.attachmentId === 'camera'); });
-    function pick(frame: typeof solid, index: number) {
-      const p = { x: (index / 4 % frame.width) / frame.scale, y: (frame.height - 1 - Math.floor(index / 4 / frame.width)) / frame.scale };
-      air.map.fire('click', { point: p, lngLat: air.map.unproject([p.x, p.y]), originalEvent: new MouseEvent('click') });
-      return hit;
-    }
-    check(pick(solid, interior), 'Filled volume cannot be selected');
-    const hidden = await update({ volumeColor: '#ff0000', volumeOpacity: 0 });
-    check(redPixels(hidden).length === 0 && !pick(hidden, interior), 'Invisible volume remains drawn or pickable');
-    const wire = await update({ wireframe: true });
-    const edges = redPixels(wire);
-    check(edges.length > 50 && edges.length < solidPixels.length / 3, 'Wireframe-only view still has filled faces or no edges');
-    check(pick(wire, edges[Math.floor(edges.length / 3)]!), 'Wireframe-only volume cannot be selected');
+      air.map.triggerRepaint();
+    });
+    check(pixels[0]! > 50, `Visible approach lost coverage: ${pixels}`);
+    check(pixels[1]! > 50, `Overlay incorrectly removed the far slope: ${pixels}`);
     air.destroy();
   });
   await run('Drawing creates accepted features, owns clicks, edits with keyboard and survives style reload', async () => {
@@ -529,6 +578,277 @@ async function suite() {
     await until(()=>heads().some(f=>Math.abs(Number(f.properties.bearing))<1),'arrowhead follows direction');
     draw.remove(['arrow']);await until(()=>heads().length===0,'arrowhead removed');draw.destroy();
   });
+  await run('Terrain visibility colors the approach green and the hill shadow red', async () => {
+    const meters = Math.PI / 180 * 6371008.8;
+    const hill = (_lng: number, lat: number) => 150 * Math.exp(-(((lat * meters - 300) / 40) ** 2));
+    const air = createViewport({ container, basemap: style('#000000'),
+      elevationSampler: { sample: hill }, camera: { center: [0, 480 / meters], zoom: 15, pitch: 0 },
+      entityVisibility: { footprints: true, zones: false, groundLines: false }, logger: () => {} });
+    current = air; await air.ready;
+    air.upsert([{ ...point('hill-shadow'), entity: { altitude: { meters: 100, reference: 'sea-level' },
+      attachments: [{ id: 'camera', type: 'camera', color: '#00ff00', terrainVisibility: true, blockedColor: '#ff0000', fillOpacity: .6, blockedOpacity: .6, bearing: 0, elevation: -15, fovX: 60, fovY: 40, range: 2000 }] } }]);
+    await until(() => air.getEntityState('hill-shadow')?.coverage === 'ready', 'hill coverage');
+    await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+    const pixels = await new Promise<number[]>(resolve => {
+      air.map.once('render', () => {
+        const canvas = air.map.getCanvas(), gl = canvas.getContext('webgl2')!, greens: number[] = [];
+        for (const north of [210, 750]) {
+          const p = air.map.project([0, north / meters]), pixel = new Uint8Array(4), scale = canvas.width / canvas.clientWidth;
+          gl.readPixels(Math.round(p.x * scale), canvas.height - 1 - Math.round(p.y * scale), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+          greens.push(north === 210 ? pixel[1]! : pixel[0]!);
+        }
+        resolve(greens);
+      });
+      air.map.triggerRepaint();
+    });
+    check(pixels[0]! > 50, `Visible approach lost coverage: ${pixels}`);
+    check(pixels[1]! > 50, `Blocked far slope was not red: ${pixels}`);
+    const maskLayer=air.map.getStyle().layers.find(layer=>layer.id.startsWith('rl:camera-mask:'));
+    check(!!maskLayer,'Missing GPU coverage layer');
+    const mask=air.map.getSource<ImageSource>(maskLayer!.id)!.image;
+    check(mask instanceof ImageData,'Expected completed GPU mask pixels');
+    if(mask instanceof ImageData) {
+      let mixed=0;
+      for(let i=0;i<mask.data.length;i+=4) if(mask.data[i+3]!>0 && mask.data[i]!>0 && mask.data[i+1]!>0) mixed++;
+      check(mixed<mask.width*mask.height*.03,`Contour transition is too broad: ${mixed} mixed pixels`);
+    }
+    check(air.map.getPaintProperty(maskLayer!.id,'raster-resampling')==='linear','Measured contours use square-pixel magnification');
+
+    air.destroy();
+  });
+  await run('Camera volume covers rising terrain inside its true FOV', async () => {
+    const meters = Math.PI / 180 * 6371008.8;
+    const hill = (_lng: number, lat: number) => 100 * Math.exp(-(((lat * meters - 120) / 60) ** 2));
+    const air = createViewport({container, basemap: style('#000000'), elevationSampler: {sample: hill},
+      camera: {center: [0,80/meters], zoom:18, pitch:0}, logger:()=>{}});
+    current=air; await air.ready;
+    air.upsert([{...point('near-hill'),entity:{altitude:{meters:100,reference:'sea-level'},attachments:[{
+      id:'camera',type:'camera',terrainVisibility:true,color:'#00ff00',fillOpacity:.6,blockedColor:'#ff0000',blockedOpacity:.6,
+      bearing:0,elevation:-15,fovX:60,fovY:40,range:1000,
+    }]}}]);
+    await until(()=>air.getEntityState('near-hill')?.coverage==='ready','near hillside coverage');
+    await new Promise<void>(resolve=>air.map.once('idle',()=>resolve()));
+    const pixel=await new Promise<Uint8Array>(resolve=>{
+      air.map.once('render',()=>{
+        const canvas=air.map.getCanvas(),gl=canvas.getContext('webgl2')!,p=air.map.project([0,80/meters]);
+        const scale=canvas.width/canvas.clientWidth,value=new Uint8Array(4);
+        gl.readPixels(Math.round(p.x*scale),canvas.height-1-Math.round(p.y*scale),1,1,gl.RGBA,gl.UNSIGNED_BYTE,value);
+        resolve(value);
+      });air.map.triggerRepaint();
+    });
+    check(pixel[1]!>100&&pixel[0]!<25,`Finite camera volume excluded visible hillside: ${pixel}`);
+    air.destroy();
+  });
+  await run('Failed GPU target allocation releases its resources and retries', async () => {
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 },
+      logger: () => {}, onError: error => errors.push(error) });
+    current = air; await air.ready;
+    const gl = air.map.getCanvas().getContext('webgl2')!;
+    const createFramebuffer = gl.createFramebuffer.bind(gl), deleteFramebuffer = gl.deleteFramebuffer.bind(gl);
+    const createTexture = gl.createTexture.bind(gl), deleteTexture = gl.deleteTexture.bind(gl);
+    const checkFramebufferStatus = gl.checkFramebufferStatus.bind(gl);
+    const frames = new Set<WebGLFramebuffer>(), textures = new Set<WebGLTexture>();
+    gl.createFramebuffer = () => { const value = createFramebuffer(); if (value) frames.add(value); return value; };
+    gl.createTexture = () => { const value = createTexture(); if (value) textures.add(value); return value; };
+    gl.deleteFramebuffer = value => { if (value) frames.delete(value); deleteFramebuffer(value); };
+    gl.deleteTexture = value => { if (value) textures.delete(value); deleteTexture(value); };
+    gl.checkFramebufferStatus = () => gl.FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
+    try {
+      air.upsert([{ ...point('gpu-failure'), entity: { altitude: { meters: 100, reference: 'ground' },
+        attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } }]);
+      await until(() => air.getEntityState('gpu-failure')?.coverage === 'unavailable', 'GPU allocation failure');
+      check(errors.some(error => error.code === 'UPDATE_FAILED'), 'GPU failure did not report a diagnostic');
+      check(frames.size === 0 && textures.size === 0, `Failed GPU allocation leaked ${frames.size} framebuffers and ${textures.size} textures`);
+      gl.checkFramebufferStatus = checkFramebufferStatus;
+      air.retryUpdates();
+      await until(() => air.getEntityState('gpu-failure')?.coverage === 'ready', 'GPU allocation recovery');
+    } finally {
+      gl.checkFramebufferStatus = checkFramebufferStatus;
+      air.destroy();
+      gl.createFramebuffer = createFramebuffer; gl.deleteFramebuffer = deleteFramebuffer;
+      gl.createTexture = createTexture; gl.deleteTexture = deleteTexture;
+    }
+  });
+  await run('Coverage readiness follows every camera, pose changes, and ground placement', async () => {
+    const air = createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 }, logger: () => {} });
+    current = air; await air.ready;
+    const gl = air.map.getCanvas().getContext('webgl2')!;
+    const clientWaitSync = gl.clientWaitSync.bind(gl);
+    let first: WebGLSync | undefined;
+    let releaseSecond = false;
+    gl.clientWaitSync = (sync, flags, timeout) => {
+      first ??= sync;
+      return sync !== first && !releaseSecond ? gl.TIMEOUT_EXPIRED : clientWaitSync(sync, flags, timeout);
+    };
+    const camera: CameraAttachment = { id: 'first', type: 'camera', terrainVisibility: true,
+      bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 };
+    const published = () => air.map.getStyle().layers.filter(layer => layer.id.startsWith('rl:camera-mask:'))
+      .filter(layer => air.map.getSource<ImageSource>(layer.id)?.image instanceof ImageData).length;
+    const feature: MapFeature = { ...point('two-cameras'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [camera, { ...camera, id: 'second', bearing: 90 }] } };
+    try {
+      air.upsert([feature]);
+      await until(() => published() === 1, 'first camera publishes while second is pending');
+      check(air.getEntityState('two-cameras')?.coverage === 'loading', 'Entity became ready before its second camera published');
+      releaseSecond = true;
+      await until(() => air.getEntityState('two-cameras')?.coverage === 'ready', 'both camera masks published');
+      check(published() === 2, 'Ready entity is missing camera coverage');
+      releaseSecond = false;
+      let before = air.getEntityState(feature.id)!.computedAt;
+      air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [.000001,0] } }]);
+      await until(() => air.getEntityState(feature.id)!.computedAt > before, 'moved camera submitted');
+      check(air.getEntityState(feature.id)?.coverage === 'loading', 'Old camera pose was reported ready for new input');
+      releaseSecond = true;
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'moved camera masks published');
+      before = air.getEntityState(feature.id)!.computedAt;
+      air.upsert([{ ...feature, entity: { ...feature.entity!, altitude: { meters: 0, reference: 'ground' } } }]);
+      await until(() => air.getEntityState(feature.id)!.computedAt > before, 'ground-level camera computed');
+      check(air.getEntityState(feature.id)?.coverage === 'ready', 'Known ground-level camera stayed loading');
+      check(!air.map.getLayer('rl:camera-gpu'), 'Ground-level camera retained GPU geometry');
+    } finally { gl.clientWaitSync = clientWaitSync; air.destroy(); }
+  });
+  await run('GPU visibility preserves flat-ground coverage at long range and caches terrain during movement', async () => {
+    const meters = Math.PI / 180 * 6371008.8;
+    let samples = 0;
+    const air = createViewport({ container, basemap: style('#000000'),
+      elevationSampler: { sample: () => { samples++; return 0; }, prepare: async () => {} },
+      camera: { center: [0, 4000 / meters], zoom: 16, pitch: 0 }, logger: () => {} });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('gpu-flat'), entity: { altitude: { meters: 2000, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, color: '#00ff00', blockedColor: '#ff0000',
+        fillOpacity: .6, blockedOpacity: .6, wireframe:true, volumeOpacity:.1, bearing: 0, elevation: -10, fovX: 60, fovY: 40, range: 6001 }] } };
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'GPU flat coverage');
+    await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+    const pixels = await new Promise<number[][]>(resolve => {
+      air.map.once('render', () => {
+        const canvas=air.map.getCanvas(), gl=canvas.getContext('webgl2')!, values:number[][]=[];
+        for (const east of [-200,200]) {
+          const p=air.map.project([east/meters,4000/meters]), pixel=new Uint8Array(4), scale=canvas.width/canvas.clientWidth;
+          gl.readPixels(Math.round(p.x*scale),canvas.height-1-Math.round(p.y*scale),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+          values.push([...pixel]);
+        }
+        resolve(values);
+      }); air.map.triggerRepaint();
+    });
+    check(pixels.every(p => p[1]! > 100 && p[0]! < 25), 'Flat terrain falsely blocked: '+JSON.stringify(pixels));
+    // Count actual sensor-depth submissions while changing appearance on a stationary camera.
+    const gl = air.map.getCanvas().getContext('webgl2')!;
+    const drawElements = gl.drawElements;
+    let sensorPasses = 0;
+    gl.drawElements = function(...args: Parameters<WebGL2RenderingContext['drawElements']>) {
+      const viewport = this.getParameter(this.VIEWPORT) as Int32Array;
+      if (viewport[2] === 2048 && this.getParameter(this.FRAMEBUFFER_BINDING)) sensorPasses++;
+      return drawElements.apply(this, args);
+    };
+    try {
+      const camera = feature.entity!.attachments![0] as CameraAttachment;
+      const maskId = air.map.getStyle().layers.find(layer => layer.id.startsWith('rl:camera-mask:'))!.id;
+      for (const opacity of [.2, .8, .4]) {
+        air.upsert([{...feature, entity: {...feature.entity!, attachments: [{...camera, color: '#0000ff', fillOpacity: opacity}]}}]);
+        await until(() => {
+          const image = air.map.getSource<ImageSource>(maskId)?.image;
+          return image instanceof ImageData && image.data.some((value, i) => i % 4 === 2 && value === 255 && Math.abs(image.data[i+1]! - opacity*255) < 2);
+        }, 'cached visibility restyled');
+      }
+      check(sensorPasses === 0, `Appearance edits reran ${sensorPasses} sensor depth passes`);
+      air.upsert([feature]);
+      await until(() => {
+        const image = air.map.getSource<ImageSource>(maskId)?.image;
+        return image instanceof ImageData && image.data.some((value, i) => i % 4 === 1 && value === 255);
+      }, 'original appearance restored');
+      check(sensorPasses === 0, 'Restoring appearance reran visibility');
+      air.upsert([{...feature, entity: {...feature.entity!, attachments: [{...camera, bearing: 15}]}}]);
+      await until(() => sensorPasses > 0, 'changed camera aim recomputed depth');
+    } finally { gl.drawElements = drawElements; }
+    const assertSynchronized=()=>{
+      const gpu=air.map.getLayer('rl:camera-gpu') as unknown as {implementation:{cameras:Map<string,{published?:{origin:number[]}}>}};
+      const geometry=air.map.getLayer('rl:entities') as unknown as {implementation:{draws:{attachmentId?:string;vertices:number[][]}[]}};
+      const published=gpu.implementation.cameras.values().next().value?.published;
+      const corner=geometry.implementation.draws.find(draw=>draw.attachmentId==='camera')?.vertices[0];
+      check(!!published&&!!corner,'Published camera geometry missing');
+      check(JSON.stringify(published!.origin)===JSON.stringify(corner),'Wireframe and mask use different poses');
+    };
+    const initialSamples=samples;
+    for(let i=0;i<24;i++) {
+      air.upsert([{...feature,geometry:{type:'Point',coordinates:[i*.000001,0]}}]);
+      await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
+      assertSynchronized();
+    }
+    assertSynchronized();
+    check(samples-initialSamples<=30,'Movement rebuilt terrain: '+(samples-initialSamples)+' samples');
+    air.remove([feature.id]);
+    await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
+    check(!air.map.getStyle().layers.some(layer=>layer.id.startsWith('rl:camera-mask:')), 'Removed GPU mask remains');
+    check(!air.map.getLayer('rl:camera-gpu'), 'Last camera removal retained GPU resources');
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'GPU camera recreated after removal');
+    await new Promise<void>(resolve => {
+      air.map.once('style.load', () => resolve());
+      air.configure({ basemap: style('#101010') });
+    });
+    await until(() => {
+      const mask = air.map.getStyle().layers.find(layer => layer.id.startsWith('rl:camera-mask:'));
+      const image = mask && air.map.getSource<ImageSource>(mask.id)?.image;
+      return image instanceof ImageData && image.data.some((value, i) => i % 4 === 3 && value > 0);
+    }, 'GPU mask republished after style replacement');
+    air.configure({ entityVisibility: { footprints: false, zones: false, groundLines: false } });
+    await until(() => !air.map.getLayer('rl:camera-gpu'), 'Hidden cameras release GPU resources');
+    air.configure({ entityVisibility: { footprints: true, zones: false, groundLines: false } });
+    await until(() => Boolean(air.map.getLayer('rl:camera-gpu')) && air.getEntityState(feature.id)?.coverage === 'ready', 'Visible camera restores GPU resources');
+    air.destroy();
+  });
+  await run('GPU grid stays clear across a sloped plane during movement', async () => {
+    const meters = Math.PI / 180 * 6371008.8;
+    let samples = 0;
+    const air = createViewport({ container, basemap: style('#000000'),
+      elevationSampler: { sample: (_lng, lat) => { samples++; return lat * meters * .4; } },
+      camera: { center: [0, 4000 / meters], zoom: 16, pitch: 0 }, logger: () => {} });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('gpu-flat'), entity: { altitude: { meters: 2000, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, color: '#00ff00', blockedColor: '#ff0000',
+        fillOpacity: .6, blockedOpacity: .6, bearing: 0, elevation: -10, fovX: 60, fovY: 40, range: 6001 }] } };
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'GPU flat coverage');
+    await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+    const pixels = await new Promise<number[][]>(resolve => {
+      air.map.once('render', () => {
+        const canvas=air.map.getCanvas(), gl=canvas.getContext('webgl2')!, values:number[][]=[];
+        for (const east of [-200,200]) {
+          const p=air.map.project([east/meters,4000/meters]), pixel=new Uint8Array(4), scale=canvas.width/canvas.clientWidth;
+          gl.readPixels(Math.round(p.x*scale),canvas.height-1-Math.round(p.y*scale),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+          values.push([...pixel]);
+        }
+        resolve(values);
+      }); air.map.triggerRepaint();
+    });
+    check(pixels.every(p => p[1]! > 100 && p[0]! < 25), 'Flat terrain falsely blocked: '+JSON.stringify(pixels));
+    const maskId=air.map.getStyle().layers.find(layer=>layer.id.startsWith('rl:camera-mask:'))!.id;
+    const assertClear=()=> {
+      const image=air.map.getSource<ImageSource>(maskId)!.image;
+      check(image instanceof ImageData,'GPU mask missing');
+      if(image instanceof ImageData){
+        let red=0,filled=0;
+        for(let i=0;i<image.data.length;i+=4)if(image.data[i+3]!>0){filled++;if(image.data[i]!>25)red++;}
+        check(filled>100,'Slope mask unexpectedly empty');
+        check(red===0,`Unobstructed slope has ${red}/${filled} false blocked pixels`);
+      }
+    };
+    assertClear();
+    const initialSamples=samples;
+    for(let i=0;i<24;i++) {
+      air.upsert([{...feature,geometry:{type:'Point',coordinates:[i*.000001,0]}}]);
+      await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
+      assertClear();
+    }
+    check(samples-initialSamples<=30,'Movement rebuilt terrain: '+(samples-initialSamples)+' samples');
+    air.remove([feature.id]);
+    await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
+    check(!air.map.getStyle().layers.some(layer=>layer.id.startsWith('rl:camera-mask:')), 'Removed GPU mask remains');
+    air.destroy();
+  });
+  await run('GPU voting and depth-refined contours respond to subpixel boundaries', async () => { checkGpuVote(); });
   status.dataset.state = 'passed';
   status.textContent = `${results.children.length} checks passed. Package imported through its published exports.`;
 }

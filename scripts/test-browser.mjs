@@ -28,7 +28,9 @@ try {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(server.resolvedUrls.local[0]);
-  await page.waitForFunction(() => ['passed', 'failed'].includes(document.querySelector('#status')?.dataset.state), undefined, { timeout: 60_000 });
+  try {
+    await page.waitForFunction(() => ['passed', 'failed'].includes(document.querySelector('#status')?.dataset.state), undefined, { timeout: 60_000 });
+  } catch (error) { errors.push(String(error)); }
   const result = await page.evaluate(() => ({
     state: document.querySelector('#status').dataset.state,
     summary: document.querySelector('#status').textContent,
