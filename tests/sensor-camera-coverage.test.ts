@@ -62,6 +62,12 @@ function input(overrides: Partial<SensorCameraInput> = {}): SensorCameraInput {
   };
 }
 
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>(value => { resolve = value; });
+  return { promise, resolve };
+}
+
 type ControlledAdapter = {
   factory: SensorCameraAdapterFactory;
   values: () => GpuCamera[];
@@ -190,9 +196,11 @@ test('keeps a pending terrain replacement loading, then settles prepared terrain
   let resolvePreparation!: () => void;
   const preparation = new Promise<void>(resolve => { resolvePreparation = resolve; });
   const adapter = controlledAdapter();
+  const settled = deferred();
   const { coverage } = owner(adapter, {
     height: () => missing ? null : 0,
     prepare: async () => { prepareCalls++; await preparation; },
+    changed: settled.resolve,
   });
 
   coverage.update(input());
@@ -204,12 +212,12 @@ test('keeps a pending terrain replacement loading, then settles prepared terrain
   const pending = input({ origin: [0.02, 0, 100] });
   assert.equal(coverage.update(pending).coverage, 'loading');
   assert.deepEqual(coverage.output('entity'), previous, 'Pending terrain keeps the previous completed unit');
+  await Promise.resolve();
   assert.equal(prepareCalls, 1);
 
   resolvePreparation();
   await preparation;
-  await Promise.resolve();
-  await Promise.resolve();
+  await settled.promise;
   assert.equal(coverage.update(input({
     origin: [0.02, 0, 100],
     placement: 'elevation-unavailable',
