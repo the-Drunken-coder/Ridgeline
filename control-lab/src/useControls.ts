@@ -52,6 +52,11 @@ export function useControls(
       setPreview({});
     };
     const cancel = () => { clearGesture(); stopEdge(); space = false; setContext(null); dispatch({ type: 'cancel' }); };
+    const cancelInterrupted = () => {
+      const active = gesture;
+      clearGesture(); stopEdge(); space = false; setContext(null);
+      if (active?.kind === 'route' || active?.kind === 'formation') dispatch({ type: 'cancel' });
+    };
     const tick = (time: number) => {
       if (gesture || !edgePan || sceneRef.current.scheme !== 'rts' || (!edge.x && !edge.y)) { stopEdge(); return; }
       const seconds = lastFrame ? Math.min(time - lastFrame, 32) / 1000 : 0;
@@ -67,6 +72,7 @@ export function useControls(
       const unit = current.units.find(unit => event.target instanceof Element && event.target.closest('[data-unit]')?.getAttribute('data-unit') === unit.id);
       if (!unit && !event.target.closest('.map-surface')) return;
       stopEdge(); setContext(null); surface.focus({ preventScroll: true });
+      if (unit) event.preventDefault();
       const navigating = space || event.button === 1;
       if (unit && !navigating) {
         dispatch({ type: 'toggle-unit', id: unit.id, additive: event.shiftKey });
@@ -143,8 +149,8 @@ export function useControls(
       else if (current.scheme === 'radial') setContext({ screen: p, world: world(p) });
       else if (ended.kind === 'box' && !ended.additive) dispatch({ type: 'select', ids: [] });
     }, options);
-    stage.addEventListener('pointercancel', cancel, options);
-    surface.addEventListener('lostpointercapture', () => { if (gesture) cancel(); }, options);
+    stage.addEventListener('pointercancel', cancelInterrupted, options);
+    surface.addEventListener('lostpointercapture', () => { if (gesture) cancelInterrupted(); }, options);
     stage.addEventListener('pointerleave', stopEdge, options);
     stage.addEventListener('contextmenu', event => {
       if (sceneRef.current.scheme !== 'rts' || !(event.target instanceof Element) || !event.target.closest('.map-surface')) return;
@@ -178,13 +184,8 @@ export function useControls(
       if (delta) { event.preventDefault(); dispatch({ type: 'pan', delta }); }
     }, options);
     window.addEventListener('keyup', event => { if (event.key === ' ') space = false; }, options);
-    const interrupt = () => {
-      const active = gesture;
-      clearGesture(); stopEdge(); space = false; setContext(null);
-      if (active) dispatch({ type: 'cancel' });
-    };
-    window.addEventListener('blur', interrupt, options);
-    document.addEventListener('visibilitychange', () => { if (document.hidden) interrupt(); }, options);
+    window.addEventListener('blur', cancelInterrupted, options);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) cancelInterrupted(); }, options);
     return () => { abort.abort(); clearGesture(); stopEdge(); setContext(null); };
   }, [stageRef, surfaceRef, scene.scheme, dispatch, viewport, edgePan]);
 

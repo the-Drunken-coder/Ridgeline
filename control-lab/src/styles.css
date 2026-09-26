@@ -61,7 +61,7 @@ h1 { font-size: 20px; font-weight: 550; margin: 0; }
 .has-bottom .zoom { top: 12px; bottom: auto; }
 .command { display: flex; gap: 6px; flex-wrap: wrap; }
 .command input { background: var(--paper); border: 1px solid var(--line); padding: 8px; min-width: 0; flex: 1; width: 100%; }
-.command-mode { background-image: linear-gradient(to right, transparent calc(100% - 1px), var(--line) 1px), linear-gradient(to bottom, transparent calc(100% - 1px), var(--line) 1px); background-size: 33.333% 33.333%; }
+.command-grid { position: absolute; inset: 0 0 auto; background-image: linear-gradient(to right, transparent calc(100% - 1px), var(--line) 1px), linear-gradient(to bottom, transparent calc(100% - 1px), var(--line) 1px); background-size: 33.333% 33.333%; pointer-events: none; }
 .grid-label { position: absolute; pointer-events: none; font-size: 11px; color: var(--quiet); }
 .crosshair { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--accent); pointer-events: none; font-size: 28px; }
 .orders { margin: 8px 0; padding-left: 20px; font-size: 12px; }

@@ -242,7 +242,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       const layers: LayerSpecification[] = [
         { id: 'rl:fill', type: 'fill', source: SOURCE, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': ['get', '_rl_fill'], 'fill-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, ['boolean', ['feature-state', 'selected'], false], 0.45, ['get', '_rl_opacity']] } },
         { id: 'rl:line', type: 'line', source: SOURCE, filter: ['all', ['in', '$type', 'LineString', 'Polygon'], ['!=', '_rl_dashed', true]], paint: { 'line-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', ['get', '_rl_color']], 'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 5, ['get', '_rl_width']] } },
-        { id: 'rl:dashed', type: 'line', source: SOURCE, filter: ['all', ['in', '$type', 'LineString', 'Polygon'], ['==', '_rl_dashed', true]], paint: { 'line-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'line-color': ['get', '_rl_color'], 'line-width': ['get', '_rl_width'], 'line-dasharray': [3, 2] } },
+        { id: 'rl:dashed', type: 'line', source: SOURCE, filter: ['all', ['in', '$type', 'LineString', 'Polygon'], ['==', '_rl_dashed', true]], paint: { 'line-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', ['get', '_rl_color']], 'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 5, ['get', '_rl_width']], 'line-dasharray': [3, 2] } },
         { id: 'rl:points', type: 'circle', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_airborne', true], ['!=', '_rl_hidden', true]], paint: { 'circle-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'circle-stroke-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'circle-radius': ['case', ['boolean', ['feature-state', 'hover'], false], 12, ['get', '_rl_radius']], 'circle-color': ['get', '_rl_color'], 'circle-stroke-width': ['case', ['boolean', ['feature-state', 'selected'], false], 4, 2], 'circle-stroke-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', '#ffffff'] } },
         { id: 'rl:icons', type: 'symbol', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_icon', ''], ['!=', '_rl_hidden', true]], layout: { 'icon-image': ['get', '_rl_icon'], 'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-height-offset': ['get', '_rl_height'] }, paint: { 'icon-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1] } },
         { id: 'rl:labels', type: 'symbol', source: SOURCE, filter: ['!=', '_rl_hidden', true], layout: { 'text-field': ['get', '_rl_label'], 'text-font': ['Noto Sans Regular'], 'text-size': 12, 'text-offset': [0, 1.8], 'text-anchor': 'top', 'symbol-height-offset': ['get', '_rl_height'] }, paint: { 'text-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'text-color': '#203b32', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } },
@@ -315,9 +315,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       assertActive();
       if (interactionOwner) throw new Error(`Map interaction is owned by ${interactionOwner}.`);
       if (!owner.trim()) throw new Error('An interaction owner needs a name.');
-      interactionOwner = owner; viewport.preview(null); emit('interactionchange', { owner });
+      interactionOwner = owner; hovered = ''; viewport.preview(null); emit('interactionchange', { owner });
       let released = false;
-      return () => { if (released) return; released = true; interactionOwner = null; if (!destroyed) emit('interactionchange', { owner: null }); };
+      return () => { if (released) return; released = true; interactionOwner = null; hovered = ''; if (!destroyed) emit('interactionchange', { owner: null }); };
     },
     upsert(features) {
       assertActive();

@@ -378,7 +378,7 @@ export function attachDrawingControls<P extends Properties>(
           action(
             "Delete drawing",
             () => editor.delete(),
-            locked || !editor.canDelete(),
+            !editor.canDelete(),
           ),
         );
       const help = document.createElement("p");

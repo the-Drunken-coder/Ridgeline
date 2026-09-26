@@ -450,4 +450,83 @@ test("Editing an ordinary feature inherits only defined drawing styles", async (
   assert.equal(editor.getState().draft?.style.color, "#123456");
   assert.equal(await editor.finish(), true);
   assert.equal(host.getFeature("ordinary")?.properties.name, "Kept");
+  assert.equal(host.getFeature("ordinary")?.drawing, undefined);
+  host.getStyle = () => ({ color: "#654321", label: "Updated" });
+  editor.edit("ordinary");
+  assert.equal(editor.getState().draft?.style.color, "#654321");
+  editor.setStyle({ label: "Custom" });
+  editor.undo();
+  await editor.finish();
+  assert.equal(host.getFeature("ordinary")?.drawing, undefined);
+  editor.edit("ordinary");
+  editor.setStyle({ label: "Custom" });
+  await editor.finish();
+  assert.equal(host.getFeature("ordinary")?.drawing?.style.label, "Custom");
+});
+
+test("Delete permission is independent of update permission", async () => {
+  const { host, editor, requests } = fixture({ canEdit: (_feature, operation) => operation === "delete" });
+  const before = feature({ kind: "line", vertices: [[0, 0], [1, 0]] });
+  host.upsert([before]);
+  editor.edit(before.id);
+  assert.equal(editor.getState().phase, "forbidden");
+  assert.equal(editor.canDelete(), true);
+  assert.throws(() => editor.moveVertex(1, [2, 0]), /cannot be edited/);
+  assert.equal(await editor.delete(), true);
+  assert.equal(requests[0]?.kind, "delete");
+  assert.equal(host.getFeature(before.id), undefined);
+});
+
+test("Revoking pending delete permission aborts and explains discarded acceptance", async () => {
+  for (const restorePermission of [false, true]) {
+    let permitted = true, signal: AbortSignal | undefined;
+    let decide: (value: DrawingDecision) => void = () => {};
+    const { host, editor } = fixture({
+      canEdit: (_feature, operation) => operation !== "delete" || permitted,
+      submit: (_change, currentSignal) => { signal = currentSignal; return new Promise(resolve => { decide = resolve; }); },
+    });
+    const before = feature({ kind: "point", position: [0, 0] });
+    host.upsert([before]); editor.edit(before.id);
+    const pending = editor.delete();
+    assert.equal(editor.canDelete(), false);
+    permitted = false; editor.refreshPermissions();
+    assert.equal(signal?.aborted, true);
+    if (restorePermission) { permitted = true; editor.refreshPermissions(); }
+    decide({ accepted: true });
+    assert.equal(await pending, false);
+    assert.equal(editor.getState().phase, "rejected");
+    assert.match(editor.getState().message!, /Permission changed/);
+    assert.deepEqual(host.getFeature(before.id), before);
+    editor.destroy();
+  }
+});
+
+test("Rectangle placement uses the current bearing and keeps the clicked corner", () => {
+  const { editor } = fixture();
+  editor.start("rectangle"); editor.addPoint([0, 0]);
+  editor.setShape({ kind: "rectangle", center: [0, 0], width: 0, height: 0, bearing: 45 });
+  const corner = destination([0, 0], 1000, 70);
+  editor.addPoint(corner);
+  const geometry = shapeGeometry(editor.getState().draft!.shape);
+  assert.equal(geometry.type, "Polygon");
+  if (geometry.type !== "Polygon") return;
+  assert.ok(geometry.coordinates[0]!.some(p => distance(corner, [p[0]!, p[1]!]) < .001));
+});
+
+test("Detailed polygon validation detects distant crossing edges and keeps snapshots detached", () => {
+  const vertices = Array.from({ length: 2000 }, (_, i) => destination([179.999, 0], 1000, i / 2000 * 360));
+  const shape: DrawingShape = { kind: "polygon", vertices };
+  assert.equal(validateShape(shape), undefined);
+  const crossed = structuredClone(shape);
+  [crossed.vertices[300], crossed.vertices[1300]] = [crossed.vertices[1300]!, crossed.vertices[300]!];
+  assert.match(validateShape(crossed)!, /cross/);
+  const { host, editor } = fixture();
+  host.upsert([feature(shape)]); editor.edit("existing");
+  const state = editor.getState();
+  state.draft!.style.color = "red";
+  assert.notEqual(editor.getState().draft?.style.color, "red");
+  editor.setShape(crossed);
+  assert.match(editor.getState().validation!, /cross/);
+  editor.undo();
+  assert.equal(editor.getState().validation, undefined);
 });

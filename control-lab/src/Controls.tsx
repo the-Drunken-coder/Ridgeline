@@ -7,6 +7,8 @@ type Props = {
   context: ContextMenu | null; closeContext: () => void; focusMap: () => void; frameSelection: () => void;
 };
 
+const COMMAND_PANEL_RESERVE = 140;
+
 export function Controls({ scene, dispatch, viewport, context, closeContext, focusMap, frameSelection }: Props) {
   const [command, setCommand] = useState('');
   const names = scene.selected.length ? scene.selected.join(' + ') : 'No selection';
@@ -37,13 +39,16 @@ export function Controls({ scene, dispatch, viewport, context, closeContext, foc
       const result = parseCommand(command);
       if (result.kind === 'error') { dispatch({ type: 'message', message: result.message }); return; }
       if (result.kind === 'move') {
-        const point = result.destination === 'beacon' ? beacon : toWorld({ x: (result.destination.column + 0.5) * viewport.width / 3, y: (result.destination.row + 0.5) * viewport.height / 3 }, scene.camera, viewport);
+        const gridHeight = Math.max(1, viewport.height - COMMAND_PANEL_RESERVE);
+        const point = result.destination === 'beacon' ? beacon : toWorld({ x: (result.destination.column + 0.5) * viewport.width / 3, y: (result.destination.row + 0.5) * gridHeight / 3 }, scene.camera, viewport);
         dispatch({ type: 'select', ids: result.ids }); dispatch({ type: 'move', ids: result.ids, point });
       } else if (result.kind === 'select') dispatch({ type: 'select', ids: result.ids });
       else dispatch({ type: 'hold', ids: result.ids });
       setCommand('');
     }}><input value={command} onChange={event => setCommand(event.target.value)} aria-label="Command" placeholder="all to beacon" autoComplete="off" spellCheck={false} /><button type="submit" className="primary">Run ↵</button></form><span className="panel-label">alpha / bravo / charlie / all · to A1–C3 or beacon</span></div>
-      {['A1', 'B1', 'C1', 'A2', 'B2', 'C2', 'A3', 'B3', 'C3'].map((label, index) => <span key={label} className="grid-label" style={{ left: `${index % 3 * 100 / 3 + 2}%`, top: `${Math.floor(index / 3) * 100 / 3 + 2}%` }}>{label}</span>)}
+      <div className="command-grid" style={{ height: Math.max(1, viewport.height - COMMAND_PANEL_RESERVE) }} aria-hidden="true">
+        {['A1', 'B1', 'C1', 'A2', 'B2', 'C2', 'A3', 'B3', 'C3'].map((label, index) => <span key={label} className="grid-label" style={{ left: `${index % 3 * 100 / 3 + 2}%`, top: `${Math.floor(index / 3) * 100 / 3 + 2}%` }}>{label}</span>)}
+      </div>
     </>; break;
   }
   return panel;

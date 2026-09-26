@@ -53,7 +53,12 @@ export function createDrawingSession<P extends Properties>(
     disposed = false,
     applying = false;
   let reason: string | undefined, release: (() => void) | undefined;
-  let submission: AbortController | undefined;
+  let submission: {
+    controller: AbortController;
+    kind: DrawingChange<P>["kind"];
+  } | undefined;
+  let initialStyle: DrawingStyle | undefined;
+  let snapshot: DrawingState<P> | undefined;
   let gesture: DrawingDraft<P> | undefined;
   const listeners = new Set<() => void>();
   const tools = [...(options.tools ?? DRAWING_TOOLS)];
@@ -76,24 +81,25 @@ export function createDrawingSession<P extends Properties>(
       return false;
     }
   }
-  function phase(): DrawingState<P>["phase"] {
+  function phase(editable: boolean): DrawingState<P>["phase"] {
     return !draft
       ? "idle"
       : pending
         ? "pending"
         : conflict
           ? "conflict"
-          : !allowed()
+          : !editable
             ? "forbidden"
             : reason
               ? "rejected"
               : "editing";
   }
   function getState(): DrawingState<P> {
-    const currentPhase = phase();
-    return {
+    if (snapshot) return structuredClone(snapshot);
+    const editable = allowed(), currentPhase = phase(editable);
+    snapshot = {
       phase: currentPhase,
-      draft: draft && structuredClone(draft),
+      draft,
       message:
         currentPhase === "conflict"
           ? "This feature changed. Discard or restart with the latest feature."
@@ -105,17 +111,19 @@ export function createDrawingSession<P extends Properties>(
           ? "Click the map to place the drawing."
           : (validateShape(draft.shape) ?? validateDrawingStyle(draft.style))
         : undefined,
-      canUndo: !pending && !conflict && allowed() && past.length > 0,
-      canRedo: !pending && !conflict && allowed() && future.length > 0,
+      canUndo: !pending && !conflict && editable && past.length > 0,
+      canRedo: !pending && !conflict && editable && future.length > 0,
       measurements: draft ? measurements(draft.shape) : { length: 0 },
     };
+    return structuredClone(snapshot);
   }
   function notify() {
+    snapshot = undefined;
     for (const listener of listeners) listener();
   }
-  function requireDraft() {
+  function requireDraft(operation?: DrawingChange<P>["kind"]) {
     if (disposed) throw new Error("Drawing session has been destroyed.");
-    if (!draft || pending || conflict || !allowed())
+    if (!draft || pending || conflict || !allowed(operation))
       throw new Error("This draft cannot be edited now.");
     return draft;
   }
@@ -137,6 +145,7 @@ export function createDrawingSession<P extends Properties>(
     if (draft) throw new Error("Finish or cancel the current drawing first.");
     release = host.acquireInteraction("drawing");
     draft = next;
+    initialStyle = structuredClone(next.style);
     past = [];
     future = [];
     conflict = false;
@@ -147,6 +156,7 @@ export function createDrawingSession<P extends Properties>(
     if (pending)
       throw new Error("Wait for the application to decide before cancelling.");
     draft = undefined;
+    initialStyle = undefined;
     past = [];
     future = [];
     gesture = undefined;
@@ -232,7 +242,7 @@ export function createDrawingSession<P extends Properties>(
           if (s.kind === "circle") s.radius = distance(s.center, p);
           else {
             const d = distance(s.center, p),
-              b = (bearing(s.center, p) * Math.PI) / 180;
+              b = ((bearing(s.center, p) - s.bearing) * Math.PI) / 180;
             s.width = 2 * Math.abs(d * Math.sin(b));
             s.height = 2 * Math.abs(d * Math.cos(b));
           }
@@ -342,11 +352,9 @@ export function createDrawingSession<P extends Properties>(
     notify();
   }
   async function submit(remove = false) {
-    const current = requireDraft();
+    const current = requireDraft(remove ? "delete" : undefined);
     if (remove && !current.before)
       throw new Error("Cancel an unsaved drawing instead.");
-    if (remove && !allowed("delete"))
-      throw new Error("Deletion is not permitted.");
     const error = remove
       ? undefined
       : !current.before && !current.placed
@@ -360,12 +368,16 @@ export function createDrawingSession<P extends Properties>(
     const after: MapFeature<P> = {
       ...structuredClone(current.feature),
       geometry: shapeGeometry(current.shape),
-      drawing: {
+    };
+    if (
+      !current.before || current.before.drawing ||
+      JSON.stringify(current.style) !== JSON.stringify(initialStyle)
+    )
+      after.drawing = {
         version: 1,
         shape: structuredClone(current.shape),
         style: structuredClone(current.style),
-      },
-    };
+      };
     const request: DrawingChange<P> = {
       kind: remove ? "delete" : current.before ? "update" : "create",
       before: current.before && structuredClone(current.before),
@@ -373,16 +385,17 @@ export function createDrawingSession<P extends Properties>(
     };
     pending = true;
     reason = undefined;
-    submission = new AbortController();
+    submission = { controller: new AbortController(), kind: request.kind };
     notify();
     try {
       const decision = await options.submit(
         structuredClone(request),
-        submission.signal,
+        submission.controller.signal,
       );
       if (disposed) return false;
       pending = false;
-      if (conflict || !allowed(request.kind)) {
+      if (conflict || submission.controller.signal.aborted || !allowed(request.kind)) {
+        reason ??= "Permission changed while this request was pending. Review the draft and try again.";
         notify();
         return false;
       }
@@ -422,11 +435,14 @@ export function createDrawingSession<P extends Properties>(
     )
       return;
     conflict = true;
-    submission?.abort();
+    submission?.controller.abort();
     notify();
   });
   function refreshPermissions() {
-    if (draft && !allowed()) submission?.abort();
+    if (draft && submission && !allowed(submission.kind)) {
+      submission.controller.abort();
+      reason = "Permission changed while this request was pending. Review the draft and try again.";
+    }
     notify();
   }
   function restart() {
@@ -442,7 +458,7 @@ export function createDrawingSession<P extends Properties>(
   function destroy() {
     if (disposed) return;
     disposed = true;
-    submission?.abort();
+    submission?.controller.abort();
     pending = false;
     cancel();
     off();
@@ -472,7 +488,7 @@ export function createDrawingSession<P extends Properties>(
     destroy,
     tools,
     styleFields,
-    canDelete: () => Boolean(draft?.before) && allowed("delete"),
+    canDelete: () => !disposed && !pending && !conflict && Boolean(draft?.before) && allowed("delete"),
     onChange: (listener: () => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);

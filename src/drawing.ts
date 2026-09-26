@@ -142,7 +142,7 @@ export function attachDrawing<P extends Properties>(
         shape.radius = distance(shape.center, cursor);
       else if (draft.placed && shape.kind === "rectangle") {
         const d = distance(shape.center, cursor),
-          b = (bearing(shape.center, cursor) * Math.PI) / 180;
+          b = ((bearing(shape.center, cursor) - shape.bearing) * Math.PI) / 180;
         shape.width = 2 * Math.abs(d * Math.sin(b));
         shape.height = 2 * Math.abs(d * Math.cos(b));
       }
@@ -393,9 +393,12 @@ export function attachDrawing<P extends Properties>(
         );
       }
       item.insert = insert;
+      const actual = item.marker.getLngLat();
+      if (wrapLongitude(actual.lng - p[0]) !== 0 || actual.lat !== p[1])
+        item.marker.setLngLat(p);
       item.position = p;
-      item.marker.setLngLat(p);
-      item.marker.setDraggable(!locked && !insert);
+      if (item.marker.isDraggable() !== (!locked && !insert))
+        item.marker.setDraggable(!locked && !insert);
       item.button.disabled = locked;
     }
     if (draft && (draft.placed || !draft.placing)) {
