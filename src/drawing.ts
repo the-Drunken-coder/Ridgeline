@@ -66,7 +66,7 @@ export function attachDrawing<P extends Properties>(
   function snap(
     point: DrawingPosition,
     skip = false,
-    except?: number,
+    except?: number | "draft",
   ): DrawingPosition {
     if (!snapEnabled || skip) return point;
     const state = session.getState(),
@@ -99,7 +99,7 @@ export function attachDrawing<P extends Properties>(
             : g.coordinates.flatMap((ring) => ring.slice(0, -1).map(position))),
       );
     }
-    if (state.draft)
+    if (state.draft && except !== "draft")
       candidates.push(
         ...drawingHandles(state.draft.shape)
           .filter((_, i) => i !== except)
@@ -349,7 +349,8 @@ export function attachDrawing<P extends Properties>(
           const next = snap(
             position(marker.getLngLat().toArray()),
             bypassSnap,
-            index,
+            key === "move" || (index === 0 && draft && "center" in draft.shape)
+              ? "draft" : index,
           );
           if (key === "move") {
             session.translate(previous, next);

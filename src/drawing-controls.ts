@@ -434,6 +434,7 @@ export function attachDrawingControls<P extends Properties>(
           editor.getState().phase !== "pending"
         ) {
           event.preventDefault();
+          event.stopPropagation();
           editor.cancel();
         }
         if (
@@ -441,6 +442,7 @@ export function attachDrawingControls<P extends Properties>(
           event.key.toLowerCase() === "z"
         ) {
           event.preventDefault();
+          event.stopPropagation();
           const state = editor.getState();
           if (state.draft) {
             if (event.shiftKey && state.canRedo) editor.redo();

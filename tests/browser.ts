@@ -438,7 +438,7 @@ async function suite() {
       createFeature:()=>({id:'drawn',properties:{name:'Drawn'}}),
       submit:()=>{accepts++;return {accepted:true};},
     });
-    const tools=document.createElement('div'),inspector=document.createElement('div');document.body.append(tools,inspector);
+    const tools=document.createElement('div'),inspector=document.createElement('div');container.append(tools,inspector);
     const controls=attachDrawingControls(draw,editor,{tools,inspector});
     await until(()=>Boolean(draw.map.getSource('rl:draft')),'draft source attached');
     const tool = tools.querySelector<HTMLButtonElement>('[data-field="action:Polygon"]')!;
@@ -453,10 +453,14 @@ async function suite() {
     check(!draw.getFeature('drawn'),'Unaccepted draft entered store');
     check(inspector.textContent?.includes('Area'),'Measurements missing');
     const undo = inspector.querySelector<HTMLButtonElement>('[data-field="action:Undo"]')!;
-    undo.focus(); undo.click();
+    undo.focus(); undo.dispatchEvent(new KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true}));
+    const undone=editor.getState().draft?.shape;
+    check(undone?.kind==='polygon'&&undone.vertices.length===3,'Nested controls applied Undo more than once');
     check(document.activeElement?.getAttribute('data-field')==='action:Undo','Undo lost keyboard focus');
     const redo = inspector.querySelector<HTMLButtonElement>('[data-field="action:Redo"]')!;
-    redo.focus(); redo.click();
+    redo.focus(); redo.dispatchEvent(new KeyboardEvent('keydown',{key:'z',ctrlKey:true,shiftKey:true,bubbles:true}));
+    const redone=editor.getState().draft?.shape;
+    check(redone?.kind==='polygon'&&redone.vertices.length===4,'Nested controls applied Redo more than once');
     check(inspector.contains(document.activeElement),'Disabled redo lost keyboard focus');
     editor.setStyle({fillOpacity:0.29});
     check(inspector.querySelector<HTMLInputElement>('[data-field="Opacity (%)"]')?.value==='29','Opacity displayed floating-point noise');
@@ -490,6 +494,29 @@ async function suite() {
     const shape=editor.getState().draft?.shape;
     check(shape?.kind==='line'&&shape.vertices[0]?.[0]===0&&shape.vertices[0]?.[1]===0,'Nearby vertex did not snap');
     check(visited.length===1&&visited[0]==='near','Snapping inspected features outside its pointer radius');
+    editor.destroy();draw.destroy();
+  });
+  await run('Whole-shape dragging follows the pointer without snapping to its own vertices', async () => {
+    const shape={kind:'polygon' as const,vertices:[[-.0026,-.0026],[.0026,-.0026],[.0026,.0026],[-.0026,.0026]] as [number,number][]};
+    const feature:MapFeature={type:'Feature',id:'moving',geometry:shapeGeometry(shape),properties:{}};
+    const draw=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:12},features:[feature],logger:()=>{}});
+    current=draw;await draw.ready;
+    const editor=attachDrawing(draw,{createFeature:()=>({id:'new',properties:{}}),submit:()=>({accepted:true})});
+    editor.edit('moving');
+    await until(()=>draw.map.loaded(),'drag map ready');
+    const handle=container.querySelector<HTMLButtonElement>('[aria-label="Move drawing"]')!;
+    const rect=handle.getBoundingClientRect(),x=rect.x+rect.width/2,y=rect.y+rect.height/2;
+    const origin=draw.map.project([0,0]);
+    handle.dispatchEvent(new MouseEvent('mousedown',{clientX:x,clientY:y,button:0,buttons:1,bubbles:true,cancelable:true,view:window}));
+    for(const step of [10,20,30]) {
+      draw.map.getCanvas().dispatchEvent(new MouseEvent('mousemove',{clientX:x+step,clientY:y+step,buttons:1,bubbles:true,view:window}));
+      await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
+      const draft=editor.getState().draft?.shape;
+      if(draft?.kind!=='polygon')throw new Error('Missing polygon draft');
+      const center=draw.map.project([draft.vertices.reduce((sum,p)=>sum+p[0],0)/draft.vertices.length,draft.vertices.reduce((sum,p)=>sum+p[1],0)/draft.vertices.length]);
+      check(Math.abs(center.x-origin.x-step)<0.5&&Math.abs(center.y-origin.y-step)<0.5,'Whole drawing jumped to its own moving vertex');
+    }
+    draw.map.getCanvas().dispatchEvent(new MouseEvent('mouseup',{clientX:x+30,clientY:y+30,button:0,bubbles:true,view:window}));
     editor.destroy();draw.destroy();
   });
   await run('Arrowheads follow accepted geometry updates and disappear on deletion', async () => {
