@@ -17,7 +17,13 @@ Standards review found no other hard user-guideline or ADR breach. Two findings,
 - Confirmed private lifecycle failure: retry advanced the lifecycle token but resubmitted the old-token request. Retried work must use the current input and an active token.
 - Confirmed custom-sampler regression: entities with only plain cameras skipped all elevation preparation. A sampler returning null until prepare ran left the entity unavailable indefinitely. Preserve placement preparation independently of camera patch preparation.
 
-Spec review found no scope creep. Three confirmed behavior defects, including the packaged integration failure identified before the independent review.
+Focused repair verification found three further cases:
+
+- Mixed terrain-camera and non-camera attachments still needed shared preparation for the non-camera area's samples.
+- Equivalent configuration invalidation changed lifecycle tokens without marking the GPU request dirty, so rejected pending work was never replaced.
+- A single maximum-range terrain patch blocked every camera on an entity when only the far camera lacked required samples. Terrain readiness must permit the near camera to publish independently.
+
+Spec review found no scope creep. Six confirmed behavior defects across initial and focused repair review, including the packaged integration failure identified before the independent review.
 
 ## Validation before repairs
 
