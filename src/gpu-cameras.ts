@@ -44,6 +44,10 @@ function analysisKey({ origin, camera, volume }: GpuCamera) {
 function appearanceKey({ camera }: GpuCamera) {
   return JSON.stringify([camera.color, camera.fillOpacity, camera.blockedColor, camera.blockedOpacity, camera.outline, camera.outlineWidth]);
 }
+export function sameCamera(a: GpuCamera, b: GpuCamera) {
+  return a.terrain === b.terrain && analysisKey(a) === analysisKey(b)
+    && appearanceKey(a) === appearanceKey(b) && JSON.stringify(a.geometry) === JSON.stringify(b.geometry);
+}
 const colors = new Map<string, Color>();
 function color(css: string, opacity: number): Color {
   let result = colors.get(css);
@@ -108,9 +112,7 @@ export class GpuCameras implements CustomLayerInterface {
         this.cameras.set(key, item);
       }
       if (item.value !== value) {
-        item.dirty ||= item.value.terrain !== value.terrain
-          || analysisKey(item.value) !== analysisKey(value) || appearanceKey(item.value) !== appearanceKey(value)
-          || JSON.stringify(item.value.geometry) !== JSON.stringify(value.geometry);
+        item.dirty ||= !sameCamera(item.value, value);
         item.value = value;
       }
       this.attachMask(item);
@@ -180,12 +182,18 @@ export class GpuCameras implements CustomLayerInterface {
     finally { restore(); }
   }
   private colorTarget(size: number): [WebGLFramebuffer, WebGLTexture] {
-    const gl = this.gl!, frame = gl.createFramebuffer()!, texture = gl.createTexture()!;
-    gl.bindTexture(gl.TEXTURE_2D, texture); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, frame); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
-    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('Camera framebuffer is incomplete.');
-    return [frame, texture];
+    const gl = this.gl!, frame = gl.createFramebuffer(), texture = gl.createTexture();
+    try {
+      if (!frame || !texture) throw new Error('Cannot allocate camera framebuffer.');
+      gl.bindTexture(gl.TEXTURE_2D, texture); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, frame); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('Camera framebuffer is incomplete.');
+      return [frame, texture];
+    } catch (error) {
+      gl.deleteFramebuffer(frame); gl.deleteTexture(texture);
+      throw error;
+    }
   }
   private prepare(item: Camera) {
     const gl = this.gl!;

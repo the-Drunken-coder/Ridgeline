@@ -117,6 +117,11 @@ test('camera opacity accepts both endpoints and rejects invalid styles atomicall
   };
   store.upsert([feature]);
   store.upsert([{ ...feature, entity: { attachments: [{ ...camera, fillOpacity: 1 }] } }]);
+  const invalidCamera = { ...camera, wireframe: true };
+  Reflect.set(invalidCamera, 'wireframe', 'false');
+  assert.throws(() => store.upsert([{ ...feature, entity: { attachments: [invalidCamera] } }]), {
+    code: 'INVALID_FEATURE',
+  });
   for (const fillOpacity of [-0.1, 1.1, NaN, Infinity]) {
     assert.throws(() => store.upsert([
       { ...feature, properties: { changed: true } },

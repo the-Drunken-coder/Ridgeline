@@ -112,7 +112,7 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
             });
             const faces:GeoPoint[]=[],rays:GeoPoint[]=[];
             corners.forEach((a,i)=>{const b=corners[(i+1)%4]!;faces.push(origin,a,b);rays.push(origin,a,a,b);});
-            add(faces,'triangles',[rgba[0],rgba[1],rgba[2],attachment.volumeOpacity??0],attachment.id);
+            if((attachment.volumeOpacity??0)>0)add(faces,'triangles',[rgba[0],rgba[1],rgba[2],attachment.volumeOpacity!],attachment.id);
             if(attachment.wireframe)add(rays,'lines',color('#8bab97',1),attachment.id,false,attachment.wireframeWidth??3);
           }
 

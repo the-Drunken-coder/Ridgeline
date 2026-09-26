@@ -44,6 +44,7 @@ export function validateEntity(entity: Entity, fail: (message: string) => never)
         if (attachment.blockedOpacity !== undefined && (!Number.isFinite(attachment.blockedOpacity) || attachment.blockedOpacity < 0 || attachment.blockedOpacity > 1)) fail('Camera blocked opacity must be between 0 and 1.');
         if (attachment.fillOpacity !== undefined && (!Number.isFinite(attachment.fillOpacity) || attachment.fillOpacity < 0 || attachment.fillOpacity > 1)) fail('Camera fill opacity must be between 0 and 1.');
         if (attachment.outline !== undefined && typeof attachment.outline !== 'boolean') fail('Camera outline must be a boolean.');
+        if (attachment.wireframe !== undefined && typeof attachment.wireframe !== 'boolean') fail('Camera wireframe must be a boolean.');
         if (attachment.volumeOpacity !== undefined && (!Number.isFinite(attachment.volumeOpacity) || attachment.volumeOpacity < 0 || attachment.volumeOpacity > 1)) fail('Camera volume opacity must be between 0 and 1.');
         if (attachment.wireframeWidth !== undefined && (!Number.isFinite(attachment.wireframeWidth) || attachment.wireframeWidth < 1 || attachment.wireframeWidth > 12)) fail('Camera wireframe width must be between 1 and 12 pixels.');
         if (attachment.outlineWidth !== undefined && (!Number.isFinite(attachment.outlineWidth) || attachment.outlineWidth < 1 || attachment.outlineWidth > 12)) fail('Camera outline width must be between 1 and 12 pixels.');

@@ -332,6 +332,71 @@ async function suite() {
     air.remove(['aircraft']);check(!air.getEntityState('aircraft'),'Removed entity state remains');
     air.destroy();
   });
+  await run('Wireframe-only camera interiors do not intercept clicks', async () => {
+    const air = createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 },
+      camera: { center: [0,0], zoom: 17, pitch: 0 }, logger: () => {} });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'camera', type: 'camera', bearing: 0, elevation: -90,
+      fovX: 60, fovY: 60, range: 1000, fillOpacity: 0, outline: false, wireframe: true, volumeOpacity: .2 };
+    const feature: MapFeature = { ...point('wireframe'), entity: { altitude: { meters: 300, reference: 'ground' }, attachments: [camera] } };
+    let attachment = '';
+    air.on('click', event => { attachment = event.attachments[0]?.attachmentId ?? ''; });
+    const click = () => air.map.fire('click', { point: air.map.project([.0006,.0004]),
+      lngLat: air.map.getCenter(), originalEvent: new MouseEvent('click') });
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'camera volume');
+    await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+    click(); check(attachment === camera.id, 'Visible camera face was not selectable');
+    const before = air.getEntityState(feature.id)!.computedAt;
+    air.upsert([{ ...feature, entity: { ...feature.entity!, attachments: [{ ...camera, volumeOpacity: 0 }] } }]);
+    await until(() => air.getEntityState(feature.id)!.computedAt > before, 'wireframe-only update');
+    await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+    click(); check(attachment === '', 'Invisible camera face intercepted a click');
+    air.destroy();
+  });
+  await run('Incomplete custom camera terrain settles without polling and retries explicitly', async () => {
+    let samples = 0, available = false;
+    const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+      sample: (lng, lat) => { samples++; return available || (lng === 0 && lat === 0) ? 0 : null; },
+    } });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('missing-patch'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } };
+    air.upsert([feature]);
+    await until(() => samples > 66000, 'incomplete patch sampled');
+    const initialSamples = samples;
+    await new Promise(resolve => setTimeout(resolve, 700));
+    check(samples === initialSamples, `Unknown terrain kept polling: ${samples - initialSamples} extra samples`);
+    check(air.getEntityState(feature.id)?.coverage === 'unavailable', 'Unknown custom terrain stayed loading');
+    available = true; air.retryUpdates();
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'explicit terrain retry');
+    available = false; air.retryUpdates();
+    await until(() => air.getEntityState(feature.id)?.coverage === 'unavailable', 'retry discards stale terrain');
+    check(!air.map.getLayer('rl:camera-gpu'), 'Unknown terrain retained its previous mask');
+    air.destroy();
+  });
+  await run('Custom terrain preparation settles missing data and refreshes the cached patch', async () => {
+    let available = false, finish = () => {}, extent = 0;
+    const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+      sample: (lng, lat) => available || (lng === 0 && lat === 0) ? 0 : null,
+      prepare: positions => new Promise<void>(resolve => {
+        finish = resolve;
+        extent = Math.max(...positions.map(([lng, lat]) => Math.max(Math.abs(lng), Math.abs(lat)) * 111195));
+      }),
+    } });
+    current = air; await air.ready;
+    air.upsert([{ ...point('prepared-patch'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } }]);
+    await until(() => air.getEntityState('prepared-patch')?.coverage === 'loading', 'pending terrain preparation');
+    check(extent > 389, 'Preparation omitted the terrain patch movement margin');
+    finish();
+    await until(() => air.getEntityState('prepared-patch')?.coverage === 'unavailable', 'settled incomplete preparation');
+    air.retryUpdates();
+    await until(() => air.getEntityState('prepared-patch')?.coverage === 'loading', 'retry prepares terrain');
+    available = true; finish();
+    await until(() => air.getEntityState('prepared-patch')?.coverage === 'ready', 'completed terrain preparation');
+    air.destroy();
+  });
   await run('Raw DEM placement and coverage remain physical with terrain off and exaggerated', async () => {
     const errors: RidgelineError[] = [];
     const dem=document.createElement('canvas'); dem.width=dem.height=256;
@@ -574,7 +639,38 @@ async function suite() {
     check(pixel[1]!>100&&pixel[0]!<25,`Finite camera volume excluded visible hillside: ${pixel}`);
     air.destroy();
   });
-  await run('An entity waits for every camera to publish coverage', async () => {
+  await run('Failed GPU target allocation releases its resources and retries', async () => {
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 },
+      logger: () => {}, onError: error => errors.push(error) });
+    current = air; await air.ready;
+    const gl = air.map.getCanvas().getContext('webgl2')!;
+    const createFramebuffer = gl.createFramebuffer.bind(gl), deleteFramebuffer = gl.deleteFramebuffer.bind(gl);
+    const createTexture = gl.createTexture.bind(gl), deleteTexture = gl.deleteTexture.bind(gl);
+    const checkFramebufferStatus = gl.checkFramebufferStatus.bind(gl);
+    const frames = new Set<WebGLFramebuffer>(), textures = new Set<WebGLTexture>();
+    gl.createFramebuffer = () => { const value = createFramebuffer(); if (value) frames.add(value); return value; };
+    gl.createTexture = () => { const value = createTexture(); if (value) textures.add(value); return value; };
+    gl.deleteFramebuffer = value => { if (value) frames.delete(value); deleteFramebuffer(value); };
+    gl.deleteTexture = value => { if (value) textures.delete(value); deleteTexture(value); };
+    gl.checkFramebufferStatus = () => gl.FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
+    try {
+      air.upsert([{ ...point('gpu-failure'), entity: { altitude: { meters: 100, reference: 'ground' },
+        attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } }]);
+      await until(() => air.getEntityState('gpu-failure')?.coverage === 'unavailable', 'GPU allocation failure');
+      check(errors.some(error => error.code === 'UPDATE_FAILED'), 'GPU failure did not report a diagnostic');
+      check(frames.size === 0 && textures.size === 0, `Failed GPU allocation leaked ${frames.size} framebuffers and ${textures.size} textures`);
+      gl.checkFramebufferStatus = checkFramebufferStatus;
+      air.retryUpdates();
+      await until(() => air.getEntityState('gpu-failure')?.coverage === 'ready', 'GPU allocation recovery');
+    } finally {
+      gl.checkFramebufferStatus = checkFramebufferStatus;
+      air.destroy();
+      gl.createFramebuffer = createFramebuffer; gl.deleteFramebuffer = deleteFramebuffer;
+      gl.createTexture = createTexture; gl.deleteTexture = deleteTexture;
+    }
+  });
+  await run('Coverage readiness follows every camera, pose changes, and ground placement', async () => {
     const air = createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 }, logger: () => {} });
     current = air; await air.ready;
     const gl = air.map.getCanvas().getContext('webgl2')!;
@@ -589,21 +685,34 @@ async function suite() {
       bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 };
     const published = () => air.map.getStyle().layers.filter(layer => layer.id.startsWith('rl:camera-mask:'))
       .filter(layer => air.map.getSource<ImageSource>(layer.id)?.image instanceof ImageData).length;
+    const feature: MapFeature = { ...point('two-cameras'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [camera, { ...camera, id: 'second', bearing: 90 }] } };
     try {
-      air.upsert([{ ...point('two-cameras'), entity: { altitude: { meters: 100, reference: 'ground' },
-        attachments: [camera, { ...camera, id: 'second', bearing: 90 }] } }]);
+      air.upsert([feature]);
       await until(() => published() === 1, 'first camera publishes while second is pending');
       check(air.getEntityState('two-cameras')?.coverage === 'loading', 'Entity became ready before its second camera published');
       releaseSecond = true;
       await until(() => air.getEntityState('two-cameras')?.coverage === 'ready', 'both camera masks published');
       check(published() === 2, 'Ready entity is missing camera coverage');
+      releaseSecond = false;
+      let before = air.getEntityState(feature.id)!.computedAt;
+      air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [.000001,0] } }]);
+      await until(() => air.getEntityState(feature.id)!.computedAt > before, 'moved camera submitted');
+      check(air.getEntityState(feature.id)?.coverage === 'loading', 'Old camera pose was reported ready for new input');
+      releaseSecond = true;
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'moved camera masks published');
+      before = air.getEntityState(feature.id)!.computedAt;
+      air.upsert([{ ...feature, entity: { ...feature.entity!, altitude: { meters: 0, reference: 'ground' } } }]);
+      await until(() => air.getEntityState(feature.id)!.computedAt > before, 'ground-level camera computed');
+      check(air.getEntityState(feature.id)?.coverage === 'ready', 'Known ground-level camera stayed loading');
+      check(!air.map.getLayer('rl:camera-gpu'), 'Ground-level camera retained GPU geometry');
     } finally { gl.clientWaitSync = clientWaitSync; air.destroy(); }
   });
   await run('GPU visibility preserves flat-ground coverage at long range and caches terrain during movement', async () => {
     const meters = Math.PI / 180 * 6371008.8;
     let samples = 0;
     const air = createViewport({ container, basemap: style('#000000'),
-      elevationSampler: { sample: () => { samples++; return 0; } },
+      elevationSampler: { sample: () => { samples++; return 0; }, prepare: async () => {} },
       camera: { center: [0, 4000 / meters], zoom: 16, pitch: 0 }, logger: () => {} });
     current = air; await air.ready;
     const feature: MapFeature = { ...point('gpu-flat'), entity: { altitude: { meters: 2000, reference: 'ground' },

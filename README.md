@@ -149,7 +149,7 @@ Camera appearance supports `volumeOpacity`, `wireframe`, and `wireframeWidth`. T
 
 Pointer events include `attachments: { entityId, attachmentId }[]`. Visible camera faces, wireframes, and footprints can select their owning attachment. The optional interaction helper carries attachment hits into `selectionrequest`; the consumer owns selection policy.
 
-An optional `elevationSampler` supplies raw unexaggerated meters through `sample(lng, lat): number | null`; its optional asynchronous `prepare(positions, signal)` loads the needed area. Return null for unknown terrain. Once asynchronously loaded data changes, call `retryUpdates()` unless the source's `prepare` promise is completing. This source changes computation, not the map's displayed DEM, so keep their datums and data aligned.
+An optional `elevationSampler` supplies raw unexaggerated meters through `sample(lng, lat): number | null`; its optional asynchronous `prepare(positions, signal)` loads the needed area. Return null for unknown terrain. Incomplete camera terrain reports loading while preparation is pending, then unavailable if samples remain unknown. Completing preparation refreshes incomplete patches; known terrain stays cached during movement. Call `retryUpdates()` when already loaded terrain changes or when data loads without `prepare`. This source changes computation, not the map's displayed DEM, so keep their datums and data aligned.
 
 ## Interaction and application UI
 

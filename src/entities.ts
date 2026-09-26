@@ -1,4 +1,4 @@
-import { GpuCameras } from './gpu-cameras';
+import { GpuCameras, sameCamera } from './gpu-cameras';
 import type { GpuCamera } from './gpu-cameras';
 import { cameraTerrain } from './gpu-camera-terrain';
 import type { CameraTerrain } from './gpu-camera-terrain';
@@ -50,6 +50,7 @@ export class EntityScene<P extends Properties> {
   private destroyed = false;
   private raster: RasterElevationSampler;
   private customGeneration = new AbortController();
+  private preparing = new Map<string, Promise<void>>();
   private terrainTimer?: ReturnType<typeof setTimeout>;
   private gpu: GpuCameras;
   private displayedCameras = new Map<string, GpuCamera>();
@@ -100,6 +101,7 @@ export class EntityScene<P extends Properties> {
   }
   set(features: readonly MapFeature<P>[], removed: readonly string[] = []) {
     for (const id of removed) {
+      this.preparing.delete(id);
       this.gpuValues.delete(id); this.terrainPatches.delete(id);
       this.features.delete(id);
       this.states.delete(id);
@@ -113,6 +115,7 @@ export class EntityScene<P extends Properties> {
         this.features.set(feature.id, feature);
         this.dirty.add(feature.id);
       } else {
+        this.preparing.delete(feature.id);
         this.gpuValues.delete(feature.id); this.terrainPatches.delete(feature.id);
         this.features.delete(feature.id);
         this.states.delete(feature.id);
@@ -133,7 +136,7 @@ export class EntityScene<P extends Properties> {
           for (const a of f.entity.attachments ?? []) {
             if (a.type === 'camera' && !a.terrainVisibility) continue;
             const range =
-              a.type === 'camera' ? a.range : a.type === 'polygon'
+              a.type === 'camera' ? a.range * 1.3 : a.type === 'polygon'
                   ? Math.max(...a.vertices.map((p) => Math.hypot(...p)))
                   : a.radius;
             for (const x of [-range, 0, range])
@@ -144,11 +147,9 @@ export class EntityScene<P extends Properties> {
           }
         }
       const generation = this.customGeneration;
-      void this.options.sampler
-        .prepare(positions, generation.signal)
-        .then(() => {
-          if (!generation.signal.aborted) this.invalidate();
-        })
+      const preparation = this.options.sampler.prepare(positions, generation.signal);
+      for (const feature of features) if (feature.entity) this.preparing.set(feature.id, preparation);
+      void preparation
         .catch((cause) => {
           if (!generation.signal.aborted)
             this.options.diagnostic(
@@ -159,6 +160,14 @@ export class EntityScene<P extends Properties> {
                 cause,
               ),
             );
+        })
+        .finally(() => {
+          if (generation.signal.aborted) return;
+          for (const [id, pending] of this.preparing) if (pending === preparation) {
+            this.preparing.delete(id);
+            if (!this.terrainPatches.get(id)?.terrain.ready) this.terrainPatches.delete(id);
+          }
+          this.invalidate();
         });
     }
   }
@@ -169,10 +178,12 @@ export class EntityScene<P extends Properties> {
       this.raster = this.createSampler();
       this.customGeneration.abort();
       this.customGeneration = new AbortController();
+      this.preparing.clear();
     }
     this.invalidate();
   }
   retry() {
+    this.terrainPatches.clear();
     this.gpuFailed = false;
     this.gpu.retry();
     this.raster.retry();
@@ -219,6 +230,7 @@ export class EntityScene<P extends Properties> {
     this.destroyed = true;
     cancelAnimationFrame(this.frame);
     this.customGeneration.abort();
+    this.preparing.clear();
     this.raster.destroy();
     this.features.clear();
     this.geometry.clear();
@@ -263,9 +275,10 @@ export class EntityScene<P extends Properties> {
   }
   private build(feature: MapFeature<P>) {
     const input = { feature, configuration: this.options.configuration(), style: this.options.style(feature), selected: this.selected.has(feature.id) };
-    const result = computeEntity(input, this.height, () => this.raster.unavailable());
+    const unavailable = () => this.options.sampler ? !this.preparing.has(feature.id) : this.raster.unavailable();
+    const result = computeEntity(input, this.height, unavailable);
     const values: GpuCamera[] = [];
-    if (!this.gpuFailed && result.state.placement === 'airborne' && input.configuration.entityVisibility.footprints) {
+    if (!this.gpuFailed && result.state.placement === 'airborne' && result.state.altitude! > result.state.ground! + .01 && input.configuration.entityVisibility.footprints) {
       const cameras = feature.entity?.attachments?.flatMap(a => a.type === 'camera' && a.terrainVisibility ? [a] : []) ?? [];
       const range = Math.max(0, ...cameras.map(camera => camera.range));
       if (range > 0) {
@@ -275,10 +288,10 @@ export class EntityScene<P extends Properties> {
         if (!cached || terrain !== cached.terrain) {
           this.terrainPatches.set(feature.id, {terrain,time:now});
         }
-        if (!terrain.ready && !this.raster.unavailable() && !this.terrainTimer) this.terrainTimer = setTimeout(() => {
+        if (!terrain.ready && !this.options.sampler && !this.raster.unavailable() && !this.terrainTimer) this.terrainTimer = setTimeout(() => {
           this.terrainTimer=undefined; this.invalidate();
         },250);
-        if (terrain.ready && result.state.altitude! > result.state.ground! + .01) {
+        if (terrain.ready) {
           for (const camera of cameras) {
             const origin: [number,number,number]=[...result.position,result.state.altitude!];
             const volume=cameraVolume(origin,camera,terrain);
@@ -286,7 +299,7 @@ export class EntityScene<P extends Properties> {
               geometry:cameraVolumePrimitives(feature.id,origin,camera,volume,input.configuration,terrain)});
           }
         }
-        result.state.coverage = this.coverageReady(values) ? 'ready' : this.raster.unavailable() ? 'unavailable' : 'loading';
+        result.state.coverage = this.coverageReady(values) ? 'ready' : !terrain.ready && unavailable() ? 'unavailable' : 'loading';
       }
     }
     if (this.gpuFailed) result.state.coverage = 'unavailable';
@@ -294,8 +307,10 @@ export class EntityScene<P extends Properties> {
     this.apply(feature.id, result);
   }
   private coverageReady(values: readonly GpuCamera[]) {
-    return values.length > 0 && values.every(value =>
-      this.displayedCameras.get(JSON.stringify([value.entityId, value.camera.id]))?.terrain === value.terrain);
+    return values.length > 0 && values.every(value => {
+      const displayed = this.displayedCameras.get(JSON.stringify([value.entityId, value.camera.id]));
+      return displayed !== undefined && sameCamera(displayed, value);
+    });
   }
 
   private apply(id: string, result: EntityComputationResult) {
