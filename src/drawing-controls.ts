@@ -50,6 +50,7 @@ export function attachDrawingControls<P extends Properties>(
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = label;
+    button.dataset.field = `action:${label}`;
     button.disabled = disabled;
     if (primary) button.className = "rl-drawing-finish";
     button.addEventListener("click", () => {
@@ -145,7 +146,7 @@ export function attachDrawingControls<P extends Properties>(
       draft = state.draft;
     const focused =
       document.activeElement instanceof HTMLElement &&
-      panel.contains(document.activeElement)
+      (panel.contains(document.activeElement) || rail.contains(document.activeElement))
         ? document.activeElement.dataset.field
         : undefined;
     rail.replaceChildren();
@@ -308,7 +309,7 @@ export function attachDrawingControls<P extends Properties>(
           ),
           text(
             "Opacity (%)",
-            String(style.fillOpacity * 100),
+            String(Number((style.fillOpacity * 100).toFixed(2))),
             (value) => editor.setStyle({ fillOpacity: Number(value) / 100 }),
             !editable("fillOpacity"),
             "number",
@@ -395,12 +396,16 @@ export function attachDrawingControls<P extends Properties>(
       note.textContent = error;
       panel.append(note);
     }
-    if (focused)
-      for (const input of panel.querySelectorAll<HTMLElement>("[data-field]"))
-        if (input.dataset.field === focused) {
-          input.focus({ preventScroll: true });
-          break;
-        }
+    if (focused) {
+      const candidates = [
+        ...rail.querySelectorAll<HTMLElement>("[data-field]:not(:disabled)"),
+        ...panel.querySelectorAll<HTMLElement>("[data-field]:not(:disabled)"),
+      ];
+      const target = candidates.find((element) => element.dataset.field === focused)
+        ?? panel.querySelector<HTMLElement>("button[data-field]:not(:disabled)")
+        ?? candidates[0];
+      target?.focus({ preventScroll: true });
+    }
   }
   const offPreview = editor.onPreview(() => {
     const output = panel.querySelector("output");

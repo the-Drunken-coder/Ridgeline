@@ -36,13 +36,14 @@ export type DrawingDecision =
   | { accepted: true }
   | { accepted: false; reason: string };
 export type DrawingOptions<P extends Properties> = {
-  /** The consumer supplies identity and application properties for a new drawing. */
-  createFeature: (geometry: MapFeature<P>["geometry"]) => MapFeature<P>;
+  /** Supplies identity and properties before placement. submit receives the completed geometry. */
+  createFeature: () => Pick<MapFeature<P>, "id" | "properties">;
   /** Persist atomically against before. Do not also upsert into this viewport; acceptance applies the change. */
   submit: (
     change: DrawingChange<P>,
     signal: AbortSignal,
   ) => DrawingDecision | Promise<DrawingDecision>;
+  /** New drawings are checked after their first point is placed, using the current draft geometry. */
   canEdit?: (
     feature: MapFeature<P>,
     operation: DrawingChange<P>["kind"],

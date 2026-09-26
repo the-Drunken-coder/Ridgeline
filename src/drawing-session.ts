@@ -64,10 +64,11 @@ export function createDrawingSession<P extends Properties>(
     operation: DrawingChange<P>["kind"] = draft?.before ? "update" : "create",
   ) {
     if (!draft) return false;
+    if (!draft.before && !draft.placed) return true;
     try {
       return (
         options.canEdit?.(
-          structuredClone(draft.before ?? draft.feature),
+          structuredClone(draft.before ?? { ...draft.feature, geometry: shapeGeometry(draft.shape) }),
           operation,
         ) ?? true
       );
@@ -158,11 +159,12 @@ export function createDrawingSession<P extends Properties>(
   function start(tool: DrawingTool) {
     if (!tools.includes(tool))
       throw new Error("This drawing tool is not enabled.");
-    const feature = structuredClone(
-      options.createFeature({ type: "Point", coordinates: [0, 0] }),
-    );
+    const { id, properties } = options.createFeature();
+    const feature: MapFeature<P> = structuredClone({
+      type: "Feature", id, properties,
+      geometry: { type: "Point", coordinates: [0, 0] },
+    });
     validateFeature(feature);
-    if (feature.entity) throw new Error("Drawings cannot carry entity data.");
     if (host.getFeature(feature.id))
       throw new Error("A new drawing needs an unused feature ID.");
     const shape: DrawingShape =

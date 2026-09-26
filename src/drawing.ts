@@ -74,17 +74,18 @@ export function attachDrawing<P extends Properties>(
       candidates: DrawingPosition[] = [];
     const visible = new Set(
       map
-        .queryRenderedFeatures(undefined, {
+        .queryRenderedFeatures([[screen.x - 12, screen.y - 12], [screen.x + 12, screen.y + 12]], {
           layers: ["rl:fill", "rl:line", "rl:dashed", "rl:points"].filter(
             (id) => map.getLayer(id),
           ),
         })
-        .map((f) => f.id),
+        .flatMap((f) => typeof f.id === "string" ? [f.id] : []),
     );
-    for (const feature of viewport.getFeatures()) {
+    for (const id of visible) {
+      const feature = viewport.getFeature(id);
       if (
+        !feature ||
         feature.id === state.draft?.feature.id ||
-        !visible.has(feature.id) ||
         options.canSnap?.(feature) === false
       )
         continue;

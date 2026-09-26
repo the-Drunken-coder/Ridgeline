@@ -233,8 +233,8 @@ Open that fixture at port 5174 to inspect its results. It has no source alias an
 import { attachDrawing, attachDrawingControls } from '@ridgeline/map';
 
 const drawing = attachDrawing(viewport, {
-  createFeature: geometry => ({
-    type: 'Feature', id: crypto.randomUUID(), geometry,
+  createFeature: () => ({
+    id: crypto.randomUUID(),
     properties: { name: 'Drawing' },
   }),
   submit: async (change, signal) => {
@@ -256,7 +256,7 @@ const controls = attachDrawingControls(viewport, drawing, {
 // On unmount: controls.destroy(); drawing.destroy();
 ```
 
-The API supports lines, polygons, rectangles, circles, and single-headed arrows. Existing ordinary points, lines, and polygons can also be edited with `drawing.edit(id)`. Entity geometry and polygons with holes stay outside this editor. `tools`, `styleFields`, and `defaults` let consumers restrict creation and appearance controls. `canEdit` is consulted before editing actions and submission; call `refreshPermissions()` when application permissions change while a draft is open.
+The API supports lines, polygons, rectangles, circles, and single-headed arrows. Existing ordinary points, lines, and polygons can also be edited with `drawing.edit(id)`. Entity geometry and polygons with holes stay outside this editor. `tools`, `styleFields`, and `defaults` let consumers restrict creation and appearance controls. `createFeature` supplies only identity and properties before placement; `submit` receives the completed geometry. `canEdit` is consulted before editing actions and submission. New drawings are checked after the first point is placed, using their current, possibly incomplete geometry. Call `refreshPermissions()` when application permissions change while a draft is open.
 
 Click to add line or polygon vertices. Circles use a center and radius point. Rectangles use a center and a corner, then expose width, height, and bearing. Use Finish to submit and Cancel or Escape to discard. Drag handles to reshape, the central movement handle to move a line or polygon, and the center handle to move a circle or rectangle. Click a `+` handle to insert a vertex. Focused handles support arrow keys, Shift+arrows for a larger step, and Delete/Backspace for ordinary vertices. Hold Alt to bypass snapping while dragging or placing a point. Touch and pen drawing are not supported in this version; map navigation remains available.
 
@@ -264,7 +264,7 @@ Click to add line or polygon vertices. Circles use a center and radius point. Re
 
 A pending request locks editing and duplicate submission. Rejections preserve the draft. An external update to the edited feature preserves the draft, aborts the submission signal, and blocks acceptance until `restart()` or cancellation. Removal requires cancellation. Unrelated updates do not interrupt editing. Destruction ignores late results and releases handles, layers, and interaction ownership. Consumers must enforce atomic version or baseline checks in their persistence layer: an abort signal alone cannot reverse a remote write that already happened. This library applies accepted changes to the viewport; the callback owns saving, not a second viewport mutation.
 
-Accepted features include a versioned GeoJSON foreign member, `drawing: { version: 1, shape, style }`. Keep it alongside ordinary `geometry` and application `properties` when saving. Circles retain center/radius; rectangles retain center/width/height/bearing; arrows retain their line vertices and direction. `shapeGeometry(shape)` produces the matching GeoJSON; `upsert` rejects mismatched geometry and shape definitions rather than guessing which one is authoritative. Ordinary imported geometry without `drawing` metadata remains ordinary geometry. Drawing appearance overrides the consumer style callback for the drawing's stroke, fill, width, opacity, dash, and label. Both the saved shape definition and geometry use bounded longitude/latitude; render-only coordinates are unrolled at the date line.
+Accepted features include a versioned GeoJSON foreign member, `drawing: { version: 1, shape, style }`. Keep it alongside ordinary `geometry` and application `properties` when saving. Circles retain center/radius; rectangles retain center/width/height/bearing; arrows retain their line vertices and direction. `shapeGeometry(shape)` produces the matching GeoJSON; `upsert` permits coordinate rounding within 0.0000001 degrees but rejects different geometry types, topology, or larger differences from the shape definition. Ordinary imported geometry without `drawing` metadata remains ordinary geometry. Drawing appearance overrides the consumer style callback for the drawing's stroke, fill, width, opacity, dash, and label. Both the saved shape definition and geometry use bounded longitude/latitude; render-only coordinates are unrolled at the date line.
 
 Distances and areas use a spherical Earth radius of 6,371,008.8 m, independent of terrain slope, exaggeration, and camera zoom. Rectangles are defined by center-relative east/north dimensions rotated by bearing and projected geodesically onto the ground. Circle display geometry uses 96 segments; its area uses the spherical circle definition. Measurements are geographic estimates, not ellipsoidal survey measurements. Self-intersecting polygons, degenerate edges, pole-enclosing shapes, and hemisphere-scale shapes cannot be submitted. Metric and imperial units affect display only; stored dimensions are meters and bearings are degrees clockwise from north.
 

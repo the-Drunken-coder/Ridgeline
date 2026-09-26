@@ -11,10 +11,12 @@ import {
   validateShape,
 } from "../src/drawing-geometry";
 import { FeatureStore } from "../src/features";
+import { arrowFeatures } from "../src/drawing-render";
 import type {
   DrawingChange,
   DrawingDecision,
   DrawingOptions,
+  DrawingPosition,
   DrawingShape,
 } from "../src/drawing-types";
 import type { MapFeature, Properties } from "../src/types";
@@ -56,10 +58,8 @@ function fixture(overrides: Partial<DrawingOptions<Properties>> = {}) {
   };
   const requests: DrawingChange[] = [];
   const editor = createDrawingSession(host, {
-    createFeature: (geometry) => ({
-      type: "Feature",
+    createFeature: () => ({
       id: "new",
-      geometry,
       properties: { name: "New" },
     }),
     submit: (change) => {
@@ -98,7 +98,8 @@ test("Circle and rotated rectangle retain meter-based definitions across storage
     },
   ] satisfies DrawingShape[]) {
     assert.equal(validateShape(shape), undefined);
-    store.upsert([JSON.parse(JSON.stringify(feature(shape)))]);
+    store.upsert([JSON.parse(JSON.stringify(feature(shape), (_key, value: unknown) =>
+      typeof value === "number" ? Number(value.toFixed(9)) : value))]);
     assert.deepEqual(store.get("existing")?.drawing?.shape, shape);
     assert.ok(measurements(shape).area! > 1_900_000);
     const geometry = shapeGeometry(shape, true);
@@ -195,6 +196,9 @@ test("Feature validation rejects stale shape metadata and preserves ordinary pol
   const f = feature({ kind: "circle", center: [0, 0], radius: 100 });
   f.geometry = { type: "Point", coordinates: [0, 0] };
   assert.throws(() => store.upsert([f]), /match/);
+  const moved = feature({ kind: "circle", center: [0, 0], radius: 100 });
+  if (moved.geometry.type === "Polygon") moved.geometry.coordinates[0]![1]![0]! += 0.001;
+  assert.throws(() => store.upsert([moved]), /match/);
   const hole: MapFeature = {
     type: "Feature",
     id: "hole",
@@ -221,6 +225,37 @@ test("Feature validation rejects stale shape metadata and preserves ordinary pol
   host.upsert([hole]);
   assert.throws(() => editor.edit("hole"), /holes/);
   assert.deepEqual(host.getFeature("hole"), hole);
+});
+test("Arrowheads follow Mercator segments at high latitude and across the date line", () => {
+  for (const [vertices, expected] of [
+    [[[0, 60], [40, 60]], 90],
+    [[[179, 60], [-179, 60]], 90],
+    [[[-179, 60], [179, 60]], -90],
+    [[[40, 40], [40, 60]], 0],
+  ] satisfies [DrawingPosition[], number][]) {
+    const head = arrowFeatures([feature({ kind: "arrow", vertices })]).features[0]!;
+    assert.equal(head.properties?.bearing, expected);
+  }
+});
+test("New drawing permissions receive placed geometry rather than a fabricated origin", async () => {
+  const seen: MapFeature["geometry"][] = [];
+  const { editor, requests } = fixture({
+    canEdit: (candidate, operation) => {
+      assert.equal(operation, "create");
+      seen.push(candidate.geometry);
+      return candidate.geometry.type === "LineString"
+        && candidate.geometry.coordinates.every(p => p[0]! >= 10);
+    },
+  });
+  editor.start("line");
+  assert.equal(editor.getState().phase, "editing");
+  assert.equal(seen.length, 0);
+  editor.addPoint([10, 20]);
+  editor.addPoint([11, 21]);
+  assert.equal(await editor.finish(), true);
+  assert.deepEqual(requests[0]?.after?.geometry, { type: "LineString", coordinates: [[10, 20], [11, 21]] });
+  assert.ok(seen.length > 0);
+  assert.ok(seen.every(geometry => geometry.type === "LineString" && geometry.coordinates[0]?.[0] === 10));
 });
 test("Draft undo, gesture grouping and cancellation never mutate consumer data", () => {
   const { host, editor, owner } = fixture();

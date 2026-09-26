@@ -435,13 +435,15 @@ async function suite() {
     let clicks=0, accepts=0;
     draw.on('click',()=>{clicks++;});
     const editor=attachDrawing(draw,{
-      createFeature:geometry=>({type:'Feature',id:'drawn',geometry,properties:{name:'Drawn'}}),
+      createFeature:()=>({id:'drawn',properties:{name:'Drawn'}}),
       submit:()=>{accepts++;return {accepted:true};},
     });
     const tools=document.createElement('div'),inspector=document.createElement('div');document.body.append(tools,inspector);
     const controls=attachDrawingControls(draw,editor,{tools,inspector});
     await until(()=>Boolean(draw.map.getSource('rl:draft')),'draft source attached');
-    editor.start('polygon');
+    const tool = tools.querySelector<HTMLButtonElement>('[data-field="action:Polygon"]')!;
+    tool.focus(); tool.click();
+    check(inspector.contains(document.activeElement), 'Starting a tool lost keyboard focus');
     for(const p of [[0,0],[.02,0],[.02,.02],[0,.02]] as [number,number][]){
       const point=draw.map.project(p);
       draw.map.fire('click',{point,lngLat:draw.map.unproject(point),originalEvent:new MouseEvent('click')});
@@ -450,6 +452,14 @@ async function suite() {
     check(container.querySelectorAll('.rl-drawing-handle').length>=4,'Vertex handles missing');
     check(!draw.getFeature('drawn'),'Unaccepted draft entered store');
     check(inspector.textContent?.includes('Area'),'Measurements missing');
+    const undo = inspector.querySelector<HTMLButtonElement>('[data-field="action:Undo"]')!;
+    undo.focus(); undo.click();
+    check(document.activeElement?.getAttribute('data-field')==='action:Undo','Undo lost keyboard focus');
+    const redo = inspector.querySelector<HTMLButtonElement>('[data-field="action:Redo"]')!;
+    redo.focus(); redo.click();
+    check(inspector.contains(document.activeElement),'Disabled redo lost keyboard focus');
+    editor.setStyle({fillOpacity:0.29});
+    check(inspector.querySelector<HTMLInputElement>('[data-field="Opacity (%)"]')?.value==='29','Opacity displayed floating-point noise');
     check(await editor.finish(),'Drawing was not accepted');
     check(accepts===1&&draw.getFeature('drawn')?.geometry.type==='Polygon','Accepted polygon not stored');
     editor.edit('drawn');
@@ -466,6 +476,21 @@ async function suite() {
     controls.destroy();editor.destroy();check(!container.querySelector('.rl-drawing-handle'),'Handle leaked on destroy');
     check(!draw.map.getSource('rl:draft'),'Draft source leaked on destroy');
     draw.destroy();tools.remove();inspector.remove();
+  });
+  await run('Drawing snapping visits only nearby rendered candidates', async () => {
+    const draw=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:12},features:[point('near',0),point('far',0.04)],logger:()=>{}});
+    current=draw;await draw.ready;
+    await until(()=>draw.map.queryRenderedFeatures({layers:['rl:points']}).length>=2,'snap targets rendered');
+    const visited:string[]=[];
+    const editor=attachDrawing(draw,{createFeature:()=>({id:'snapped',properties:{}}),submit:()=>({accepted:true}),canSnap:feature=>{visited.push(feature.id);return true;}});
+    editor.start('line');
+    const origin=draw.map.project([0,0]);
+    const cursor={x:origin.x+4,y:origin.y};
+    draw.map.fire('click',{point:cursor,lngLat:draw.map.unproject([cursor.x,cursor.y]),originalEvent:new MouseEvent('click')});
+    const shape=editor.getState().draft?.shape;
+    check(shape?.kind==='line'&&shape.vertices[0]?.[0]===0&&shape.vertices[0]?.[1]===0,'Nearby vertex did not snap');
+    check(visited.length===1&&visited[0]==='near','Snapping inspected features outside its pointer radius');
+    editor.destroy();draw.destroy();
   });
   await run('Arrowheads follow accepted geometry updates and disappear on deletion', async () => {
     const arrowShape = { kind:'arrow' as const, vertices:[[-.01,0],[.01,0]] as [number,number][] };

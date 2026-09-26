@@ -4,6 +4,18 @@ import type { MapFeature, Properties } from './types';
 import { shapeGeometry, validateDrawingStyle, validateShape } from './drawing-geometry';
 import { validateEntity } from './entity-geometry';
 
+// Allow storage rounding within about a centimetre while retaining shape and topology checks.
+function sameGeometry(a: MapFeature['geometry'], b: MapFeature['geometry']) {
+  const point = (x: Position, y: Position) => x.length === y.length
+    && x.every((value, i) => Number.isFinite(value) && Number.isFinite(y[i]) && Math.abs(value - y[i]!) <= 1e-7);
+  const line = (x: Position[], y: Position[]) => x.length === y.length && x.every((p, i) => point(p, y[i]!));
+  if (a.type === 'Point' && b.type === 'Point') return point(a.coordinates, b.coordinates);
+  if (a.type === 'LineString' && b.type === 'LineString') return line(a.coordinates, b.coordinates);
+  return a.type === 'Polygon' && b.type === 'Polygon'
+    && a.coordinates.length === b.coordinates.length
+    && a.coordinates.every((ring, i) => line(ring, b.coordinates[i]!));
+}
+
 function positionValid(position: Position) {
   const [lng, lat] = position;
   return position.length === 2 && typeof lng === 'number' && typeof lat === 'number'
@@ -23,7 +35,7 @@ export function validateFeature<P extends Properties>(feature: MapFeature<P>) {
     if (feature.drawing.version !== 1) fail('Unsupported drawing version.');
     const error = validateShape(feature.drawing.shape) ?? validateDrawingStyle(feature.drawing.style);
     if (error) fail(error);
-    if (JSON.stringify(shapeGeometry(feature.drawing.shape)) !== JSON.stringify(geometry)) fail('Drawing geometry must match its shape definition.');
+    if (!sameGeometry(shapeGeometry(feature.drawing.shape), geometry)) fail('Drawing geometry must match its shape definition.');
   }
   if (feature.entity) {
     if (geometry.type !== 'Point') fail('Only point features can carry entity data.');
