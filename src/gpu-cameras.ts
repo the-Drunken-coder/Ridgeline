@@ -42,13 +42,14 @@ type Camera = {
 function analysisKey({ origin, camera, volume }: GpuCamera) {
   return JSON.stringify([origin, camera.bearing, camera.elevation, camera.fovX, camera.fovY, camera.range, volume.offsets]);
 }
-function appearanceKey({ camera }: GpuCamera) {
-  return JSON.stringify([camera.color, camera.fillOpacity, camera.blockedColor, camera.blockedOpacity, camera.outline, camera.outlineWidth]);
+function appearanceKey({ camera }: Pick<GpuCamera, 'camera'>) {
+  return JSON.stringify([camera.color, camera.fillOpacity, camera.blockedColor, camera.blockedOpacity, camera.outline, camera.outlineWidth,
+    camera.volumeOpacity, camera.wireframe, camera.wireframeWidth]);
 }
 function cameraKey({ entityId, camera }: GpuCamera) {
   return JSON.stringify([entityId, camera.id]);
 }
-export function sameCameraAppearance(a: GpuCamera, b: GpuCamera) {
+export function sameCameraAppearance(a: Pick<GpuCamera, 'camera'>, b: Pick<GpuCamera, 'camera'>) {
   return appearanceKey(a) === appearanceKey(b);
 }
 export function sameCamera(a: GpuCamera, b: GpuCamera) {

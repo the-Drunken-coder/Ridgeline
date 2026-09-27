@@ -434,6 +434,76 @@ async function suite() {
     check(!air.map.getLayer('rl:camera-gpu'), 'Plain camera allocated the GPU visibility renderer');
     air.destroy();
   });
+  await run('A moved airborne camera prepares a missing center while retaining historical coverage', async () => {
+    const movedLng = .00005;
+    let centerAvailable = true;
+    let prepareCalls = 0;
+    let preparedPositions: readonly [number, number][] = [];
+    let finishPreparation: (() => void) | undefined;
+    const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+      sample: (lng, lat) => {
+        if (Math.abs(lng) < 1e-8 && Math.abs(lat) < 1e-8) return 12;
+        if (Math.abs(lng - movedLng) < 1e-8 && Math.abs(lat) < 1e-8) return centerAvailable ? 12 : null;
+        return 0;
+      },
+      prepare: (requested, signal) => {
+        prepareCalls++;
+        preparedPositions = requested.map(([lng, lat]) => [lng, lat] as [number, number]);
+        return new Promise<void>((resolve, reject) => {
+          const abort = () => {
+            signal.removeEventListener('abort', abort);
+            reject(new DOMException('aborted', 'AbortError'));
+          };
+          if (signal.aborted) { abort(); return; }
+          signal.addEventListener('abort', abort, { once: true });
+          finishPreparation = () => {
+            signal.removeEventListener('abort', abort);
+            resolve();
+          };
+        });
+      },
+    } });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'camera', type: 'camera', terrainVisibility: true,
+      bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300, volumeOpacity: 0, wireframe: false };
+    const feature: MapFeature = { ...point('moving-airborne'), entity: {
+      altitude: { meters: 100, reference: 'ground' }, attachments: [camera],
+    } };
+    air.upsert([feature]);
+    await until(() => {
+      const state = air.getEntityState(feature.id);
+      return state?.ground === 12 && state.altitude === 112 && state.placement === 'airborne' && state.coverage === 'ready';
+    }, 'initial airborne camera');
+    let picked = '';
+    const off = air.on('click', event => { picked = event.attachments.find(hit => hit.entityId === feature.id)?.attachmentId ?? ''; });
+    const pickAt = (lng: number, lat: number) => {
+      const screen = air.map.project([lng, lat]);
+      picked = '';
+      air.map.fire('click', { point: screen, lngLat: air.map.unproject(screen), originalEvent: new MouseEvent('click') });
+      return picked;
+    };
+    try {
+      check(pickAt(0, .0008) === camera.id, 'Initial airborne camera coverage was not pickable');
+      centerAvailable = false;
+      air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [movedLng, 0] } }]);
+      await until(() => prepareCalls === 1 && air.getEntityState(feature.id)?.placement === 'elevation-unavailable', 'center preparation and placement after movement');
+      const pending = air.getEntityState(feature.id);
+      check(pending?.placement === 'elevation-unavailable' && pending.coverage === 'loading', 'Missing center did not remain loading during preparation');
+      check(preparedPositions.some(([lng, lat]) => Math.abs(lng - movedLng) < 1e-8 && Math.abs(lat) < 1e-8), 'Preparation omitted the moved center');
+      check(pickAt(0, .0008) === camera.id, 'Historical camera coverage disappeared during center preparation');
+      centerAvailable = true;
+      finishPreparation?.();
+      finishPreparation = undefined;
+      await until(() => {
+        const state = air.getEntityState(feature.id);
+        return state?.ground === 12 && state.altitude === 112 && state.placement === 'airborne' && state.coverage === 'ready';
+      }, 'recovered airborne camera');
+    } finally {
+      finishPreparation?.();
+      off();
+      air.destroy();
+    }
+  });
   await run('No-altitude terrain cameras use prepared ground placement without GPU coverage', async () => {
     let prepared = false;
     let positions: readonly [number, number][] = [];

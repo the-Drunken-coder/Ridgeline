@@ -325,8 +325,8 @@ export class EntityScene<P extends Properties> {
       placement: result.state.placement,
       cameras: feature.entity?.attachments?.filter((attachment): attachment is CameraAttachment => attachment.type === 'camera') ?? [],
       configuration: input.configuration,
-      elevationUnavailable: unavailable(),
-      elevationPreparing: this.options.sampler ? this.preparing.has(feature.id) || this.coverage.isPreparing(feature.id) : false,
+      elevationUnavailable: this.options.sampler ? !this.preparing.has(feature.id) : this.raster.unavailable(),
+      elevationPreparing: this.options.sampler ? this.preparing.has(feature.id) : false,
     });
     result.state.coverage = camera.coverage === 'ready' ? result.state.coverage : camera.coverage;
     result.state.footprintTriangles = camera.footprintTriangles;

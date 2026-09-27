@@ -35,6 +35,7 @@ export type SensorCameraInput = {
   cameras: readonly CameraAttachment[];
   configuration: MapConfiguration;
   elevationUnavailable: boolean;
+  /** Shared placement/attachment preparation; camera ranges are owned here. */
   elevationPreparing: boolean;
 };
 
@@ -352,9 +353,9 @@ export class SensorCameraCoverage {
       if (!camera.terrainVisibility) continue;
       const state = entity.cameras.get(camera.id)!;
       const terrain = this.terrainFor(entity, camera.range);
-      if (!terrain.ready) {
+      if (!terrain.ready || input.placement === 'elevation-unavailable') {
         state.terrainPending = true;
-        if (input.elevationUnavailable && !entity.terrain.get(camera.range)?.preparing) {
+        if (this.terrainUnavailable(entity, camera.range)) {
           state.displayed = undefined;
           state.requested = undefined;
         }
@@ -390,8 +391,10 @@ export class SensorCameraCoverage {
       ? cached.terrain
       : cameraTerrain(input.origin[0], input.origin[1], range, this.options.height, cached?.terrain);
     if (!cached || terrain !== cached.terrain) work.patch = { terrain, time: now };
-    if (!terrain.ready) {
-      if (!input.elevationPreparing || this.isPreparing(input.entityId)) this.requestPreparation(entity, range, work);
+    if (!terrain.ready || input.placement === 'elevation-unavailable') {
+      // A reusable patch says nothing about the current center sample. Resolve
+      // placement before constructing a request, even when this patch is ready.
+      if (!input.elevationPreparing) this.requestPreparation(entity, range, work);
       if (this.options.pollTerrain !== false && !this.options.elevationUnavailable() && !this.options.prepare && !entity.timer) {
         entity.timer = setTimeout(() => {
           entity.timer = undefined;
@@ -436,7 +439,8 @@ export class SensorCameraCoverage {
   private complete(value: GpuCamera, publish: () => void) {
     const entity = this.entities.get(value.entityId);
     const state = entity?.cameras.get(value.camera.id);
-    if (this.destroyed || this.failed || state?.lifecycle !== value.lifecycle || !state.requested || !sameCameraAppearance(value, state.requested)) return false;
+    const camera = entity?.input.cameras.find(camera => camera.id === value.camera.id);
+    if (this.destroyed || this.failed || state?.lifecycle !== value.lifecycle || !state.requested || !camera || !sameCameraAppearance(value, { camera })) return false;
     publish();
     state.displayed = { geometry: value.geometry, terrain: true, value };
     if (entity) {
@@ -471,7 +475,7 @@ export class SensorCameraCoverage {
       const preparing = entity.terrain.get(camera.range)?.preparing !== undefined;
       if (this.failed || input.elevationUnavailable && !preparing && !state.requested && !state.terrainPending) return 'unavailable';
       if (state.terrainPending) {
-        if (input.elevationUnavailable && !preparing) return 'unavailable';
+        if (this.terrainUnavailable(entity, camera.range)) return 'unavailable';
         coverage = 'loading';
       } else if (state.requested && (!state.displayed?.value || !sameCamera(state.displayed.value, state.requested))) coverage = 'loading';
       else if (!state.requested && !state.displayed) {
@@ -480,6 +484,15 @@ export class SensorCameraCoverage {
       }
     }
     return coverage;
+  }
+
+  private terrainUnavailable(entity: EntityCoverage, range: number) {
+    const work = entity.terrain.get(range);
+    if (work?.preparing) return false;
+    // A successful cached patch cannot settle a later placement preparation.
+    if (work?.patch?.terrain.ready && entity.input.elevationPreparing) return false;
+    // One settled range must not wait for an unrelated camera's preparation.
+    return Boolean(work?.settled) || entity.input.elevationUnavailable;
   }
 
   private clearTerrainWork(entity: EntityCoverage) {
