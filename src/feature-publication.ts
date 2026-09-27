@@ -54,7 +54,7 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
     if (!source || !pending.size) return;
     const token = Symbol();
     submitting = token;
-    const current = () => !destroyed && active && submitting === token && target.current() === source;
+    const current = () => !destroyed && submitting === token && target.current() === source;
     const changes = [...pending.entries()];
     pending.clear();
     const add: MapFeature[] = [];
@@ -76,18 +76,18 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
           if (feature) add.push(render(feature)); else remove.push(id);
           submitted.push(id);
         } catch (cause) {
-          if (!current()) return;
+          if (!current() || !active) return;
           preparationFailed(id, cause);
         }
-        if (!current()) return;
+        if (!current() || !active) return;
       }
       if (!submitted.length) return;
       options.beforeSubmit();
-      if (!current()) return;
+      if (!current() || !active) return;
       source.on('error', onSourceError);
       // Replacements and removals can safely repeat after a partial renderer failure.
       await source.updateData({ add, remove });
-      if (current() && !rejected) for (const id of submitted) options.published(id);
+      if (current() && active && !rejected) for (const id of submitted) options.published(id);
     } catch (cause) {
       reject(cause);
     } finally {
@@ -99,10 +99,9 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
     }
   }
 
-  /** Retire before replacing the style. Old submissions cannot affect its successor. */
+  /** Pause new work. Keep the in-flight token until its source settles or is replaced. */
   function retire() {
     active = false;
-    submitting = null;
     frames.cancel(frame);
     frame = 0;
   }
@@ -130,6 +129,7 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
         return;
       }
       retire();
+      submitting = null;
       active = true;
       pending.clear();
       failed.clear();

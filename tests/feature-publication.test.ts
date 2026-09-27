@@ -245,6 +245,7 @@ test('restoration with a retained source keeps an in-flight submission ahead of 
   f.upsert(point('a', 1));
   f.frame();
   f.upsert(point('a', 2));
+  f.publication.retire();
   f.publication.restore();
   f.frame();
   assert.equal(f.source().calls.length, 1);
@@ -255,6 +256,25 @@ test('restoration with a retained source keeps an in-flight submission ahead of 
   await Promise.resolve();
   assert.equal(f.diagnostics.length, 1);
   assert.deepEqual([...f.source().features.values()], [point('a', 2)]);
+});
+
+test('a failure while retired remains retryable when the same source is restored', async () => {
+  const f = fixture();
+  f.upsert(point('a'), point('removed'));
+  f.publication.restore();
+  f.upsert(point('a', 1));
+  f.remove('removed');
+  f.frame();
+  f.publication.retire();
+  f.source().getCall(0).reject(new Error('Failure during retirement'));
+  await Promise.resolve();
+  f.publication.restore();
+  assert.equal(f.frames.size, 0);
+  f.publication.retry();
+  f.frame();
+  f.source().succeed(1);
+  await Promise.resolve();
+  assert.deepEqual([...f.source().features.values()], [point('a', 1)]);
 });
 
 test('restoration isolates preparation failures and keeps those IDs available for explicit retry', async () => {
