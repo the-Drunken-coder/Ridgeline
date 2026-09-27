@@ -120,21 +120,25 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
       failed.clear();
       schedule();
     },
-    /** Rebuild from accepted data, including changes received while the style was absent. */
+    /** Resume a retained source, or rebuild from accepted data after style replacement. */
     restore() {
       if (destroyed) return;
+      if (target.current()) {
+        // A retained source still owns its in-flight submission and retry history.
+        active = true;
+        if (pending.size) schedule();
+        return;
+      }
       retire();
       active = true;
       pending.clear();
       failed.clear();
-      if (!target.current()) {
-        const features: MapFeature[] = [];
-        for (const feature of store.all()) {
-          try { features.push(render(feature)); }
-          catch (cause) { preparationFailed(feature.id, cause); }
-        }
-        target.create(features);
+      const features: MapFeature[] = [];
+      for (const feature of store.all()) {
+        try { features.push(render(feature)); }
+        catch (cause) { preparationFailed(feature.id, cause); }
       }
+      target.create(features);
     },
     retire,
     destroy() {

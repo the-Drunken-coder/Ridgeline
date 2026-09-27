@@ -9,6 +9,7 @@ The map keeps its current behavior. This change puts update ordering and failure
 - A broken feature does not prevent healthy updates or removals from proceeding.
 - Failed updates wait for explicit retry or a newer change. Retry uses current data and retains failed removals.
 - Switching basemaps restores current features. Late results from the old source cannot change the new source's publication state.
+- Restoration with a retained source preserves queued changes, in-flight submission ordering, and failed IDs awaiting explicit retry.
 - Selection, arrows, entity rendering, and disposal retain their existing integration behavior.
 
 ## Implementation

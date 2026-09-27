@@ -206,6 +206,57 @@ test('basemap restoration uses current data and an old rejection cannot disturb 
   assert.deepEqual([...f.source().features.values()], [point('a', 4)]);
 });
 
+test('restoration with a retained source preserves queued updates and removals', async () => {
+  const f = fixture();
+  f.upsert(point('a', 1), point('removed'));
+  f.publication.restore();
+  const source = f.source();
+  f.upsert(point('a', 2));
+  f.remove('removed');
+  f.publication.restore();
+  assert.equal(f.source(), source);
+  f.frame();
+  source.succeed(0);
+  await Promise.resolve();
+  assert.deepEqual([...source.features.values()], [point('a', 2)]);
+});
+
+test('restoration with a retained source preserves failures without retrying them', async () => {
+  const f = fixture();
+  f.upsert(point('a'), point('removed'));
+  f.publication.restore();
+  f.upsert(point('a', 1));
+  f.remove('removed');
+  f.frame();
+  f.source().getCall(0).reject(new Error('Failed submission'));
+  await Promise.resolve();
+  f.publication.restore();
+  assert.equal(f.frames.size, 0);
+  f.publication.retry();
+  f.frame();
+  f.source().succeed(1);
+  await Promise.resolve();
+  assert.deepEqual([...f.source().features.values()], [point('a', 1)]);
+});
+
+test('restoration with a retained source keeps an in-flight submission ahead of newer work', async () => {
+  const f = fixture();
+  f.publication.restore();
+  f.upsert(point('a', 1));
+  f.frame();
+  f.upsert(point('a', 2));
+  f.publication.restore();
+  f.frame();
+  assert.equal(f.source().calls.length, 1);
+  f.source().getCall(0).reject(new Error('Earlier submission failed'));
+  await Promise.resolve();
+  f.frame();
+  f.source().succeed(1);
+  await Promise.resolve();
+  assert.equal(f.diagnostics.length, 1);
+  assert.deepEqual([...f.source().features.values()], [point('a', 2)]);
+});
+
 test('restoration isolates preparation failures and keeps those IDs available for explicit retry', async () => {
   let broken = true;
   const f = fixture(feature => {
