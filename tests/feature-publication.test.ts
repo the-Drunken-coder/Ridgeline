@@ -25,8 +25,13 @@ class ControlledSource implements FeaturePublicationSource {
     for (const feature of changes.add) this.features.set(feature.id, feature);
     for (const id of changes.remove) this.features.delete(id);
   }
+  getCall(index: number) {
+    const call = this.calls[index];
+    assert.ok(call, `Expected source submission at index ${index}`);
+    return call;
+  }
   succeed(index: number) {
-    const call = this.calls[index]!;
+    const call = this.getCall(index);
     this.apply(call.changes);
     call.resolve();
   }
@@ -99,7 +104,7 @@ test('a partially failed batch keeps removals for retry without overwriting newe
   f.source().apply({ add: [point('a', 1)], remove: [] });
   f.upsert(point('a', 2));
   f.remove('c');
-  f.source().calls[0]!.reject(new Error('Partial failure'));
+  f.source().getCall(0).reject(new Error('Partial failure'));
   await Promise.resolve();
   f.frame();
   f.source().succeed(1);
@@ -124,7 +129,7 @@ test('source errors retain failed IDs even when the worker promise resolves', as
   f.frame();
   f.source().error();
   f.source().error();
-  f.source().calls[0]!.resolve();
+  f.source().getCall(0).resolve();
   await Promise.resolve();
   assert.equal(f.diagnostics.length, 1);
   assert.deepEqual(f.published, []);
@@ -185,7 +190,7 @@ test('basemap restoration uses current data and an old rejection cannot disturb 
   f.frame();
   f.upsert(point('a', 4));
   retired.error();
-  retired.calls[0]!.reject(new Error('Retired source failed'));
+  retired.getCall(0).reject(new Error('Retired source failed'));
   await Promise.resolve();
   assert.equal(f.diagnostics.length, 0);
   assert.equal(retired.listeners.size, 0);
@@ -229,7 +234,7 @@ test('destroy cancels scheduled publication and makes outstanding worker results
   f.publication.destroy();
   f.publication.destroy();
   f.source().error();
-  f.source().calls[0]!.reject(new Error('Late failure'));
+  f.source().getCall(0).reject(new Error('Late failure'));
   await Promise.resolve();
   f.publication.retry();
   f.publication.restore();
