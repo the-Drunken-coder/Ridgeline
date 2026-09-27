@@ -7,11 +7,13 @@ import type { GeoPoint } from './entity-geometry';
 import { TERRAIN_CELLS, terrainCoordinates, cameraRangeBounds } from './gpu-camera-terrain';
 import type { CameraTerrain } from './gpu-camera-terrain';
 import { SENSOR_SIZE, COVERAGE_SIZE, DISPLAY_SIZE, depthVertex, depthFragment, coverageVertex, coverageFragment, voteVertex, voteFragment, boundaryFragment, smoothRegionFragment, regionStyleFragment } from './gpu-camera-shaders';
+import { parseColor } from './color';
 
-type Color = [number, number, number, number];
 export type GpuCamera = {
   entityId: string;
   camera: CameraAttachment;
+  /** Owner lifecycle token used to reject completions from a removed attachment. */
+  lifecycle: number;
   origin: GeoPoint;
   terrain: CameraTerrain;
   volume: CameraVolume;
@@ -22,11 +24,13 @@ type Camera = {
   source: string;
   image: ImageData;
   dirty: boolean;
+  // Historical displays stay visible without submitting discarded terrain.
+  renderable: boolean;
   analysisKey?: string;
   analysisTerrain?: CameraTerrain;
   regionFrame?: WebGLFramebuffer;
   regionTexture?: WebGLTexture;
-  submitted?: { value: GpuCamera; appearance: string };
+  submitted?: { value: GpuCamera };
   uploaded?: CameraTerrain;
   published?: GpuCamera;
   buffer?: WebGLBuffer;
@@ -38,23 +42,19 @@ type Camera = {
 function analysisKey({ origin, camera, volume }: GpuCamera) {
   return JSON.stringify([origin, camera.bearing, camera.elevation, camera.fovX, camera.fovY, camera.range, volume.offsets]);
 }
-function appearanceKey({ camera }: GpuCamera) {
-  return JSON.stringify([camera.color, camera.fillOpacity, camera.blockedColor, camera.blockedOpacity, camera.outline, camera.outlineWidth]);
+function appearanceKey({ camera }: Pick<GpuCamera, 'camera'>) {
+  return JSON.stringify([camera.color, camera.fillOpacity, camera.blockedColor, camera.blockedOpacity, camera.outline, camera.outlineWidth,
+    camera.volumeOpacity, camera.wireframe, camera.wireframeWidth]);
+}
+function cameraKey({ entityId, camera }: GpuCamera) {
+  return JSON.stringify([entityId, camera.id]);
+}
+export function sameCameraAppearance(a: Pick<GpuCamera, 'camera'>, b: Pick<GpuCamera, 'camera'>) {
+  return appearanceKey(a) === appearanceKey(b);
 }
 export function sameCamera(a: GpuCamera, b: GpuCamera) {
   return a.terrain === b.terrain && analysisKey(a) === analysisKey(b)
     && appearanceKey(a) === appearanceKey(b) && JSON.stringify(a.geometry) === JSON.stringify(b.geometry);
-}
-const colors = new Map<string, Color>();
-function color(css: string, opacity: number): Color {
-  let result = colors.get(css);
-  if (!result) {
-    const context = new OffscreenCanvas(1, 1).getContext('2d')!;
-    context.fillStyle = css; context.fillRect(0, 0, 1, 1);
-    const p = context.getImageData(0, 0, 1, 1).data;
-    result = [p[0]! / 255, p[1]! / 255, p[2]! / 255, 1]; colors.set(css, result);
-  }
-  return [result[0], result[1], result[2], opacity];
 }
 function program(gl: WebGL2RenderingContext, vertex: string, fragment: string) {
   const p = gl.createProgram(); if (!p) throw new Error('Cannot allocate camera shader.');
@@ -99,30 +99,48 @@ export class GpuCameras implements CustomLayerInterface {
   private maskTexture?: WebGLTexture;
   private failed = false;
 
-  constructor(private map: GLMap, private completed: (value: GpuCamera) => void, private report: (cause: unknown) => void) {}
+  constructor(
+    private map: GLMap,
+    private completed: (value: GpuCamera, publish: () => void) => boolean,
+    private report: (cause: unknown) => void,
+  ) {}
 
-  set(values: GpuCamera[]) {
-    const retained = new Set<string>();
+  set(values: GpuCamera[], retained: readonly GpuCamera[] = []) {
+    const active = new Set<string>();
+    const requested = new Set<string>();
     for (const value of values) {
-      const key = JSON.stringify([value.entityId, value.camera.id]); retained.add(key);
+      const key = cameraKey(value); active.add(key); requested.add(key);
       let item = this.cameras.get(key);
       if (!item) {
         item = { value, source: `rl:camera-mask:${++this.sequence}`, image: new ImageData(DISPLAY_SIZE, DISPLAY_SIZE),
-          dirty: true };
+          dirty: true, renderable: true };
         this.cameras.set(key, item);
       }
+      item.renderable = true;
       if (item.value !== value) {
-        item.dirty ||= !sameCamera(item.value, value);
+        item.dirty ||= item.value.lifecycle !== value.lifecycle || !sameCamera(item.value, value);
         item.value = value;
       }
       this.attachMask(item);
     }
-    for (const [key, item] of this.cameras) if (!retained.has(key)) {
+    for (const value of retained) {
+      const key = cameraKey(value); active.add(key);
+      if (requested.has(key)) continue;
+      const item = this.cameras.get(key);
+      if (item) {
+        item.published ??= value;
+        this.attachMask(item, item.published);
+        this.map.getSource<ImageSource>(item.source)?.updateImage({ image: item.image, coordinates: terrainCoordinates(item.published.terrain) });
+        item.renderable = false;
+        item.dirty = false;
+      }
+    }
+    for (const [key, item] of this.cameras) if (!active.has(key)) {
       this.removeMask(item); this.release(item); this.cameras.delete(key);
     }
-    if (values.length) this.ensureLayer();
+    if (this.cameras.size) this.ensureLayer();
     else if (this.map.getLayer(this.id)) this.map.removeLayer(this.id);
-    if (values.length) this.map.triggerRepaint();
+    if (values.length || [...this.cameras.values()].some(item => item.pending)) this.map.triggerRepaint();
   }
   attach() {
     for (const item of this.cameras.values()) this.attachMask(item);
@@ -132,11 +150,11 @@ export class GpuCameras implements CustomLayerInterface {
     if (!this.cameras.size || (!this.map.isStyleLoaded() && !this.map.getLayer('rl:points')) || this.map.getLayer(this.id)) return;
     this.map.addLayer(this);
   }
-  private attachMask(item: Camera) {
+  private attachMask(item: Camera, value = item.value) {
     if (!this.map.isStyleLoaded() && !this.map.getLayer('rl:points')) return;
-    if (!item.value.terrain.ready) { this.removeMask(item); return; }
+    if (!value.terrain.ready) { this.removeMask(item); return; }
     if (!this.map.getSource(item.source)) {
-      this.map.addSource(item.source, { type: 'image', coordinates: terrainCoordinates(item.value.terrain) });
+      this.map.addSource(item.source, { type: 'image', coordinates: terrainCoordinates(value.terrain) });
       this.map.addLayer({ id: item.source, type: 'raster', source: item.source,
         paint: { 'raster-opacity': 1, 'raster-opacity-transition': {duration:0,delay:0}, 'raster-fade-duration': 0, 'raster-resampling': 'linear' } }, 'rl:points');
       item.dirty = true;
@@ -178,7 +196,7 @@ export class GpuCameras implements CustomLayerInterface {
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
       gl.bindVertexArray(previous); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      for (const item of this.cameras.values()) item.dirty = true;
+      for (const item of this.cameras.values()) item.dirty = item.renderable;
     } catch (error) { this.fail(error); }
     finally { restore(); }
   }
@@ -245,7 +263,7 @@ export class GpuCameras implements CustomLayerInterface {
       gl.colorMask(true, true, true, true); gl.depthRange(0, 1); gl.depthFunc(gl.LEQUAL); gl.activeTexture(gl.TEXTURE0);
       for (const item of this.cameras.values()) {
         if (item.pending) { this.map.triggerRepaint(); continue; }
-        if (!item.dirty || !item.value.terrain.ready) continue;
+        if (!item.renderable || !item.dirty || !item.value.terrain.ready) continue;
         this.prepare(item);
         const analysis = analysisKey(item.value);
         if (analysis !== item.analysisKey || item.analysisTerrain !== item.value.terrain) {
@@ -296,13 +314,13 @@ export class GpuCameras implements CustomLayerInterface {
         gl.useProgram(this.styleProgram!);
         gl.uniform1i(gl.getUniformLocation(this.styleProgram!,'u_regions'),0);
         gl.uniform1f(gl.getUniformLocation(this.styleProgram!,'u_borderWidth'),item.value.camera.outline===false?0:(item.value.camera.outlineWidth??3)/2);
-        gl.uniform4fv(gl.getUniformLocation(this.styleProgram!,'u_color'),color(item.value.camera.color??'#1ad96b',item.value.camera.fillOpacity??.25));
-        gl.uniform4fv(gl.getUniformLocation(this.styleProgram!,'u_blocked'),color(item.value.camera.blockedColor??'#ff382e',item.value.camera.blockedOpacity??.25));
+        gl.uniform4fv(gl.getUniformLocation(this.styleProgram!,'u_color'),parseColor(item.value.camera.color??'#1ad96b',item.value.camera.fillOpacity??.25,{contextBehavior:'throw'}));
+        gl.uniform4fv(gl.getUniformLocation(this.styleProgram!,'u_blocked'),parseColor(item.value.camera.blockedColor??'#ff382e',item.value.camera.blockedOpacity??.25,{contextBehavior:'throw'}));
         gl.drawArrays(gl.TRIANGLES,0,3);
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER,item.pixels!);
         gl.readPixels(0, 0, DISPLAY_SIZE, DISPLAY_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, 0);
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER,null);
-        item.submitted={value:item.value,appearance:appearanceKey(item.value)};
+        item.submitted={value:item.value};
         item.pending=gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0)!;
         gl.flush();this.map.triggerRepaint();
         item.dirty = false;
@@ -325,13 +343,14 @@ export class GpuCameras implements CustomLayerInterface {
           const submitted = item.submitted!;
           item.submitted = undefined;
           // A completed frame belongs to its submitted terrain and style, not the latest input.
-          if (submitted.appearance === appearanceKey(item.value) && item.value.terrain.ready && this.map.getSource(item.source)) {
-            gl.bindBuffer(gl.PIXEL_PACK_BUFFER,item.pixels!);
-            gl.getBufferSubData(gl.PIXEL_PACK_BUFFER,0,new Uint8Array(item.image.data.buffer));
-            gl.bindBuffer(gl.PIXEL_PACK_BUFFER,null);
-            this.map.getSource<ImageSource>(item.source)?.updateImage({image:item.image,coordinates:terrainCoordinates(submitted.value.terrain)});
-            item.published=submitted.value;
-            this.completed(submitted.value);
+          if (submitted.value.terrain.ready && this.map.getSource(item.source)) {
+            this.completed(submitted.value, () => {
+              gl.bindBuffer(gl.PIXEL_PACK_BUFFER,item.pixels!);
+              gl.getBufferSubData(gl.PIXEL_PACK_BUFFER,0,new Uint8Array(item.image.data.buffer));
+              gl.bindBuffer(gl.PIXEL_PACK_BUFFER,null);
+              this.map.getSource<ImageSource>(item.source)?.updateImage({image:item.image,coordinates:terrainCoordinates(submitted.value.terrain)});
+              item.published=submitted.value;
+            });
           }
         }
       }
@@ -365,13 +384,14 @@ export class GpuCameras implements CustomLayerInterface {
   pick(x: number, y: number) {
     const point = MercatorCoordinate.fromLngLat(this.map.unproject([x, y]));
     return [...this.cameras.values()].flatMap(item => {
-      const terrain = item.published?.terrain;
-      if (!terrain || !item.value.terrain.ready) return [];
+      const published = item.published;
+      const terrain = published?.terrain;
+      if (!terrain) return [];
       let dx = point.x-terrain.centre.x; dx -= Math.round(dx);
       const px = Math.floor((dx/terrain.scale/terrain.half+1)*.5*DISPLAY_SIZE);
       const py = Math.floor(((point.y-terrain.centre.y)/terrain.scale/terrain.half+1)*.5*DISPLAY_SIZE);
       return px>=0 && py>=0 && px<DISPLAY_SIZE && py<DISPLAY_SIZE && item.image.data[(py*DISPLAY_SIZE+px)*4+3]!>0
-        ? [{entityId:item.value.entityId,attachmentId:item.value.camera.id}] : [];
+        ? [{entityId:published.entityId,attachmentId:published.camera.id}] : [];
     });
   }
   private saveState() {
@@ -396,13 +416,14 @@ export class GpuCameras implements CustomLayerInterface {
     };
   }
   private fail(cause: unknown) { this.failed = true; this.report(cause); }
-  private release(item: Camera) {
+  private release(item: Camera, preservePublished = false) {
     const gl = this.gl; if (!gl) return;
     if(item.pending)gl.deleteSync(item.pending);if(item.pixels)gl.deleteBuffer(item.pixels);
     if(item.regionFrame)gl.deleteFramebuffer(item.regionFrame);
     if(item.regionTexture)gl.deleteTexture(item.regionTexture);
     item.regionFrame=undefined;item.regionTexture=undefined;
-    item.analysisKey=undefined;item.analysisTerrain=undefined;item.submitted=undefined;item.published=undefined;
+    item.analysisKey=undefined;item.analysisTerrain=undefined;item.submitted=undefined;
+    if (!preservePublished) item.published=undefined;
     item.pending=undefined;item.pixels=undefined;
     if (item.buffer) gl.deleteBuffer(item.buffer);
     item.buffer = undefined; item.uploaded = undefined; item.dirty = true;
@@ -410,7 +431,7 @@ export class GpuCameras implements CustomLayerInterface {
   onRemove() {
     this.map.off('render', this.publish);
     const gl = this.gl; if (!gl) return;
-    for (const item of this.cameras.values()) this.release(item);
+    for (const item of this.cameras.values()) this.release(item, true);
     for (const p of [this.depthProgram, this.maskProgram, this.voteProgram, this.boundaryProgram, this.smoothProgram, this.styleProgram]) if (p) gl.deleteProgram(p);
     for (const b of [this.terrainIndices]) if (b) gl.deleteBuffer(b);
     for (const f of [this.maskFrame, this.sampleFrame, this.voteFrame, this.rawRegionFrame]) if (f) gl.deleteFramebuffer(f);

@@ -397,6 +397,244 @@ async function suite() {
     await until(() => air.getEntityState('prepared-patch')?.coverage === 'ready', 'completed terrain preparation');
     air.destroy();
   });
+  await run('Mixed terrain cameras retain shared preparation for non-camera attachments', async () => {
+    let available = false;
+    const preparationExtents: number[] = [];
+    const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+      sample: () => available ? 0 : null,
+      prepare: async positions => {
+        preparationExtents.push(Math.max(...positions.map(([lng, lat]) => Math.max(Math.abs(lng), Math.abs(lat)) * 111195)));
+        available = true;
+      },
+    } });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('mixed-prepared'), entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [
+      { id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 10 },
+      { id: 'zone', type: 'circle', radius: 100 },
+    ] } };
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'mixed terrain preparation');
+    check(preparationExtents.some(extent => extent > 90), `Shared preparation omitted the non-camera terrain extent: ${preparationExtents}`);
+    air.destroy();
+  });
+  await run('Custom elevation preparation also covers entities with only plain cameras', async () => {
+    let prepared = false, prepareCalls = 0;
+    const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+      sample: () => prepared ? 0 : null,
+      prepare: async () => { prepareCalls++; prepared = true; },
+    } });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('plain-prepared'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', terrainVisibility: false, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } };
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'plain camera preparation');
+    check(prepareCalls === 1, `Plain camera skipped shared elevation preparation: ${prepareCalls}`);
+    check(air.getEntityState(feature.id)?.placement === 'airborne', 'Prepared plain camera remained elevation-unavailable');
+    check((air.getEntityState(feature.id)?.footprintTriangles ?? 0) > 0, 'Prepared plain camera has no footprint');
+    check(!air.map.getLayer('rl:camera-gpu'), 'Plain camera allocated the GPU visibility renderer');
+    air.destroy();
+  });
+  await run('A moved airborne camera prepares a missing center while retaining historical coverage', async () => {
+    const movedLng = .00005;
+    let centerAvailable = true;
+    let prepareCalls = 0;
+    let preparedPositions: readonly [number, number][] = [];
+    let finishPreparation: (() => void) | undefined;
+    const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+      sample: (lng, lat) => {
+        if (Math.abs(lng) < 1e-8 && Math.abs(lat) < 1e-8) return 12;
+        if (Math.abs(lng - movedLng) < 1e-8 && Math.abs(lat) < 1e-8) return centerAvailable ? 12 : null;
+        return 0;
+      },
+      prepare: (requested, signal) => {
+        prepareCalls++;
+        preparedPositions = requested.map(([lng, lat]) => [lng, lat] as [number, number]);
+        return new Promise<void>((resolve, reject) => {
+          const abort = () => {
+            signal.removeEventListener('abort', abort);
+            reject(new DOMException('aborted', 'AbortError'));
+          };
+          if (signal.aborted) { abort(); return; }
+          signal.addEventListener('abort', abort, { once: true });
+          finishPreparation = () => {
+            signal.removeEventListener('abort', abort);
+            resolve();
+          };
+        });
+      },
+    } });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'camera', type: 'camera', terrainVisibility: true,
+      bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300, volumeOpacity: 0, wireframe: false };
+    const feature: MapFeature = { ...point('moving-airborne'), entity: {
+      altitude: { meters: 100, reference: 'ground' }, attachments: [camera],
+    } };
+    air.upsert([feature]);
+    await until(() => {
+      const state = air.getEntityState(feature.id);
+      return state?.ground === 12 && state.altitude === 112 && state.placement === 'airborne' && state.coverage === 'ready';
+    }, 'initial airborne camera');
+    let picked = '';
+    const off = air.on('click', event => { picked = event.attachments.find(hit => hit.entityId === feature.id)?.attachmentId ?? ''; });
+    const pickAt = (lng: number, lat: number) => {
+      const screen = air.map.project([lng, lat]);
+      picked = '';
+      air.map.fire('click', { point: screen, lngLat: air.map.unproject(screen), originalEvent: new MouseEvent('click') });
+      return picked;
+    };
+    try {
+      check(pickAt(0, .0008) === camera.id, 'Initial airborne camera coverage was not pickable');
+      centerAvailable = false;
+      air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [movedLng, 0] } }]);
+      await until(() => prepareCalls === 1 && air.getEntityState(feature.id)?.placement === 'elevation-unavailable', 'center preparation and placement after movement');
+      const pending = air.getEntityState(feature.id);
+      check(pending?.placement === 'elevation-unavailable' && pending.coverage === 'loading', 'Missing center did not remain loading during preparation');
+      check(preparedPositions.some(([lng, lat]) => Math.abs(lng - movedLng) < 1e-8 && Math.abs(lat) < 1e-8), 'Preparation omitted the moved center');
+      check(pickAt(0, .0008) === camera.id, 'Historical camera coverage disappeared during center preparation');
+      centerAvailable = true;
+      finishPreparation?.();
+      finishPreparation = undefined;
+      await until(() => {
+        const state = air.getEntityState(feature.id);
+        return state?.ground === 12 && state.altitude === 112 && state.placement === 'airborne' && state.coverage === 'ready';
+      }, 'recovered airborne camera');
+    } finally {
+      finishPreparation?.();
+      off();
+      air.destroy();
+    }
+  });
+  await run('No-altitude terrain cameras use prepared ground placement without GPU coverage', async () => {
+    let prepared = false;
+    let positions: readonly [number, number][] = [];
+    const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+      sample: () => prepared ? 12 : null,
+      prepare: async requested => { positions = requested; prepared = true; },
+    } });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('prepared-ground'), entity: { attachments: [{ id: 'camera', type: 'camera',
+      terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } };
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.ground === 12 && air.getEntityState(feature.id)?.coverage === 'ready', 'prepared ground placement');
+    const state = air.getEntityState(feature.id)!;
+    check(state.placement === 'ground', `No-altitude entity placement was ${state.placement}`);
+    check(positions.some(([lng, lat]) => Math.abs(lng) < 1e-9 && Math.abs(lat) < 1e-9), 'Preparation omitted the entity center');
+    check(!air.map.getLayer('rl:camera-gpu'), 'Ground-placed terrain camera allocated GPU coverage');
+    air.destroy();
+  });
+  await run('Stateful elevation samplers retain their prepare method receiver', async () => {
+    class StatefulSampler {
+      #centerReady = false;
+      #patchReady = false;
+      sample(lng: number, lat: number) {
+        if (lng === 0 && lat === 0) return this.#centerReady ? 0 : null;
+        return this.#patchReady ? 0 : null;
+      }
+      async prepare(positions: readonly [number, number][]) {
+        this.#centerReady = true;
+        if (positions.some(([lng, lat]) => lng !== 0 || lat !== 0)) this.#patchReady = true;
+      }
+    }
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style(), logger: () => {},
+      elevationSampler: new StatefulSampler(), onError: error => errors.push(error) });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('stateful-sampler'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } };
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.placement === 'airborne' && air.getEntityState(feature.id)?.coverage === 'ready', 'stateful sampler camera coverage');
+    check(!errors.some(error => error.code === 'ELEVATION_UNAVAILABLE'), 'Stateful sampler preparation failed');
+    air.destroy();
+  });
+  await run('Hidden terrain cameras still prepare placement elevation after movement', async () => {
+    class HiddenSampler {
+      #prepared = new Set<string>();
+      calls = 0;
+      sample(lng: number, lat: number) { return this.#prepared.has(`${lng},${lat}`) ? 0 : null; }
+      async prepare(positions: readonly [number, number][]) {
+        this.calls++;
+        for (const [lng, lat] of positions) this.#prepared.add(`${lng},${lat}`);
+      }
+    }
+    const sampler = new HiddenSampler();
+    const air = createViewport({ container, basemap: style(), logger: () => {},
+      entityVisibility: { footprints: false, zones: false, groundLines: false }, elevationSampler: sampler });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('hidden-placement'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } };
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.placement === 'airborne', 'hidden initial placement');
+    check(sampler.calls >= 1, 'Hidden terrain camera did not prepare entity elevation');
+    check(air.getEntityState(feature.id)?.coverage === 'ready', 'Hidden placement remained unavailable');
+    const before = air.getEntityState(feature.id)!.computedAt;
+    air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [.01, 0] } }]);
+    await until(() => {
+      const state = air.getEntityState(feature.id);
+      return state?.computedAt !== undefined && state.computedAt > before && state.placement === 'airborne';
+    }, 'hidden moved placement');
+    check(sampler.calls >= 2, 'Hidden movement did not prepare the new entity position');
+    check(!air.map.getLayer('rl:camera-gpu'), 'Hidden camera allocated GPU coverage');
+    air.destroy();
+  });
+  await run('Hiding coverage replaces aborted camera preparation for entity placement', async () => {
+    class PendingSampler {
+      #ready = false;
+      calls = 0;
+      finish?: () => void;
+      sample() { return this.#ready ? 0 : null; }
+      prepare(_positions: readonly [number, number][], signal: AbortSignal) {
+        this.calls++;
+        return new Promise<void>((resolve, reject) => {
+          const abort = () => {
+            signal.removeEventListener('abort', abort);
+            reject(new DOMException('aborted', 'AbortError'));
+          };
+          if (signal.aborted) { abort(); return; }
+          signal.addEventListener('abort', abort, { once: true });
+          this.finish = () => {
+            signal.removeEventListener('abort', abort);
+            this.#ready = true;
+            resolve();
+          };
+        });
+      }
+    }
+    const sampler = new PendingSampler();
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style(), logger: () => {}, onError: error => errors.push(error), elevationSampler: sampler });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('hide-pending'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } };
+    air.upsert([feature]);
+    await until(() => sampler.calls === 1 && air.getEntityState(feature.id)?.coverage === 'loading', 'initial camera preparation');
+    air.configure({ entityVisibility: { footprints: false, zones: false, groundLines: false } });
+    await until(() => sampler.calls >= 2, 'placement preparation after hiding coverage');
+    sampler.finish?.();
+    await until(() => air.getEntityState(feature.id)?.placement === 'airborne', 'placement recovery after hiding coverage');
+    check(air.getEntityState(feature.id)?.coverage === 'ready', 'Hidden placement remained loading');
+    check(!errors.some(error => error.code === 'ELEVATION_UNAVAILABLE'), 'Aborted camera preparation reported a diagnostic');
+    air.destroy();
+  });
+  await run('Hidden unavailable placement waits for explicit retry after display configuration changes', async () => {
+    let ready = false, recover = false, preparations = 0;
+    const air = createViewport({ container, basemap: style(), logger: () => {},
+      entityVisibility: { footprints: false, zones: false, groundLines: false },
+      elevationSampler: { sample: () => ready ? 0 : null, prepare: async () => { preparations++; ready = recover; } } });
+    current = air; await air.ready;
+    air.upsert([{ ...point('hidden-unavailable'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } }]);
+    await until(() => air.getEntityState('hidden-unavailable')?.coverage === 'unavailable', 'settled hidden placement');
+    const before = air.getEntityState('hidden-unavailable')!.computedAt;
+    const attempts = preparations;
+    air.configure({ projection: 'globe', entityVisibility: { footprints: false, zones: false, groundLines: false } });
+    await until(() => air.getEntityState('hidden-unavailable')!.computedAt > before, 'hidden display reconfiguration');
+    check(preparations === attempts, 'Display configuration retried settled unavailable elevation');
+    recover = true;
+    air.retryUpdates();
+    await until(() => air.getEntityState('hidden-unavailable')?.placement === 'airborne', 'explicit hidden placement retry');
+    check(preparations > attempts, 'Explicit retry did not prepare placement elevation');
+    air.destroy();
+  });
   await run('Raw DEM placement and coverage remain physical with terrain off and exaggerated', async () => {
     const errors: RidgelineError[] = [];
     const dem=document.createElement('canvas'); dem.width=dem.height=256;
@@ -712,6 +950,57 @@ async function suite() {
     await until(()=>air.getEntityState('border-camera')?.coverage==='ready','neighboring terrain patch recovers without retry');
     air.destroy();
   });
+  await run('A displayed camera failure removes only its coverage and retry uses current inputs', async () => {
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 },
+      logger: () => {}, onError: error => errors.push(error) });
+    current = air; await air.ready;
+    air.upsert([{ ...point('ground-survivor'), entity: { attachments: [{ id: 'zone', type: 'circle', radius: 50 }] } }]);
+    await until(() => air.getEntityState('ground-survivor')?.coverage === 'ready', 'unrelated ground coverage');
+    const failingCamera: CameraAttachment = { id: 'camera', type: 'camera', terrainVisibility: true,
+      color: '#00ff00', bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300, volumeOpacity: .1, wireframe: true };
+    const feature: MapFeature = { ...point('failing-camera'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [failingCamera] } };
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'initial camera coverage');
+    const gl = air.map.getCanvas().getContext('webgl2')!;
+    const clientWaitSync = gl.clientWaitSync.bind(gl);
+    let fail = false;
+    gl.clientWaitSync = (sync, flags, timeout) => fail ? gl.WAIT_FAILED : clientWaitSync(sync, flags, timeout);
+    const cameraMask = () => air.map.getStyle().layers.find(layer => layer.id.startsWith('rl:camera-mask:'));
+    let pickedAttachment = '';
+    air.on('click', event => { pickedAttachment = event.attachments.find(hit => hit.entityId === feature.id)?.attachmentId ?? ''; });
+    const pickCoverage = () => {
+      const point = air.map.project([.0006, .0004]);
+      air.map.fire('click', { point, lngLat: air.map.unproject(point), originalEvent: new MouseEvent('click') });
+      return pickedAttachment;
+    };
+    try {
+      const initialMask = cameraMask();
+      check(Boolean(initialMask), 'Initial camera mask missing');
+      check(pickCoverage() === 'camera', 'Initial camera coverage was not pickable');
+      air.upsert([{ ...feature, entity: { ...feature.entity!, attachments: [{ ...failingCamera, bearing: 15 }] } }]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'loading', 'camera replacement pending');
+      fail = true;
+      await until(() => errors.some(error => error.code === 'UPDATE_FAILED'), 'displayed camera failure diagnostic');
+      await until(() => air.getEntityState(feature.id)?.coverage === 'unavailable', 'failed camera coverage');
+      check(!cameraMask(), 'Failed camera mask remained visible');
+      check(pickCoverage() === '', 'Failed camera coverage remained pickable');
+      check(air.getEntityState('ground-survivor')?.coverage === 'ready', 'Camera failure removed unrelated ground coverage');
+      fail = false;
+      air.upsert([{ ...feature, entity: { ...feature.entity!, attachments: [{ ...failingCamera, bearing: 30, color: '#0000ff' }] } }]);
+      air.retryUpdates();
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'current camera retry');
+      const mask = cameraMask();
+      const source = mask && air.map.getSource<ImageSource>(mask.id)?.image;
+      check(source instanceof ImageData && source.data.some((value, index) => index % 4 === 2 && value > 100), 'Retry restored stale camera appearance instead of current inputs');
+      check(air.getEntityState('ground-survivor')?.coverage === 'ready', 'Current camera retry disturbed unrelated ground coverage');
+      check(pickCoverage() === 'camera', 'Current camera coverage was not pickable after retry');
+    } finally {
+      gl.clientWaitSync = clientWaitSync;
+      air.destroy();
+    }
+  });
   await run('Failed GPU target allocation releases its resources and retries', async () => {
     const errors: RidgelineError[] = [];
     const air = createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 },
@@ -763,38 +1052,187 @@ async function suite() {
     source.setData=(...args)=>{groundUploads++;return setData(...args);};
     let first: WebGLSync | undefined;
     let releaseSecond = false;
+    let heldWaits = 0;
+    let completionBudget: number | undefined;
     gl.clientWaitSync = (sync, flags, timeout) => {
       first ??= sync;
-      return sync !== first && !releaseSecond ? gl.TIMEOUT_EXPIRED : clientWaitSync(sync, flags, timeout);
+      if (sync !== first && (!releaseSecond || completionBudget === 0)) {
+        heldWaits++;
+        return gl.TIMEOUT_EXPIRED;
+      }
+      const status = clientWaitSync(sync, flags, timeout);
+      if (sync !== first && status !== gl.TIMEOUT_EXPIRED && completionBudget !== undefined) completionBudget--;
+      return status;
     };
     const camera: CameraAttachment = { id: 'first', type: 'camera', terrainVisibility: true,
-      bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 };
+      bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300, volumeOpacity: .1, wireframe: true };
     const published = () => air.map.getStyle().layers.filter(layer => layer.id.startsWith('rl:camera-mask:'))
       .filter(layer => air.map.getSource<ImageSource>(layer.id)?.image instanceof ImageData).length;
     const feature: MapFeature = { ...point('two-cameras'), entity: { altitude: { meters: 100, reference: 'ground' },
       attachments: [camera, { ...camera, id: 'second', bearing: 90 }] } };
+    const masks = () => air.map.getStyle().layers
+      .filter(layer => layer.id.startsWith('rl:camera-mask:'))
+      .map(layer => air.map.getSource<ImageSource>(layer.id)?.image)
+      .filter((image): image is ImageData => image instanceof ImageData);
+    const maskSignature = () => masks().map(image => {
+      let sum = 0;
+      for (let index = 0; index < image.data.length; index += 4) sum = (sum + image.data[index]! * 3 + image.data[index + 1]! * 5 + image.data[index + 2]! * 7 + image.data[index + 3]!) % 0x1_0000_0000;
+      return sum;
+    });
+    let pickedAttachments: string[] = [];
+    air.on('click', event => { pickedAttachments = event.attachments.filter(hit => hit.entityId === feature.id).map(hit => hit.attachmentId); });
+    const pickAt = (lng: number, lat: number) => {
+      const point = air.map.project([lng, lat]);
+      pickedAttachments = [];
+      air.map.fire('click', { point, lngLat: air.map.unproject(point), originalEvent: new MouseEvent('click') });
+      return pickedAttachments;
+    };
     try {
       air.upsert([feature]);
       await until(() => published() === 1, 'first camera publishes while second is pending');
       check(air.getEntityState('two-cameras')?.coverage === 'loading', 'Entity became ready before its second camera published');
+      check(pickAt(0, .0008).includes('first'), 'First camera result was not pickable');
+      check(!pickAt(.0008, 0).includes('second'), 'Second camera result published before its fence completed');
       releaseSecond = true;
       await until(() => air.getEntityState('two-cameras')?.coverage === 'ready', 'both camera masks published');
       check(published() === 2, 'Ready entity is missing camera coverage');
       check(sensorTargets===2,`Two cameras allocated ${sensorTargets} sensor targets instead of sharing one pair`);
       check(groundUploads===1,`GPU publication resubmitted unchanged ground geometry ${groundUploads} times`);
       releaseSecond = false;
+      const oldSignature = maskSignature();
+      check(oldSignature.length === 2, 'Initial camera images missing');
+      heldWaits = 0;
       let before = air.getEntityState(feature.id)!.computedAt;
-      air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [.000001,0] } }]);
-      await until(() => air.getEntityState(feature.id)!.computedAt > before, 'moved camera submitted');
-      check(air.getEntityState(feature.id)?.coverage === 'loading', 'Old camera pose was reported ready for new input');
+      air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [.0001,0] } }]);
+      await until(() => air.getEntityState(feature.id)!.computedAt > before, 'camera replacement before equivalent configuration');
+      await until(() => heldWaits > 0, 'camera replacement fence held');
+      air.configure({ projection: 'flat', terrain: false, exaggeration: 1 });
+      check(air.getEntityState(feature.id)?.coverage === 'loading', 'Equivalent configuration lost the pending camera state');
+      check(JSON.stringify(maskSignature()) === JSON.stringify(oldSignature), 'Equivalent configuration dropped completed camera coverage');
       releaseSecond = true;
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'equivalent configuration republishes camera coverage');
+      releaseSecond = false;
+      const movedSignature = maskSignature();
+      before = air.getEntityState(feature.id)!.computedAt;
+      for (const lng of [.0002, .0003]) {
+        air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [lng,0] } }]);
+        await until(() => air.getEntityState(feature.id)!.computedAt > before, 'moved camera submitted');
+        before = air.getEntityState(feature.id)!.computedAt;
+        check(air.getEntityState(feature.id)?.coverage === 'loading', 'Old camera pose was reported ready for new input');
+        check(JSON.stringify(maskSignature()) === JSON.stringify(movedSignature), 'Previous camera result disappeared while replacement was pending');
+      }
+      completionBudget = 1;
+      releaseSecond = true;
+      await until(() => {
+        const current = maskSignature();
+        return current.length === 2 && current[0] !== movedSignature[0];
+      }, 'intermediate camera result published');
+      check(air.getEntityState(feature.id)?.coverage === 'loading', 'Intermediate camera result marked the newest request ready');
+      completionBudget = undefined;
       await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'moved camera masks published');
+      check(pickAt(.0003, .0008).includes('first'), 'Final camera result was not pickable at the current position');
       before = air.getEntityState(feature.id)!.computedAt;
       air.upsert([{ ...feature, entity: { ...feature.entity!, altitude: { meters: 0, reference: 'ground' } } }]);
       await until(() => air.getEntityState(feature.id)!.computedAt > before, 'ground-level camera computed');
       check(air.getEntityState(feature.id)?.coverage === 'ready', 'Known ground-level camera stayed loading');
       check(!air.map.getLayer('rl:camera-gpu'), 'Ground-level camera retained GPU geometry');
     } finally { gl.clientWaitSync = clientWaitSync; gl.texImage2D=texImage2D;source.setData=setData;air.destroy(); }
+  });
+  await run('Rejected camera frames do not replace the displayed picking mask', async () => {
+    const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 }, elevationSampler: { sample: () => 0 }, logger: () => {} });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'camera', type: 'camera', terrainVisibility: true,
+      color: '#00ff00', bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300, volumeOpacity: 0, wireframe: false };
+    const feature: MapFeature = { ...point('rejected-camera'), entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [camera] } };
+    const gl = air.map.getCanvas().getContext('webgl2')!;
+    const clientWaitSync = gl.clientWaitSync.bind(gl);
+    let first: WebGLSync | undefined;
+    let release = false;
+    let completions = 0;
+    let heldWaits = 0;
+    gl.clientWaitSync = (sync, flags, timeout) => {
+      first ??= sync;
+      if (sync !== first && (!release || completions === 0)) {
+        heldWaits++;
+        return gl.TIMEOUT_EXPIRED;
+      }
+      const status = clientWaitSync(sync, flags, timeout);
+      if (sync !== first && status !== gl.TIMEOUT_EXPIRED && completions > 0) completions--;
+      return status;
+    };
+    let picked = '';
+    air.on('click', event => { picked = event.attachments.find(hit => hit.entityId === feature.id)?.attachmentId ?? ''; });
+    const pickAt = (lng: number, lat: number) => {
+      const point = air.map.project([lng, lat]);
+      picked = '';
+      air.map.fire('click', { point, lngLat: air.map.unproject(point), originalEvent: new MouseEvent('click') });
+      return picked;
+    };
+    try {
+      air.upsert([feature]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'initial camera coverage');
+      check(pickAt(0, .0008) === camera.id, 'Initial camera coverage was not pickable');
+      release = false;
+      const moved = { ...feature, geometry: { type: 'Point' as const, coordinates: [.003, 0] as [number, number] },
+        entity: { ...feature.entity!, attachments: [{ ...camera, bearing: 180 }] } };
+      let before = air.getEntityState(feature.id)!.computedAt;
+      air.upsert([moved]);
+      await until(() => air.getEntityState(feature.id)!.computedAt > before, 'moved camera submission');
+      await until(() => heldWaits > 0, 'moved camera fence held');
+      const changed = { ...moved, entity: { ...moved.entity!, attachments: [{ ...camera, color: '#0000ff', bearing: 180, volumeOpacity: 0, wireframe: false }] } };
+      before = air.getEntityState(feature.id)!.computedAt;
+      air.upsert([changed]);
+      await until(() => air.getEntityState(feature.id)!.computedAt > before, 'appearance replacement');
+      const previousHolds = heldWaits;
+      release = true;
+      completions = 1;
+      await until(() => heldWaits > previousHolds, 'replacement frame held after rejected result');
+      check(pickAt(0, .0008) === camera.id, 'Rejected readback replaced the displayed picking mask');
+      check(pickAt(0, -.0008) === '', 'Rejected readback created a south-side picking hit');
+      gl.clientWaitSync = clientWaitSync;
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'replacement camera coverage');
+    } finally {
+      gl.clientWaitSync = clientWaitSync;
+      air.destroy();
+    }
+  });
+  await run('Retained camera masks survive a style rebuild during terrain retry', async () => {
+    let available = true;
+    let finish: (() => void) | undefined;
+    const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 }, elevationSampler: {
+      sample: () => available ? 0 : null,
+      prepare: async () => new Promise<void>(resolve => { finish = resolve; }),
+    }, logger: () => {} });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'camera', type: 'camera', terrainVisibility: true,
+      bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300, volumeOpacity: 0, wireframe: false };
+    const feature: MapFeature = { ...point('retained-camera'), entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [camera] } };
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'initial retained camera');
+    let picked = '';
+    const off = air.on('click', event => { picked = event.attachments.find(hit => hit.entityId === feature.id)?.attachmentId ?? ''; });
+    const pickAt = (lng: number, lat: number) => {
+      const point = air.map.project([lng, lat]);
+      picked = '';
+      air.map.fire('click', { point, lngLat: air.map.unproject(point), originalEvent: new MouseEvent('click') });
+      return picked;
+    };
+    try {
+      check(pickAt(0, .0008) === camera.id, 'Initial retained camera was not pickable');
+      available = false;
+      air.retryUpdates();
+      await until(() => Boolean(finish) && air.getEntityState(feature.id)?.coverage === 'loading', 'pending retained retry');
+      air.configure({ basemap: style('#ffffff') });
+      await until(() => Boolean(air.map.getLayer('rl:camera-gpu')), 'camera layer after style rebuild');
+      check(pickAt(0, .0008) === camera.id, 'Style rebuild dropped retained camera picking');
+      available = true;
+      finish!(); finish = undefined;
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'retained camera retry');
+    } finally {
+      finish?.();
+      off();
+      air.destroy();
+    }
   });
   await run('GPU visibility preserves flat-ground coverage at long range and caches terrain during movement', async () => {
     const meters = Math.PI / 180 * 6371008.8;

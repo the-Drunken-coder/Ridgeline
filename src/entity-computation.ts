@@ -1,11 +1,8 @@
 import type { EntityAttachment, EntityState, FeatureStyle, MapConfiguration, MapFeature } from './types';
 import type { Primitive } from './entity-layer';
-import { cameraFootprint, cameraRay, groundZone, localFrame } from './entity-geometry';
-import { visibleCameraEdges } from './camera-volume';
-import type { CameraVolume } from './camera-volume';
-import type { CameraTerrain } from './gpu-camera-terrain';
-import type { CameraAttachment } from './types';
+import { groundZone, localFrame } from './entity-geometry';
 import type { GeoPoint, HeightAt } from './entity-geometry';
+import { parseColor } from './color';
 
 export type EntityComputationInput = {
   feature: MapFeature;
@@ -19,8 +16,6 @@ export type EntityComputationResult = {
   state: EntityState;
   diagnostic?: 'ALTITUDE_MISSING' | 'BELOW_TERRAIN';
 };
-const colors = new Map<string, Primitive['color']>();
-
 export function computeEntity(input: EntityComputationInput, height: HeightAt, unavailable: () => boolean): EntityComputationResult {
   const { feature, configuration: config, style, selected } = input;
   if (feature.geometry.type !== 'Point' || !feature.entity) throw new Error('Expected a point entity.');
@@ -46,9 +41,8 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
         ? 'BELOW_TERRAIN'
         : undefined;
   const primitives: Primitive[] = [];
-  let footprintTriangles = 0,
-    missing = ground === null;
-  const entityColor = color(style.color ?? '#216e5b', 1);
+  let missing = ground === null;
+  const entityColor = parseColor(style.color ?? '#216e5b', 1, { initialCss: '#216e5b' });
   const display = (p: GeoPoint): GeoPoint => [
     p[0],
     p[1],
@@ -95,33 +89,13 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
     const origin: GeoPoint = [lng, lat, placement === 'airborne' ? altitude : ground],
       local = localFrame(origin);
     for (const attachment of entity.attachments ?? []) {
-      const rgba = color(
+      const rgba = parseColor(
         attachment.color ?? (attachment.type === 'camera' ? '#288b59' : '#8060ae'),
         0.22,
+        { initialCss: '#216e5b' },
       );
-      if (attachment.type === 'camera') {
-        if (placement !== 'airborne' || attachment.terrainVisibility) continue;
-        if (visibility.footprints) {
-          const footprint = cameraFootprint(origin, attachment, ground);
-          if ((attachment.volumeOpacity ?? 0) > 0 || attachment.wireframe) {
-            // Preserve each corner ray even when it reaches range before the ground.
-            const corners = ([[-1,-1],[1,-1],[1,1],[-1,1]] as const).map(([x,y]) => {
-              const ray=cameraRay(attachment,x,y);
-              const distance=ray[2]<0 ? Math.min(attachment.range,(origin[2]-ground)/-ray[2]) : attachment.range;
-              return local(ray[0]*distance,ray[1]*distance,ray[2]*distance);
-            });
-            const faces:GeoPoint[]=[],rays:GeoPoint[]=[];
-            corners.forEach((a,i)=>{const b=corners[(i+1)%4]!;faces.push(origin,a,b);rays.push(origin,a,a,b);});
-            if((attachment.volumeOpacity??0)>0)add(faces,'triangles',[rgba[0],rgba[1],rgba[2],attachment.volumeOpacity!],attachment.id);
-            if(attachment.wireframe)add(rays,'lines',color('#8bab97',1),attachment.id,false,attachment.wireframeWidth??3);
-          }
-
-          const visibleColor: Primitive['color'] = [rgba[0], rgba[1], rgba[2], attachment.fillOpacity ?? .25];
-          footprintTriangles += footprint.length ? 2 : 0;
-          add(footprint, 'polygon', visibleColor, attachment.id, true);
-          if (attachment.outline ?? true) add(footprint.flatMap((point, i) => [point, footprint[(i + 1) % footprint.length]!]), 'lines', [rgba[0], rgba[1], rgba[2], .95], attachment.id, true, attachment.outlineWidth ?? 3);
-        }
-      } else if (visibility.zones) {
+      if (attachment.type === 'camera') continue;
+      if (visibility.zones) {
         if (attachment.type === 'circle' || attachment.type === 'polygon') {
           const boundary =
             attachment.type === 'polygon'
@@ -146,7 +120,7 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
     altitude,
     ground: ground ?? undefined,
     coverage: missing ? (unavailable() ? 'unavailable' : 'loading') : 'ready',
-    footprintTriangles,
+    footprintTriangles: 0,
     computedAt: performance.timeOrigin + performance.now(),
     computationMs: performance.now() - started,
   } };
@@ -183,32 +157,4 @@ function volume(
       mesh.push(local(0, 0, attachment.height / 2), point(i, 1), point(i + 1, 1));
     }
   return mesh;
-}
-function color(value: string, alpha: number): Primitive['color'] {
-  const key = `${value}:${alpha}`,
-    cached = colors.get(key);
-  if (cached) return cached;
-  const context = new OffscreenCanvas(1, 1).getContext('2d');
-  if (!context) return [0.13, 0.43, 0.36, alpha];
-  context.fillStyle = '#216e5b';
-  context.fillStyle = value;
-  context.fillRect(0, 0, 1, 1);
-  const p = context.getImageData(0, 0, 1, 1).data;
-  const rgba: Primitive['color'] = [p[0]! / 255, p[1]! / 255, p[2]! / 255, alpha];
-  colors.set(key, rgba);
-  return rgba;
-}
-
-/** Side planes match GPU clipping; wireframe segments stop at terrain occlusion. */
-export function cameraVolumePrimitives(entityId: string, origin: GeoPoint, camera: CameraAttachment, volume: CameraVolume, config: MapConfiguration, terrain: CameraTerrain): Primitive[] {
-  const display=(p:GeoPoint):GeoPoint=>[p[0],p[1],config.terrain?p[2]*config.exaggeration:p[2]];
-  const faces:GeoPoint[]=[];
-  volume.corners.forEach((a,i)=>{
-    const b=volume.corners[(i+1)%4]!;
-    faces.push(origin,a,b);
-  });
-  const result:Primitive[]=[];
-  if((camera.volumeOpacity??0)>0)result.push({entityId,attachmentId:camera.id,mode:'triangles',vertices:faces.map(display),color:color(camera.color??'#288b59',camera.volumeOpacity!)});
-  if(camera.wireframe)result.push({entityId,attachmentId:camera.id,mode:'lines',vertices:visibleCameraEdges(origin,volume,terrain).map(display),color:color('#8bab97',1),size:camera.wireframeWidth??3});
-  return result;
 }
