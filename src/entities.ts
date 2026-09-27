@@ -49,8 +49,10 @@ export class EntityScene<P extends Properties> {
   private customGeneration = new AbortController();
   private preparing = new Map<string, Promise<void>>();
   private coverage: SensorCameraCoverage;
+  private footprintsVisible: boolean;
   private diagnosticKeys = new Map<string, string>();
   constructor(private options: SceneOptions<P>) {
+    this.footprintsVisible = options.configuration().entityVisibility.footprints;
     this.groundLayer = new EntityGround(options.map);
     this.layer = new EntityLayer((cause) =>
       options.diagnostic(
@@ -67,7 +69,7 @@ export class EntityScene<P extends Properties> {
     this.coverage = new SensorCameraCoverage({
       map: options.map,
       height: this.height,
-      prepare: options.sampler?.prepare,
+      prepare: options.sampler?.prepare?.bind(options.sampler),
       elevationUnavailable: () => this.raster.unavailable(),
       pollTerrain: !options.sampler,
       diagnostic: cause => options.diagnostic(new RidgelineError(
@@ -140,14 +142,16 @@ export class EntityScene<P extends Properties> {
       }
     }
     this.schedule();
+    const footprintsVisible = this.options.configuration().entityVisibility.footprints;
     const sharedPreparation = features.filter(feature => {
       const attachments = feature.entity?.attachments ?? [];
       const hasTerrainCamera = attachments.some(attachment => attachment.type === 'camera' && attachment.terrainVisibility);
       const hasSharedAttachment = attachments.some(attachment => attachment.type !== 'camera');
       // Terrain-visibility cameras own their wider patch preparation. Plain
       // cameras still need the shared center sample for entity placement;
-      // non-camera attachments also need their own terrain samples.
-      return feature.entity && (!hasTerrainCamera || hasSharedAttachment);
+      // non-camera attachments also need their own terrain samples. Hidden
+      // terrain cameras still need a center sample for entity placement.
+      return feature.entity && (!hasTerrainCamera || hasSharedAttachment || !footprintsVisible);
     });
     if (this.options.sampler?.prepare && sharedPreparation.length) {
       const positions: [number, number][] = [];
@@ -194,6 +198,9 @@ export class EntityScene<P extends Properties> {
     }
   }
   configure(elevationChanged = false) {
+    const footprintsVisible = this.options.configuration().entityVisibility.footprints;
+    const hidingCoverage = this.footprintsVisible && !footprintsVisible;
+    this.footprintsVisible = footprintsVisible;
     this.coverage.invalidate();
     if (elevationChanged) {
       this.coverage.resetElevation();
@@ -202,6 +209,15 @@ export class EntityScene<P extends Properties> {
       this.customGeneration.abort();
       this.customGeneration = new AbortController();
       this.preparing.clear();
+    }
+    if (this.options.sampler?.prepare && hidingCoverage) {
+      // Hiding coverage cancels camera terrain work. Placement still needs its
+      // center sample, including when coverage is hidden before the first build.
+      this.set([...this.features.values()].filter(feature => {
+        if (this.preparing.has(feature.id) || feature.geometry.type !== 'Point') return false;
+        const [lng, lat] = feature.geometry.coordinates;
+        return lng !== undefined && lat !== undefined && this.height(lng, lat) === null;
+      }));
     }
     this.invalidate();
   }

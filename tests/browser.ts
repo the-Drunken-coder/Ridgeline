@@ -434,6 +434,119 @@ async function suite() {
     check(!air.map.getLayer('rl:camera-gpu'), 'Plain camera allocated the GPU visibility renderer');
     air.destroy();
   });
+  await run('Stateful elevation samplers retain their prepare method receiver', async () => {
+    class StatefulSampler {
+      #centerReady = false;
+      #patchReady = false;
+      sample(lng: number, lat: number) {
+        if (lng === 0 && lat === 0) return this.#centerReady ? 0 : null;
+        return this.#patchReady ? 0 : null;
+      }
+      async prepare(positions: readonly [number, number][]) {
+        this.#centerReady = true;
+        if (positions.some(([lng, lat]) => lng !== 0 || lat !== 0)) this.#patchReady = true;
+      }
+    }
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style(), logger: () => {},
+      elevationSampler: new StatefulSampler(), onError: error => errors.push(error) });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('stateful-sampler'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } };
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.placement === 'airborne' && air.getEntityState(feature.id)?.coverage === 'ready', 'stateful sampler camera coverage');
+    check(!errors.some(error => error.code === 'ELEVATION_UNAVAILABLE'), 'Stateful sampler preparation failed');
+    air.destroy();
+  });
+  await run('Hidden terrain cameras still prepare placement elevation after movement', async () => {
+    class HiddenSampler {
+      #prepared = new Set<string>();
+      calls = 0;
+      sample(lng: number, lat: number) { return this.#prepared.has(`${lng},${lat}`) ? 0 : null; }
+      async prepare(positions: readonly [number, number][]) {
+        this.calls++;
+        for (const [lng, lat] of positions) this.#prepared.add(`${lng},${lat}`);
+      }
+    }
+    const sampler = new HiddenSampler();
+    const air = createViewport({ container, basemap: style(), logger: () => {},
+      entityVisibility: { footprints: false, zones: false, groundLines: false }, elevationSampler: sampler });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('hidden-placement'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } };
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.placement === 'airborne', 'hidden initial placement');
+    check(sampler.calls >= 1, 'Hidden terrain camera did not prepare entity elevation');
+    check(air.getEntityState(feature.id)?.coverage === 'ready', 'Hidden placement remained unavailable');
+    const before = air.getEntityState(feature.id)!.computedAt;
+    air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [.01, 0] } }]);
+    await until(() => {
+      const state = air.getEntityState(feature.id);
+      return state?.computedAt !== undefined && state.computedAt > before && state.placement === 'airborne';
+    }, 'hidden moved placement');
+    check(sampler.calls >= 2, 'Hidden movement did not prepare the new entity position');
+    check(!air.map.getLayer('rl:camera-gpu'), 'Hidden camera allocated GPU coverage');
+    air.destroy();
+  });
+  await run('Hiding coverage replaces aborted camera preparation for entity placement', async () => {
+    class PendingSampler {
+      #ready = false;
+      calls = 0;
+      finish?: () => void;
+      sample() { return this.#ready ? 0 : null; }
+      prepare(_positions: readonly [number, number][], signal: AbortSignal) {
+        this.calls++;
+        return new Promise<void>((resolve, reject) => {
+          const abort = () => {
+            signal.removeEventListener('abort', abort);
+            reject(new DOMException('aborted', 'AbortError'));
+          };
+          if (signal.aborted) { abort(); return; }
+          signal.addEventListener('abort', abort, { once: true });
+          this.finish = () => {
+            signal.removeEventListener('abort', abort);
+            this.#ready = true;
+            resolve();
+          };
+        });
+      }
+    }
+    const sampler = new PendingSampler();
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style(), logger: () => {}, onError: error => errors.push(error), elevationSampler: sampler });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('hide-pending'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } };
+    air.upsert([feature]);
+    await until(() => sampler.calls === 1 && air.getEntityState(feature.id)?.coverage === 'loading', 'initial camera preparation');
+    air.configure({ entityVisibility: { footprints: false, zones: false, groundLines: false } });
+    await until(() => sampler.calls >= 2, 'placement preparation after hiding coverage');
+    sampler.finish?.();
+    await until(() => air.getEntityState(feature.id)?.placement === 'airborne', 'placement recovery after hiding coverage');
+    check(air.getEntityState(feature.id)?.coverage === 'ready', 'Hidden placement remained loading');
+    check(!errors.some(error => error.code === 'ELEVATION_UNAVAILABLE'), 'Aborted camera preparation reported a diagnostic');
+    air.destroy();
+  });
+  await run('Hidden unavailable placement waits for explicit retry after display configuration changes', async () => {
+    let ready = false, recover = false, preparations = 0;
+    const air = createViewport({ container, basemap: style(), logger: () => {},
+      entityVisibility: { footprints: false, zones: false, groundLines: false },
+      elevationSampler: { sample: () => ready ? 0 : null, prepare: async () => { preparations++; ready = recover; } } });
+    current = air; await air.ready;
+    air.upsert([{ ...point('hidden-unavailable'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } }]);
+    await until(() => air.getEntityState('hidden-unavailable')?.coverage === 'unavailable', 'settled hidden placement');
+    const before = air.getEntityState('hidden-unavailable')!.computedAt;
+    const attempts = preparations;
+    air.configure({ projection: 'globe', entityVisibility: { footprints: false, zones: false, groundLines: false } });
+    await until(() => air.getEntityState('hidden-unavailable')!.computedAt > before, 'hidden display reconfiguration');
+    check(preparations === attempts, 'Display configuration retried settled unavailable elevation');
+    recover = true;
+    air.retryUpdates();
+    await until(() => air.getEntityState('hidden-unavailable')?.placement === 'airborne', 'explicit hidden placement retry');
+    check(preparations > attempts, 'Explicit retry did not prepare placement elevation');
+    air.destroy();
+  });
   await run('Raw DEM placement and coverage remain physical with terrain off and exaggerated', async () => {
     const errors: RidgelineError[] = [];
     const dem=document.createElement('canvas'); dem.width=dem.height=256;

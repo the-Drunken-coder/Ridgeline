@@ -113,4 +113,3 @@ Completion requires one owner for sensor-camera lifecycle decisions, no duplicat
 - The user accepted keeping previous completed coverage visible during ordinary updates and stated that clarity matters more than complete accuracy. This spec records that choice narrowly as display continuity while an update is pending.
 - The user accepted independent sensor updates and removing coverage after a confirmed failure while retaining the sensor's entity.
 - The user invoked matt-to-spec to synthesize the discussion and publish this document with the ready-for-agent triage status.
-

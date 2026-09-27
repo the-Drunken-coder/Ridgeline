@@ -276,13 +276,14 @@ test('keeps a pending terrain replacement loading, then settles prepared terrain
   assert.deepEqual(coverage.output('entity'), []);
 });
 
-test('detaches preparation for an obsolete camera range', async () => {
+test('cancels preparation for an obsolete camera range and suppresses its late failure', async () => {
   let rejectPreparation!: (cause: unknown) => void;
+  let signal: AbortSignal | undefined;
   const preparation = new Promise<void>((_resolve, reject) => { rejectPreparation = reject; });
   const adapter = controlledAdapter();
   const { coverage, diagnostics } = owner(adapter, {
     height: () => null,
-    prepare: async () => { await preparation; },
+    prepare: async (_positions, preparationSignal) => { signal = preparationSignal; await preparation; },
   });
 
   coverage.update(input());
@@ -291,11 +292,91 @@ test('detaches preparation for an obsolete camera range', async () => {
 
   coverage.update(input({ cameras: [] }));
   assert.equal(coverage.isPreparing('entity'), false);
+  assert.equal(signal?.aborted, true, 'The consumer must be able to release obsolete preparation work');
 
   rejectPreparation(new Error('obsolete range failed'));
   await preparation.catch(() => {});
   await Promise.resolve();
   assert.deepEqual(diagnostics, [], 'Detached preparation must not report a diagnostic');
+});
+
+test('cancels obsolete ranges without cancelling terrain shared by remaining cameras or other entities', async () => {
+  const signals: AbortSignal[] = [];
+  const preparation = deferred();
+  const { coverage } = owner(controlledAdapter(), {
+    height: () => null,
+    prepare: (_positions, signal) => { signals.push(signal); return preparation.promise; },
+  });
+  const first = camera('first');
+  const second = camera('second');
+  const far = { ...camera('far'), range: 600 };
+  coverage.update(input({ cameras: [first, second] }));
+  await Promise.resolve();
+  assert.equal(signals.length, 1, 'Equal ranges should share pending preparation');
+  const shared = signals[0]!;
+
+  coverage.update(input({ cameras: [first, second, far] }));
+  await Promise.resolve();
+  const farther = signals[1]!;
+  coverage.update(input({ entityId: 'other' }));
+  await Promise.resolve();
+  const other = signals[2]!;
+
+  coverage.update(input({ cameras: [second, far] }));
+  assert.equal(shared.aborted, false, 'A remaining camera still needs the shared range');
+  coverage.update(input({ cameras: [second] }));
+  assert.equal(farther.aborted, true, 'Removing the last camera using a range should cancel it');
+  assert.equal(shared.aborted, false);
+  assert.equal(other.aborted, false);
+
+  coverage.remove('entity');
+  assert.equal(shared.aborted, true);
+  assert.equal(other.aborted, false, 'Another entity must retain its preparation');
+  coverage.destroy();
+  assert.equal(other.aborted, true);
+  preparation.resolve();
+});
+
+test('hiding, retrying, resetting elevation, and destruction cancel preparation and ignore late completion', async () => {
+  for (const action of ['hide', 'retry', 'reset', 'destroy'] as const) {
+    const preparation = deferred();
+    let signal: AbortSignal | undefined;
+    const { coverage, changed, diagnostics } = owner(controlledAdapter(), {
+      height: () => null,
+      prepare: (_positions, value) => { signal = value; return preparation.promise; },
+    });
+    coverage.update(input());
+    await Promise.resolve();
+    assert.ok(signal);
+    if (action === 'hide') coverage.update(input({ configuration: {
+      ...configuration,
+      entityVisibility: { ...configuration.entityVisibility, footprints: false },
+    } }));
+    else if (action === 'retry') coverage.retry();
+    else if (action === 'reset') coverage.resetElevation();
+    else coverage.destroy();
+    assert.equal(signal.aborted, true, `${action} must cancel pending preparation`);
+    const changesAfterAction = changed.length;
+    preparation.resolve();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(changed.length, changesAfterAction, `${action} must ignore obsolete completion`);
+    assert.deepEqual(diagnostics, []);
+    assert.deepEqual(coverage.output('entity'), []);
+    coverage.destroy();
+  }
+});
+
+test('removing a camera before preparation starts prevents the consumer call', async () => {
+  let calls = 0;
+  const { coverage } = owner(controlledAdapter(), {
+    height: () => null,
+    prepare: async () => { calls++; },
+  });
+  coverage.update(input());
+  coverage.remove('entity');
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(calls, 0);
+  coverage.destroy();
 });
 
 test('failure clears displayed camera output, retry uses current input, and stale identity cannot return', () => {

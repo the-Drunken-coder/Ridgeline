@@ -7,8 +7,8 @@ import type { GeoPoint } from './entity-geometry';
 import { TERRAIN_CELLS, terrainCoordinates, cameraRangeBounds } from './gpu-camera-terrain';
 import type { CameraTerrain } from './gpu-camera-terrain';
 import { SENSOR_SIZE, COVERAGE_SIZE, DISPLAY_SIZE, depthVertex, depthFragment, coverageVertex, coverageFragment, voteVertex, voteFragment, boundaryFragment, smoothRegionFragment, regionStyleFragment } from './gpu-camera-shaders';
+import { parseColor } from './color';
 
-type Color = [number, number, number, number];
 export type GpuCamera = {
   entityId: string;
   camera: CameraAttachment;
@@ -49,17 +49,6 @@ export function sameCameraAppearance(a: GpuCamera, b: GpuCamera) {
 export function sameCamera(a: GpuCamera, b: GpuCamera) {
   return a.terrain === b.terrain && analysisKey(a) === analysisKey(b)
     && appearanceKey(a) === appearanceKey(b) && JSON.stringify(a.geometry) === JSON.stringify(b.geometry);
-}
-const colors = new Map<string, Color>();
-function color(css: string, opacity: number): Color {
-  let result = colors.get(css);
-  if (!result) {
-    const context = new OffscreenCanvas(1, 1).getContext('2d')!;
-    context.fillStyle = css; context.fillRect(0, 0, 1, 1);
-    const p = context.getImageData(0, 0, 1, 1).data;
-    result = [p[0]! / 255, p[1]! / 255, p[2]! / 255, 1]; colors.set(css, result);
-  }
-  return [result[0], result[1], result[2], opacity];
 }
 function program(gl: WebGL2RenderingContext, vertex: string, fragment: string) {
   const p = gl.createProgram(); if (!p) throw new Error('Cannot allocate camera shader.');
@@ -305,8 +294,8 @@ export class GpuCameras implements CustomLayerInterface {
         gl.useProgram(this.styleProgram!);
         gl.uniform1i(gl.getUniformLocation(this.styleProgram!,'u_regions'),0);
         gl.uniform1f(gl.getUniformLocation(this.styleProgram!,'u_borderWidth'),item.value.camera.outline===false?0:(item.value.camera.outlineWidth??3)/2);
-        gl.uniform4fv(gl.getUniformLocation(this.styleProgram!,'u_color'),color(item.value.camera.color??'#1ad96b',item.value.camera.fillOpacity??.25));
-        gl.uniform4fv(gl.getUniformLocation(this.styleProgram!,'u_blocked'),color(item.value.camera.blockedColor??'#ff382e',item.value.camera.blockedOpacity??.25));
+        gl.uniform4fv(gl.getUniformLocation(this.styleProgram!,'u_color'),parseColor(item.value.camera.color??'#1ad96b',item.value.camera.fillOpacity??.25,{contextBehavior:'throw'}));
+        gl.uniform4fv(gl.getUniformLocation(this.styleProgram!,'u_blocked'),parseColor(item.value.camera.blockedColor??'#ff382e',item.value.camera.blockedOpacity??.25,{contextBehavior:'throw'}));
         gl.drawArrays(gl.TRIANGLES,0,3);
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER,item.pixels!);
         gl.readPixels(0, 0, DISPLAY_SIZE, DISPLAY_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, 0);

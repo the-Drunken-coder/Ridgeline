@@ -2,6 +2,7 @@ import type { EntityAttachment, EntityState, FeatureStyle, MapConfiguration, Map
 import type { Primitive } from './entity-layer';
 import { groundZone, localFrame } from './entity-geometry';
 import type { GeoPoint, HeightAt } from './entity-geometry';
+import { parseColor } from './color';
 
 export type EntityComputationInput = {
   feature: MapFeature;
@@ -15,8 +16,6 @@ export type EntityComputationResult = {
   state: EntityState;
   diagnostic?: 'ALTITUDE_MISSING' | 'BELOW_TERRAIN';
 };
-const colors = new Map<string, Primitive['color']>();
-
 export function computeEntity(input: EntityComputationInput, height: HeightAt, unavailable: () => boolean): EntityComputationResult {
   const { feature, configuration: config, style, selected } = input;
   if (feature.geometry.type !== 'Point' || !feature.entity) throw new Error('Expected a point entity.');
@@ -43,7 +42,7 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
         : undefined;
   const primitives: Primitive[] = [];
   let missing = ground === null;
-  const entityColor = color(style.color ?? '#216e5b', 1);
+  const entityColor = parseColor(style.color ?? '#216e5b', 1, { initialCss: '#216e5b' });
   const display = (p: GeoPoint): GeoPoint => [
     p[0],
     p[1],
@@ -90,9 +89,10 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
     const origin: GeoPoint = [lng, lat, placement === 'airborne' ? altitude : ground],
       local = localFrame(origin);
     for (const attachment of entity.attachments ?? []) {
-      const rgba = color(
+      const rgba = parseColor(
         attachment.color ?? (attachment.type === 'camera' ? '#288b59' : '#8060ae'),
         0.22,
+        { initialCss: '#216e5b' },
       );
       if (attachment.type === 'camera') continue;
       if (visibility.zones) {
@@ -157,18 +157,4 @@ function volume(
       mesh.push(local(0, 0, attachment.height / 2), point(i, 1), point(i + 1, 1));
     }
   return mesh;
-}
-function color(value: string, alpha: number): Primitive['color'] {
-  const key = `${value}:${alpha}`,
-    cached = colors.get(key);
-  if (cached) return cached;
-  const context = new OffscreenCanvas(1, 1).getContext('2d');
-  if (!context) return [0.13, 0.43, 0.36, alpha];
-  context.fillStyle = '#216e5b';
-  context.fillStyle = value;
-  context.fillRect(0, 0, 1, 1);
-  const p = context.getImageData(0, 0, 1, 1).data;
-  const rgba: Primitive['color'] = [p[0]! / 255, p[1]! / 255, p[2]! / 255, alpha];
-  colors.set(key, rgba);
-  return rgba;
 }
