@@ -14,7 +14,7 @@ type Color = Primitive['color'];
 
 /** The only rendering seam the coverage owner needs from the GPU adapter. */
 export type SensorCameraAdapter = {
-  set(values: GpuCamera[]): void;
+  set(values: GpuCamera[], retained?: readonly GpuCamera[]): void;
   attach(): void;
   pick(x: number, y: number): { entityId: string; attachmentId?: string }[];
   retry(): void;
@@ -179,6 +179,7 @@ export class SensorCameraCoverage {
   private readonly adapter: SensorCameraAdapter;
   private readonly entities = new Map<string, EntityCoverage>();
   private lifecycleSequence = 0;
+  private adapterDirty = false;
   private failed = false;
   private destroyed = false;
 
@@ -246,7 +247,7 @@ export class SensorCameraCoverage {
       }
     }
 
-    this.syncAdapter();
+    this.adapterDirty = true;
     entity.status = this.coverageFor(entity);
     return { geometry: this.output(input.entityId), footprintTriangles, coverage: entity.status };
   }
@@ -255,7 +256,7 @@ export class SensorCameraCoverage {
     const entity = this.entities.get(entityId);
     this.entities.delete(entityId);
     if (entity) this.clearTerrainWork(entity);
-    this.syncAdapter();
+    this.adapterDirty = true;
   }
 
   output(entityId: string): Primitive[] {
@@ -297,18 +298,10 @@ export class SensorCameraCoverage {
 
   retry() {
     if (this.destroyed) return;
-    this.invalidate();
     this.failed = false;
-    for (const entity of this.entities.values()) {
-      this.clearTerrainWork(entity);
-      for (const camera of entity.cameras.values()) camera.terrainPending = false;
-    }
+    for (const entity of this.entities.values()) this.discardTerrain(entity);
     this.adapter.retry();
-    this.syncAdapter();
-    for (const [entityId, entity] of this.entities) {
-      entity.status = this.coverageFor(entity);
-      this.options.changed(entityId);
-    }
+    for (const entityId of this.entities.keys()) this.options.changed(entityId);
   }
 
   elevationChanged() {
@@ -326,9 +319,23 @@ export class SensorCameraCoverage {
 
   resetElevation() {
     for (const [entityId, entity] of this.entities) {
-      this.clearTerrainWork(entity);
+      this.discardTerrain(entity);
       if (!this.destroyed) this.options.changed(entityId);
     }
+  }
+
+  private discardTerrain(entity: EntityCoverage) {
+    this.clearTerrainWork(entity);
+    for (const [id, camera] of entity.cameras) {
+      // Keep the accepted display while refreshed terrain loads, but require a
+      // newly built request before any result can publish or become ready.
+      camera.lifecycle = ++this.lifecycleSequence;
+      camera.requested = undefined;
+      camera.terrainPending = entity.input.cameras.some(input => input.id === id && input.terrainVisibility);
+    }
+    entity.status = !this.failed && [...entity.cameras.values()].some(camera => camera.terrainPending)
+      ? 'loading' : this.coverageFor(entity);
+    this.adapterDirty = true;
   }
 
   destroy() {
@@ -464,9 +471,13 @@ export class SensorCameraCoverage {
       const preparing = entity.terrain.get(camera.range)?.preparing !== undefined;
       if (this.failed || input.elevationUnavailable && !preparing && !state.requested && !state.terrainPending) return 'unavailable';
       if (state.terrainPending) {
-        coverage = input.elevationUnavailable && !preparing ? 'unavailable' : 'loading';
+        if (input.elevationUnavailable && !preparing) return 'unavailable';
+        coverage = 'loading';
       } else if (state.requested && (!state.displayed?.value || !sameCamera(state.displayed.value, state.requested))) coverage = 'loading';
-      else if (!state.requested && !state.displayed) coverage = input.elevationUnavailable ? 'unavailable' : 'loading';
+      else if (!state.requested && !state.displayed) {
+        if (input.elevationUnavailable) return 'unavailable';
+        coverage = 'loading';
+      }
     }
     return coverage;
   }
@@ -486,9 +497,17 @@ export class SensorCameraCoverage {
     }
   }
 
-  private syncAdapter() {
-    if (!this.destroyed) this.adapter.set(this.failed ? [] : [...this.entities.values()].flatMap(entity =>
-      [...entity.cameras.values()].flatMap(camera => camera.requested ? [camera.requested] : []),
-    ));
+  /** Submit once after the scene has applied its complete batch of changes. */
+  flush() {
+    if (this.destroyed || !this.adapterDirty) return;
+    this.adapterDirty = false;
+    const requested: GpuCamera[] = [];
+    const retained: GpuCamera[] = [];
+    if (!this.failed) for (const entity of this.entities.values()) for (const camera of entity.cameras.values()) {
+      if (camera.requested) requested.push(camera.requested);
+      else if (camera.displayed?.value) retained.push(camera.displayed.value);
+    }
+    try { this.adapter.set(requested, retained); }
+    catch (cause) { this.fail(cause); }
   }
 }

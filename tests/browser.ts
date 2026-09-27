@@ -434,6 +434,24 @@ async function suite() {
     check(!air.map.getLayer('rl:camera-gpu'), 'Plain camera allocated the GPU visibility renderer');
     air.destroy();
   });
+  await run('No-altitude terrain cameras use prepared ground placement without GPU coverage', async () => {
+    let prepared = false;
+    let positions: readonly [number, number][] = [];
+    const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+      sample: () => prepared ? 12 : null,
+      prepare: async requested => { positions = requested; prepared = true; },
+    } });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('prepared-ground'), entity: { attachments: [{ id: 'camera', type: 'camera',
+      terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } };
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.ground === 12 && air.getEntityState(feature.id)?.coverage === 'ready', 'prepared ground placement');
+    const state = air.getEntityState(feature.id)!;
+    check(state.placement === 'ground', `No-altitude entity placement was ${state.placement}`);
+    check(positions.some(([lng, lat]) => Math.abs(lng) < 1e-9 && Math.abs(lat) < 1e-9), 'Preparation omitted the entity center');
+    check(!air.map.getLayer('rl:camera-gpu'), 'Ground-placed terrain camera allocated GPU coverage');
+    air.destroy();
+  });
   await run('Stateful elevation samplers retain their prepare method receiver', async () => {
     class StatefulSampler {
       #centerReady = false;
@@ -1049,6 +1067,102 @@ async function suite() {
       check(air.getEntityState(feature.id)?.coverage === 'ready', 'Known ground-level camera stayed loading');
       check(!air.map.getLayer('rl:camera-gpu'), 'Ground-level camera retained GPU geometry');
     } finally { gl.clientWaitSync = clientWaitSync; gl.texImage2D=texImage2D;source.setData=setData;air.destroy(); }
+  });
+  await run('Rejected camera frames do not replace the displayed picking mask', async () => {
+    const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 }, elevationSampler: { sample: () => 0 }, logger: () => {} });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'camera', type: 'camera', terrainVisibility: true,
+      color: '#00ff00', bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300, volumeOpacity: 0, wireframe: false };
+    const feature: MapFeature = { ...point('rejected-camera'), entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [camera] } };
+    const gl = air.map.getCanvas().getContext('webgl2')!;
+    const clientWaitSync = gl.clientWaitSync.bind(gl);
+    let first: WebGLSync | undefined;
+    let release = false;
+    let completions = 0;
+    let heldWaits = 0;
+    gl.clientWaitSync = (sync, flags, timeout) => {
+      first ??= sync;
+      if (sync !== first && (!release || completions === 0)) {
+        heldWaits++;
+        return gl.TIMEOUT_EXPIRED;
+      }
+      const status = clientWaitSync(sync, flags, timeout);
+      if (sync !== first && status !== gl.TIMEOUT_EXPIRED && completions > 0) completions--;
+      return status;
+    };
+    let picked = '';
+    air.on('click', event => { picked = event.attachments.find(hit => hit.entityId === feature.id)?.attachmentId ?? ''; });
+    const pickAt = (lng: number, lat: number) => {
+      const point = air.map.project([lng, lat]);
+      picked = '';
+      air.map.fire('click', { point, lngLat: air.map.unproject(point), originalEvent: new MouseEvent('click') });
+      return picked;
+    };
+    try {
+      air.upsert([feature]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'initial camera coverage');
+      check(pickAt(0, .0008) === camera.id, 'Initial camera coverage was not pickable');
+      release = false;
+      const moved = { ...feature, geometry: { type: 'Point' as const, coordinates: [.003, 0] as [number, number] },
+        entity: { ...feature.entity!, attachments: [{ ...camera, bearing: 180 }] } };
+      let before = air.getEntityState(feature.id)!.computedAt;
+      air.upsert([moved]);
+      await until(() => air.getEntityState(feature.id)!.computedAt > before, 'moved camera submission');
+      await until(() => heldWaits > 0, 'moved camera fence held');
+      const changed = { ...moved, entity: { ...moved.entity!, attachments: [{ ...camera, color: '#0000ff', bearing: 180, volumeOpacity: 0, wireframe: false }] } };
+      before = air.getEntityState(feature.id)!.computedAt;
+      air.upsert([changed]);
+      await until(() => air.getEntityState(feature.id)!.computedAt > before, 'appearance replacement');
+      const previousHolds = heldWaits;
+      release = true;
+      completions = 1;
+      await until(() => heldWaits > previousHolds, 'replacement frame held after rejected result');
+      check(pickAt(0, .0008) === camera.id, 'Rejected readback replaced the displayed picking mask');
+      check(pickAt(0, -.0008) === '', 'Rejected readback created a south-side picking hit');
+      gl.clientWaitSync = clientWaitSync;
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'replacement camera coverage');
+    } finally {
+      gl.clientWaitSync = clientWaitSync;
+      air.destroy();
+    }
+  });
+  await run('Retained camera masks survive a style rebuild during terrain retry', async () => {
+    let available = true;
+    let finish: (() => void) | undefined;
+    const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 }, elevationSampler: {
+      sample: () => available ? 0 : null,
+      prepare: async () => new Promise<void>(resolve => { finish = resolve; }),
+    }, logger: () => {} });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'camera', type: 'camera', terrainVisibility: true,
+      bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300, volumeOpacity: 0, wireframe: false };
+    const feature: MapFeature = { ...point('retained-camera'), entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [camera] } };
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'initial retained camera');
+    let picked = '';
+    const off = air.on('click', event => { picked = event.attachments.find(hit => hit.entityId === feature.id)?.attachmentId ?? ''; });
+    const pickAt = (lng: number, lat: number) => {
+      const point = air.map.project([lng, lat]);
+      picked = '';
+      air.map.fire('click', { point, lngLat: air.map.unproject(point), originalEvent: new MouseEvent('click') });
+      return picked;
+    };
+    try {
+      check(pickAt(0, .0008) === camera.id, 'Initial retained camera was not pickable');
+      available = false;
+      air.retryUpdates();
+      await until(() => Boolean(finish) && air.getEntityState(feature.id)?.coverage === 'loading', 'pending retained retry');
+      air.configure({ basemap: style('#ffffff') });
+      await until(() => Boolean(air.map.getLayer('rl:camera-gpu')), 'camera layer after style rebuild');
+      check(pickAt(0, .0008) === camera.id, 'Style rebuild dropped retained camera picking');
+      available = true;
+      finish!(); finish = undefined;
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'retained camera retry');
+    } finally {
+      finish?.();
+      off();
+      air.destroy();
+    }
   });
   await run('GPU visibility preserves flat-ground coverage at long range and caches terrain during movement', async () => {
     const meters = Math.PI / 180 * 6371008.8;

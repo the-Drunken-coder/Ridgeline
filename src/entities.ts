@@ -149,9 +149,10 @@ export class EntityScene<P extends Properties> {
       const hasSharedAttachment = attachments.some(attachment => attachment.type !== 'camera');
       // Terrain-visibility cameras own their wider patch preparation. Plain
       // cameras still need the shared center sample for entity placement;
-      // non-camera attachments also need their own terrain samples. Hidden
-      // terrain cameras still need a center sample for entity placement.
-      return feature.entity && (!hasTerrainCamera || hasSharedAttachment || !footprintsVisible);
+      // non-camera attachments also need their own terrain samples. Ground
+      // entities and hidden terrain cameras still need a placement sample.
+      const needsPlacement = feature.entity && !feature.entity.altitude;
+      return feature.entity && (needsPlacement || !hasTerrainCamera || hasSharedAttachment || !footprintsVisible);
     });
     if (this.options.sampler?.prepare && sharedPreparation.length) {
       const positions: [number, number][] = [];
@@ -305,6 +306,7 @@ export class EntityScene<P extends Properties> {
         );
       }
     }
+    this.coverage.flush();
     this.render();
     if (ids.length) this.options.changed(ids);
   }
