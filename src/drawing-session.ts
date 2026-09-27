@@ -18,6 +18,7 @@ import {
   measurements,
   position,
   shapeGeometry,
+  sizeFromPoint,
   translateShape,
   validateDrawingStyle,
   validateShape,
@@ -239,13 +240,7 @@ export function createDrawingSession<P extends Properties>(
       } else if (s.kind === "circle" || s.kind === "rectangle") {
         if (!current.placed) s.center = p;
         else {
-          if (s.kind === "circle") s.radius = distance(s.center, p);
-          else {
-            const d = distance(s.center, p),
-              b = ((bearing(s.center, p) - s.bearing) * Math.PI) / 180;
-            s.width = 2 * Math.abs(d * Math.sin(b));
-            s.height = 2 * Math.abs(d * Math.cos(b));
-          }
+          current.shape = sizeFromPoint(s, p);
           current.placing = false;
         }
       }

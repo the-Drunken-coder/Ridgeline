@@ -25,6 +25,16 @@ try {
   server = await preview({ configFile: false, root: consumer, preview: { host: '127.0.0.1', port: 0 } });
   browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  await page.exposeFunction('drawingPointer', async (action, x, y) => {
+    if (action !== 'move' && action !== 'click') throw new Error(`Unknown pointer action: ${action}`);
+    if (![x, y].every(value => typeof value === 'number' && Number.isFinite(value))) throw new Error('Pointer coordinates must be finite numbers.');
+    await page.locator('#map').scrollIntoViewIfNeeded();
+    const box = await page.locator('#map canvas').first().boundingBox();
+    if (!box) throw new Error('Map canvas is not visible.');
+    const position = { x: box.x + x, y: box.y + y };
+    if (action === 'move') await page.mouse.move(position.x, position.y);
+    else await page.mouse.click(position.x, position.y);
+  });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(server.resolvedUrls.local[0]);

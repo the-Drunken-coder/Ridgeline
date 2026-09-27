@@ -501,6 +501,44 @@ test("Revoking pending delete permission aborts and explains discarded acceptanc
   }
 });
 
+for (const tool of ["circle", "rectangle"] as const) {
+  test(`${tool} placement preserves the center and groups sizing into one undo action`, () => {
+    const { editor, host } = fixture();
+    const center: DrawingPosition = [179.999, 45];
+    editor.start(tool);
+    const initial = editor.getState();
+    editor.addPoint(center);
+    const first = editor.getState().draft!;
+    assert.equal(first.placing, true);
+    assert.equal(first.placed, 1);
+    assert.ok("center" in first.shape);
+    assert.deepEqual(first.shape.center, center);
+    assert.equal(editor.getState().measurements.area, 0);
+
+    const edge = destination(center, 1000, 70);
+    editor.addPoint(edge);
+    const sized = editor.getState().draft!;
+    assert.equal(sized.placing, false);
+    assert.equal(sized.placed, 2);
+    assert.ok("center" in sized.shape);
+    assert.deepEqual(sized.shape.center, center);
+    assert.ok(editor.getState().measurements.area! > 0);
+    if (sized.shape.kind === "circle")
+      assert.ok(Math.abs(sized.shape.radius - 1000) < 0.001);
+    assert.equal(host.getFeature("new"), undefined);
+
+    editor.undo();
+    assert.deepEqual(editor.getState().draft, first);
+    editor.undo();
+    assert.deepEqual(editor.getState().draft, initial.draft);
+    assert.equal(editor.getState().canUndo, false);
+    editor.redo();
+    editor.redo();
+    assert.deepEqual(editor.getState().draft, sized);
+    editor.destroy();
+  });
+}
+
 test("Rectangle placement uses the current bearing and keeps the clicked corner", () => {
   const { editor } = fixture();
   editor.start("rectangle"); editor.addPoint([0, 0]);

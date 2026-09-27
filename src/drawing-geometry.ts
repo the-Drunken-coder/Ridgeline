@@ -31,6 +31,20 @@ export function bearing(a: DrawingPosition, b: DrawingPosition) {
     ) / rad
   );
 }
+/** Size a centered shape identically for cursor previews and committed placement. */
+export function sizeFromPoint(
+  shape: Extract<DrawingShape, { kind: "circle" | "rectangle" }>,
+  point: DrawingPosition,
+) {
+  const d = distance(shape.center, point);
+  if (shape.kind === "circle") return { ...shape, radius: d };
+  const angle = ((bearing(shape.center, point) - shape.bearing) * Math.PI) / 180;
+  return {
+    ...shape,
+    width: 2 * Math.abs(d * Math.sin(angle)),
+    height: 2 * Math.abs(d * Math.cos(angle)),
+  };
+}
 export function destination(
   origin: DrawingPosition,
   meters: number,

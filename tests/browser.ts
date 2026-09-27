@@ -7,6 +7,12 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import '@ridgeline/map/style.css';
 
+declare global {
+  interface Window {
+    drawingPointer?: (action: 'move' | 'click', x: number, y: number) => Promise<void>;
+  }
+}
+
 setWorkerUrl(workerUrl);
 const container = document.querySelector<HTMLDivElement>('#map')!;
 const results = document.querySelector<HTMLOListElement>('#results')!;
@@ -23,10 +29,20 @@ async function until(predicate: () => boolean, description: string) {
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
   }
 }
-async function run(name: string, test: () => Promise<void>) {
+async function run(name: string, test: () => Promise<void>, options: { realPointer?: boolean } = {}) {
   const row = document.createElement('li'); row.textContent = name; results.append(row);
+  if (options.realPointer && !window.drawingPointer) {
+    row.className = 'skip'; row.textContent = `SKIP: ${name} (Playwright pointer bridge required)`;
+    return;
+  }
   try { await test(); row.className = 'pass'; row.textContent = `PASS: ${name}`; }
   catch (error) { row.className = 'fail'; row.textContent = `FAIL: ${name}: ${String(error)}`; throw error; }
+}
+async function pointer(action: 'move' | 'click', point: { x: number; y: number }) {
+  const drawingPointer = window.drawingPointer;
+  if (!drawingPointer) throw new Error('Playwright pointer bridge is unavailable.');
+  await drawingPointer(action, point.x, point.y);
+  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 }
 async function suite() {
   await run('Destroy during initialization, repeat destroy, then remount', async () => {
@@ -819,6 +835,72 @@ async function suite() {
     check(visited.length===1&&visited[0]==='near','Snapping inspected features outside its pointer radius');
     editor.destroy();draw.destroy();
   });
+  await run('Real pointer drawing previews stay ephemeral and match circle and rotated rectangle placement', async () => {
+    const draw=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:12},logger:()=>{}});
+    current=draw;await draw.ready;
+    let nextId=0;
+    const editor=attachDrawing(draw,{createFeature:()=>({id:`pointer-${nextId++}`,properties:{}}),submit:()=>({accepted:true})});
+    const center=draw.map.project([0,0]);
+    editor.start('circle');
+    await pointer('click',center);
+    const circleBefore=editor.getState(),circleDraft=JSON.stringify(circleBefore.draft),circleUndo=circleBefore.canUndo;
+    const circleEdge={x:center.x+70,y:center.y};
+    await pointer('move',circleEdge);
+    const circlePreview=editor.getMeasurements();
+    check(circlePreview.length>0&&circlePreview.area!>0,'Circle preview did not follow the pointer');
+    const circleDuring=editor.getState();
+    check(JSON.stringify(circleDuring.draft)===circleDraft,'Circle preview mutated the draft');
+    check(circleDuring.canUndo===circleUndo,'Circle preview added an undo entry');
+    await pointer('click',circleEdge);
+    const circleCommitted=editor.getMeasurements();
+    check(Math.abs(circlePreview.length-circleCommitted.length)<.001,'Circle preview did not match the committed placement');
+    check(Math.abs(circlePreview.area!-circleCommitted.area!)<.001,'Circle preview area did not match placement');
+    const circleShape=editor.getState().draft!.shape;
+    editor.undo();
+    const circleUndone=editor.getState().draft;
+    check(circleUndone?.placing===true&&circleUndone.placed===1,'Undo did not restore the first circle placement');
+    check(circleUndone?.shape.kind==='circle'&&circleUndone.shape.radius===0,'Undo retained the second circle placement');
+    editor.redo();
+    check(await editor.finish(),'Circle change was not accepted');
+    check(JSON.stringify(draw.getFeature('pointer-0')?.geometry)===JSON.stringify(shapeGeometry(circleShape)),'Accepted circle differs from placed geometry');
+
+    editor.start('rectangle');
+    await pointer('click',center);
+    const rectangleCenter=editor.getState().draft!.shape;
+    if(rectangleCenter.kind!=='rectangle')throw new Error('Rectangle draft was not created');
+    editor.setShape({...rectangleCenter,width:0,height:0,bearing:45});
+    const rectangleBefore=editor.getState(),rectangleDraft=JSON.stringify(rectangleBefore.draft),rectangleUndo=rectangleBefore.canUndo;
+    const rectanglePoint={x:center.x+86,y:center.y-42};
+    await pointer('move',rectanglePoint);
+    const rectanglePreview=editor.getMeasurements();
+    check(rectanglePreview.length>0&&rectanglePreview.area!>0,'Rectangle preview did not follow the pointer');
+    const rectangleDuring=editor.getState();
+    check(JSON.stringify(rectangleDuring.draft)===rectangleDraft,'Rectangle preview mutated the draft');
+    check(rectangleDuring.canUndo===rectangleUndo,'Rectangle preview added an undo entry');
+    await pointer('click',rectanglePoint);
+    const rectangleCommitted=editor.getMeasurements();
+    check(Math.abs(rectanglePreview.length-rectangleCommitted.length)<.001,'Rotated rectangle preview did not match the committed placement');
+    check(Math.abs(rectanglePreview.area!-rectangleCommitted.area!)<.001,'Rotated rectangle preview area did not match placement');
+    const rectangleAfter=editor.getState().draft!;
+    if(rectangleAfter.shape.kind!=='rectangle'||rectangleAfter.placing)throw new Error('Rectangle second placement did not finish placement');
+    const rectangleShape=rectangleAfter.shape;
+    const geometry=shapeGeometry(rectangleShape);
+    if(geometry.type!=='Polygon')throw new Error('Rectangle geometry was not a polygon');
+    const cornerDistance=Math.min(...geometry.coordinates[0]!.slice(0,-1).map(([lng,lat])=>{
+      if(lng===undefined||lat===undefined)return Infinity;
+      const corner=draw.map.project([lng,lat]);
+      return Math.hypot(corner.x-rectanglePoint.x,corner.y-rectanglePoint.y);
+    }));
+    // Browser mouse events round CSS coordinates, so compare within one screen pixel.
+    check(cornerDistance<1,`Committed rectangle missed the clicked corner by ${cornerDistance} pixels`);
+    editor.undo();
+    const rectangleUndone=editor.getState().draft;
+    check(JSON.stringify(rectangleUndone)===rectangleDraft,'Undo did not restore the first rotated rectangle placement');
+    editor.redo();
+    check(await editor.finish(),'Rectangle change was not accepted');
+    check(JSON.stringify(draw.getFeature('pointer-1')?.geometry)===JSON.stringify(geometry),'Accepted rectangle differs from placed geometry');
+    editor.destroy();draw.destroy();
+  },{realPointer:true});
   await run('Dragging a vertex back to its unchanged snap target restores its handle', async () => {
     const line:MapFeature={type:'Feature',id:'line',properties:{},geometry:{type:'LineString',coordinates:[[0,0],[.01,0]]}};
     const draw=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:13},features:[line,point('anchor',0)],logger:()=>{}});
@@ -1376,6 +1458,7 @@ async function suite() {
   });
   await run('GPU voting and depth-refined contours respond to subpixel boundaries', async () => { checkGpuVote(); });
   status.dataset.state = 'passed';
-  status.textContent = `${results.children.length} checks passed. Package imported through its published exports.`;
+  const skipped = results.querySelectorAll('.skip').length;
+  status.textContent = `${results.querySelectorAll('.pass').length} checks passed${skipped ? `; ${skipped} packaged-consumer checks skipped outside Playwright.` : ''}. Package imported through its published exports.`;
 }
 void suite().catch(error => { status.dataset.state = 'failed'; status.textContent = `Failed: ${String(error)}`; current?.destroy(); });

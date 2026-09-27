@@ -15,6 +15,7 @@ import {
   measurements,
   position,
   shapeGeometry,
+  sizeFromPoint,
   shapeVertices,
   unroll,
   wrapLongitude,
@@ -138,14 +139,11 @@ export function attachDrawing<P extends Properties>(
           distance(shape.vertices.at(-1)!, cursor) > 0.001
         )
           shape.vertices.push(cursor);
-      } else if (draft.placed && shape.kind === "circle")
-        shape.radius = distance(shape.center, cursor);
-      else if (draft.placed && shape.kind === "rectangle") {
-        const d = distance(shape.center, cursor),
-          b = ((bearing(shape.center, cursor) - shape.bearing) * Math.PI) / 180;
-        shape.width = 2 * Math.abs(d * Math.sin(b));
-        shape.height = 2 * Math.abs(d * Math.cos(b));
-      }
+      } else if (
+        draft.placed &&
+        (shape.kind === "circle" || shape.kind === "rectangle")
+      )
+        return sizeFromPoint(shape, cursor);
     }
     return shape;
   }
