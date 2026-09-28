@@ -5,7 +5,6 @@ import type { MapFeature, Properties, Viewport } from "./types";
 import type {
   DrawingOptions,
   DrawingPosition,
-  DrawingShape,
 } from "./drawing-types";
 import { createDrawingSession } from "./drawing-session";
 import {
@@ -16,8 +15,6 @@ import {
 import { createArrowheads } from "./arrowheads";
 import { getViewportDrawingInternals } from "./viewport";
 import {
-  measurements,
-  placePoint,
   shapeGeometry,
   shapeHandles,
   shapeInsertHandles,
@@ -59,13 +56,11 @@ export function attachDrawing<P extends Properties>(
     }
   >();
   let disposed = false,
-    cursor: DrawingPosition | undefined,
     active = false,
     restoreDoubleClick = false;
   let snapEnabled = true,
     pointerType = "mouse",
     bypassSnap = false;
-  const previewListeners = new Set<() => void>();
   const abort = new AbortController();
   function editable() {
     return ["editing", "rejected"].includes(session.getState().phase);
@@ -134,25 +129,14 @@ export function attachDrawing<P extends Properties>(
     }
     return chosen;
   }
-  function previewShape(): DrawingShape | undefined {
-    const draft = session.getState().draft;
-    if (!draft) return;
-    if (draft.placing && cursor && editable())
-      return placePoint(draft.shape, draft.placed, cursor)?.shape ?? draft.shape;
-    return draft.shape;
-  }
   function renderGeometry() {
     if (disposed || !map.getSource(SOURCE)) return;
     const state = session.getState(),
       draft = state.draft,
-      shape = previewShape();
+      shape = session.getPreview();
     const features: Feature<Geometry>[] = [];
     let arrow: MapFeature | undefined;
-    if (
-      draft &&
-      shape &&
-      (draft.placed || !draft.placing || shapeMoveHandle(shape) !== undefined)
-    ) {
+    if (draft && shape) {
       const points = shapeVertices(shape),
         style = draft.style;
       let geometry: Geometry = shapeGeometry(shape, true);
@@ -187,7 +171,6 @@ export function attachDrawing<P extends Properties>(
     if (source instanceof GeoJSONSource)
       source.setData({ type: "FeatureCollection", features });
     draftArrowheads.show(arrow ? [arrow] : []);
-    for (const listener of previewListeners) listener();
   }
   function prepare() {
     if (disposed) return;
@@ -393,7 +376,7 @@ export function attachDrawing<P extends Properties>(
         item.marker.setDraggable(!locked && !insert);
       item.button.disabled = locked;
     }
-    if (draft && (draft.placed || !draft.placing)) {
+    if (draft && session.getPreview()) {
       shapeHandles(draft.shape).forEach((h, i) =>
         handle(
           `vertex-${i}`,
@@ -422,14 +405,12 @@ export function attachDrawing<P extends Properties>(
       }
   }
   function render() {
-    cursor = undefined;
     const next = Boolean(session.getState().draft);
     if (next && !active) {
       restoreDoubleClick = map.doubleClickZoom.isEnabled();
       map.doubleClickZoom.disable();
     } else if (!next && active) {
       if (restoreDoubleClick) map.doubleClickZoom.enable();
-      cursor = undefined;
     }
     const editingId = session.getState().draft?.before?.id;
     drawingInternals.setEditing(editingId ?? null);
@@ -456,8 +437,9 @@ export function attachDrawing<P extends Properties>(
   }
   function onMove(event: MapMouseEvent) {
     if (!session.getState().draft?.placing || !editable()) return;
-    cursor = snap(position(event.lngLat.toArray()), event.originalEvent.altKey);
-    renderGeometry();
+    session.setCursor(
+      snap(position(event.lngLat.toArray()), event.originalEvent.altKey),
+    );
   }
   map.on("click", onClick);
   map.on("mousemove", onMove);
@@ -519,16 +501,17 @@ export function attachDrawing<P extends Properties>(
   );
   const off = session.onChange(render);
   const offPrepared = drawingInternals.onPrepared(prepare);
+  const offPreview = session.onPreview(renderGeometry);
   let offDestroy = () => {};
   function destroy() {
     if (disposed) return;
     session.destroy();
     disposed = true;
     drawingInternals.setEditing(null);
-    previewListeners.clear();
     attached.delete(viewport.map);
     off();
     offPrepared();
+    offPreview();
     offDestroy();
     abort.abort();
     map.off("click", onClick);
@@ -544,16 +527,6 @@ export function attachDrawing<P extends Properties>(
   return {
     ...session,
     destroy,
-    getMeasurements: () => {
-      const shape = previewShape();
-      return shape ? measurements(shape) : { length: 0 };
-    },
-    onPreview: (listener: () => void) => {
-      previewListeners.add(listener);
-      return () => {
-        previewListeners.delete(listener);
-      };
-    },
     setSnapping(value: boolean) {
       snapEnabled = value;
     },

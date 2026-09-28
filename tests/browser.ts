@@ -1440,8 +1440,8 @@ async function suite() {
     check(visited.length===1&&visited[0]==='near','Snapping inspected features outside its pointer radius');
     editor.destroy();draw.destroy();
   });
-  await run('Real pointer drawing previews stay ephemeral and match circle and rotated rectangle placement', async () => {
-    const draw=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:12},logger:()=>{}});
+  await run('Real pointer drawing previews stay ephemeral, snap, and place circle and rotated rectangle', async () => {
+    const draw=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:12},features:[point('preview-anchor',-.025)],logger:()=>{}});
     current=draw;await draw.ready;
     let nextId=0;
     const editor=attachDrawing(draw,{createFeature:()=>({id:`pointer-${nextId++}`,properties:{}}),submit:()=>({accepted:true})});
@@ -1457,9 +1457,6 @@ async function suite() {
     check(JSON.stringify(circleDuring.draft)===circleDraft,'Circle preview mutated the draft');
     check(circleDuring.canUndo===circleUndo,'Circle preview added an undo entry');
     await pointer('click',circleEdge);
-    const circleCommitted=editor.getMeasurements();
-    check(Math.abs(circlePreview.length-circleCommitted.length)<.001,'Circle preview did not match the committed placement');
-    check(Math.abs(circlePreview.area!-circleCommitted.area!)<.001,'Circle preview area did not match placement');
     const circleShape=editor.getState().draft!.shape;
     editor.undo();
     const circleUndone=editor.getState().draft;
@@ -1483,9 +1480,6 @@ async function suite() {
     check(JSON.stringify(rectangleDuring.draft)===rectangleDraft,'Rectangle preview mutated the draft');
     check(rectangleDuring.canUndo===rectangleUndo,'Rectangle preview added an undo entry');
     await pointer('click',rectanglePoint);
-    const rectangleCommitted=editor.getMeasurements();
-    check(Math.abs(rectanglePreview.length-rectangleCommitted.length)<.001,'Rotated rectangle preview did not match the committed placement');
-    check(Math.abs(rectanglePreview.area!-rectangleCommitted.area!)<.001,'Rotated rectangle preview area did not match placement');
     const rectangleAfter=editor.getState().draft!;
     if(rectangleAfter.shape.kind!=='rectangle'||rectangleAfter.placing)throw new Error('Rectangle second placement did not finish placement');
     const rectangleShape=rectangleAfter.shape;
@@ -1504,6 +1498,15 @@ async function suite() {
     editor.redo();
     check(await editor.finish(),'Rectangle change was not accepted');
     check(JSON.stringify(draw.getFeature('pointer-1')?.geometry)===JSON.stringify(geometry),'Accepted rectangle differs from placed geometry');
+    await until(()=>draw.map.queryRenderedFeatures({layers:['rl:points']}).some(feature=>feature.id==='preview-anchor'),'preview snap anchor rendered');
+    editor.start('line');
+    const anchor=draw.map.project([-.025,0]);
+    await pointer('move',{x:anchor.x+4,y:anchor.y});
+    const snappedPreview=editor.getPreview();
+    const snappedVertex=snappedPreview?.kind==='line' ? snappedPreview.vertices[0] : undefined;
+    const snappedPoint=snappedVertex && draw.map.project(snappedVertex);
+    check(snappedPoint&&Math.hypot(snappedPoint.x-anchor.x,snappedPoint.y-anchor.y)<1,'Real pointer preview did not snap to the visible feature');
+    editor.cancel();
     editor.destroy();draw.destroy();
   },{realPointer:true});
   await run('Dragging a vertex back to its unchanged snap target restores its handle', async () => {

@@ -66,7 +66,18 @@ export function createDrawingSession<P extends Properties>(
   let snapshot: DrawingState<P> | undefined;
   let gesture: DrawingDraft<P> | undefined;
   let gestureCancelled = false;
+  let cursor: DrawingPosition | undefined;
   const listeners = new Set<() => void>();
+  const previewListeners = new Set<() => void>();
+  function emit(callbacks: Set<() => void>, operation: string) {
+    for (const callback of callbacks) {
+      try {
+        callback();
+      } catch (cause) {
+        host.reportCallbackError(cause, operation);
+      }
+    }
+  }
   const tools = [...(options.tools ?? DRAWING_TOOLS)];
   const styleFields =
     options.styleFields ??
@@ -123,16 +134,41 @@ export function createDrawingSession<P extends Properties>(
     };
     return structuredClone(snapshot);
   }
-  function notify() {
-    snapshot = undefined;
-    for (const listener of listeners) {
-      try {
-        listener();
-      } catch (cause) {
-        host.reportCallbackError(cause, "drawing.onChange");
+  function getPreview(): DrawingShape | undefined {
+    if (!draft) return;
+    const candidate = { ...draft, shape: structuredClone(draft.shape) };
+    if (
+      candidate.placing && cursor &&
+      ["editing", "rejected"].includes(snapshot?.phase ?? phase(allowed())) &&
+      ("vertices" in candidate.shape || candidate.placed)
+    ) {
+      const placed = placePoint(candidate.shape, candidate.placed, cursor);
+      if (placed) {
+        candidate.shape = placed.shape;
+        candidate.placing = placed.placing;
+        candidate.placed++;
       }
     }
+    if (!candidate.placed || ("vertices" in candidate.shape && !candidate.shape.vertices.length))
+      return;
+    return candidate.shape;
   }
+  function getMeasurements() {
+    const shape = getPreview();
+    return shape ? measurements(shape) : { length: 0 };
+  }
+  function setCursor(position: DrawingPosition | undefined) {
+    if (disposed) return;
+    cursor = position && [...position];
+    emit(previewListeners, "drawing.onPreview");
+  }
+  function notify() {
+    cursor = undefined;
+    snapshot = undefined;
+    emit(listeners, "drawing.onChange");
+    emit(previewListeners, "drawing.onPreview");
+  }
+
   function sameDraft(a: DrawingDraft<P>, b: DrawingDraft<P>) {
     return a.placed === b.placed && a.placing === b.placing &&
       JSON.stringify(a.shape) === JSON.stringify(b.shape) &&
@@ -304,23 +340,27 @@ export function createDrawingSession<P extends Properties>(
       notify();
       return;
     }
+    const hadCursor = cursor !== undefined;
+    cursor = undefined;
     const next = past.pop();
     if (next) {
       future.push(structuredClone(draft!));
       draft = next;
       reason = undefined;
       notify();
-    }
+    } else if (hadCursor) emit(previewListeners, "drawing.onPreview");
   }
   function redo() {
     requireDraft();
+    const hadCursor = cursor !== undefined;
+    cursor = undefined;
     const next = future.pop();
     if (next) {
       pushPast(structuredClone(draft!));
       draft = next;
       reason = undefined;
       notify();
-    }
+    } else if (hadCursor) emit(previewListeners, "drawing.onPreview");
   }
   function beginGesture() {
     requireDraft();
@@ -456,9 +496,13 @@ export function createDrawingSession<P extends Properties>(
     cancel();
     off();
     listeners.clear();
+    previewListeners.clear();
   }
   return {
     getState,
+    getPreview,
+    getMeasurements,
+    setCursor,
     start,
     edit,
     cancel,
@@ -485,6 +529,10 @@ export function createDrawingSession<P extends Properties>(
     onChange: (listener: () => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
+    },
+    onPreview: (listener: () => void) => {
+      previewListeners.add(listener);
+      return () => previewListeners.delete(listener);
     },
   };
 }
