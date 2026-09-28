@@ -21,6 +21,7 @@ import {
   wrapLongitude,
 } from "./drawing-geometry";
 import { addArrowImage, arrowFeatures, ARROW_IMAGE } from "./drawing-render";
+import { sourceFeatureId } from "./maplibre-feature-publication";
 
 const attached = new WeakSet<object>();
 const SOURCE = "rl:draft";
@@ -466,9 +467,9 @@ export function attachDrawing<P extends Properties>(
     for (const source of ["rl:features", "rl:arrows"])
       if (map.getSource(source)) {
         if (hiddenId && hiddenId !== editingId)
-          map.removeFeatureState({ source, id: hiddenId }, "editing");
+          map.removeFeatureState({ source, id: sourceFeatureId(hiddenId) }, "editing");
         if (editingId)
-          map.setFeatureState({ source, id: editingId }, { editing: true });
+          map.setFeatureState({ source, id: sourceFeatureId(editingId) }, { editing: true });
       }
     hiddenId = editingId;
     active = next;
