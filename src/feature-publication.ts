@@ -8,6 +8,7 @@ type SourceErrorListener = (event: { error: unknown }) => void;
 /** The GeoJSON operations used by publication, with source identity preserved. */
 export interface FeaturePublicationSource {
   updateData(changes: FeatureChanges): Promise<unknown>;
+  setData(data: { type: 'FeatureCollection'; features: MapFeature[] }): Promise<unknown>;
   on(type: 'error', listener: SourceErrorListener): unknown;
   off(type: 'error', listener: SourceErrorListener): unknown;
 }
@@ -15,15 +16,17 @@ export interface FeaturePublicationSource {
 export interface FeaturePublicationTarget {
   current(): FeaturePublicationSource | undefined;
   create(features: MapFeature[]): void;
+  watchInitial?(failed: (cause: unknown) => void): () => void;
 }
 
 type PublicationOptions<P extends Properties> = {
   store: Pick<FeatureStore<P>, 'get' | 'all'>;
   target: FeaturePublicationTarget;
   render: (feature: MapFeature<P>) => MapFeature;
+  sourceId?: (id: string) => string;
   diagnostic: (error: RidgelineError) => void;
-  beforeSubmit: () => void;
-  published: (id: string) => void;
+  published: (id: string, feature: MapFeature<P> | null) => void;
+  restored?: (features: MapFeature<P>[]) => void;
   frames?: { request: (callback: () => void) => number; cancel: (id: number) => void };
 };
 
@@ -37,6 +40,9 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
   let active = false;
   let destroyed = false;
   let frame = 0;
+  let releaseInitial: (() => void) | undefined;
+  let initialFailed = false;
+  let resetRequested = false;
 
   function preparationFailed(id: string, cause: unknown) {
     if (!pending.has(id)) failed.add(id);
@@ -51,15 +57,18 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
     frame = 0;
     if (destroyed || !active || submitting) return;
     const source = target.current();
-    if (!source || !pending.size) return;
+    if (!source || (!pending.size && !resetRequested)) return;
     const token = Symbol();
     submitting = token;
     const current = () => !destroyed && submitting === token && target.current() === source;
-    const changes = [...pending.entries()];
+    const resetting = resetRequested;
+    const changes = resetting ? store.all().map(feature => [feature.id, feature] as const) : [...pending.entries()];
     pending.clear();
+    resetRequested = false;
     const add: MapFeature[] = [];
     const remove: string[] = [];
     const submitted: string[] = [];
+    const submittedSnapshots = new Map<string, MapFeature<P> | null>();
     let rejected = false;
     function reject(cause: unknown) {
       if (!current() || rejected) return;
@@ -73,21 +82,32 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
       for (const [id, feature] of changes) {
         failed.delete(id);
         try {
-          if (feature) add.push(render(feature)); else remove.push(id);
+          if (feature) {
+            const rendered = render(feature);
+            // A callback may synchronously replace or remove this ID.
+            if (pending.has(id)) continue;
+            add.push(rendered);
+          } else remove.push(options.sourceId?.(id) ?? id);
           submitted.push(id);
+          submittedSnapshots.set(id, feature);
         } catch (cause) {
           if (!current() || !active) return;
           preparationFailed(id, cause);
         }
         if (!current() || !active) return;
       }
-      if (!submitted.length) return;
-      options.beforeSubmit();
-      if (!current() || !active) return;
+      if (!submitted.length && !resetting) return;
       source.on('error', onSourceError);
       // Replacements and removals can safely repeat after a partial renderer failure.
-      await source.updateData({ add, remove });
-      if (current() && active && !rejected) for (const id of submitted) options.published(id);
+      if (resetting) await source.setData({ type: 'FeatureCollection', features: add });
+      else await source.updateData({ add, remove });
+      if (current() && active && !rejected) {
+        if (resetting) {
+          initialFailed = false;
+          options.restored?.([...submittedSnapshots.values()].filter((feature): feature is MapFeature<P> => feature !== null));
+        }
+        for (const id of submitted) options.published(id, submittedSnapshots.get(id) ?? null);
+      }
     } catch (cause) {
       reject(cause);
     } finally {
@@ -115,6 +135,7 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
     },
     retry() {
       if (destroyed) return;
+      if (initialFailed) resetRequested = true;
       for (const id of failed) if (!pending.has(id)) pending.set(id, store.get(id) ?? null);
       failed.clear();
       schedule();
@@ -129,20 +150,46 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
         return;
       }
       retire();
+      releaseInitial?.();
+      releaseInitial = undefined;
       submitting = null;
       active = true;
       pending.clear();
       failed.clear();
+      initialFailed = false;
+      resetRequested = false;
       const features: MapFeature[] = [];
+      const preparedSnapshots: MapFeature<P>[] = [];
       for (const feature of store.all()) {
-        try { features.push(render(feature)); }
+        if (destroyed) return;
+        try {
+          const rendered = render(feature);
+          if (pending.has(feature.id) || !store.get(feature.id)) continue;
+          features.push(rendered);
+          preparedSnapshots.push(feature);
+        }
         catch (cause) { preparationFailed(feature.id, cause); }
       }
+      if (destroyed) return;
       target.create(features);
+      if (destroyed) return;
+      options.restored?.(preparedSnapshots);
+      if (destroyed) return;
+      const source = target.current();
+      if (source) releaseInitial = target.watchInitial?.(cause => {
+        if (destroyed || target.current() !== source) return;
+        initialFailed = true;
+        for (const feature of store.all()) if (!pending.has(feature.id)) failed.add(feature.id);
+        if (submitting) return; // The in-flight submission reports the same source error.
+        diagnostic(new RidgelineError('UPDATE_FAILED', 'The feature source could not load. Call retryUpdates() to retry.',
+          { operation: 'upsert', recoverable: true, sourceId: 'rl:features' }, cause));
+      });
+      if (pending.size) schedule();
     },
     retire,
     destroy() {
       destroyed = true;
+      releaseInitial?.();
       retire();
       pending.clear();
       failed.clear();

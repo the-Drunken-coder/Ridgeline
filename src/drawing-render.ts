@@ -1,6 +1,7 @@
 import type { Feature, FeatureCollection, Point } from "geojson";
 import type { Map as GLMap } from "maplibre-gl";
 import type { MapFeature } from "./types";
+import { sourceFeatureId } from "./maplibre-feature-publication";
 import { wrapLongitude } from "./drawing-geometry";
 import type { DrawingPosition } from "./drawing-types";
 
@@ -48,12 +49,13 @@ export function arrowFeatures(
       previous = shape.vertices.at(-2)!;
     result.push({
       type: "Feature",
-      id: feature.id,
+      id: sourceFeatureId(feature.id),
       geometry: { type: "Point", coordinates: last },
       properties: {
         color: feature.drawing!.style.color,
         bearing: segmentBearing(previous, last),
-        _rl_id: feature.id,
+        _rl_id: sourceFeatureId(feature.id),
+        _rl_feature_id: feature.id,
       },
     });
   }

@@ -56,7 +56,7 @@ export type FeatureStyle = {
   icon?: string;
   label?: string;
 };
-export type ElevationProvider = Omit<RasterDEMSourceSpecification, 'type'>;
+export type ElevationProvider = Omit<RasterDEMSourceSpecification, 'type'> & { scheme?: 'xyz' | 'tms' };
 type HillshadePaint = NonNullable<HillshadeLayerSpecification['paint']>;
 export type HillshadeOptions = {
   method?: Extract<HillshadePaint['hillshade-method'], string>;
@@ -133,6 +133,8 @@ export interface Viewport<P extends Properties = Properties> {
   getEntityState(id: string): EntityState | undefined;
   getName(feature: MapFeature<P>): string;
   getStyle(feature: MapFeature<P>): FeatureStyle;
+  /** Report a failure in a consumer callback used by an attached UI. */
+  reportCallbackError(cause: unknown, operation: string, featureId?: string): void;
   getIcon(id: string): IconDefinition | undefined;
   registerIcon(id: string, definition: IconDefinition): void;
   setSelection(ids: readonly string[]): void;
