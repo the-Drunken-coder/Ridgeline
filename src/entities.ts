@@ -233,9 +233,15 @@ export class EntityScene<P extends Properties> {
   }
   private build(feature: MapFeature<P>) {
     const input = { feature, configuration: this.options.configuration(), style: this.options.style(feature), selected: this.selected.has(feature.id) };
+    const placementKey = `placement:${feature.id}`;
     const result = computeEntity(input, this.height,
-      this.elevation.readiness(`placement:${feature.id}`),
+      this.elevation.readiness(placementKey),
       (west, south, east, north) => this.elevation.maximum(west, south, east, north));
+    if (result.state.coverage !== 'ready') {
+      // A ground area can contain unknown samples between its preparation grid points.
+      this.elevation.requirePreparation(placementKey);
+      result.state.coverage = this.elevation.readiness(placementKey);
+    }
     const ground = result.state.ground ?? 0;
     const altitude = result.state.altitude ?? ground;
     const camera = this.coverage.update({
