@@ -72,10 +72,12 @@ export function createArrowheads(map: GLMap, sourceId: string, layerId: string) 
     show(features: readonly MapFeature[]) {
       if (removed) return;
       addArrowImage(map);
+      if (removed) return;
       const data = arrowFeatures(features);
       const source = map.getSource(sourceId);
       if (source instanceof GeoJSONSource) source.setData(data);
       else map.addSource(sourceId, { type: "geojson", promoteId: "_rl_id", data });
+      if (removed) return;
       if (!map.getLayer(layerId)) map.addLayer({
         id: layerId,
         type: "symbol",
