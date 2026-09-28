@@ -1,6 +1,6 @@
 import { shapeGeometry } from './drawing-geometry';
-import { addArrowImage, arrowFeatures, ARROW_IMAGE } from './drawing-render';
-import { Map as GLMap, GeoJSONSource } from 'maplibre-gl';
+import { createArrowheads } from './arrowheads';
+import { Map as GLMap } from 'maplibre-gl';
 import type { LayerSpecification, MapMouseEvent, ErrorEvent as GLErrorEvent } from 'maplibre-gl';
 import { createReporter, RidgelineError } from './errors';
 import { FeatureStore } from './features';
@@ -13,6 +13,17 @@ import type { FeatureStyle, IconDefinition, Interaction, MapConfiguration, MapFe
 const TERRAIN = 'rl:terrain';
 const SHADE = 'rl:hillshade';
 const layerIds = ['rl:fill', 'rl:line', 'rl:dashed', 'rl:arrowheads', 'rl:points', 'rl:icons', 'rl:labels'];
+
+type ViewportDrawingInternals = {
+  setEditing(id: string | null): void;
+  onPrepared(listener: () => void): () => void;
+};
+const drawingInternals = new WeakMap<object, ViewportDrawingInternals>();
+
+/** The drawing tools use this seam without expanding the consumer Viewport API. */
+export function getViewportDrawingInternals<P extends Properties>(viewport: Viewport<P>): ViewportDrawingInternals | undefined {
+  return drawingInternals.get(viewport);
+}
 
 export const DEFAULT_BASEMAP = 'https://tiles.openfreemap.org/styles/liberty';
 export const DEFAULT_ELEVATION = {
@@ -30,6 +41,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   const icons = new Map<string, IconDefinition>();
   let selected = new Set<string>();
   let previewId: string | null = null;
+  let editingId: string | null = null;
+  const preparedListeners = new Set<() => void>();
   let interactionOwner: string | null = null;
   let destroyed = false;
   let prepared = false;
@@ -95,6 +108,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       emit('entitychange', { ids });
     },
   });
+  const arrowheads = createArrowheads(map, 'rl:arrows', 'rl:arrowheads');
   const publication = createFeaturePublication({ store, target: mapLibreFeaturePublication(map), render: rendered, diagnostic,
     beforeSubmit: () => { if (arrowsDirty) { syncArrows(); arrowsDirty = false; } },
     published: synchronizeState,
@@ -130,7 +144,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     };
   }
   function synchronizeState(id: string) {
-    if (prepared && map.getSource(SOURCE) && store.has(id)) map.setFeatureState({ source: SOURCE, id }, { selected: selected.has(id), hover: previewId === id });
+    if (prepared && map.getSource(SOURCE) && store.has(id)) map.setFeatureState({ source: SOURCE, id }, { selected: selected.has(id), hover: previewId === id, editing: editingId === id });
   }
   function applyElevation(replace = false) {
     if (!prepared) return;
@@ -159,12 +173,16 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
 
   function syncArrows() {
     if (!prepared) return;
-    addArrowImage(map);
-    const arrows = arrowFeatures([...arrowIds].flatMap(id => { const feature = store.get(id); return feature ? [feature] : []; }));
-    const source = map.getSource('rl:arrows');
-    if (source instanceof GeoJSONSource) source.setData(arrows);
-    else map.addSource('rl:arrows', { type: 'geojson', promoteId: '_rl_id', data: arrows });
-    if (!map.getLayer('rl:arrowheads')) map.addLayer({ id: 'rl:arrowheads', type: 'symbol', source: 'rl:arrows', layout: { 'icon-image': ARROW_IMAGE, 'icon-rotate': ['get', 'bearing'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true }, paint: { 'icon-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'icon-color': ['get', 'color'] } });
+    arrowheads.show([...arrowIds].flatMap(id => {
+      const feature = id === editingId ? undefined : store.get(id);
+      return feature ? [feature] : [];
+    }));
+  }
+
+  function notifyPrepared(listener: () => void) {
+    try { listener(); } catch (cause) {
+      diagnostic(new RidgelineError('CALLBACK_FAILED', 'A drawing preparation listener threw.', { operation: 'style', recoverable: true }, cause));
+    }
   }
 
   function prepareStyle() {
@@ -188,7 +206,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       entities.attach();
       for (const id of selected) synchronizeState(id);
       if (previewId) synchronizeState(previewId);
+      if (editingId) synchronizeState(editingId);
       if (!readySettled) { readySettled = true; clearTimeout(timer); resolveReady(); }
+      for (const listener of preparedListeners) notifyPrepared(listener);
     } catch (cause) {
       prepared = false;
       publication.retire();
@@ -274,8 +294,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     remove(ids) {
       assertActive(); const removed = store.remove(ids);
       entities.set([], removed);
+      for (const id of removed) { if (arrowIds.delete(id)) arrowsDirty = true; selected.delete(id); if (previewId === id) previewId = null; if (editingId === id) editingId = null; if (prepared) map.removeFeatureState({ source: SOURCE, id }); }
       publication.update([], removed);
-      for (const id of removed) { if (arrowIds.delete(id)) arrowsDirty = true; selected.delete(id); if (previewId === id) previewId = null; if (prepared) map.removeFeatureState({ source: SOURCE, id }); }
       emit('datachange', { ids: [], removed });
     },
     clear() { viewport.remove(store.ids()); },
@@ -352,10 +372,27 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (!readySettled) { readySettled = true; rejectReady(new RidgelineError('DESTROYED', 'Viewport was destroyed before initialization completed.', { operation: 'initialize', recoverable: false })); }
       clearTimeout(timer); resize.disconnect();
       entities.destroy();
+      arrowheads.remove(); preparedListeners.clear(); drawingInternals.delete(viewport);
       map.getCanvas().removeEventListener('mouseleave', onLeave);
       map.remove(); icons.clear(); selected.clear(); store.remove(store.ids());
       for (const set of Object.values(listeners)) set.clear();
     },
   };
+  drawingInternals.set(viewport, {
+    setEditing(id) {
+      if (destroyed || editingId === id) return;
+      const previous = editingId;
+      editingId = id;
+      if (previous) synchronizeState(previous);
+      if (id) synchronizeState(id);
+      if (arrowIds.has(previous ?? '') || arrowIds.has(id ?? '')) syncArrows();
+    },
+    onPrepared(listener) {
+      if (destroyed) return () => {};
+      preparedListeners.add(listener);
+      if (prepared) notifyPrepared(listener);
+      return () => { preparedListeners.delete(listener); };
+    },
+  });
   return viewport;
 }
