@@ -726,6 +726,44 @@ async function suite() {
       await until(() => zoneAt(.01) && !zoneAt(0), 'corrected airborne update');
     } finally { air.destroy(); }
   });
+  await run('Airborne shader creation recovers through retryUpdates', async () => {
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style('#ffffff'), camera: { center: [0, 0], zoom: 17, pitch: 45 },
+      elevationSampler: { sample: () => 0 }, logger: () => {}, onError: error => errors.push(error) });
+    current = air; await air.ready;
+    await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+    const gl = air.map.getCanvas().getContext('webgl2')!;
+    const createProgram = gl.createProgram.bind(gl);
+    let failOnce = true;
+    gl.createProgram = () => {
+      if (failOnce) { failOnce = false; return null; }
+      return createProgram();
+    };
+    const feature: MapFeature = { ...point('shader-retry'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'ball', type: 'sphere', radius: 100, color: '#ff0000' }] } };
+    const redPixels = () => new Promise<number>(resolve => {
+      air.map.once('render', () => {
+        const canvas = air.map.getCanvas(), context = canvas.getContext('webgl2')!;
+        const values = new Uint8Array(300 * 300 * 4);
+        context.readPixels(Math.floor(canvas.width / 2) - 150, Math.floor(canvas.height / 2) - 150,
+          300, 300, context.RGBA, context.UNSIGNED_BYTE, values);
+        let count = 0;
+        for (let i = 0; i < values.length; i += 4)
+          if (values[i]! > 180 && values[i + 1]! < 60 && values[i + 2]! < 60) count++;
+        resolve(count);
+      });
+      air.map.triggerRepaint();
+    });
+    try {
+      air.upsert([feature]);
+      await until(() => errors.some(error => error.code === 'UPDATE_FAILED' && error.context.operation === 'entities'), 'airborne shader failure');
+      gl.createProgram = createProgram;
+      check(await redPixels() === 0, 'Failed shader still drew airborne geometry');
+      air.retryUpdates();
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'entity retry state');
+      check(await redPixels() > 0, 'Retry did not restore airborne geometry');
+    } finally { gl.createProgram = createProgram; air.destroy(); }
+  });
   await run('Custom elevation preparation also covers entities with only plain cameras', async () => {
     let prepared = false, prepareCalls = 0;
     const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
@@ -1377,6 +1415,36 @@ async function suite() {
     arrow.drawing!.shape={kind:'arrow',vertices:[[0,-.01],[0,.01]]};arrow.geometry=shapeGeometry(arrow.drawing!.shape);draw.upsert([arrow]);
     await until(()=>heads().some(f=>Math.abs(Number(f.properties.bearing))<1),'arrowhead follows direction');
     draw.remove(['arrow']);await until(()=>heads().length===0,'arrowhead removed');draw.destroy();
+  });
+  await run('A failed arrow update retains its shaft and head while healthy work advances', async () => {
+    const oldShape = { kind: 'arrow' as const, vertices: [[-.01, 0], [.01, 0]] as [number, number][] };
+    const newShape = { kind: 'arrow' as const, vertices: [[-.01, .02], [.01, .02]] as [number, number][] };
+    const arrow: MapFeature = { type: 'Feature', id: 'coherent-arrow', properties: {}, geometry: shapeGeometry(oldShape),
+      drawing: { version: 1, shape: oldShape, style: { color: '#ff0000', fillColor: '#ff0000', lineWidth: 3,
+        fillOpacity: 0, dashed: false, label: '' } } };
+    const errors: RidgelineError[] = [];
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, .01], zoom: 12 },
+      features: [arrow, point('arrow-neighbor')], style: feature => {
+        if (feature.properties.fail) throw new Error('Arrow styling failed');
+        return { color: '#008855' };
+      }, logger: () => {}, onError: error => errors.push(error) });
+    current = draw; await draw.ready;
+    const visible = (layer: string, lng: number, lat: number) => draw.map.queryRenderedFeatures(draw.map.project([lng, lat]), { layers: [layer] })
+      .some(hit => hit.properties._rl_id === arrow.id || hit.id === arrow.id);
+    try {
+      await until(() => visible('rl:line', 0, 0) && visible('rl:arrowheads', .01, 0), 'original arrow shaft and head');
+      draw.upsert([
+        { ...arrow, geometry: shapeGeometry(newShape), drawing: { ...arrow.drawing!, shape: newShape }, properties: { fail: true } },
+        point('arrow-neighbor', .04),
+      ]);
+      await until(() => errors.some(error => error.context.featureId === arrow.id) &&
+        draw.map.queryRenderedFeatures(draw.map.project([.04, 0]), { layers: ['rl:points'] })
+          .some(hit => hit.properties._rl_id === 'arrow-neighbor'), 'healthy feature advanced after arrow failure');
+      check(visible('rl:line', 0, 0) && visible('rl:arrowheads', .01, 0), 'Failed arrow lost its previous complete shape');
+      check(!visible('rl:line', 0, .02) && !visible('rl:arrowheads', .01, .02), 'Failed arrow published a split new shape');
+      draw.upsert([{ ...arrow, geometry: shapeGeometry(newShape), drawing: { ...arrow.drawing!, shape: newShape } }]);
+      await until(() => visible('rl:line', 0, .02) && visible('rl:arrowheads', .01, .02), 'corrected arrow published');
+    } finally { draw.destroy(); }
   });
   await run('Terrain visibility colors the approach green and the hill shadow red', async () => {
     const meters = Math.PI / 180 * 6371008.8;
