@@ -612,6 +612,144 @@ async function suite() {
     click(); check(attachment === '', 'Invisible camera face intercepted a click');
     air.destroy();
   });
+  await run('A real click selects a visible camera face clipped by the view', async () => {
+    const air = createViewport({ container, basemap: style('#000000'), elevationSampler: { sample: () => 0 },
+      camera: { center: [0, .001], zoom: 18, pitch: 45 }, logger: () => {} });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'clipped-camera', type: 'camera', bearing: 0, elevation: -45,
+      fovX: 60, fovY: 40, range: 1000, color: '#00ff00', volumeOpacity: 1, fillOpacity: 0, outline: false };
+    const feature: MapFeature = { ...point('clipped-aircraft'), entity: { altitude: { meters: 300, reference: 'ground' }, attachments: [camera] } };
+    try {
+      air.upsert([feature]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'clipped camera volume');
+      await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+      const layer = air.map.getLayer('rl:entities') as unknown as { implementation: {
+        draws: { entityId: string; attachmentId?: string; mode: string; vertices: [number, number, number][] }[];
+        project(point: [number, number, number]): { x: number; y: number } | null;
+        clippedTriangle(points: [number, number, number][]): { x: number; y: number }[];
+      } };
+      const geometry = layer.implementation;
+      const face = geometry.draws.find(draw => draw.entityId === feature.id && draw.attachmentId === camera.id && draw.mode === 'triangles');
+      check(face, 'Camera face was not rendered');
+      const canvas = air.map.getCanvas();
+      const inside = (x: number, y: number, polygon: { x: number; y: number }[]) => {
+        let contained = false;
+        for (let a = 0, b = polygon.length - 1; a < polygon.length; b = a++) {
+          const first = polygon[a]!, last = polygon[b]!;
+          if ((first.y > y) !== (last.y > y) && x < (last.x - first.x) * (y - first.y) / (last.y - first.y) + first.x)
+            contained = !contained;
+        }
+        return contained;
+      };
+      const candidates: { x: number; y: number }[] = [];
+      for (let i = 0; i < face!.vertices.length; i += 3) {
+        const triangle = face!.vertices.slice(i, i + 3);
+        const projected = triangle.map(vertex => geometry.project(vertex));
+        if (projected.every(Boolean) || projected.every(point => !point)) continue;
+        const clipped = geometry.clippedTriangle(triangle);
+        if (clipped.length < 3) continue;
+        for (let y = 24; y < canvas.clientHeight - 24; y += 24)
+          for (let x = 24; x < canvas.clientWidth - 24; x += 24)
+            if (inside(x, y, clipped)) candidates.push({ x, y });
+      }
+      check(candidates.length > 0, 'No partially clipped camera face intersects the visible canvas');
+      const visible = await new Promise<{ x: number; y: number } | undefined>((resolve, reject) => {
+        const timeout = window.setTimeout(() => reject(new Error('Timed out reading the clipped camera face')), 5_000);
+        air.map.once('render', () => {
+          window.clearTimeout(timeout);
+          const gl = canvas.getContext('webgl2')!;
+          const scale = canvas.width / canvas.clientWidth;
+          const pixels = new Uint8Array(canvas.width * canvas.height * 4);
+          gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+          for (const candidate of candidates) {
+            const x = Math.round(candidate.x * scale), y = canvas.height - 1 - Math.round(candidate.y * scale);
+            const index = (y * canvas.width + x) * 4;
+            if (pixels[index + 1]! > 100 && pixels[index]! < 80 && pixels[index + 2]! < 80) {
+              resolve(candidate); return;
+            }
+          }
+          resolve(undefined);
+        });
+        air.map.triggerRepaint();
+      });
+      check(visible, 'Clipped camera face was not visibly rendered');
+      const ui = attachInteractions(air, { picker: false });
+      let clicked = '';
+      let selected = '';
+      const offClick = air.on('click', event => { clicked = event.attachments.find(hit => hit.entityId === feature.id)?.attachmentId ?? ''; });
+      const offSelection = air.on('selectionrequest', event => { selected = event.attachments.find(hit => hit.entityId === feature.id)?.attachmentId ?? ''; });
+      try {
+        await pointer('click', visible!);
+        check(clicked === camera.id, `Native click missed the visible clipped face: ${clicked}`);
+        check(selected === camera.id, `Selection request lost the clipped face identity: ${selected}`);
+
+        air.map.jumpTo({ center: [-.0015, .001] });
+        const before = air.getEntityState(feature.id)!.computedAt;
+        air.upsert([{ ...feature, entity: { ...feature.entity!, attachments: [{ ...camera, volumeOpacity: 0, wireframe: true, wireframeWidth: 7 }] } }]);
+        await until(() => air.getEntityState(feature.id)!.computedAt > before, 'wireframe-only clipped camera');
+        await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+        const lines = geometry.draws.find(draw => draw.entityId === feature.id && draw.attachmentId === camera.id && draw.mode === 'lines');
+        check(lines, 'Clipped camera wireframe was not rendered');
+        const segments: { a: { x: number; y: number }; b: { x: number; y: number } }[] = [];
+        for (let i = 0; i < lines!.vertices.length; i += 2) {
+          const a = lines!.vertices[i]!, b = lines!.vertices[i + 1]!;
+          const pa = geometry.project(a), pb = geometry.project(b);
+          if (!!pa === !!pb) continue;
+          const start = pa ?? pb!, end = pa ? b : a, from = pa ? a : b;
+          let valid = 0, invalid = 1;
+          for (let step = 0; step < 30; step++) {
+            const middle = (valid + invalid) / 2;
+            const probe: [number, number, number] = [
+              from[0] + (end[0] - from[0]) * middle,
+              from[1] + (end[1] - from[1]) * middle,
+              from[2] + (end[2] - from[2]) * middle,
+            ];
+            if (geometry.project(probe)) valid = middle;
+            else invalid = middle;
+          }
+          const edge = geometry.project([
+            from[0] + (end[0] - from[0]) * valid,
+            from[1] + (end[1] - from[1]) * valid,
+            from[2] + (end[2] - from[2]) * valid,
+          ]);
+          if (edge) segments.push({ a: start, b: edge });
+        }
+        check(segments.length > 0, 'Camera wireframe has no depth-clipped segments');
+        const linePixel = await new Promise<{ x: number; y: number } | undefined>((resolve, reject) => {
+          const timeout = window.setTimeout(() => reject(new Error('Timed out reading the clipped camera wireframe')), 5_000);
+          air.map.once('render', () => {
+            window.clearTimeout(timeout);
+            const gl = canvas.getContext('webgl2')!;
+            const pixels = new Uint8Array(canvas.width * canvas.height * 4);
+            gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+            const scale = canvas.width / canvas.clientWidth;
+            for (const segment of segments) {
+              const dx = segment.b.x - segment.a.x, dy = segment.b.y - segment.a.y;
+              const length = Math.hypot(dx, dy), steps = Math.min(1000, Math.ceil(length));
+              if (!steps) continue;
+              for (let step = 0; step <= steps; step++)
+                for (let offset = -3; offset <= 3; offset++) {
+                  const x = Math.round(segment.a.x + dx * step / steps - dy / length * offset);
+                  const y = Math.round(segment.a.y + dy * step / steps + dx / length * offset);
+                  if (x < 20 || x >= canvas.clientWidth - 20 || y < 20 || y >= canvas.clientHeight - 20) continue;
+                  const index = ((canvas.height - 1 - Math.round(y * scale)) * canvas.width + Math.round(x * scale)) * 4;
+                  if (pixels[index]! > 70 && pixels[index + 1]! > pixels[index]! + 8 && pixels[index + 2]! > 70) {
+                    resolve({ x, y }); return;
+                  }
+                }
+            }
+            resolve(undefined);
+          });
+          air.map.triggerRepaint();
+        });
+        check(linePixel, `No visibly clipped camera wireframe edge found: ${JSON.stringify(segments)}`);
+        clicked = selected = '';
+        await pointer('click', linePixel!);
+        check(clicked === camera.id, `Native click missed the visible clipped line: ${clicked}`);
+        check(selected === camera.id, `Selection request lost the clipped line identity: ${selected}`);
+      } finally { offClick(); offSelection(); ui.destroy(); }
+    } finally { air.destroy(); }
+  });
   await run('Incomplete custom camera terrain settles without polling and retries explicitly', async () => {
     let samples = 0, available = false;
     const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
