@@ -1951,7 +1951,7 @@ async function suite() {
     editor.redo();
     check(await editor.finish(),'Rectangle change was not accepted');
     check(JSON.stringify(draw.getFeature('pointer-1')?.geometry)===JSON.stringify(geometry),'Accepted rectangle differs from placed geometry');
-    await until(()=>draw.map.queryRenderedFeatures({layers:['rl:points']}).some(feature=>feature.id==='preview-anchor'),'preview snap anchor rendered');
+    await until(()=>draw.map.queryRenderedFeatures({layers:['rl:points']}).some(feature=>feature.properties._rl_feature_id==='preview-anchor'),'preview snap anchor rendered');
     editor.start('line');
     const anchor=draw.map.project([-.025,0]);
     await pointer('move',{x:anchor.x+4,y:anchor.y});
