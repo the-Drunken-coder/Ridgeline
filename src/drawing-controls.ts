@@ -44,7 +44,8 @@ export function attachDrawingControls<P extends Properties>(
     rendering = false,
     changingField = false,
     pointerPressed = false,
-    renderTimer: ReturnType<typeof setTimeout> | undefined;
+    renderTimer: ReturnType<typeof setTimeout> | undefined,
+    releaseTimer: ReturnType<typeof setTimeout> | undefined;
   const abort = new AbortController();
   function draftActionAvailability(state: ReturnType<typeof editor.getState>) {
     return {
@@ -482,7 +483,12 @@ export function attachDrawingControls<P extends Properties>(
       },
       { signal: abort.signal },
     );
+  function clearReleaseTimer() {
+    if (releaseTimer !== undefined) clearTimeout(releaseTimer);
+    releaseTimer = undefined;
+  }
   function destroy() {
+    clearReleaseTimer();
     if (disposed) return;
     disposed = true;
     if (renderTimer !== undefined) clearTimeout(renderTimer);
@@ -500,6 +506,7 @@ export function attachDrawingControls<P extends Properties>(
     if (!rendering && !pointerPressed) scheduleRender();
   }, { signal: abort.signal });
   panel.addEventListener("pointerdown", () => {
+    clearReleaseTimer();
     pointerPressed = true;
     if (renderTimer !== undefined) {
       clearTimeout(renderTimer);
@@ -508,19 +515,18 @@ export function attachDrawingControls<P extends Properties>(
   }, { signal: abort.signal });
   document.addEventListener("click", () => {
     if (!pointerPressed) return;
-    pointerPressed = false;
-    scheduleRender();
+    endPointerPress();
   }, { signal: abort.signal });
   document.addEventListener("pointerup", () => {
     if (!pointerPressed) return;
-    setTimeout(() => {
-      if (pointerPressed && !disposed) {
-        pointerPressed = false;
-        scheduleRender();
-      }
+    clearReleaseTimer();
+    releaseTimer = setTimeout(() => {
+      releaseTimer = undefined;
+      if (pointerPressed && !disposed) endPointerPress();
     }, 0);
   }, { signal: abort.signal });
   function endPointerPress() {
+    clearReleaseTimer();
     pointerPressed = false;
     scheduleRender();
   }

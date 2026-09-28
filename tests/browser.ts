@@ -152,6 +152,48 @@ async function suite() {
       check([...rawRequests, ...rendererRequests].every(url => !/[{}]/.test(url)), 'A terrain template token remained unresolved');
     } finally { air?.destroy(); window.fetch = fetch; }
   });
+  await run('An earlier pointer release cannot replace controls during a later native press', async () => {
+    const draw = createViewport({ container, basemap: style(), logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'successive-presses', properties: {} }), submit: () => ({ accepted: true }) });
+    const tools = document.createElement('div'), inspector = document.createElement('div');
+    inspector.style.cssText = 'position:fixed;left:0;top:0;width:320px;height:600px;z-index:10';
+    container.append(tools, inspector);
+    const controls = attachDrawingControls(draw, editor, { tools, inspector });
+    const schedule = window.setTimeout.bind(window), clear = window.clearTimeout.bind(window);
+    const delayed = new Map<number, () => void>();
+    try {
+      editor.start('line'); editor.addPoint([0, 0]); editor.addPoint([.01, 0]);
+      editor.setStyle({ label: 'first' }); editor.setStyle({ label: 'second' });
+      if (!window.browserMouse) throw new Error('Playwright mouse bridge required');
+      const button = inspector.querySelector<HTMLButtonElement>('[data-field="action:Undo"]')!;
+      button.scrollIntoView({ block: 'center' });
+      const rect = button.getBoundingClientRect(), x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+      // Deliver zero-delay tasks after the next native press, reproducing a busy browser event loop.
+      Object.defineProperty(window, 'setTimeout', { configurable: true, writable: true, value: (handler: TimerHandler, delay?: number, ...args: unknown[]) => {
+        if (delay !== 0 || typeof handler !== 'function') return schedule(handler, delay, ...args);
+        const id = schedule(() => {}, 60_000);
+        delayed.set(id, () => handler(...args));
+        return id;
+      } });
+      Object.defineProperty(window, 'clearTimeout', { configurable: true, writable: true, value: (id?: number) => { if (id !== undefined) delayed.delete(id); clear(id); } });
+      await window.browserMouse('down', x, y); await window.browserMouse('up', x, y);
+      check(editor.getState().draft?.style.label === 'first', 'First native Undo did not run');
+      await window.browserMouse('down', x, y);
+      window.setTimeout = schedule; window.clearTimeout = clear;
+      for (const [id, callback] of delayed) { clear(id); callback(); }
+      delayed.clear();
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      check(button.isConnected, 'An older pointer release replaced the button held by the next press');
+      await window.browserMouse('up', x, y);
+      check(editor.getState().draft?.style.label === '', 'Second native Undo did not run');
+    } finally {
+      window.setTimeout = schedule; window.clearTimeout = clear;
+      for (const id of delayed.keys()) clear(id);
+      if (window.browserMouse) await window.browserMouse('up', 0, 0);
+      controls.destroy(); editor.destroy(); draw.destroy(); tools.remove(); inspector.remove();
+    }
+  });
   await run('Inspector resumes updates after window blur or lost pointer capture', async () => {
     const draw = createViewport({ container, basemap: style(), logger: () => {} });
     current = draw; await draw.ready;
