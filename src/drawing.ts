@@ -2,20 +2,14 @@ import { GeoJSONSource, Marker } from "maplibre-gl";
 import type { MapMouseEvent } from "maplibre-gl";
 import type { Feature, Geometry } from "geojson";
 import type { Properties, Viewport } from "./types";
-import type {
-  DrawingOptions,
-  DrawingPosition,
-  DrawingShape,
-} from "./drawing-types";
+import type { DrawingOptions, DrawingPosition } from "./drawing-types";
 import { createDrawingSession, drawingHandles } from "./drawing-session";
 import {
   bearing,
   destination,
   distance,
-  measurements,
   position,
   shapeGeometry,
-  sizeFromPoint,
   shapeVertices,
   unroll,
   wrapLongitude,
@@ -52,14 +46,12 @@ export function attachDrawing<P extends Properties>(
     }
   >();
   let disposed = false,
-    cursor: DrawingPosition | undefined,
     active = false,
     restoreDoubleClick = false;
   let hiddenId: string | undefined;
   let snapEnabled = true,
     pointerType = "mouse",
     bypassSnap = false;
-  const previewListeners = new Set<() => void>();
   const abort = new AbortController();
   function editable() {
     return ["editing", "rejected"].includes(session.getState().phase);
@@ -128,36 +120,13 @@ export function attachDrawing<P extends Properties>(
     }
     return chosen;
   }
-  function previewShape(): DrawingShape | undefined {
-    const draft = session.getState().draft;
-    if (!draft) return;
-    const shape = structuredClone(draft.shape);
-    if (draft.placing && cursor && editable()) {
-      if ("vertices" in shape) {
-        if (
-          !shape.vertices.at(-1) ||
-          distance(shape.vertices.at(-1)!, cursor) > 0.001
-        )
-          shape.vertices.push(cursor);
-      } else if (
-        draft.placed &&
-        (shape.kind === "circle" || shape.kind === "rectangle")
-      )
-        return sizeFromPoint(shape, cursor);
-    }
-    return shape;
-  }
   function renderGeometry() {
     if (disposed || !map.getSource(SOURCE)) return;
     const state = session.getState(),
       draft = state.draft,
-      shape = previewShape();
+      shape = session.getPreview();
     const features: Feature<Geometry>[] = [];
-    if (
-      draft &&
-      shape &&
-      (draft.placed || ("vertices" in shape && shape.vertices.length))
-    ) {
+    if (draft && shape) {
       const points = shapeVertices(shape),
         style = draft.style;
       let geometry: Geometry = shapeGeometry(shape, true);
@@ -198,7 +167,6 @@ export function attachDrawing<P extends Properties>(
     const source = map.getSource(SOURCE);
     if (source instanceof GeoJSONSource)
       source.setData({ type: "FeatureCollection", features });
-    for (const listener of previewListeners) listener();
   }
   function prepare() {
     if (disposed || !map.getLayer("rl:fill")) return;
@@ -399,7 +367,7 @@ export function attachDrawing<P extends Properties>(
         item.marker.setDraggable(!locked && !insert);
       item.button.disabled = locked;
     }
-    if (draft && (draft.placed || !draft.placing)) {
+    if (draft && session.getPreview()) {
       drawingHandles(draft.shape).forEach((h, i) =>
         handle(
           `vertex-${i}`,
@@ -442,14 +410,12 @@ export function attachDrawing<P extends Properties>(
       }
   }
   function render() {
-    cursor = undefined;
     const next = Boolean(session.getState().draft);
     if (next && !active) {
       restoreDoubleClick = map.doubleClickZoom.isEnabled();
       map.doubleClickZoom.disable();
     } else if (!next && active) {
       if (restoreDoubleClick) map.doubleClickZoom.enable();
-      cursor = undefined;
     }
     const editingId = session.getState().draft?.before?.id;
     for (const source of ["rl:features", "rl:arrows"])
@@ -483,8 +449,9 @@ export function attachDrawing<P extends Properties>(
   }
   function onMove(event: MapMouseEvent) {
     if (!session.getState().draft?.placing || !editable()) return;
-    cursor = snap(position(event.lngLat.toArray()), event.originalEvent.altKey);
-    renderGeometry();
+    session.setCursor(
+      snap(position(event.lngLat.toArray()), event.originalEvent.altKey),
+    );
   }
   map.on("click", onClick);
   map.on("mousemove", onMove);
@@ -546,15 +513,16 @@ export function attachDrawing<P extends Properties>(
     { signal: abort.signal },
   );
   const off = session.onChange(render);
+  const offPreview = session.onPreview(renderGeometry);
   void viewport.ready.then(prepare).catch(() => {});
   let offDestroy = () => {};
   function destroy() {
     if (disposed) return;
     session.destroy();
     disposed = true;
-    previewListeners.clear();
     attached.delete(viewport);
     off();
+    offPreview();
     offDestroy();
     abort.abort();
     map.off("click", onClick);
@@ -570,16 +538,6 @@ export function attachDrawing<P extends Properties>(
   return {
     ...session,
     destroy,
-    getMeasurements: () => {
-      const shape = previewShape();
-      return shape ? measurements(shape) : { length: 0 };
-    },
-    onPreview: (listener: () => void) => {
-      previewListeners.add(listener);
-      return () => {
-        previewListeners.delete(listener);
-      };
-    },
     setSnapping(value: boolean) {
       snapEnabled = value;
     },
