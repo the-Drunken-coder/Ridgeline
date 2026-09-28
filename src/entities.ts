@@ -141,9 +141,12 @@ export class EntityScene<P extends Properties> {
           : attachment.radius;
         return Math.max(radius, extent);
       }, 0);
+      const previous = this.states.get(feature.id);
+      const cameraCapable = previous === undefined || previous.placement === 'elevation-unavailable' ||
+        (previous.placement === 'airborne' && (previous.altitude ?? 0) > (previous.ground ?? 0) + 0.01);
       this.coverage.requestAreas(feature.id, center,
         attachments.filter((attachment): attachment is CameraAttachment => attachment.type === 'camera'),
-        footprintsVisible && Boolean(feature.entity.altitude));
+        footprintsVisible && Boolean(feature.entity.altitude) && cameraCapable);
       areas.push({ key: placementAreaKey(feature.id), center, radiusMeters });
     }
     this.elevation.requestBatch(areas, { deferProbe: true });

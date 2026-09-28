@@ -17,7 +17,7 @@ const entity = (lng = 0): MapFeature => ({ type: 'Feature', id: 'aircraft', prop
 
 function sceneFixture(prepare: (positions: readonly [number, number][], signal: AbortSignal) => Promise<void>,
   style: (feature: MapFeature) => FeatureStyle = () => ({}),
-  sample: () => number | null = () => 0) {
+  sample: (lng: number, lat: number) => number | null = () => 0) {
   const frames = new Map<number, FrameRequestCallback>();
   let nextFrame = 0;
   const originalRequest = globalThis.requestAnimationFrame;
@@ -105,4 +105,33 @@ test('selection rebuilds only entities whose highlight changes', () => {
     f.frame();
     assert.equal(styles, 3);
   } finally { f.destroy(); }
+});
+
+
+test('unchanged unusable cameras do not restart released terrain preparation', async () => {
+  for (const meters of [-1, 0, 0.005]) {
+    let preparations = 0;
+    const f = sceneFixture(async () => { preparations++; }, undefined,
+      (lng, lat) => lng === 0 && lat === 0 ? 0 : null);
+    const camera: MapFeature = { ...entity(), entity: {
+      altitude: { meters, reference: 'ground' },
+      attachments: [{ id: 'view', type: 'camera', terrainVisibility: true, range: 100, bearing: 0, elevation: -45, fovX: 60, fovY: 40 }],
+    } };
+    try {
+      f.scene.set([camera]);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      f.frame();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      f.frame();
+      const before = preparations;
+      f.scene.set([camera]);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      f.frame();
+      assert.equal(preparations, before, `altitude ${meters} restarted inactive camera terrain`);
+      f.scene.set([{ ...camera, entity: { ...camera.entity, altitude: { meters: 100, reference: 'ground' } } }]);
+      f.frame();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      assert.ok(preparations > before, 'A newly usable camera must still prepare terrain');
+    } finally { f.destroy(); }
+  }
 });
