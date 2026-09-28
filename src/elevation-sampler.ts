@@ -3,6 +3,7 @@ import { ElevationBounds } from './elevation-bounds';
 
 type Tile = { size: number; values: Float32Array; bounds: ElevationBounds };
 const MAX_LAT = 85.05112878;
+const EARTH_RADIUS_METERS = 6_371_008.8;
 export function tilePosition(lng: number, lat: number, zoom: number) {
   const n = 2 ** zoom,
     latitude = (Math.max(-MAX_LAT, Math.min(MAX_LAT, lat)) * Math.PI) / 180;
@@ -36,6 +37,7 @@ export class RasterElevationSampler {
   private queued = new Map<string, [number, number]>();
   private pending = new Set<string>();
   private failed = new Set<string>();
+  private noData = new Set<string>();
   private controller = new AbortController();
   private templates: string[] = [];
   private zoom = 12;
@@ -76,7 +78,7 @@ export class RasterElevationSampler {
         tile.values[i + 1]! * fx * (1 - fy) +
         tile.values[i + tile.size]! * (1 - fx) * fy +
         tile.values[i + tile.size + 1]! * fx * fy;
-      if (!Number.isFinite(result)) this.failed.add('nodata');
+      if (!Number.isFinite(result)) this.markNoData(x, y);
       return Number.isFinite(result) ? result : null;
     }
     const value = (xx: number, yy: number) => {
@@ -86,7 +88,7 @@ export class RasterElevationSampler {
       if (!neighbour || neighbour.size !== tile.size) return NaN;
       const result =
         neighbour.values[((yy + tile.size) % tile.size) * tile.size + ((xx + tile.size) % tile.size)]!;
-      if (!Number.isFinite(result)) this.failed.add('nodata');
+      if (!Number.isFinite(result)) this.markNoData(x + dx, y + dy);
       return result;
     };
     const result =
@@ -133,11 +135,41 @@ export class RasterElevationSampler {
     }
     return tile;
   }
+  private markNoData(x: number, y: number) {
+    const n = 2 ** this.zoom;
+    if (y >= 0 && y < n) this.noData.add(`${((x % n) + n) % n}/${y}`);
+  }
+  /** Unknown samples settle only when this area needs failed data. */
+  readiness(center: readonly [number, number], radiusMeters: number): 'loading' | 'unavailable' {
+    if (this.failed.has('source')) return 'unavailable';
+    const [lng, lat] = center;
+    const angularRadius = radiusMeters / EARTH_RADIUS_METERS;
+    const south = lat - angularRadius * 180 / Math.PI;
+    const north = lat + angularRadius * 180 / Math.PI;
+    if (south < -MAX_LAT || north > MAX_LAT) return 'unavailable';
+    if (!this.ready) return 'loading';
+
+    const longitudeRadius = Math.asin(Math.min(1, Math.sin(angularRadius) / Math.cos(lat * Math.PI / 180))) * 180 / Math.PI;
+    const n = 2 ** this.zoom;
+    const firstX = Math.floor((lng - longitudeRadius + 180) / 360 * n);
+    const lastX = Math.floor((lng + longitudeRadius + 180) / 360 * n);
+    const firstY = Math.floor(tilePosition(lng, north, this.zoom).y);
+    const lastY = Math.floor(tilePosition(lng, south, this.zoom).y);
+    for (const keys of [this.failed, this.noData])
+      for (const key of keys) {
+        const [x, y] = key.split('/').map(Number);
+        if (x === undefined || y === undefined || !Number.isInteger(x) || !Number.isInteger(y)) continue;
+        const distance = ((x - firstX) % n + n) % n;
+        if (distance <= lastX - firstX && y >= firstY && y <= lastY) return 'unavailable';
+      }
+    return 'loading';
+  }
   unavailable() {
-    return this.failed.size > 0;
+    return this.failed.size > 0 || this.noData.size > 0;
   }
   retry() {
     this.failed.clear();
+    this.noData.clear();
     if (!this.ready) {
       this.started = false;
     }
