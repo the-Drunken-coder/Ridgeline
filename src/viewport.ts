@@ -1,4 +1,4 @@
-import { shapeGeometry } from './drawing-geometry';
+import { shapeGeometry } from './drawing-shapes';
 import { addArrowImage, arrowFeatures, ARROW_IMAGE } from './drawing-render';
 import { Map as GLMap, GeoJSONSource } from 'maplibre-gl';
 import type { LayerSpecification, MapMouseEvent, ErrorEvent as GLErrorEvent } from 'maplibre-gl';
