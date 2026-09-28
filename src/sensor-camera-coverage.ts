@@ -387,7 +387,7 @@ export class SensorCameraCoverage {
     const terrain = cameraTerrain(input.origin[0], input.origin[1], range,
       (lng, lat) => this.options.elevation.height(lng, lat), work.patch);
     work.patch = terrain;
-    if (!terrain.ready || input.placement === 'elevation-unavailable')
+    if (!terrain.ready)
       this.options.elevation.requirePreparation(this.terrainKey(input.entityId, range));
     return terrain;
   }

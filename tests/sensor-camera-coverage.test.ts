@@ -478,20 +478,23 @@ test('small movements reuse a completed terrain patch without resampling its ele
 
 for (const available of [true, false]) test(`cached terrain waits for placement preparation that ${available ? 'resolves' : 'remains missing'}`, async () => {
   let missing = false;
+  let prepareCalls = 0;
   const preparation = deferred();
   const adapter = controlledAdapter();
   const { coverage } = owner(adapter, {
     height: () => missing ? null : 0,
-    prepare: async () => { await preparation.promise; },
+    prepare: async () => { prepareCalls++; await preparation.promise; },
   });
   update(coverage, input());
   const initial = latestRequest(adapter);
   adapter.complete(initial);
   const previous = coverage.output('entity');
+  await new Promise<void>(resolve => setImmediate(resolve));
   missing = true;
   const unresolved = input({ origin: [.00001, 0, 0], placement: 'elevation-unavailable' });
   assert.equal(update(coverage, unresolved).coverage, 'loading');
-  await Promise.resolve();
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(prepareCalls, 1, 'A cached camera patch must leave the new center to placement preparation');
   assert.ok(adapter.values().every(value => value.origin[2] === 100), 'Unknown placement must not produce a zero-altitude request');
   assert.deepEqual(coverage.output('entity'), previous);
   missing = !available;
