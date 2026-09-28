@@ -664,12 +664,14 @@ async function suite() {
     await until(()=>air.getEntityState('raw')?.coverage==='ready'&&air.getEntityState('raw-visibility')?.coverage==='ready','raw DEM decoding');
     check(air.getEntityState('raw')?.altitude===400,'Raw custom DEM did not decode to 100 metres');
     const triangles=air.getEntityState('raw')!.footprintTriangles;
+    const visibilityTriangles=air.getEntityState('raw-visibility')!.footprintTriangles;
     for(const exaggeration of [0.5,1,2]) {
       const before=air.getEntityState('raw')!.computedAt;
       const visibilityBefore=air.getEntityState('raw-visibility')!.computedAt;
       air.configure({terrain:true,exaggeration});
       await until(()=>air.getEntityState('raw')!.computedAt>before&&air.getEntityState('raw-visibility')!.computedAt>visibilityBefore&&air.getEntityState('raw-visibility')?.coverage==='ready','terrain display recomputation');
       check(air.getEntityState('raw')?.footprintTriangles===triangles,'Terrain display changed physical coverage');
+      check(air.getEntityState('raw-visibility')?.footprintTriangles===visibilityTriangles,'Exaggeration changed terrain visibility camera footprint');
       check(air.getEntityState('raw')?.altitude===400,'Exaggeration changed physical altitude');
       check(air.getEntityState('raw-visibility')?.altitude===400,'Exaggeration changed terrain visibility camera altitude');
       const maskLayer=air.map.getStyle().layers.find(layer=>layer.id.startsWith('rl:camera-mask:'));

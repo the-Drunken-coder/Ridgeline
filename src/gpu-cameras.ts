@@ -314,7 +314,7 @@ export class GpuCameras implements CustomLayerInterface {
         gl.bindTexture(gl.TEXTURE_2D,item.regionTexture!);
         gl.useProgram(this.styleProgram!);
         gl.uniform1i(gl.getUniformLocation(this.styleProgram!,'u_regions'),0);
-        gl.uniform1f(gl.getUniformLocation(this.styleProgram!,'u_borderWidth'),item.value.camera.outline===false?0:(item.value.camera.outlineWidth??cameraDefaults.outlineWidth)/2);
+        gl.uniform1f(gl.getUniformLocation(this.styleProgram!,'u_borderWidth'),(item.value.camera.outline??cameraDefaults.outline)?(item.value.camera.outlineWidth??cameraDefaults.outlineWidth)/2:0);
         gl.uniform4fv(gl.getUniformLocation(this.styleProgram!,'u_color'),parseColor(item.value.camera.color??cameraDefaults.visibleMaskColor,item.value.camera.fillOpacity??cameraDefaults.fillOpacity,{contextBehavior:'throw'}));
         gl.uniform4fv(gl.getUniformLocation(this.styleProgram!,'u_blocked'),parseColor(item.value.camera.blockedColor??cameraDefaults.blockedMaskColor,item.value.camera.blockedOpacity??cameraDefaults.blockedOpacity,{contextBehavior:'throw'}));
         gl.drawArrays(gl.TRIANGLES,0,3);

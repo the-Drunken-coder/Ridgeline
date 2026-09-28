@@ -240,10 +240,13 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
       for (const shader of shaders) gl.deleteShader(shader);
     }
   }
-  project(p: GeoPoint, alreadyScaled = false): ScreenPoint | null {
+  private projectRaw(p: GeoPoint): ScreenPoint | null {
+    return this.projectDisplayed([p[0], p[1], this.displayHeight(p[2])]);
+  }
+  private projectDisplayed(p: GeoPoint): ScreenPoint | null {
     const data = this.projection;
     if (!data || !this.map) return null;
-    const height = alreadyScaled ? p[2] : this.displayHeight(p[2]);
+    const height = p[2];
     const m = MercatorCoordinate.fromLngLat([p[0], p[1]], height),
       d = data.defaultProjectionData;
     const globe = data.shaderData.define.includes('GLOBE');
@@ -281,12 +284,12 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
       const location = this.map.unproject([x, y]);
       const height = this.map.getTerrain() ? this.map.queryTerrainElevation(location) : 0;
       // MapLibre's terrain query returns a height that already includes exaggeration.
-      if (height !== null) terrainDepth = this.project([location.lng, location.lat, height], true)?.depth;
+      if (height !== null) terrainDepth = this.projectDisplayed([location.lng, location.lat, height])?.depth;
     }
     const visible = (depth: number) => terrainDepth === undefined || depth <= terrainDepth + 1e-6;
     for (const draw of this.draws) {
       if (draw.mode === 'lines' && !draw.attachmentId) continue;
-      const points = draw.vertices.map((p) => this.project(p));
+      const points = draw.vertices.map((p) => this.projectRaw(p));
       if (draw.mode === 'lines') {
         for (let i = 0; i < points.length; i += 2) {
           const a = points[i], b = points[i + 1];
