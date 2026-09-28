@@ -10,6 +10,8 @@ import '@ridgeline/map/style.css';
 declare global {
   interface Window {
     drawingPointer?: (action: 'move' | 'click', x: number, y: number) => Promise<void>;
+    browserKey?: (key: string) => Promise<void>;
+    browserClick?: (x: number, y: number) => Promise<void>;
   }
 }
 
@@ -251,6 +253,51 @@ async function suite() {
     check(document.activeElement === buttons[1], 'Keyboard navigation broke after refresh');
     ui.destroy();
   });
+  await run('Replacing a registered icon updates the map and an open picker', async () => {
+    const mount = document.createElement('div');
+    mount.style.cssText = 'width:320px;height:240px;position:absolute;left:0;top:0';
+    document.body.append(mount);
+    const iconMap = createViewport({
+      container: mount, basemap: style(), camera: { center: [0, 0], zoom: 12 },
+      features: [point('icon-target'), point('icon-other')],
+      style: feature => ({ icon: feature.id === 'icon-target' ? 'swap' : undefined }),
+      logger: () => {},
+    });
+    const pixels = (red: boolean) => {
+      const image = new ImageData(24, 24);
+      for (let i = 0; i < image.data.length; i += 4) {
+        image.data[i] = red ? 255 : 0;
+        image.data[i + 1] = red ? 0 : 255;
+        image.data[i + 3] = 255;
+      }
+      return image;
+    };
+    const color = new Uint8Array(4);
+    try {
+      await iconMap.ready;
+      const canvas = iconMap.map.getCanvas();
+      const gl = canvas.getContext('webgl2');
+      check(Boolean(gl), 'Icon map has no WebGL2 context');
+      iconMap.map.on('render', () => {
+        const point = iconMap.map.project([0, 0]);
+        const scale = canvas.width / canvas.clientWidth;
+        gl!.readPixels(Math.round(point.x * scale), canvas.height - 1 - Math.round(point.y * scale), 1, 1, gl!.RGBA, gl!.UNSIGNED_BYTE, color);
+      });
+      iconMap.registerIcon('swap', { image: pixels(true), url: 'data:image/svg+xml,red' });
+      await until(() => color[0]! > 200 && color[1]! < 50, 'first icon rendered red');
+      const ui = attachInteractions(iconMap);
+      iconMap.map.fire('click', { point: iconMap.map.project([0, 0]), lngLat: iconMap.map.getCenter(), originalEvent: new MouseEvent('click') });
+      const choice = mount.querySelector<HTMLButtonElement>('[data-feature-id="icon-target"]')!;
+      check(choice.querySelector('img')?.getAttribute('src') === 'data:image/svg+xml,red', 'Picker lacked the first icon');
+      iconMap.registerIcon('swap', { image: pixels(false), url: 'data:image/svg+xml,green' });
+      await until(() => color[1]! > 200 && color[0]! < 50, 'replacement icon rendered green');
+      check(choice.querySelector('img')?.getAttribute('src') === 'data:image/svg+xml,green', 'Open picker kept the old icon');
+      ui.destroy();
+    } finally {
+      iconMap.destroy();
+      mount.remove();
+    }
+  });
   await run('A broken style falls back to names without interrupting the picker', async () => {
     viewport.upsert([point('picker-broken'), point('picker-healthy')]);
     await until(() => hits().some(hit => hit.id === 'picker-broken') && hits().some(hit => hit.id === 'picker-healthy'), 'picker failure setup');
@@ -270,6 +317,84 @@ async function suite() {
     viewport.upsert([point('picker-broken')]);
     viewport.remove(['picker-broken', 'picker-healthy']);
   });
+  await run('Hover content follows the current feature and survives unrelated removal', async () => {
+    viewport.upsert([point('hover-current', .08), point('hover-unrelated', -.08)]);
+    await until(() => hits().some(hit => hit.id === 'hover-current'), 'hover feature rendered');
+    const ui = attachInteractions(viewport);
+    await pointer('move', viewport.map.project([.08, 0]));
+    await until(() => container.querySelector('.rl-tooltip')?.textContent === 'hover-current', 'hover tooltip');
+    viewport.upsert([{ ...point('hover-current', .08), properties: { name: 'Current name' } }]);
+    check(container.querySelector('.rl-tooltip')?.textContent === 'Current name', 'Hover tooltip kept stale content');
+    viewport.remove(['hover-unrelated']);
+    check(container.querySelector('.rl-tooltip')?.textContent === 'Current name', 'Unrelated removal hid the hovered feature');
+    ui.destroy();
+    viewport.remove(['hover-current']);
+  }, { realPointer: true });
+  await run('A failed custom picker choice keeps the other choice and keyboard selection usable', async () => {
+    viewport.upsert([point('custom-broken'), point('custom-healthy')]);
+    await until(() => hits().some(hit => hit.id === 'custom-broken') && hits().some(hit => hit.id === 'custom-healthy'), 'custom picker setup');
+    const failures: RidgelineError[] = [];
+    const offDiagnostic = viewport.on('diagnostic', error => { if (error.context.operation === 'renderFeature') failures.push(error); });
+    let selection: string[] = [];
+    const offSelection = viewport.on('selectionrequest', event => { selection = event.ids; });
+    const ui = attachInteractions(viewport, {
+      renderFeature(feature) {
+        if (feature.properties.broken) throw new Error('Custom choice failed');
+        const label = document.createElement('span');
+        label.textContent = viewport.getName(feature);
+        return label;
+      },
+    });
+    await pointer('click', viewport.map.project([0, 0]));
+    const broken = container.querySelector<HTMLButtonElement>('[data-feature-id="custom-broken"]')!;
+    const healthy = container.querySelector<HTMLButtonElement>('[data-feature-id="custom-healthy"]')!;
+    broken.focus();
+    viewport.upsert([
+      { ...point('custom-broken'), properties: { name: 'Broken current', broken: true } },
+      { ...point('custom-healthy'), properties: { name: 'Healthy current' } },
+    ]);
+    check(broken.textContent === 'Broken current' && healthy.textContent === 'Healthy current', 'One custom renderer blocked choice refresh');
+    check(document.activeElement === broken && !broken.disabled, 'Failed choice lost focus or became unavailable');
+    check(failures.length === 1 && failures[0]?.context.featureId === 'custom-broken', 'Custom renderer failure was not reported');
+    if (!window.browserKey) throw new Error('Playwright keyboard bridge required');
+    await window.browserKey('Enter');
+    check(selection[0] === 'custom-broken', 'Failed choice could not be selected with the keyboard');
+    offSelection(); offDiagnostic(); ui.destroy();
+    viewport.remove(['custom-broken', 'custom-healthy']);
+  }, { realPointer: true });
+  await run('Point above a ground area wins the click and picker-free selection', async () => {
+    const mount = document.createElement('div');
+    mount.style.cssText = 'width:320px;height:240px;position:absolute;left:0;top:0';
+    document.body.append(mount);
+    const air = createViewport({ container: mount, basemap: style(), camera: { center: [0, 0], zoom: 16 },
+      elevationSampler: { sample: () => 0 }, logger: () => {} });
+    let ui: ReturnType<typeof attachInteractions> | undefined;
+    try {
+      await air.ready;
+      air.upsert([
+        { ...point('ground-area', -.002), entity: { attachments: [{ id: 'zone', type: 'circle', radius: 500 }] } },
+        point('top-point'),
+      ]);
+      await until(() => air.getEntityState('ground-area')?.coverage === 'ready' &&
+        air.map.queryRenderedFeatures(air.map.project([0, 0]), { layers: ['rl:points', 'rl:entity-ground-fill'] }).length >= 2,
+      'overlapping ground area and point');
+      const rendered = air.map.queryRenderedFeatures(air.map.project([0, 0]), { layers: ['rl:points', 'rl:entity-ground-fill'] });
+      check(rendered[0]?.id === 'top-point', 'Test setup did not render the point above the ground area');
+      let clicked: string[] = [];
+      let requested: string[] = [];
+      air.on('click', event => { clicked = event.features.map(feature => feature.id); });
+      air.on('selectionrequest', event => { requested = event.ids; });
+      ui = attachInteractions(air, { picker: false });
+      const pointAt = air.map.project([0, 0]);
+      const rect = air.map.getCanvas().getBoundingClientRect();
+      if (!window.browserClick) throw new Error('Playwright click bridge required');
+      await window.browserClick(rect.left + pointAt.x, rect.top + pointAt.y);
+      check(clicked[0] === 'top-point' && clicked.includes('ground-area'), `Click order differed from rendering: ${clicked}`);
+      check(requested[0] === 'top-point', `Picker-free selection chose ${requested[0]}`);
+    } finally {
+      ui?.destroy(); air.destroy(); mount.remove();
+    }
+  }, { realPointer: true });
   await run('Hillshade options update live and survive toggles and basemap replacement', async () => {
     viewport.configure({ hillshade: true, elevation: { tiles: [], encoding: 'terrarium', tileSize: 256 }, hillshadeOptions: { method: 'igor', direction: 270, altitude: 30, anchor: 'map', intensity: .6, shadowColor: '#123456', highlightColor: '#eeeeee', accentColor: '#345678' } });
     const expected = viewport.map.getLayer('rl:hillshade')?.serialize().paint;

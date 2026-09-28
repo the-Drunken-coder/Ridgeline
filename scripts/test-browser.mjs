@@ -35,6 +35,8 @@ try {
     if (action === 'move') await page.mouse.move(position.x, position.y);
     else await page.mouse.click(position.x, position.y);
   });
+  await page.exposeFunction('browserKey', async key => { await page.keyboard.press(key); });
+  await page.exposeFunction('browserClick', async (x, y) => { await page.mouse.click(x, y); });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(server.resolvedUrls.local[0]);
