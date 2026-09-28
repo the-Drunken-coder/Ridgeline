@@ -746,6 +746,8 @@ async function suite() {
       air.configure({ exaggeration });
       if (exaggeration !== 1) await until(() => air.getEntityState(sphere.id)!.computedAt > before
         && air.getEntityState(camera.id)?.coverage === 'ready', 'exaggerated picking update');
+      await until(() => air.map.loaded() && Math.abs((air.map.queryTerrainElevation([-.004, 0]) ?? 0) - 100 * exaggeration) < .1
+        && Math.abs((air.map.queryTerrainElevation([.004, 0]) ?? 0) - 100 * exaggeration) < .1, 'exaggerated terrain ready for picking');
       await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       check((await pick(projectHeight(-.004, 0, 300 * exaggeration))).includes('sphere'),
         `Sphere was not pickable at exaggeration ${exaggeration}`);
