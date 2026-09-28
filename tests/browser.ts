@@ -2135,7 +2135,7 @@ async function suite() {
     if(circle.kind!=='circle')throw new Error('Missing circle draft');
     check(Math.abs(draw.map.project(circle.center).x-origin.x-72)<1,'Circle Center snapped to its own Radius handle');
     editor.destroy();draw.destroy();
-  },{realPointer:true});
+  });
   await run('Arrowheads follow accepted geometry updates and disappear on deletion', async () => {
     const arrowShape = { kind:'arrow' as const, vertices:[[-.01,0],[.01,0]] as [number,number][] };
     const arrow:MapFeature = { type:'Feature', id:'arrow', geometry:shapeGeometry(arrowShape), properties:{}, drawing:{version:1,shape:arrowShape,style:{color:'#ff0000',fillColor:'#ff0000',lineWidth:3,fillOpacity:0,dashed:false,label:''}} };
