@@ -739,10 +739,10 @@ async function suite() {
     const gl = air.map.getCanvas().getContext('webgl2')!;
     const createProgram = gl.createProgram.bind(gl);
     let failOnce = true;
-    gl.createProgram = () => {
+    Object.defineProperty(gl, 'createProgram', { configurable: true, value: () => {
       if (failOnce) { failOnce = false; return null; }
       return createProgram();
-    };
+    } });
     const feature: MapFeature = { ...point('shader-retry'), entity: { altitude: { meters: 100, reference: 'ground' },
       attachments: [{ id: 'ball', type: 'sphere', radius: 100, color: '#ff0000' }] } };
     const redPixels = () => new Promise<number>(resolve => {
@@ -761,12 +761,12 @@ async function suite() {
     try {
       air.upsert([feature]);
       await until(() => errors.some(error => error.code === 'UPDATE_FAILED' && error.context.operation === 'entities'), 'airborne shader failure');
-      gl.createProgram = createProgram;
+      Object.defineProperty(gl, 'createProgram', { configurable: true, value: createProgram });
       check(await redPixels() === 0, 'Failed shader still drew airborne geometry');
       air.retryUpdates();
       await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'entity retry state');
       check(await redPixels() > 0, 'Retry did not restore airborne geometry');
-    } finally { gl.createProgram = createProgram; air.destroy(); }
+    } finally { Object.defineProperty(gl, 'createProgram', { configurable: true, value: createProgram }); air.destroy(); }
   });
   await run('Custom elevation preparation also covers entities with only plain cameras', async () => {
     let prepared = false, prepareCalls = 0;
