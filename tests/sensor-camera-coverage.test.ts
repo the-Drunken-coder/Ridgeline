@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import type { Map as GLMap } from 'maplibre-gl';
 import type { CameraAttachment, MapConfiguration } from '../src/types';
 import type { GpuCamera } from '../src/gpu-cameras';
-import { cameraTerrain } from '../src/gpu-camera-terrain';
+import type { ElevationSampler } from '../src/types';
+import { Elevation } from '../src/elevation';
 import {
   SensorCameraCoverage,
   type SensorCameraAdapterFactory,
@@ -57,16 +58,15 @@ function input(overrides: Partial<SensorCameraInput> = {}): SensorCameraInput {
     placement: 'airborne',
     cameras: [camera()],
     configuration,
-    elevationUnavailable: false,
-    elevationPreparing: false,
     ...overrides,
   };
 }
 
 function deferred() {
   let resolve!: () => void;
-  const promise = new Promise<void>(value => { resolve = value; });
-  return { promise, resolve };
+  let reject!: (cause: unknown) => void;
+  const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
 }
 
 type ControlledAdapter = {
@@ -79,6 +79,8 @@ type ControlledAdapter = {
   published: GpuCamera[];
   retries: number;
 };
+
+const elevations = new WeakMap<SensorCameraCoverage, Elevation>();
 
 function controlledAdapter(): ControlledAdapter {
   let complete!: (value: GpuCamera, publish: () => void) => boolean;
@@ -112,24 +114,41 @@ function controlledAdapter(): ControlledAdapter {
 
 function owner(
   controlled: ControlledAdapter,
-  options: Partial<ConstructorParameters<typeof SensorCameraCoverage>[0]> = {},
+  options: { height?: ElevationSampler['sample']; prepare?: ElevationSampler['prepare']; changed?: () => void } = {},
 ) {
   const changed: string[] = [];
   const diagnostics: unknown[] = [];
+  const elevation = new Elevation({
+    provider: configuration.elevation,
+    sampler: { sample: options.height ?? (() => 0), prepare: options.prepare },
+    changed: keys => { for (const key of keys) changed.push(key); options.changed?.(); },
+    diagnostic: cause => diagnostics.push(cause),
+  });
   const coverage = new SensorCameraCoverage({
     map: {} as GLMap,
-    height: () => 0,
-    diagnostic: cause => diagnostics.push(cause),
+    elevation,
+    rendererDiagnostic: cause => diagnostics.push(cause),
     changed: entityId => changed.push(entityId),
-    elevationUnavailable: () => false,
     adapter: controlled.factory,
-    ...options,
   });
-  return { coverage, changed, diagnostics };
+  elevations.set(coverage, elevation);
+  return { coverage, elevation, changed, diagnostics };
 }
 
 // One owner update followed by the scene's submission boundary.
 function update(coverage: SensorCameraCoverage, value: SensorCameraInput) {
+  const elevation = elevations.get(coverage)!;
+  const center: [number, number] = [value.origin[0], value.origin[1]];
+  coverage.requestAreas(value.entityId, center, value.cameras, value.configuration.entityVisibility.footprints);
+  elevation.request(`placement:${value.entityId}`, center, 0);
+  const output = coverage.update(value);
+  coverage.flush();
+  return output;
+}
+
+function updateCameraOnly(coverage: SensorCameraCoverage, value: SensorCameraInput) {
+  coverage.requestAreas(value.entityId, [value.origin[0], value.origin[1]], value.cameras,
+    value.configuration.entityVisibility.footprints);
   const output = coverage.update(value);
   coverage.flush();
   return output;
@@ -222,10 +241,12 @@ test('publishes attached cameras independently while readiness waits for all cur
   assert.equal(coverage.output('entity').filter(value => value.attachmentId === 'second').length, second.geometry.length);
 });
 
-test('keeps a near camera current when a farther camera lacks terrain', () => {
+test('keeps a near camera current when a farther camera lacks terrain', async () => {
   const adapter = controlledAdapter();
+  const preparation = deferred();
   const { coverage } = owner(adapter, {
     height: (lng, lat) => Math.hypot(lng * 111195, lat * 111195) <= 20 ? 0 : null,
+    prepare: () => preparation.promise,
   });
   const near = camera('near');
   const far = { ...camera('far', 90), range: 100 };
@@ -238,8 +259,9 @@ test('keeps a near camera current when a farther camera lacks terrain', () => {
   assert.equal(coverage.status('entity'), 'loading', 'A far pending camera incorrectly made the entity ready');
   assert.ok(coverage.output('entity').some(value => value.attachmentId === 'near'), 'Near camera did not publish independently');
 
-  const unavailable = input({ cameras: [{ ...near, range: 10 }, far], elevationUnavailable: true });
-  assert.equal(update(coverage, unavailable).coverage, 'unavailable');
+  preparation.resolve();
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(update(coverage, two).coverage, 'unavailable');
   assert.ok(coverage.output('entity').some(value => value.attachmentId === 'near'), 'Far unavailability removed completed near coverage');
 
   const moved = input({ origin: [0.00005, 0, 100], cameras: [{ ...near, range: 10 }, far] });
@@ -252,14 +274,13 @@ test('keeps a near camera current when a farther camera lacks terrain', () => {
 
 test('keeps a pending terrain replacement loading, then settles prepared terrain without polling', async () => {
   let missing = false;
-  let prepareCalls = 0;
   let resolvePreparation!: () => void;
   const preparation = new Promise<void>(resolve => { resolvePreparation = resolve; });
   const adapter = controlledAdapter();
   const settled = deferred();
   const { coverage } = owner(adapter, {
     height: () => missing ? null : 0,
-    prepare: async () => { prepareCalls++; await preparation; },
+    prepare: async () => { await preparation; },
     changed: settled.resolve,
   });
 
@@ -273,7 +294,6 @@ test('keeps a pending terrain replacement loading, then settles prepared terrain
   assert.equal(update(coverage, pending).coverage, 'loading');
   assert.deepEqual(coverage.output('entity'), previous, 'Pending terrain keeps the previous completed unit');
   await Promise.resolve();
-  assert.equal(prepareCalls, 1);
 
   resolvePreparation();
   await preparation;
@@ -281,113 +301,8 @@ test('keeps a pending terrain replacement loading, then settles prepared terrain
   assert.equal(update(coverage, input({
     origin: [0.02, 0, 100],
     placement: 'elevation-unavailable',
-    elevationUnavailable: true,
   })).coverage, 'unavailable');
-  assert.equal(prepareCalls, 1, 'Settled unknown terrain must not repeatedly prepare');
   assert.deepEqual(coverage.output('entity'), []);
-});
-
-test('cancels preparation for an obsolete camera range and suppresses its late failure', async () => {
-  let rejectPreparation!: (cause: unknown) => void;
-  let signal: AbortSignal | undefined;
-  const preparation = new Promise<void>((_resolve, reject) => { rejectPreparation = reject; });
-  const adapter = controlledAdapter();
-  const { coverage, diagnostics } = owner(adapter, {
-    height: () => null,
-    prepare: async (_positions, preparationSignal) => { signal = preparationSignal; await preparation; },
-  });
-
-  update(coverage, input());
-  await Promise.resolve();
-  assert.equal(coverage.isPreparing('entity'), true);
-
-  update(coverage, input({ cameras: [] }));
-  assert.equal(coverage.isPreparing('entity'), false);
-  assert.equal(signal?.aborted, true, 'The consumer must be able to release obsolete preparation work');
-
-  rejectPreparation(new Error('obsolete range failed'));
-  await preparation.catch(() => {});
-  await Promise.resolve();
-  assert.deepEqual(diagnostics, [], 'Detached preparation must not report a diagnostic');
-});
-
-test('cancels obsolete ranges without cancelling terrain shared by remaining cameras or other entities', async () => {
-  const signals: AbortSignal[] = [];
-  const preparation = deferred();
-  const { coverage } = owner(controlledAdapter(), {
-    height: () => null,
-    prepare: (_positions, signal) => { signals.push(signal); return preparation.promise; },
-  });
-  const first = camera('first');
-  const second = camera('second');
-  const far = { ...camera('far'), range: 600 };
-  update(coverage, input({ cameras: [first, second] }));
-  await Promise.resolve();
-  assert.equal(signals.length, 1, 'Equal ranges should share pending preparation');
-  const shared = signals[0]!;
-
-  update(coverage, input({ cameras: [first, second, far] }));
-  await Promise.resolve();
-  const farther = signals[1]!;
-  update(coverage, input({ entityId: 'other' }));
-  await Promise.resolve();
-  const other = signals[2]!;
-
-  update(coverage, input({ cameras: [second, far] }));
-  assert.equal(shared.aborted, false, 'A remaining camera still needs the shared range');
-  update(coverage, input({ cameras: [second] }));
-  assert.equal(farther.aborted, true, 'Removing the last camera using a range should cancel it');
-  assert.equal(shared.aborted, false);
-  assert.equal(other.aborted, false);
-
-  coverage.remove('entity');
-  assert.equal(shared.aborted, true);
-  assert.equal(other.aborted, false, 'Another entity must retain its preparation');
-  coverage.destroy();
-  assert.equal(other.aborted, true);
-  preparation.resolve();
-});
-
-test('hiding, retrying, resetting elevation, and destruction cancel preparation and ignore late completion', async () => {
-  for (const action of ['hide', 'retry', 'reset', 'destroy'] as const) {
-    const preparation = deferred();
-    let signal: AbortSignal | undefined;
-    const { coverage, changed, diagnostics } = owner(controlledAdapter(), {
-      height: () => null,
-      prepare: (_positions, value) => { signal = value; return preparation.promise; },
-    });
-    update(coverage, input());
-    await Promise.resolve();
-    assert.ok(signal);
-    if (action === 'hide') update(coverage, input({ configuration: {
-      ...configuration,
-      entityVisibility: { ...configuration.entityVisibility, footprints: false },
-    } }));
-    else if (action === 'retry') coverage.retry();
-    else if (action === 'reset') coverage.resetElevation();
-    else coverage.destroy();
-    assert.equal(signal.aborted, true, `${action} must cancel pending preparation`);
-    const changesAfterAction = changed.length;
-    preparation.resolve();
-    await new Promise<void>(resolve => setImmediate(resolve));
-    assert.equal(changed.length, changesAfterAction, `${action} must ignore obsolete completion`);
-    assert.deepEqual(diagnostics, []);
-    assert.deepEqual(coverage.output('entity'), []);
-    coverage.destroy();
-  }
-});
-
-test('removing a camera before preparation starts prevents the consumer call', async () => {
-  let calls = 0;
-  const { coverage } = owner(controlledAdapter(), {
-    height: () => null,
-    prepare: async () => { calls++; },
-  });
-  update(coverage, input());
-  coverage.remove('entity');
-  await new Promise<void>(resolve => setImmediate(resolve));
-  assert.equal(calls, 0);
-  coverage.destroy();
 });
 
 test('failure clears displayed camera output, retry uses current input, and stale identity cannot return', () => {
@@ -402,6 +317,8 @@ test('failure clears displayed camera output, retry uses current input, and stal
   assert.equal(coverage.status('entity'), 'unavailable');
   assert.deepEqual(coverage.output('entity'), []);
   assert.equal(diagnostics.length, 1);
+  coverage.resetElevation();
+  assert.equal(coverage.status('entity'), 'unavailable', 'An elevation reset cannot recover a failed renderer');
 
   coverage.retry();
   coverage.flush();
@@ -453,7 +370,7 @@ for (const action of ['retry', 'reset elevation'] as const) test(`${action} cann
   let height: number | null = 0;
   const preparation = deferred();
   const adapter = controlledAdapter();
-  const { coverage } = owner(adapter, {
+  const { coverage, elevation } = owner(adapter, {
     height: () => height,
     prepare: () => preparation.promise,
   });
@@ -463,8 +380,9 @@ for (const action of ['retry', 'reset elevation'] as const) test(`${action} cann
   const previous = coverage.output('entity');
 
   height = null;
-  if (action === 'retry') coverage.retry();
-  else { coverage.invalidate(); coverage.resetElevation(); }
+  if (action === 'retry') elevation.retry();
+  else elevation.reset(configuration.elevation);
+  coverage.retry();
   coverage.flush();
   assert.equal(adapter.values().length, 0, 'Retry must not resubmit the discarded terrain');
   assert.deepEqual(adapter.retained(), [original], 'The adapter must retain only the accepted historical display');
@@ -495,12 +413,314 @@ test('confirmed unavailability takes precedence over a pending camera in either 
     const { coverage } = owner(adapter, {
       height: (lng, lat) => Math.hypot(lng * 111195, lat * 111195) <= 20 ? 0 : null,
     });
-    const result = update(coverage, input({ cameras, elevationUnavailable: true }));
+    const result = update(coverage, input({ cameras }));
     assert.equal(result.coverage, 'unavailable', `Attachment order: ${cameras.map(camera => camera.id)}`);
     assert.equal(adapter.complete(latestRequest(adapter, 'entity', 'near')), true);
     assert.equal(coverage.status('entity'), 'unavailable', 'Completing the near camera must not hide far unavailability');
     coverage.destroy();
   }
+});
+
+test('a newly pending camera can recover a center whose earlier placement request settled missing', async () => {
+  const pending: ReturnType<typeof deferred>[] = [];
+  const { coverage, elevation } = owner(controlledAdapter(), {
+    height: () => null,
+    prepare: () => { const work = deferred(); pending.push(work); return work.promise; },
+  });
+  elevation.request('placement:entity', [0, 0], 0);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  pending[0]!.resolve();
+  await new Promise<void>(resolve => setImmediate(resolve));
+
+  const unresolved = input({ placement: 'elevation-unavailable' });
+  assert.equal(update(coverage, unresolved).coverage, 'loading');
+  await new Promise<void>(resolve => setImmediate(resolve));
+  pending[1]!.resolve();
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(update(coverage, unresolved).coverage, 'unavailable');
+  coverage.destroy();
+  elevation.destroy();
+});
+
+test('a batch submits the full camera collection once and still publishes cameras independently', () => {
+  const adapter = controlledAdapter();
+  const { coverage } = owner(adapter);
+  const inputs = Array.from({ length: 100 }, (_, index) => input({
+    entityId: `entity-${index}`,
+    cameras: [{ ...camera(), range: 10, wireframe: false, volumeOpacity: 0 }],
+  }));
+  for (const value of inputs) coverage.update(value);
+  coverage.flush();
+  adapter.history.length = 0;
+
+  for (const value of inputs) coverage.update({ ...value, origin: [0, 0, 101] });
+  coverage.flush();
+  assert.equal(adapter.history.length, 1, 'A scene batch must synchronize the adapter once');
+  assert.equal(adapter.history.reduce((total, values) => total + values.length, 0), 100);
+  const first = latestRequest(adapter, 'entity-0');
+  assert.equal(adapter.complete(first), true);
+  assert.equal(coverage.status('entity-0'), 'ready');
+  assert.equal(coverage.status('entity-1'), 'loading');
+
+  coverage.flush();
+  assert.equal(adapter.history.length, 1, 'An idle flush must not resubmit cameras');
+  for (const value of inputs) coverage.remove(value.entityId);
+  coverage.flush();
+  assert.deepEqual(adapter.values(), [], 'The removal batch must release every camera');
+  coverage.destroy();
+});
+
+test('small movements reuse a completed terrain patch without resampling its elevation area', async () => {
+  let samples = 0;
+  const { coverage } = owner(controlledAdapter(), {
+    height: () => { samples++; return 0; },
+  });
+  update(coverage, input());
+  await new Promise<void>(resolve => setImmediate(resolve));
+  samples = 0;
+
+  for (let step = 1; step <= 24; step++) {
+    update(coverage, input({ origin: [step * .00001, 0, 100] }));
+    await new Promise<void>(resolve => setImmediate(resolve));
+  }
+  assert.ok(samples <= 30, `Movement resampled cached terrain: ${samples} elevation samples`);
+  coverage.destroy();
+});
+
+test('an incomplete camera patch is sampled again only after elevation changes or movement', () => {
+  let samples = 0;
+  const { coverage, elevation } = owner(controlledAdapter(), {
+    height: () => { samples++; return null; },
+  });
+  updateCameraOnly(coverage, input());
+  const first = samples;
+  assert.ok(first > 60_000);
+  coverage.invalidate();
+  updateCameraOnly(coverage, input({ configuration: { ...configuration, projection: 'globe' } }));
+  assert.equal(samples, first, 'Display-only rebuild resampled unchanged terrain');
+  elevation.retry();
+  updateCameraOnly(coverage, input());
+  assert.ok(samples > first + 60_000, 'Retry did not resample the incomplete patch');
+  const afterRetry = samples;
+  updateCameraOnly(coverage, input({ origin: [.001, 0, 100] }));
+  assert.ok(samples > afterRetry + 60_000, 'Movement did not resample the incomplete patch');
+  coverage.destroy();
+  elevation.destroy();
+});
+
+test('an obsolete camera range cannot clear retained output after its late failure', async () => {
+  let missing = false;
+  const pending: ReturnType<typeof deferred>[] = [];
+  const adapter = controlledAdapter();
+  const { coverage, diagnostics } = owner(adapter, {
+    height: () => missing ? null : 0,
+    prepare: () => { const work = deferred(); pending.push(work); return work.promise; },
+  });
+  updateCameraOnly(coverage, input());
+  const original = latestRequest(adapter);
+  adapter.complete(original);
+  const displayed = coverage.output('entity');
+  missing = true;
+  const range400 = input({ origin: [.02, 0, 100], cameras: [{ ...camera(), range: 400 }] });
+  assert.equal(updateCameraOnly(coverage, range400).coverage, 'loading');
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(pending.length, 1);
+  const range500 = input({ origin: [.02, 0, 100], cameras: [{ ...camera(), range: 500 }] });
+  assert.equal(updateCameraOnly(coverage, range500).coverage, 'loading');
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(pending.length, 2);
+  pending[0]!.reject(new Error('obsolete range failed'));
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(coverage.status('entity'), 'loading');
+  assert.deepEqual(coverage.output('entity'), displayed);
+  assert.deepEqual(diagnostics, []);
+  pending[1]!.resolve();
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(updateCameraOnly(coverage, range500).coverage, 'unavailable');
+  assert.deepEqual(coverage.output('entity'), []);
+  coverage.destroy();
+});
+
+test('removing one camera keeps its shared range pending for the remaining camera', async () => {
+  let missing = true;
+  const preparation = deferred();
+  let calls = 0;
+  const adapter = controlledAdapter();
+  const { coverage } = owner(adapter, {
+    height: () => missing ? null : 0,
+    prepare: () => { calls++; return preparation.promise; },
+  });
+  const both = input({ cameras: [camera('removed'), camera('remaining', 90)] });
+  assert.equal(updateCameraOnly(coverage, both).coverage, 'loading');
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(calls, 1);
+  const remaining = input({ cameras: [camera('remaining', 90)] });
+  assert.equal(updateCameraOnly(coverage, remaining).coverage, 'loading');
+  missing = false;
+  preparation.resolve();
+  await new Promise<void>(resolve => setImmediate(resolve));
+  updateCameraOnly(coverage, remaining);
+  const request = latestRequest(adapter, 'entity', 'remaining');
+  assert.equal(adapter.values().some(value => value.camera.id === 'removed'), false);
+  assert.equal(adapter.complete(request), true);
+  assert.equal(coverage.status('entity'), 'ready');
+  assert.ok(coverage.output('entity').every(primitive => primitive.attachmentId === 'remaining'));
+  coverage.destroy();
+});
+
+test('hiding or removing a camera before preparation starts leaves no output', async () => {
+  for (const action of ['hide', 'remove'] as const) {
+    let calls = 0;
+    const { coverage } = owner(controlledAdapter(), {
+      height: () => null,
+      prepare: async () => { calls++; },
+    });
+    updateCameraOnly(coverage, input());
+    if (action === 'hide') updateCameraOnly(coverage, input({ configuration: {
+      ...configuration,
+      entityVisibility: { ...configuration.entityVisibility, footprints: false },
+    } }));
+    else coverage.remove('entity');
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(calls, 0, `${action} started obsolete preparation`);
+    assert.deepEqual(coverage.output('entity'), []);
+    coverage.destroy();
+  }
+});
+
+for (const action of ['hide', 'retry', 'reset', 'destroy'] as const)
+  test(`${action} keeps obsolete preparation from restoring camera output`, async () => {
+    let missing = false;
+    const pending: ReturnType<typeof deferred>[] = [];
+    const adapter = controlledAdapter();
+    const { coverage, elevation } = owner(adapter, {
+      height: () => missing ? null : 0,
+      prepare: () => { const work = deferred(); pending.push(work); return work.promise; },
+    });
+    updateCameraOnly(coverage, input());
+    const original = latestRequest(adapter);
+    adapter.complete(original);
+    const displayed = coverage.output('entity');
+    missing = true;
+    updateCameraOnly(coverage, input({ origin: [.02, 0, 100] }));
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(pending.length, 1);
+    if (action === 'hide') updateCameraOnly(coverage, input({ configuration: {
+      ...configuration,
+      entityVisibility: { ...configuration.entityVisibility, footprints: false },
+    } }));
+    else if (action === 'retry') { elevation.retry(); coverage.retry(); coverage.flush(); }
+    else if (action === 'reset') { elevation.reset(configuration.elevation); coverage.retry(); coverage.flush(); }
+    else { coverage.destroy(); elevation.destroy(); }
+    const expected = action === 'hide' || action === 'destroy' ? [] : displayed;
+    assert.deepEqual(coverage.output('entity'), expected);
+    pending[0]!.resolve();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.deepEqual(coverage.output('entity'), expected, 'Obsolete completion restored camera output');
+    assert.equal(adapter.complete(original), false, 'Obsolete GPU work regained publication rights');
+    coverage.destroy();
+    elevation.destroy();
+  });
+
+for (const available of [true, false]) test(`cached terrain waits for placement preparation that ${available ? 'resolves' : 'remains missing'}`, async () => {
+  let missing = false;
+  let prepareCalls = 0;
+  const preparation = deferred();
+  const adapter = controlledAdapter();
+  const { coverage } = owner(adapter, {
+    height: () => missing ? null : 0,
+    prepare: async () => { prepareCalls++; await preparation.promise; },
+  });
+  update(coverage, input());
+  const initial = latestRequest(adapter);
+  adapter.complete(initial);
+  const previous = coverage.output('entity');
+  await new Promise<void>(resolve => setImmediate(resolve));
+  missing = true;
+  const unresolved = input({ origin: [.00001, 0, 0], placement: 'elevation-unavailable' });
+  assert.equal(update(coverage, unresolved).coverage, 'loading');
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(prepareCalls, 1, 'A cached camera patch must leave the new center to placement preparation');
+  assert.ok(adapter.values().every(value => value.origin[2] === 100), 'Unknown placement must not produce a zero-altitude request');
+  assert.deepEqual(coverage.output('entity'), previous);
+  missing = !available;
+  preparation.resolve();
+  await new Promise<void>(resolve => setImmediate(resolve));
+  if (available) {
+    update(coverage, input({ origin: [.00001, 0, 100] }));
+    const current = latestRequest(adapter);
+    assert.equal(current.origin[2], 100);
+    assert.equal(adapter.complete(current), true);
+    assert.equal(coverage.status('entity'), 'ready');
+  } else {
+    assert.equal(update(coverage, unresolved).coverage, 'unavailable');
+    assert.deepEqual(coverage.output('entity'), []);
+    assert.deepEqual(adapter.values(), []);
+    assert.equal(adapter.complete(initial), false);
+  }
+  coverage.destroy();
+});
+
+test('a settled missing camera range clears only its output while another range is pending', async () => {
+  let missing = false;
+  const pending: ReturnType<typeof deferred>[] = [];
+  const adapter = controlledAdapter();
+  const { coverage } = owner(adapter, {
+    height: () => missing ? null : 0,
+    prepare: () => { const work = deferred(); pending.push(work); return work.promise; },
+  });
+  const cameras = [camera('near'), { ...camera('far'), range: 600 }];
+  update(coverage, input({ cameras }));
+  const near = latestRequest(adapter, 'entity', 'near');
+  const far = latestRequest(adapter, 'entity', 'far');
+  adapter.complete(near); adapter.complete(far);
+  await Promise.resolve();
+  missing = true;
+  const moved = input({ cameras, origin: [.02, 0, 100] });
+  coverage.requestAreas('entity', [.02, 0], [cameras[0]!], true);
+  await Promise.resolve();
+  update(coverage, moved);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(pending.length, 2);
+  pending[0]!.resolve();
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(update(coverage, moved).coverage, 'unavailable');
+  assert.deepEqual(coverage.output('entity'), far.geometry, 'Only the still-pending camera retains its display');
+  assert.equal(adapter.complete(near), false, 'A settled missing range must not regain old coverage');
+  coverage.destroy();
+  pending[1]!.resolve();
+});
+
+const appearanceChanges: Record<string, Partial<CameraAttachment>> = {
+  color: { color: '#0000ff' },
+  volume: { volumeOpacity: .8 },
+  wireframe: { wireframe: false },
+  width: { wireframeWidth: 8 },
+  unchanged: {},
+};
+for (const [name, appearance] of Object.entries(appearanceChanges)) test(`pending replacement terrain checks current appearance: ${name}`, async () => {
+  const changedAppearance = name !== 'unchanged';
+  let missing = false;
+  const preparation = deferred();
+  const adapter = controlledAdapter();
+  const { coverage } = owner(adapter, {
+    height: () => missing ? null : 0,
+    prepare: () => preparation.promise,
+  });
+  const red = { ...camera(), color: '#ff0000' };
+  update(coverage, input({ cameras: [red] }));
+  const initial = latestRequest(adapter);
+  adapter.complete(initial);
+  update(coverage, input({ cameras: [red], origin: [.00001, 0, 100] }));
+  const intermediate = latestRequest(adapter);
+  missing = true;
+  const latest = input({ cameras: [{ ...red, ...appearance }], origin: [.02, 0, 100] });
+  assert.equal(update(coverage, latest).coverage, 'loading');
+  assert.equal(adapter.complete(intermediate), !changedAppearance);
+  assert.deepEqual(coverage.output('entity'), changedAppearance ? initial.geometry : intermediate.geometry);
+  assert.equal(coverage.status('entity'), 'loading');
+  coverage.destroy();
+  preparation.resolve();
 });
 
 test('a failed required tile clears only its camera while another region remains pending', () => {
@@ -556,149 +776,115 @@ test('camera computation failure clears obsolete output and retry can recover', 
   coverage.destroy();
 });
 
-test('preparation covers sampled patch and uses bounded date-line coordinates', async () => {
-  let positions: readonly [number, number][] = [];
-  const { coverage } = owner(controlledAdapter(), {
-    height: () => null,
-    prepare: async values => { positions = values; },
+
+for (const center of [6, 179.999]) test(`camera completes from exactly prepared coverage at ${center},46`, async () => {
+  let bounds: [number, number, number, number] | undefined;
+  const unwrapped = (lng: number) => lng + Math.round((center - lng) / 360) * 360;
+  const adapter = controlledAdapter();
+  const { coverage, elevation } = owner(adapter, {
+    height: (lng, lat) => {
+      assert.ok(lng >= -180 && lng < 180, `Sampler received ${lng}`);
+      const x = unwrapped(lng);
+      return bounds && x >= bounds[0] && x <= bounds[2] && lat >= bounds[1] && lat <= bounds[3] ? 0 : null;
+    },
+    prepare: async positions => {
+      assert.ok(positions.every(([lng]) => lng >= -180 && lng < 180));
+      const xs = positions.map(([lng]) => unwrapped(lng)), ys = positions.map(([, lat]) => lat);
+      bounds = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+    },
   });
-  update(coverage, input({ origin: [179.999, 46, 100], cameras: [{ ...camera(), range: 50_000 }] }));
-  await new Promise<void>(resolve => setImmediate(resolve));
-  assert.ok(positions.length);
-  assert.ok(positions.every(([lng]) => lng >= -180 && lng < 180));
-  const south = Math.min(...positions.map(([, lat]) => lat));
-  const north = Math.max(...positions.map(([, lat]) => lat));
-  const sampled: number[] = [];
-  cameraTerrain(179.999, 46, 50_000, (_lng, lat) => { sampled.push(lat); return 0; });
-  assert.ok(sampled.every(lat => lat >= south && lat <= north));
-  coverage.destroy();
+  try {
+    const value = input({ origin: [center, 46, 100], cameras: [{ ...camera(), range: 50_000 }] });
+    assert.equal(update(coverage, value).coverage, 'loading');
+    await new Promise<void>(resolve => setImmediate(resolve));
+    update(coverage, value);
+    assert.equal(adapter.complete(latestRequest(adapter)), true);
+    assert.equal(coverage.status('entity'), 'ready');
+  } finally { coverage.destroy(); elevation.destroy(); }
 });
 
-test('a batch submits the full camera collection once and still publishes cameras independently', () => {
+test('switching to a plain camera during unresolved placement discards terrain work', () => {
   const adapter = controlledAdapter();
   const { coverage } = owner(adapter);
-  const inputs = Array.from({ length: 100 }, (_, index) => input({
-    entityId: `entity-${index}`,
-    cameras: [{ ...camera(), range: 10, wireframe: false, volumeOpacity: 0 }],
-  }));
-  for (const value of inputs) coverage.update(value);
-  coverage.flush();
-  adapter.history.length = 0;
-
-  for (const value of inputs) coverage.update({ ...value, origin: [0, 0, 101] });
-  coverage.flush();
-  assert.equal(adapter.history.length, 1, 'A scene batch must synchronize the adapter once');
-  assert.equal(adapter.history.reduce((total, values) => total + values.length, 0), 100);
-  const first = latestRequest(adapter, 'entity-0');
-  assert.equal(adapter.complete(first), true);
-  assert.equal(coverage.status('entity-0'), 'ready');
-  assert.equal(coverage.status('entity-1'), 'loading');
-
-  coverage.flush();
-  assert.equal(adapter.history.length, 1, 'An idle flush must not resubmit cameras');
-  for (const value of inputs) coverage.remove(value.entityId);
-  coverage.flush();
-  assert.deepEqual(adapter.values(), [], 'The removal batch must release every camera');
-  coverage.destroy();
-});
-
-for (const available of [true, false]) test(`cached terrain waits for placement preparation that ${available ? 'resolves' : 'remains missing'}`, async () => {
-  let missing = false;
-  let preparations = 0;
-  const preparation = deferred();
-  const adapter = controlledAdapter();
-  const { coverage } = owner(adapter, {
-    height: () => missing ? null : 0,
-    prepare: async () => { preparations++; await preparation.promise; },
-  });
   update(coverage, input());
-  const initial = latestRequest(adapter);
-  adapter.complete(initial);
-  const previous = coverage.output('entity');
-  missing = true;
-  const unresolved = input({ origin: [.00001, 0, 0], placement: 'elevation-unavailable', elevationUnavailable: true });
-  assert.equal(update(coverage, unresolved).coverage, 'loading');
-  await Promise.resolve();
-  assert.equal(preparations, 1, 'Cached terrain must not bypass missing placement preparation');
-  assert.ok(adapter.values().every(value => value.origin[2] === 100), 'Unknown placement must not produce a zero-altitude request');
-  assert.deepEqual(coverage.output('entity'), previous);
-  missing = !available;
-  preparation.resolve();
-  await new Promise<void>(resolve => setImmediate(resolve));
-  if (available) {
-    update(coverage, input({ origin: [.00001, 0, 100] }));
-    const current = latestRequest(adapter);
-    assert.equal(current.origin[2], 100);
-    assert.equal(adapter.complete(current), true);
-    assert.equal(coverage.status('entity'), 'ready');
-    missing = true;
-    assert.equal(update(coverage, { ...unresolved, elevationPreparing: true, elevationUnavailable: false }).coverage, 'loading');
-    assert.deepEqual(coverage.output('entity'), current.geometry, 'A previous successful range preparation must not mark new shared placement work unavailable');
-  } else {
-    assert.equal(update(coverage, unresolved).coverage, 'unavailable');
-    assert.deepEqual(coverage.output('entity'), []);
-    assert.deepEqual(adapter.values(), []);
-    assert.equal(adapter.complete(initial), false);
-  }
-  coverage.destroy();
-});
+  const displayed = latestRequest(adapter);
+  assert.equal(adapter.complete(displayed), true);
 
-test('a settled missing camera range clears only its output while another range is pending', async () => {
-  let missing = false;
-  const pending: ReturnType<typeof deferred>[] = [];
-  const adapter = controlledAdapter();
-  const { coverage } = owner(adapter, {
-    height: () => missing ? null : 0,
-    prepare: () => { const work = deferred(); pending.push(work); return work.promise; },
+  const moved = input({ origin: [.001, 0, 100] });
+  assert.equal(update(coverage, moved).coverage, 'loading');
+  const inFlight = latestRequest(adapter);
+  const plain = input({
+    origin: [.001, 0, 0],
+    placement: 'elevation-unavailable',
+    cameras: [{ ...camera(), terrainVisibility: false }],
   });
-  const cameras = [camera('near'), { ...camera('far'), range: 600 }];
-  update(coverage, input({ cameras }));
-  const near = latestRequest(adapter, 'entity', 'near');
-  const far = latestRequest(adapter, 'entity', 'far');
-  adapter.complete(near); adapter.complete(far);
-  missing = true;
-  const moved = input({ cameras, origin: [.02, 0, 100] });
-  update(coverage, moved);
-  await Promise.resolve();
-  assert.equal(pending.length, 2);
-  pending[0]!.resolve();
-  await new Promise<void>(resolve => setImmediate(resolve));
-  assert.equal(update(coverage, moved).coverage, 'unavailable');
-  assert.deepEqual(coverage.output('entity'), far.geometry, 'Only the still-pending camera retains its display');
-  assert.equal(adapter.complete(near), false, 'A settled missing range must not regain old coverage');
-  assert.equal(coverage.isPreparing('entity'), true);
+  update(coverage, plain);
+
+  assert.deepEqual(adapter.values(), [], 'A plain camera must not submit the old terrain request');
+  assert.deepEqual(coverage.output('entity'), [], 'Terrain output must not remain on the plain camera');
+  assert.equal(adapter.complete(inFlight), false, 'Late terrain completion must be rejected');
+  assert.deepEqual(coverage.output('entity'), []);
   coverage.destroy();
-  pending[1]!.resolve();
 });
 
-const appearanceChanges: Record<string, Partial<CameraAttachment>> = {
-  color: { color: '#0000ff' },
-  volume: { volumeOpacity: .8 },
-  wireframe: { wireframe: false },
-  width: { wireframeWidth: 8 },
-  unchanged: {},
-};
-for (const [name, appearance] of Object.entries(appearanceChanges)) test(`pending replacement terrain checks current appearance: ${name}`, async () => {
-  const changedAppearance = name !== 'unchanged';
-  let missing = false;
-  const preparation = deferred();
+test('invalidation restamps an in-flight request while placement is unresolved', () => {
   const adapter = controlledAdapter();
+  const preparation = deferred();
   const { coverage } = owner(adapter, {
-    height: () => missing ? null : 0,
+    height: lng => lng > .01 ? null : 0,
     prepare: () => preparation.promise,
   });
-  const red = { ...camera(), color: '#ff0000' };
-  update(coverage, input({ cameras: [red] }));
-  const initial = latestRequest(adapter);
-  adapter.complete(initial);
-  update(coverage, input({ cameras: [red], origin: [.00001, 0, 100] }));
-  const intermediate = latestRequest(adapter);
-  missing = true;
-  const latest = input({ cameras: [{ ...red, ...appearance }], origin: [.02, 0, 100] });
-  assert.equal(update(coverage, latest).coverage, 'loading');
-  assert.equal(adapter.complete(intermediate), !changedAppearance);
-  assert.deepEqual(coverage.output('entity'), changedAppearance ? initial.geometry : intermediate.geometry);
-  assert.equal(coverage.status('entity'), 'loading');
+  update(coverage, input());
+  const displayed = latestRequest(adapter);
+  assert.equal(adapter.complete(displayed), true);
+  const previous = coverage.output('entity');
+
+  const moved = input({ origin: [.001, 0, 100] });
+  assert.equal(update(coverage, moved).coverage, 'loading');
+  const inFlight = latestRequest(adapter);
+  const waiting = input({
+    origin: [.02, 0, 0],
+    placement: 'elevation-unavailable',
+  });
+  assert.equal(update(coverage, waiting).coverage, 'loading');
+  coverage.invalidate('entity');
+  update(coverage, waiting);
+
+  const restamped = latestRequest(adapter);
+  assert.notEqual(restamped.lifecycle, inFlight.lifecycle);
+  assert.deepEqual(coverage.output('entity'), previous, 'Invalidation retains completed output while waiting');
+  assert.equal(adapter.complete(inFlight), false, 'The old token must not publish');
+  assert.deepEqual(coverage.output('entity'), previous);
+  assert.equal(adapter.complete(restamped), true, 'The restamped in-flight request may publish');
+  assert.deepEqual(coverage.output('entity'), restamped.geometry);
+  assert.equal(coverage.status('entity'), 'loading', 'Placement is still unresolved');
   coverage.destroy();
-  preparation.resolve();
+});
+
+test('moving and changing camera kind while preparation is pending rejects obsolete completion', async () => {
+  const preparation = deferred();
+  let prepared = false;
+  const adapter = controlledAdapter();
+  const { coverage, elevation } = owner(adapter, {
+    height: lng => prepared || lng < .01 ? 0 : null,
+    prepare: async () => { await preparation.promise; prepared = true; },
+  });
+  try {
+    update(coverage, input());
+    const original = latestRequest(adapter);
+    adapter.complete(original);
+    const moved = input({ origin: [.02, 0, 100], cameras: [{ ...camera(), color: '#ff0000' }] });
+    assert.equal(update(coverage, moved).coverage, 'loading');
+    await Promise.resolve();
+    assert.equal(adapter.complete(original), false, 'The old appearance must not publish');
+    const plain = { ...moved, cameras: moved.cameras.map(camera => ({ ...camera, terrainVisibility: false })) };
+    update(coverage, plain);
+    assert.equal(adapter.complete(original), false);
+    preparation.resolve();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    update(coverage, plain);
+    assert.equal(adapter.values().length, 0, 'Late preparation must not submit the old terrain camera');
+    assert.ok(coverage.output('entity').length > 0, 'The current plain camera should render');
+    assert.equal(adapter.complete(original), false);
+  } finally { coverage.destroy(); elevation.destroy(); }
 });

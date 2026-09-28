@@ -1,5 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { Elevation } from '../src/elevation';
+import { SensorCameraCoverage } from '../src/sensor-camera-coverage';
+import type { SensorCameraInput } from '../src/sensor-camera-coverage';
+import type { Map as GLMap } from 'maplibre-gl';
+import type { GpuCamera } from '../src/gpu-cameras';
 import { RasterElevationSampler } from '../src/elevation-sampler';
 import { cameraTerrain, cameraTerrainPreparationBounds } from '../src/gpu-camera-terrain';
 
@@ -24,7 +29,7 @@ async function withTiles(run: (requests: string[]) => Promise<void>, tileJSON?: 
   Object.defineProperty(globalThis, 'OffscreenCanvas', {
     configurable: true,
     value: class {
-      getContext() { return { drawImage() {}, getImageData() { return { data: imagePixels }; } }; }
+      getContext() { return { fillStyle: '', fillRect() {}, drawImage() {}, getImageData() { return { data: imagePixels }; } }; }
     },
   });
   try { await run(requests); }
@@ -172,5 +177,189 @@ for (const fixedZoom of [true, false]) test(`concurrent camera patches converge 
       assert.ok(patches.every(patch => patch.ready));
       assert.equal(requests.length, completed, 'Completed patches survive source tile eviction');
     } finally { sampler.destroy(); }
+  });
+});
+
+test('elevation notifications preserve partial progress for concurrent camera owners', async () => {
+  await withTiles(async requests => {
+    const provider = { tiles: ['https://tiles.test/{z}/{x}/{y}.png'], encoding: 'terrarium' as const, minzoom: 12, maxzoom: 12 };
+    const elevation = new Elevation({ provider, changed: () => {}, diagnostic: cause => assert.fail(String(cause)) });
+    let submitted: readonly GpuCamera[] = [];
+    let complete: (camera: GpuCamera, publish: () => void) => boolean = () => false;
+    const coverage = new SensorCameraCoverage({
+      map: {} as GLMap, elevation, rendererDiagnostic: cause => assert.fail(String(cause)), changed: () => {},
+      adapter: (_map, completed) => {
+        complete = completed;
+        return { set: values => { submitted = values; }, attach() {}, retry() {}, destroy() {}, pick: () => [] };
+      },
+    });
+    const inputs: SensorCameraInput[] = [6, 16].map((lng, i) => ({
+      entityId: String(i), origin: [lng, 46, 100], ground: 0, placement: 'airborne',
+      cameras: [{ id: 'camera', type: 'camera', bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 50_000, terrainVisibility: true }],
+      configuration: { basemap: { version: 8, sources: {}, layers: [] }, projection: 'flat', terrain: false,
+        hillshade: false, hillshadeOptions: {}, exaggeration: 1, elevation: provider,
+        entityVisibility: { footprints: true, zones: true, groundLines: true } },
+    }));
+    try {
+      for (let attempt = 0; attempt < 20 && submitted.length < 2; attempt++) {
+        for (const input of inputs) coverage.update(input);
+        coverage.flush();
+        await new Promise<void>(resolve => setImmediate(resolve));
+      }
+      assert.equal(submitted.length, 2, 'Both camera owners must reach GPU submission');
+      for (const camera of submitted) assert.equal(complete(camera, () => {}), true);
+      assert.ok(inputs.every(input => coverage.status(input.entityId) === 'ready'));
+      assert.ok(requests.length <= new Set(requests).size * 3, 'Completed sample work must bound downloads');
+    } finally { coverage.destroy(); elevation.destroy(); }
+  });
+});
+
+test('raster readiness is local to failed tiles and resets on retry', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('tile failed'); };
+  let reportFailure: (cause: unknown) => void = () => {};
+  const failure = new Promise<unknown>(resolve => { reportFailure = resolve; });
+  const sampler = new RasterElevationSampler(
+    { tiles: ['https://example.test/{z}/{x}/{y}.png'], maxzoom: 1 },
+    () => {},
+    reportFailure,
+  );
+  try {
+    assert.equal(sampler.sample(-90, -1), null);
+    await Promise.resolve();
+    sampler.sample(-90, -1);
+    assert.match(String(await failure), /tile failed/);
+    assert.equal(sampler.readiness([-90, -1], 1000), 'unavailable');
+    assert.equal(sampler.readiness([90, -1], 1000), 'loading');
+    assert.equal(sampler.readiness([179, -1], 300_000), 'unavailable');
+    assert.equal(sampler.readiness([90, 86], 0), 'unavailable');
+    sampler.retry();
+    assert.equal(sampler.readiness([-90, -1], 1000), 'loading');
+  } finally {
+    sampler.destroy();
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('raster source failure makes every area unavailable', async () => {
+  let reportFailure: (cause: unknown) => void = () => {};
+  const failure = new Promise<unknown>(resolve => { reportFailure = resolve; });
+  const sampler = new RasterElevationSampler({ tiles: [] }, () => {}, reportFailure);
+  try {
+    assert.equal(sampler.sample(0, 0), null);
+    assert.match(String(await failure), /Elevation source needs tiles/);
+    assert.equal(sampler.readiness([0, 0], 0), 'unavailable');
+    assert.equal(sampler.readiness([90, 0], 0), 'unavailable');
+  } finally {
+    sampler.destroy();
+  }
+});
+
+test('a no-data pixel does not settle a distant area inside the same tile', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalBitmap = Object.getOwnPropertyDescriptor(globalThis, 'createImageBitmap');
+  const originalCanvas = Object.getOwnPropertyDescriptor(globalThis, 'OffscreenCanvas');
+  const size = 8;
+  const rgba = new Uint8ClampedArray(size * size * 4);
+  for (let index = 0; index < size * size; index++) rgba[index * 4 + 3] = 255;
+  rgba[(1 * size + 1) * 4 + 3] = 0;
+  globalThis.fetch = async () => new Response(new Blob());
+  Object.defineProperty(globalThis, 'createImageBitmap', {
+    configurable: true,
+    value: async () => ({ width: size, height: size, close() {} }),
+  });
+  Object.defineProperty(globalThis, 'OffscreenCanvas', {
+    configurable: true,
+    value: class {
+      getContext() { return { drawImage() {}, getImageData: () => ({ data: rgba }) }; }
+    },
+  });
+  let changes = 0;
+  let tileLoaded!: () => void;
+  const loaded = new Promise<void>(resolve => { tileLoaded = resolve; });
+  const sampler = new RasterElevationSampler(
+    { tiles: ['https://example.test/{z}/{x}/{y}.png'], maxzoom: 0 },
+    () => { if (++changes === 2) tileLoaded(); },
+    cause => { throw cause; },
+  );
+  const coordinate = (pixel: number) => {
+    const fraction = (pixel + 0.5) / size;
+    return [fraction * 360 - 180,
+      Math.atan(Math.sinh(Math.PI * (1 - 2 * fraction))) * 180 / Math.PI] as const;
+  };
+  try {
+    sampler.sample(0, 0);
+    await Promise.resolve();
+    sampler.sample(0, 0);
+    await loaded;
+    const missing = coordinate(1), distant = coordinate(6);
+    assert.equal(sampler.sample(missing[0], missing[1]), null);
+    assert.equal(sampler.readiness(missing, 0), 'unavailable');
+    assert.notEqual(sampler.sample(distant[0], distant[1]), null);
+    assert.equal(sampler.readiness(distant, 0), 'loading');
+    sampler.retry();
+    assert.equal(sampler.readiness(missing, 0), 'loading');
+  } finally {
+    sampler.destroy();
+    globalThis.fetch = originalFetch;
+    if (originalBitmap) Object.defineProperty(globalThis, 'createImageBitmap', originalBitmap);
+    else Reflect.deleteProperty(globalThis, 'createImageBitmap');
+    if (originalCanvas) Object.defineProperty(globalThis, 'OffscreenCanvas', originalCanvas);
+    else Reflect.deleteProperty(globalThis, 'OffscreenCanvas');
+  }
+});
+
+test('a failed fine tile does not clear retained camera output awaiting coarser terrain', async () => {
+  await withTiles(async () => {
+    const fetchTile = globalThis.fetch;
+    let hold = false;
+    let resume!: () => void;
+    const pending = new Promise<void>(resolve => { resume = resolve; });
+    globalThis.fetch = async (input, init) => {
+      if (String(input).includes('/12/')) throw new Error('Fine placement tile failed');
+      if (hold) await pending;
+      return fetchTile(input, init);
+    };
+    const provider = { tiles: ['https://tiles.test/{z}/{x}/{y}.png'], encoding: 'terrarium' as const };
+    const elevation = new Elevation({ provider, changed: () => {}, diagnostic: () => {} });
+    let submitted: readonly GpuCamera[] = [];
+    let complete: (camera: GpuCamera, publish: () => void) => boolean = () => false;
+    const coverage = new SensorCameraCoverage({
+      map: {} as GLMap, elevation, rendererDiagnostic: cause => assert.fail(String(cause)), changed: () => {},
+      adapter: (_map, completed) => {
+        complete = completed;
+        return { set: values => { submitted = values; }, attach() {}, retry() {}, destroy() {}, pick: () => [] };
+      },
+    });
+    const value: SensorCameraInput = {
+      entityId: 'camera', origin: [6, 46, 100], ground: 0, placement: 'airborne',
+      cameras: [{ id: 'sensor', type: 'camera', bearing: 0, elevation: -45, fovX: 60, fovY: 40,
+        range: 50_000, terrainVisibility: true, volumeOpacity: .3 }],
+      configuration: { basemap: { version: 8, sources: {}, layers: [] }, projection: 'flat', terrain: false,
+        hillshade: false, hillshadeOptions: {}, exaggeration: 1, elevation: provider,
+        entityVisibility: { footprints: true, zones: true, groundLines: true } },
+    };
+    try {
+      for (let attempt = 0; attempt < 20 && !submitted.length; attempt++) {
+        coverage.update(value); coverage.flush();
+        await new Promise<void>(resolve => setImmediate(resolve));
+      }
+      const initial = submitted[0]!;
+      assert.ok(initial);
+      assert.equal(complete(initial, () => {}), true);
+      const displayed = coverage.output('camera');
+      assert.ok(displayed.length);
+      elevation.height(7.2, 46);
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(elevation.failedAt('unregistered', 7.2, 46), true);
+      hold = true;
+      const result = coverage.update({ ...value, origin: [7, 46, 100] });
+      coverage.flush();
+      assert.equal(result.coverage, 'loading');
+      assert.deepEqual(coverage.output('camera'), displayed, 'An unrelated source resolution must not invalidate displayed output');
+    } finally {
+      coverage.destroy(); elevation.destroy(); resume();
+      await new Promise<void>(resolve => setImmediate(resolve));
+    }
   });
 });

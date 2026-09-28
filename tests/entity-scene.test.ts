@@ -16,7 +16,8 @@ const entity = (lng = 0): MapFeature => ({ type: 'Feature', id: 'aircraft', prop
 });
 
 function sceneFixture(prepare: (positions: readonly [number, number][], signal: AbortSignal) => Promise<void>,
-  style: (feature: MapFeature) => FeatureStyle = () => ({})) {
+  style: (feature: MapFeature) => FeatureStyle = () => ({}),
+  sample: (lng: number, lat: number) => number | null = () => 0) {
   const frames = new Map<number, FrameRequestCallback>();
   let nextFrame = 0;
   const originalRequest = globalThis.requestAnimationFrame;
@@ -29,7 +30,7 @@ function sceneFixture(prepare: (positions: readonly [number, number][], signal: 
   globalThis.cancelAnimationFrame = id => { frames.delete(id); };
   const diagnostics: RidgelineError[] = [];
   const map = { getPixelRatio: () => 1, getLayer: () => undefined, getSource: () => undefined, off: () => {} } as unknown as GLMap;
-  const scene = new EntityScene({ map, configuration: () => configuration, sampler: { sample: () => 0, prepare },
+  const scene = new EntityScene({ map, configuration: () => configuration, sampler: { sample, prepare },
     style, diagnostic: error => diagnostics.push(error), changed: () => {} });
   return {
     scene, diagnostics,
@@ -49,12 +50,13 @@ test('synchronous and rejected preparation errors are reported without aborting 
     () => { throw new Error('Immediate failure'); },
     async () => { throw new Error('Rejected preparation'); },
   ]) {
-    const f = sceneFixture(prepare);
+    const f = sceneFixture(prepare, undefined, () => null);
     try {
       assert.doesNotThrow(() => f.scene.set([entity()]));
+      f.frame();
       await new Promise(resolve => setTimeout(resolve, 0));
       f.frame();
-      assert.equal(f.scene.getState('aircraft')?.placement, 'airborne');
+      assert.equal(f.scene.getState('aircraft')?.placement, 'elevation-unavailable');
       assert.equal(f.diagnostics[0]?.code, 'ELEVATION_UNAVAILABLE');
       assert.equal(f.diagnostics[0]?.context.operation, 'entities');
     } finally { f.destroy(); }
@@ -63,10 +65,11 @@ test('synchronous and rejected preparation errors are reported without aborting 
 
 test('a preparation callback can remove its entity without reviving geometry', async () => {
   let scene: EntityScene<Record<string, unknown>>;
-  const f = sceneFixture(async () => { scene.set([], ['aircraft']); });
+  const f = sceneFixture(async () => { scene.set([], ['aircraft']); }, undefined, () => null);
   scene = f.scene;
   try {
     scene.set([entity()]);
+    f.frame();
     await new Promise(resolve => setTimeout(resolve, 0));
     f.frame();
     assert.equal(scene.getState('aircraft'), undefined);
@@ -102,4 +105,33 @@ test('selection rebuilds only entities whose highlight changes', () => {
     f.frame();
     assert.equal(styles, 3);
   } finally { f.destroy(); }
+});
+
+
+test('unchanged unusable cameras do not restart released terrain preparation', async () => {
+  for (const meters of [-1, 0, 0.005]) {
+    let preparations = 0;
+    const f = sceneFixture(async () => { preparations++; }, undefined,
+      (lng, lat) => lng === 0 && lat === 0 ? 0 : null);
+    const camera: MapFeature = { ...entity(), entity: {
+      altitude: { meters, reference: 'ground' },
+      attachments: [{ id: 'view', type: 'camera', terrainVisibility: true, range: 100, bearing: 0, elevation: -45, fovX: 60, fovY: 40 }],
+    } };
+    try {
+      f.scene.set([camera]);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      f.frame();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      f.frame();
+      const before = preparations;
+      f.scene.set([camera]);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      f.frame();
+      assert.equal(preparations, before, `altitude ${meters} restarted inactive camera terrain`);
+      f.scene.set([{ ...camera, entity: { ...camera.entity, altitude: { meters: 100, reference: 'ground' } } }]);
+      f.frame();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      assert.ok(preparations > before, 'A newly usable camera must still prepare terrain');
+    } finally { f.destroy(); }
+  }
 });

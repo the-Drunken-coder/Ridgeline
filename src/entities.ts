@@ -2,14 +2,11 @@ import type { Map as GLMap } from 'maplibre-gl';
 import { EntityLayer } from './entity-layer';
 import { EntityGround } from './entity-ground';
 import type { Primitive } from './entity-layer';
-import { localFrame } from './entity-geometry';
 import { computeEntity } from './entity-computation';
 import type { EntityComputationResult } from './entity-computation';
-import type { HeightAt } from './entity-geometry';
-import { RasterElevationSampler } from './elevation-sampler';
+import { Elevation, entityIdForAreaKey, placementAreaKey } from './elevation';
 import { SensorCameraCoverage } from './sensor-camera-coverage';
 import { RidgelineError } from './errors';
-import { wrapLongitude } from './longitude';
 import type {
   ElevationSampler,
   CameraAttachment,
@@ -27,6 +24,8 @@ export const DEFAULT_ENTITY_VISIBILITY = {
 };
 const combineCoverage = (a: EntityState['coverage'], b: EntityState['coverage']): EntityState['coverage'] =>
   a === 'unavailable' || b === 'unavailable' ? 'unavailable' : a === 'loading' || b === 'loading' ? 'loading' : 'ready';
+const verticalScale = (configuration: MapConfiguration) =>
+  configuration.terrain ? configuration.exaggeration : 1;
 type SceneOptions<P extends Properties> = {
   map: GLMap;
   configuration: () => MapConfiguration;
@@ -49,16 +48,10 @@ export class EntityScene<P extends Properties> {
   private selected = new Set<string>();
   private frame = 0;
   private destroyed = false;
-  private raster: RasterElevationSampler;
-  private customGeneration = new AbortController();
-  private preparing = new Map<string, Promise<void>>();
+  private elevation: Elevation;
   private coverage: SensorCameraCoverage;
-  private footprintsVisible: boolean;
   private diagnosticKeys = new Map<string, string>();
   constructor(private options: SceneOptions<P>) {
-    const sampler = options.sampler;
-    const prepare = sampler?.prepare?.bind(sampler);
-    this.footprintsVisible = options.configuration().entityVisibility.footprints;
     this.groundLayer = new EntityGround(options.map);
     this.layer = new EntityLayer((cause) =>
       options.diagnostic(
@@ -70,26 +63,22 @@ export class EntityScene<P extends Properties> {
         ),
       ),
     );
-    this.raster = this.createSampler();
-    if (!sampler) {
-      this.height.maximum = (west, south, east, north) => this.raster.maximum(west, south, east, north);
-      this.height.forRange = (range, lat) => this.raster.forRange(range, lat);
-      this.height.failedAt = (lng, lat) => this.raster.unavailableAt(lng, lat);
-    }
+    this.elevation = new Elevation({
+      provider: options.configuration().elevation,
+      sampler: options.sampler,
+      diagnostic: options.diagnostic,
+      pixelRatio: options.map.getPixelRatio(),
+      changed: keys => {
+        for (const key of keys) {
+          const id = entityIdForAreaKey(key);
+          if (id && this.features.has(id)) this.dirty.add(id);
+        }
+        if (this.dirty.size) this.schedule();
+      },
+    });
     this.coverage = new SensorCameraCoverage({
       map: options.map,
-      height: this.height,
-      prepare: prepare
-        ? (positions, signal) => prepare(positions.map(([lng, lat]) => [wrapLongitude(lng), lat]), signal)
-        : undefined,
-      elevationUnavailable: () => this.raster.unavailable(),
-      pollTerrain: !options.sampler,
-      diagnostic: cause => options.diagnostic(new RidgelineError(
-        'ELEVATION_UNAVAILABLE',
-        'Consumer elevation source could not prepare sensor terrain.',
-        { operation: 'entities', recoverable: true },
-        cause,
-      )),
+      elevation: this.elevation,
       rendererDiagnostic: cause => options.diagnostic(new RidgelineError(
         'UPDATE_FAILED',
         'GPU camera visibility is unavailable.',
@@ -110,29 +99,10 @@ export class EntityScene<P extends Properties> {
       },
     });
   }
-  private createSampler() {
-    return new RasterElevationSampler(
-      this.options.configuration().elevation,
-      () => {
-        this.coverage?.elevationChanged();
-        this.invalidate();
-      },
-      (cause) =>
-        this.options.diagnostic(
-          new RidgelineError(
-            'ELEVATION_UNAVAILABLE',
-            'Raw elevation data is unavailable for entity placement or sensor coverage.',
-            { operation: 'entities', recoverable: true },
-            cause,
-          ),
-        ),
-      this.options.map.getPixelRatio(),
-    );
-  }
   set(features: readonly MapFeature<P>[], removed: readonly string[] = []) {
     for (const id of removed) {
-      this.preparing.delete(id);
       this.coverage.remove(id);
+      this.elevation.release(placementAreaKey(id));
       this.features.delete(id);
       this.states.delete(id);
       this.nonCameraCoverage.delete(id);
@@ -146,8 +116,8 @@ export class EntityScene<P extends Properties> {
         this.features.set(feature.id, feature);
         this.dirty.add(feature.id);
       } else {
-        this.preparing.delete(feature.id);
         this.coverage.remove(feature.id);
+        this.elevation.release(placementAreaKey(feature.id));
         this.features.delete(feature.id);
         this.states.delete(feature.id);
         this.nonCameraCoverage.delete(feature.id);
@@ -156,95 +126,43 @@ export class EntityScene<P extends Properties> {
         this.diagnosticKeys.delete(feature.id);
       }
     }
-    this.schedule();
+    const areas: { key: string; center: [number, number]; radiusMeters: number }[] = [];
     const footprintsVisible = this.options.configuration().entityVisibility.footprints;
-    const sharedPreparation = features.filter(feature => {
-      const attachments = feature.entity?.attachments ?? [];
-      const hasTerrainCamera = attachments.some(attachment => attachment.type === 'camera' && attachment.terrainVisibility);
-      const hasSharedAttachment = attachments.some(attachment => attachment.type !== 'camera');
-      // Terrain-visibility cameras own their wider patch preparation. Plain
-      // cameras still need the shared center sample for entity placement;
-      // non-camera attachments also need their own terrain samples. Ground
-      // entities and hidden terrain cameras still need a placement sample.
-      const needsPlacement = feature.entity && !feature.entity.altitude;
-      return feature.entity && (needsPlacement || !hasTerrainCamera || hasSharedAttachment || !footprintsVisible);
-    });
-    if (this.options.sampler?.prepare && sharedPreparation.length) {
-      const positions: [number, number][] = [];
-      for (const f of sharedPreparation)
-        if (f.entity && f.geometry.type === 'Point') {
-          const [lng, lat] = f.geometry.coordinates;
-          if (lng === undefined || lat === undefined) continue;
-          positions.push([lng, lat]);
-          const local = localFrame([lng, lat, 0]);
-          for (const a of f.entity.attachments ?? []) {
-            if (a.type === 'camera') continue;
-            const range = a.type === 'polygon'
-              ? Math.max(...a.vertices.map((p) => Math.hypot(...p)))
-              : a.radius;
-            for (const x of [-range, 0, range])
-              for (const y of [-range, 0, range]) {
-                const p = local(x, y, 0);
-                positions.push([p[0], p[1]]);
-              }
-          }
-        }
-      const generation = this.customGeneration;
-      const prepare = this.options.sampler.prepare.bind(this.options.sampler);
-      const preparation = Promise.resolve().then(() => prepare(
-        positions.map(([lng, lat]) => [wrapLongitude(lng), lat]), generation.signal));
-      for (const feature of sharedPreparation)
-        if (feature.entity && this.features.get(feature.id) === feature) this.preparing.set(feature.id, preparation);
-      void preparation
-        .catch((cause) => {
-          if (!generation.signal.aborted)
-            this.options.diagnostic(
-              new RidgelineError(
-                'ELEVATION_UNAVAILABLE',
-                'Consumer elevation source could not prepare entity terrain.',
-                { operation: 'entities', recoverable: true },
-                cause,
-              ),
-            );
-        })
-        .finally(() => {
-          if (generation.signal.aborted) return;
-          for (const [id, pending] of this.preparing) if (pending === preparation) {
-            this.preparing.delete(id);
-          }
-          this.invalidate();
-        });
+    for (const feature of features) {
+      if (!feature.entity || feature.geometry.type !== 'Point') continue;
+      const [lng, lat] = feature.geometry.coordinates;
+      if (lng === undefined || lat === undefined) continue;
+      const center: [number, number] = [lng, lat];
+      const attachments = feature.entity.attachments ?? [];
+      const radiusMeters = attachments.reduce((radius, attachment) => {
+        if (attachment.type === 'camera') return radius;
+        const extent = attachment.type === 'polygon'
+          ? Math.max(...attachment.vertices.map(vertex => Math.hypot(...vertex)))
+          : attachment.radius;
+        return Math.max(radius, extent);
+      }, 0);
+      const previous = this.states.get(feature.id);
+      const cameraCapable = previous === undefined || previous.placement === 'elevation-unavailable' ||
+        (previous.placement === 'airborne' && (previous.altitude ?? 0) > (previous.ground ?? 0) + 0.01);
+      this.coverage.requestAreas(feature.id, center,
+        attachments.filter((attachment): attachment is CameraAttachment => attachment.type === 'camera'),
+        footprintsVisible && Boolean(feature.entity.altitude) && cameraCapable);
+      areas.push({ key: placementAreaKey(feature.id), center, radiusMeters });
     }
+    this.elevation.requestBatch(areas, { deferProbe: true });
+    this.schedule();
   }
   configure(elevationChanged = false) {
-    const footprintsVisible = this.options.configuration().entityVisibility.footprints;
-    const hidingCoverage = this.footprintsVisible && !footprintsVisible;
-    this.footprintsVisible = footprintsVisible;
-    this.coverage.invalidate();
     if (elevationChanged) {
+      this.elevation.reset(this.options.configuration().elevation);
       this.coverage.resetElevation();
-      this.raster.destroy();
-      this.raster = this.createSampler();
-      this.customGeneration.abort();
-      this.customGeneration = new AbortController();
-      this.preparing.clear();
-    }
-    if (this.options.sampler?.prepare && hidingCoverage) {
-      // Hiding coverage cancels camera terrain work. Placement still needs its
-      // center sample, including when coverage is hidden before the first build.
-      this.set([...this.features.values()].filter(feature => {
-        if (this.preparing.has(feature.id) || feature.geometry.type !== 'Point') return false;
-        const [lng, lat] = feature.geometry.coordinates;
-        return lng !== undefined && lat !== undefined && this.height(lng, lat) === null;
-      }));
-    }
+    } else this.coverage.invalidate();
     this.invalidate();
   }
   retry() {
     this.layer.retry();
+    this.elevation.retry();
     this.coverage.retry();
-    this.raster.retry();
-    this.set([...this.features.values()]);
     this.invalidate();
   }
   selection(ids: readonly string[]) {
@@ -271,7 +189,7 @@ export class EntityScene<P extends Properties> {
       visible: true,
       ground: !airborne,
       position: this.positions.get(feature.id),
-      offset: airborne ? (config.terrain ? (altitude - ground) * config.exaggeration : altitude) : 0,
+      offset: airborne ? (config.terrain ? (altitude - ground) * verticalScale(config) : altitude) : 0,
     };
   }
   pickAbove(x: number, y: number, tolerance: number) {
@@ -290,9 +208,7 @@ export class EntityScene<P extends Properties> {
     this.coverage.destroy();
     this.destroyed = true;
     cancelAnimationFrame(this.frame);
-    this.customGeneration.abort();
-    this.preparing.clear();
-    this.raster.destroy();
+    this.elevation.destroy();
     this.features.clear();
     this.geometry.clear();
     this.states.clear();
@@ -306,10 +222,6 @@ export class EntityScene<P extends Properties> {
   private schedule() {
     if (!this.frame && !this.destroyed) this.frame = requestAnimationFrame(() => this.flush());
   }
-  private height: HeightAt = (lng, lat) => {
-    const value = this.options.sampler ? this.options.sampler.sample(wrapLongitude(lng), lat) : this.raster.sample(lng, lat);
-    return value !== null && Number.isFinite(value) ? value : null;
-  };
   private flush() {
     this.frame = 0;
     if (this.destroyed) return;
@@ -337,7 +249,6 @@ export class EntityScene<P extends Properties> {
     if (ids.length) this.options.changed(ids);
   }
   private build(feature: MapFeature<P>) {
-    // A failed style leaves the last complete entity display in place.
     let style: FeatureStyle;
     try { style = this.options.style(feature); }
     catch (cause) {
@@ -346,10 +257,14 @@ export class EntityScene<P extends Properties> {
       return;
     }
     const input = { feature, configuration: this.options.configuration(), style, selected: this.selected.has(feature.id) };
-    const unavailable = (lng: number, lat: number) => this.options.sampler
-      ? !this.preparing.has(feature.id) && !this.coverage.isPreparing(feature.id)
-      : this.raster.unavailableAt(lng, lat);
-    const result = computeEntity(input, this.height, unavailable);
+    const placementKey = placementAreaKey(feature.id);
+    const result = computeEntity(input, this.elevation.sampling(),
+      (lng, lat) => this.elevation.failedAt(placementKey, lng, lat));
+    if (result.state.coverage !== 'ready') {
+      // A ground area can contain unknown samples between its preparation grid points.
+      this.elevation.requirePreparation(placementKey);
+      result.state.coverage = this.elevation.readiness(placementKey);
+    }
     const ground = result.state.ground ?? 0;
     const altitude = result.state.altitude ?? ground;
     const camera = this.coverage.update({
@@ -359,14 +274,9 @@ export class EntityScene<P extends Properties> {
       placement: result.state.placement,
       cameras: feature.entity?.attachments?.filter((attachment): attachment is CameraAttachment => attachment.type === 'camera') ?? [],
       configuration: input.configuration,
-      elevationUnavailable: result.state.placement === 'elevation-unavailable' &&
-        (this.options.sampler ? !this.preparing.has(feature.id) : this.raster.unavailableAt(result.position[0], result.position[1])),
-      elevationPreparing: this.options.sampler ? this.preparing.has(feature.id) : false,
     });
     if (this.destroyed || this.features.get(feature.id) !== feature) return;
-    const placementCoverage = result.state.placement === 'elevation-unavailable' &&
-      this.coverage.isPreparing(feature.id) && result.state.coverage === 'unavailable'
-      ? 'loading' : result.state.coverage;
+    const placementCoverage = result.state.coverage;
     this.nonCameraCoverage.set(feature.id, placementCoverage);
     result.state.coverage = combineCoverage(placementCoverage, camera.coverage);
     result.state.footprintTriangles = camera.footprintTriangles;
@@ -394,7 +304,7 @@ export class EntityScene<P extends Properties> {
   }
   private renderLayers(includeGround = true) {
     const primitives = [...this.geometry.values()].flat().concat(this.coverage.allGeometry());
-    this.layer.set(primitives.filter(p => !p.surface));
+    this.layer.set(primitives.filter(p => !p.surface), verticalScale(this.options.configuration()));
     if (includeGround) this.groundLayer.set(primitives.filter(p => p.surface));
   }
 }

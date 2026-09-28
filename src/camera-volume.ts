@@ -1,8 +1,109 @@
 import { MercatorCoordinate } from 'maplibre-gl';
-import { cameraRay } from './entity-geometry';
+import { cameraFootprint, cameraGroundCornerOffsets, cameraRay, localFrame } from './entity-geometry';
 import type { GeoPoint, Vec3 } from './entity-geometry';
 import type { CameraAttachment } from './types';
 import type { CameraTerrain } from './gpu-camera-terrain';
+import type { Primitive } from './entity-layer';
+import { parseColor } from './color';
+
+export const cameraDefaults = {
+  plainColor: '#288b59',
+  visibleMaskColor: '#1ad96b',
+  blockedMaskColor: '#ff382e',
+  wireframeColor: '#8bab97',
+  fillOpacity: 0.25,
+  blockedOpacity: 0.25,
+  outline: true,
+  outlineWidth: 3,
+  wireframeWidth: 3,
+  outlineAlpha: 0.95,
+} as const;
+
+/** Plain overlays stop downward volume rays at flat ground. All heights remain raw meters. */
+export function plainCameraPrimitives(
+  entityId: string,
+  origin: GeoPoint,
+  ground: number,
+  camera: CameraAttachment,
+): { geometry: Primitive[]; footprintTriangles: number } {
+  const footprint = cameraFootprint(origin, camera, ground);
+  if (!footprint.length) return { geometry: [], footprintTriangles: 0 };
+
+  const rgba = parseColor(camera.color ?? cameraDefaults.plainColor, 1);
+  const geometry: Primitive[] = [];
+  const add = (
+    vertices: GeoPoint[],
+    mode: Primitive['mode'],
+    color: Primitive['color'],
+    surface = false,
+    size?: number,
+  ) => {
+    if (vertices.length) geometry.push({ entityId, attachmentId: camera.id, mode, vertices, color, size, surface });
+  };
+
+  if ((camera.volumeOpacity ?? 0) > 0 || camera.wireframe) {
+    const local = localFrame(origin);
+    const corners = cameraGroundCornerOffsets(origin, camera, ground)
+      .map(([east, north, up]) => local(east, north, up));
+    const faces: GeoPoint[] = [];
+    const rays: GeoPoint[] = [];
+    corners.forEach((a, index) => {
+      const b = corners[(index + 1) % corners.length]!;
+      faces.push(origin, a, b);
+      rays.push(origin, a, a, b);
+    });
+    if ((camera.volumeOpacity ?? 0) > 0)
+      add(faces, 'triangles', [rgba[0], rgba[1], rgba[2], camera.volumeOpacity!]);
+    if (camera.wireframe)
+      add(rays, 'lines', parseColor(cameraDefaults.wireframeColor, 1), false,
+        camera.wireframeWidth ?? cameraDefaults.wireframeWidth);
+  }
+
+  add(footprint, 'polygon', [rgba[0], rgba[1], rgba[2], camera.fillOpacity ?? cameraDefaults.fillOpacity], true);
+  if (camera.outline ?? cameraDefaults.outline)
+    add(
+      footprint.flatMap((point, index) => [point, footprint[(index + 1) % footprint.length]!]),
+      'lines',
+      [rgba[0], rgba[1], rgba[2], cameraDefaults.outlineAlpha],
+      true,
+      camera.outlineWidth ?? cameraDefaults.outlineWidth,
+    );
+  return { geometry, footprintTriangles: 2 };
+}
+
+/** Terrain-visibility volumes keep every ray at full range so terrain depth clips the view. */
+export function terrainCameraPrimitives(
+  entityId: string,
+  origin: GeoPoint,
+  camera: CameraAttachment,
+  volume: CameraVolume,
+  terrain: CameraTerrain,
+): Primitive[] {
+  const faces: GeoPoint[] = [];
+  volume.corners.forEach((a, index) => {
+    const b = volume.corners[(index + 1) % 4]!;
+    faces.push(origin, a, b);
+  });
+  const geometry: Primitive[] = [];
+  if ((camera.volumeOpacity ?? 0) > 0)
+    geometry.push({
+      entityId,
+      attachmentId: camera.id,
+      mode: 'triangles',
+      vertices: faces,
+      color: parseColor(camera.color ?? cameraDefaults.plainColor, camera.volumeOpacity!),
+    });
+  if (camera.wireframe)
+    geometry.push({
+      entityId,
+      attachmentId: camera.id,
+      mode: 'lines',
+      vertices: visibleCameraEdges(origin, volume, terrain),
+      color: parseColor(cameraDefaults.wireframeColor, 1),
+      size: camera.wireframeWidth ?? cameraDefaults.wireframeWidth,
+    });
+  return geometry;
+}
 
 export type Plane = [number, number, number, number];
 export type CameraVolume = { corners: GeoPoint[]; offsets: Vec3[]; cap: Plane };

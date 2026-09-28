@@ -2,6 +2,8 @@ import type { ElevationProvider } from './types';
 import { ElevationBounds } from './elevation-bounds';
 
 type Tile = { size: number; values: Float32Array; bounds: ElevationBounds };
+type MissingPixels = { size: number; stride: number; bits: Uint32Array };
+const EARTH_RADIUS_METERS = 6_371_008.8;
 const MAX_LAT = 85.05112878;
 const WORLD_METERS = 2 * Math.PI * 6_378_137;
 // A 50 km camera patch at zoom 12 and latitude 46 spans about 400 source tiles.
@@ -40,6 +42,7 @@ export class RasterElevationSampler {
   private queued = new Map<string, [number, number, number]>();
   private pending = new Set<string>();
   private failed = new Set<string>();
+  private noData = new Map<string, MissingPixels>();
   private controller = new AbortController();
   private templates: string[] = [];
   private zoom = 12;
@@ -50,7 +53,7 @@ export class RasterElevationSampler {
   private started = false;
   constructor(
     private provider: ElevationProvider,
-    private changed: () => void,
+    private changed: (tileKey?: string) => void,
     private error: (cause: unknown) => void,
     private pixelRatio = globalThis.devicePixelRatio ?? 1,
   ) {}
@@ -60,14 +63,17 @@ export class RasterElevationSampler {
   }
   /** Large patches use coarser source tiles while retaining the fixed analysis mesh. */
   forRange(range: number, lat: number) {
-    const tileBudgetAcross = 10;
-    const zoom = () => Math.max(this.minZoom, Math.min(this.zoom, Math.floor(Math.log2(
-      tileBudgetAcross * WORLD_METERS * Math.cos(lat * Math.PI / 180) / (range * 2.6),
-    ))));
+    const zoom = () => this.rangeZoom(range, lat);
     return Object.assign(
       (lng: number, latitude: number) => this.sampleAt(lng, latitude, zoom()),
       { failedAt: (lng: number, latitude: number) => this.unavailableAt(lng, latitude, zoom()) },
     );
+  }
+  private rangeZoom(range: number, lat: number) {
+    const tileBudgetAcross = 10;
+    return Math.max(this.minZoom, Math.min(this.zoom, Math.floor(Math.log2(
+      tileBudgetAcross * WORLD_METERS * Math.cos(lat * Math.PI / 180) / (range * 2.6),
+    ))));
   }
   private sampleAt(lng: number, lat: number, zoom: number): number | null {
     if (!this.started) {
@@ -98,6 +104,10 @@ export class RasterElevationSampler {
         tile.values[i + 1]! * fx * (1 - fy) +
         tile.values[i + tile.size]! * (1 - fx) * fy +
         tile.values[i + tile.size + 1]! * fx * fy;
+      if (!Number.isFinite(result)) {
+        for (const [px, py] of [[ix, iy], [ix + 1, iy], [ix, iy + 1], [ix + 1, iy + 1]])
+          if (!Number.isFinite(tile.values[py! * tile.size + px!])) this.markNoData(x, y, px!, py!, tile.size, zoom);
+      }
       return Number.isFinite(result) ? result : null;
     }
     const value = (xx: number, yy: number) => {
@@ -107,6 +117,8 @@ export class RasterElevationSampler {
       if (!neighbour || neighbour.size !== tile.size) return NaN;
       const result =
         neighbour.values[((yy + tile.size) % tile.size) * tile.size + ((xx + tile.size) % tile.size)]!;
+      if (!Number.isFinite(result)) this.markNoData(x + dx, y + dy,
+        (xx + tile.size) % tile.size, (yy + tile.size) % tile.size, tile.size, zoom);
       return result;
     };
     const result =
@@ -153,9 +165,6 @@ export class RasterElevationSampler {
     }
     return tile;
   }
-  unavailable() {
-    return this.failed.size > 0;
-  }
   unavailableAt(lng: number, lat: number, zoom = this.zoom) {
     if (this.failed.has('source') || Math.abs(lat) > MAX_LAT) return true;
     const p = tilePosition(lng, lat, zoom);
@@ -172,8 +181,98 @@ export class RasterElevationSampler {
     }
     return false;
   }
+  private markNoData(x: number, y: number, px: number, py: number, size: number, zoom = this.zoom) {
+    const n = 2 ** zoom;
+    if (y < 0 || y >= n) return;
+    const key = `${zoom}/${((x % n) + n) % n}/${y}`;
+    let missing = this.noData.get(key);
+    if (!missing) {
+      const stride = Math.ceil(size / 32);
+      missing = { size, stride, bits: new Uint32Array(size * stride) };
+      this.noData.set(key, missing);
+    }
+    missing.bits[py * missing.stride + (px >> 5)]! |= 1 << (px & 31);
+  }
+  private areaBounds(center: readonly [number, number], radiusMeters: number, zoom = this.zoom, geographicBounds?: readonly [number, number, number, number]) {
+    const [lng, lat] = center;
+    const angularRadius = radiusMeters / EARTH_RADIUS_METERS;
+    const south = geographicBounds?.[1] ?? lat - angularRadius * 180 / Math.PI;
+    const north = geographicBounds?.[3] ?? lat + angularRadius * 180 / Math.PI;
+    if (south < -MAX_LAT || north > MAX_LAT) return null;
+    const longitudeRadius = Math.asin(Math.min(1, Math.sin(angularRadius) / Math.cos(lat * Math.PI / 180))) * 180 / Math.PI;
+    const n = 2 ** zoom;
+    const westX = ((geographicBounds?.[0] ?? lng - longitudeRadius) + 180) / 360 * n;
+    const eastX = ((geographicBounds?.[2] ?? lng + longitudeRadius) + 180) / 360 * n;
+    const northY = tilePosition(lng, north, zoom).y;
+    const southY = tilePosition(lng, south, zoom).y;
+    const tileSize = this.tiles.values().next().value?.size ?? this.provider.tileSize ?? 256;
+    const border = 0.5 / tileSize;
+    return {
+      westX, eastX, northY, southY, n,
+      firstX: Math.floor(westX - border), lastX: Math.floor(eastX + border),
+      firstY: Math.floor(northY - border), lastY: Math.floor(southY + border),
+    };
+  }
+  /** Whether a loaded tile could affect this requested area. */
+  affects(center: readonly [number, number], radiusMeters: number, tileKey: string, geographicBounds?: readonly [number, number, number, number]) {
+    const [zoom, x, y] = tileKey.split('/').map(Number);
+    if (zoom === undefined || x === undefined || y === undefined) return false;
+    const bounds = this.areaBounds(center, radiusMeters, zoom, geographicBounds);
+    if (!bounds || y < bounds.firstY || y > bounds.lastY) return false;
+    const distance = ((x - bounds.firstX) % bounds.n + bounds.n) % bounds.n;
+    return bounds.lastX - bounds.firstX >= bounds.n || distance <= bounds.lastX - bounds.firstX;
+  }
+  private missingInBounds(missing: MissingPixels, x: number, y: number, bounds: NonNullable<ReturnType<RasterElevationSampler['areaBounds']>>) {
+    const { size, stride, bits } = missing;
+    const x0 = Math.max(0, Math.floor((bounds.westX - x) * size - 0.5));
+    const x1 = Math.min(size - 1, Math.floor((bounds.eastX - x) * size - 0.5) + 1);
+    const y0 = Math.max(0, Math.floor((bounds.northY - y) * size - 0.5));
+    const y1 = Math.min(size - 1, Math.floor((bounds.southY - y) * size - 0.5) + 1);
+    if (x1 < x0 || y1 < y0) return false;
+    const firstWord = x0 >> 5, lastWord = x1 >> 5;
+    for (let py = y0; py <= y1; py++) for (let word = firstWord; word <= lastWord; word++) {
+      const left = word === firstWord ? -1 << (x0 & 31) : -1;
+      const right = word === lastWord ? -1 >>> (31 - (x1 & 31)) : -1;
+      if ((bits[py * stride + word]! & left & right) !== 0) return true;
+    }
+    return false;
+  }
+  /** Unknown samples settle only when this area needs failed data. */
+  readiness(center: readonly [number, number], radiusMeters: number, geographicBounds?: readonly [number, number, number, number], sampleRange?: number): 'loading' | 'unavailable' {
+    if (this.failed.has('source')) return 'unavailable';
+    const zoom = sampleRange === undefined ? this.zoom : this.rangeZoom(sampleRange, center[1]);
+    const bounds = this.areaBounds(center, radiusMeters, zoom, geographicBounds);
+    if (!bounds) return 'unavailable';
+    if (!this.ready) return 'loading';
+    const { n, firstX, lastX, firstY, lastY } = bounds;
+    if (lastX - firstX >= n) {
+      for (const key of this.failed) {
+        const [tileZoom, , y] = key.split('/').map(Number);
+        if (tileZoom !== zoom || y === undefined) continue;
+        if (Number.isInteger(y) && y >= firstY && y <= lastY) return 'unavailable';
+      }
+      for (const [key, missing] of this.noData) {
+        const [tileZoom, canonicalX, y] = key.split('/').map(Number);
+        if (tileZoom !== zoom) continue;
+        if (canonicalX === undefined || y === undefined || y < firstY || y > lastY) continue;
+        const x = firstX + ((canonicalX - firstX) % n + n) % n;
+        if (this.missingInBounds(missing, x, y, bounds)) return 'unavailable';
+      }
+      return 'loading';
+    }
+    // Readiness examines only tiles intersecting this request, regardless of
+    // how many failures have accumulated elsewhere in the world.
+    for (let y = firstY; y <= lastY; y++) for (let x = firstX; x <= lastX; x++) {
+      const key = `${zoom}/${((x % n) + n) % n}/${y}`;
+      if (this.failed.has(key)) return 'unavailable';
+      const missing = this.noData.get(key);
+      if (missing && this.missingInBounds(missing, x, y, bounds)) return 'unavailable';
+    }
+    return 'loading';
+  }
   retry() {
     this.failed.clear();
+    this.noData.clear();
     if (!this.ready) {
       this.started = false;
     }
@@ -183,6 +282,7 @@ export class RasterElevationSampler {
     this.controller.abort();
     this.tiles.clear();
     this.queued.clear();
+    this.noData.clear();
   }
 
   private async initialize() {
@@ -248,7 +348,11 @@ export class RasterElevationSampler {
         .then((tile) => {
           if (this.controller.signal.aborted) return;
           this.tiles.set(key, tile);
-          while (this.tiles.size > TILE_CACHE_LIMIT) this.tiles.delete(this.tiles.keys().next().value!);
+          while (this.tiles.size > TILE_CACHE_LIMIT) {
+            const oldest = this.tiles.keys().next().value!;
+            this.tiles.delete(oldest);
+            this.noData.delete(oldest);
+          }
         })
         .catch((cause) => {
           if (!this.controller.signal.aborted) {
@@ -259,7 +363,7 @@ export class RasterElevationSampler {
         .finally(() => {
           this.pending.delete(key);
           if (!this.controller.signal.aborted) {
-            this.changed();
+            this.changed(key);
             this.pump();
           }
         });
