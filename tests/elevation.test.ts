@@ -175,6 +175,31 @@ test('known consumer heights skip preparation and unknown remains distinct from 
   elevation.destroy();
 });
 
+test('an unknown interior sample can require preparation after a known area grid was skipped', async () => {
+  const completion = deferred();
+  let calls = 0;
+  const sampler: ElevationSampler = {
+    sample(lng, lat) { return lng === 0 && lat === 0.0001 ? null : 12; },
+    prepare() { calls++; return completion.promise; },
+  };
+  const { elevation } = fixture(sampler);
+  elevation.request('camera', [0, 0], 100);
+  await flush();
+  assert.equal(calls, 0);
+  assert.equal(elevation.height(0, 0.0001), null);
+  elevation.requirePreparation('camera');
+  assert.equal(elevation.readiness('camera'), 'loading');
+  await flush();
+  assert.equal(calls, 1);
+  completion.resolve();
+  await flush();
+  assert.equal(elevation.readiness('camera'), 'unavailable');
+  elevation.requirePreparation('camera');
+  await flush();
+  assert.equal(calls, 1);
+  elevation.destroy();
+});
+
 test('consumer without prepare is settled until explicit retry notification', () => {
   const { elevation, changes } = fixture({ sample: () => null });
   elevation.request('entity', [0, 0], 0);

@@ -15,6 +15,8 @@ type Work = {
   areas: ElevationArea[];
   controller: AbortController;
   state: 'scheduled' | 'pending' | 'settled';
+  required: boolean;
+  prepared: boolean;
 };
 
 type ElevationOptions = {
@@ -100,7 +102,7 @@ export class Elevation {
     for (const area of fresh) {
       const covering = [...this.works].find(work =>
         work.keys.size && work.state !== 'settled' &&
-        work.areas.some(candidate => contains(candidate, area)));
+        work.areas.some(candidate => work.keys.has(candidate.key) && contains(candidate, area)));
       if (covering) {
         area.work = covering;
         covering.keys.add(area.key);
@@ -129,6 +131,8 @@ export class Elevation {
       areas: unclaimed,
       controller: new AbortController(),
       state: 'scheduled',
+      required: false,
+      prepared: false,
     };
     for (const area of unclaimed) area.work = work;
     this.works.add(work);
@@ -145,6 +149,17 @@ export class Elevation {
     if (!work.keys.size) {
       work.controller.abort();
       this.works.delete(work);
+    }
+  }
+
+  /** A caller found unknown elevation beyond the area's preparation grid. */
+  requirePreparation(key: string): void {
+    const work = this.areas.get(key)?.work;
+    if (!work || work.prepared || this.destroyed) return;
+    work.required = true;
+    if (work.state === 'settled') {
+      work.state = 'scheduled';
+      queueMicrotask(() => this.start(work));
     }
   }
 
@@ -195,15 +210,18 @@ export class Elevation {
     if (this.destroyed || !this.works.has(work) || work.controller.signal.aborted) return;
     const sampler = this.options.sampler;
     if (!sampler?.prepare) return;
-    const samples = work.areas.flatMap(positions);
-    if (samples.every(([lng, lat]) => this.height(lng, lat) !== null)) {
+    const samples = work.areas.filter(area => work.keys.has(area.key)).flatMap(positions);
+    if (!work.required && samples.every(([lng, lat]) => this.height(lng, lat) !== null)) {
       work.state = 'settled';
       this.notify([...work.keys]);
       return;
     }
     work.state = 'pending';
+    work.prepared = true;
     // Call as a method so a stateful consumer sampler keeps its receiver.
-    void Promise.resolve().then(() => sampler.prepare!(samples, work.controller.signal))
+    void Promise.resolve().then(() => {
+      if (!work.controller.signal.aborted) return sampler.prepare!(samples, work.controller.signal);
+    })
       .then(
         () => this.settle(work),
         cause => {
