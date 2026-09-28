@@ -73,6 +73,21 @@ async function suite() {
     viewport.map.fire('click', { point: viewport.map.project([0,0]), lngLat: viewport.map.getCenter(), originalEvent: new MouseEvent('click') });
     check(ids.includes('queued') && ids.includes('initial'), 'Consumer click IDs missing'); off();
   });
+  await run('Reserved feature IDs remain selectable without inherited state', async () => {
+    const id = '__proto__';
+    viewport.upsert([point(id, .08)]);
+    await until(() => hits().some(hit => hit.properties._rl_id === id), 'reserved ID rendered');
+    viewport.setSelection([id]);
+    viewport.preview(id);
+    check(viewport.getSelection()[0] === id, 'Reserved ID was rejected by selection');
+    let clicked = '';
+    const off = viewport.on('click', event => { clicked = event.features[0]?.id ?? ''; });
+    await pointer('click', viewport.map.project([.08, 0]));
+    check(clicked === id, `Reserved ID click returned ${clicked}`);
+    const unrelated: Record<string, unknown> = {};
+    check(unrelated.selected === undefined && unrelated.hover === undefined, 'Feature state polluted unrelated objects');
+    off(); viewport.preview(null); viewport.remove([id]);
+  }, { realPointer: true });
   await run('Incremental updates replace data without moving the camera', async () => {
     const center = viewport.map.getCenter().toArray().join(',');
     viewport.setSelection(['queued']);
@@ -82,6 +97,72 @@ async function suite() {
     check(viewport.map.getCenter().toArray().join(',') === center, 'Camera moved');
     check(viewport.getFeature('queued')?.properties.name === 'Renamed', 'Name not replaced');
     check(viewport.map.getFeatureState({ source: 'rl:features', id: 'queued' }).selected, 'Selection state lost');
+  });
+  await run('A mutating style callback cannot change accepted or rendered feature data', async () => {
+    const mount = document.createElement('div');
+    mount.style.cssText = 'width:320px;height:240px;position:absolute;left:0;top:0';
+    document.body.append(mount);
+    const feature = { ...point('snapshot'), properties: { name: 'Original' } };
+    const map = createViewport({ container: mount, basemap: style(), camera: { center: [0, 0], zoom: 12 },
+      features: [feature], style: value => {
+        value.properties.name = 'Mutated';
+        if (value.geometry.type === 'Point') value.geometry.coordinates[0] = .1;
+        return { color: '#008855' };
+      }, logger: () => {} });
+    try {
+      await map.ready;
+      await until(() => map.map.queryRenderedFeatures(map.map.project([0, 0]), { layers: ['rl:points'] })
+        .some(hit => hit.properties._rl_id === 'snapshot'), 'snapshot rendered at accepted position');
+      const accepted = map.getFeature('snapshot');
+      check(accepted?.properties.name === 'Original', 'Style callback mutated accepted properties');
+      check(accepted?.geometry.type === 'Point' && accepted.geometry.coordinates[0] === 0,
+        'Style callback mutated accepted coordinates');
+      check(!map.map.queryRenderedFeatures(map.map.project([.1, 0]), { layers: ['rl:points'] })
+        .some(hit => hit.properties._rl_id === 'snapshot'), 'Style callback moved rendered geometry');
+    } finally { map.destroy(); mount.remove(); }
+  });
+  await run('Removing and reinserting an airborne ID does not restore its selection', async () => {
+    const air = createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 }, logger: () => {} });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('selected-air'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'zone', type: 'circle', radius: 100 }] } };
+    try {
+      air.upsert([feature]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'selected airborne entity');
+      air.setSelection([feature.id]);
+      check(air.getSelection()[0] === feature.id, 'Airborne entity was not selected');
+      air.remove([feature.id]);
+      check(air.getSelection().length === 0, 'Removal kept the ID selected');
+      air.upsert([feature]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'reinserted airborne entity');
+      check(air.getSelection().length === 0, 'Reinserted airborne entity regained selection');
+      const sourceFeature = air.map.querySourceFeatures('rl:features').find(hit => hit.properties._rl_id === feature.id);
+      if (sourceFeature?.id !== undefined) {
+        const state = air.map.getFeatureState({ source: 'rl:features', id: sourceFeature.id });
+        check(state.selected !== true, 'Reinserted feature retained renderer selection state');
+      }
+    } finally { air.destroy(); }
+  });
+  await run('Mutating object basemaps does not change accepted configuration or style', async () => {
+    const first = style('#112233');
+    const map = createViewport({ container, basemap: first, logger: () => {} });
+    current = map;
+    try {
+      await map.ready;
+      first.layers[0] = { id: 'background', type: 'background', paint: { 'background-color': '#ff0000' } };
+      check(map.map.getPaintProperty('background', 'background-color') === '#112233', 'Creation input changed the displayed style');
+      const acceptedFirst = map.getConfiguration().basemap;
+      check(typeof acceptedFirst !== 'string' && acceptedFirst.layers[0]?.type === 'background' &&
+        acceptedFirst.layers[0].paint?.['background-color'] === '#112233', 'Creation input changed accepted basemap');
+      const second = style('#445566');
+      map.configure({ basemap: second });
+      await until(() => map.map.getPaintProperty('background', 'background-color') === '#445566', 'configured basemap loaded');
+      second.layers[0] = { id: 'background', type: 'background', paint: { 'background-color': '#00ff00' } };
+      const acceptedSecond = map.getConfiguration().basemap;
+      check(typeof acceptedSecond !== 'string' && acceptedSecond.layers[0]?.type === 'background' &&
+        acceptedSecond.layers[0].paint?.['background-color'] === '#445566', 'Configure input changed accepted basemap');
+      check(map.map.getPaintProperty('background', 'background-color') === '#445566', 'Configure input changed displayed style');
+    } finally { map.destroy(); }
   });
   await run('Style replacement preserves data and selection', async () => {
     viewport.configure({ basemap: style('#ddeedd'), projection: 'globe' });
@@ -299,6 +380,24 @@ async function suite() {
       iconMap.destroy();
       mount.remove();
     }
+  });
+  await run('Icon registration isolates an unrelated failing style callback', async () => {
+    const failures: RidgelineError[] = [];
+    const off = viewport.on('diagnostic', error => { if (error.context.featureId === 'icon-broken') failures.push(error); });
+    viewport.upsert([
+      { ...point('icon-healthy'), properties: { name: 'Healthy icon', icon: 'isolated-icon' } },
+      { ...point('icon-broken'), properties: { name: 'Broken icon', broken: true } },
+    ]);
+    const image = new ImageData(16, 16);
+    for (let i = 0; i < image.data.length; i += 4) { image.data[i] = 255; image.data[i + 3] = 255; }
+    viewport.registerIcon('isolated-icon', { image });
+    await until(() => viewport.map.queryRenderedFeatures({ layers: ['rl:icons'] })
+      .some(hit => hit.properties._rl_id === 'icon-healthy'), 'healthy icon published');
+    check(failures.length > 0, 'Broken style callback did not report its feature ID');
+    viewport.upsert([point('icon-broken')]);
+    viewport.retryUpdates();
+    await until(() => hits().some(hit => hit.properties._rl_id === 'icon-broken'), 'recovered broken icon feature');
+    viewport.remove(['icon-healthy', 'icon-broken']); off();
   });
   await run('A broken style falls back to names without interrupting the picker', async () => {
     viewport.upsert([point('picker-broken'), point('picker-healthy')]);
