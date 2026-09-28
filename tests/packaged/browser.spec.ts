@@ -22,6 +22,7 @@ for (const name of browserCases) {
       await page.mouse.move(toX, toY, { steps: 6 });
       await page.mouse.up();
     });
+    let failure: unknown;
     try {
       await page.goto('/?case=' + encodeURIComponent(name));
       await page.waitForFunction(() => ['passed', 'failed'].includes(document.querySelector<HTMLElement>('#status')?.dataset.state ?? ''));
@@ -29,13 +30,21 @@ for (const name of browserCases) {
       expect(status.state, status.text).toBe('passed');
       expect(errors, 'Uncaught browser errors').toEqual([]);
     } catch (error) {
+      failure = error;
       if (!page.isClosed()) {
         const path = testInfo.outputPath('failure.png');
         await page.screenshot({ path }).then(() => testInfo.attach('failure screenshot', { path, contentType: 'image/png' })).catch(() => {});
       }
-      throw error;
     } finally {
-      if (!page.isClosed()) await page.evaluate(() => window.cleanupBrowserCase?.()).catch(() => {});
+      try {
+        await page.evaluate(() => {
+          if (!window.cleanupBrowserCase) throw new Error('Browser case cleanup hook is unavailable.');
+          window.cleanupBrowserCase();
+        });
+      } catch (error) {
+        failure = failure ? new AggregateError([failure, error], 'Browser case and cleanup failed') : error;
+      }
     }
+    if (failure) throw failure;
   });
 }

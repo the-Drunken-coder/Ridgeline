@@ -51,6 +51,18 @@ async function pointer(action: 'move' | 'click', point: { x: number; y: number }
   await drawingPointer(action, point.x, point.y);
   await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 }
+async function browserKey(key: string) {
+  if (!window.browserKey) throw new Error('Playwright keyboard bridge is unavailable.');
+  await window.browserKey(key);
+}
+async function browserClick(selector: string) {
+  if (!window.browserClick) throw new Error('Playwright click bridge is unavailable.');
+  await window.browserClick(selector);
+}
+async function browserDrag(fromX: number, fromY: number, toX: number, toY: number) {
+  if (!window.browserDrag) throw new Error('Playwright drag bridge is unavailable.');
+  await window.browserDrag(fromX, fromY, toX, toY);
+}
 async function suite() {
   await run('Destroy during initialization, repeat destroy, then remount', async () => {
     const abandoned = createViewport({ container, basemap: style() });
@@ -207,11 +219,11 @@ async function suite() {
     const onKeydown = () => { bubbled++; };
     document.addEventListener('keydown', onKeydown);
     viewport.map.getCanvas().focus();
-    await window.browserKey!('Escape');
+    await browserKey('Escape');
     check(bubbled === 1, 'Escape was intercepted without an overlay');
     await pointer('click', viewport.map.project([0,0]));
     check(Boolean(container.querySelector('.rl-picker')), 'Picker did not open');
-    await window.browserKey!('Escape');
+    await browserKey('Escape');
     check(!container.querySelector('.rl-picker') && bubbled === 1, 'Escape did not stay with the open picker');
     document.removeEventListener('keydown', onKeydown);
     ui.destroy();
@@ -228,9 +240,9 @@ async function suite() {
     check(buttons.length >= 2, 'Overlapping features did not open a picker');
     const target = buttons[1]!.dataset.featureId!;
     buttons[0]!.focus();
-    await window.browserKey!('ArrowRight');
+    await browserKey('ArrowRight');
     check(document.activeElement === buttons[1], 'Arrow key did not move picker focus');
-    await window.browserKey!('Enter');
+    await browserKey('Enter');
     check(requested === target && viewport.getSelection()[0] === target, 'Enter did not request and apply the focused choice');
     check(!container.querySelector('.rl-picker'), 'Picker remained open after selection');
     off(); ui.destroy();
@@ -275,7 +287,7 @@ async function suite() {
     viewport.upsert([renamed]);
     check(!choice.disabled && choice.textContent === 'Updated candidate', 'Reintroduced candidate stayed disabled');
     choice.focus();
-    await window.browserKey!('ArrowRight');
+    await browserKey('ArrowRight');
     check(document.activeElement === buttons[1], 'Keyboard navigation broke after refresh');
     ui.destroy();
   });
@@ -772,7 +784,7 @@ async function suite() {
     const tools=document.createElement('div'),inspector=document.createElement('div');container.after(tools,inspector);
     const controls=attachDrawingControls(draw,editor,{tools,inspector});
     await until(()=>Boolean(draw.map.getSource('rl:draft')),'draft source attached');
-    await window.browserClick!('[data-field="action:Polygon"]');
+    await browserClick('[data-field="action:Polygon"]');
     check(inspector.contains(document.activeElement), 'Starting a tool lost keyboard focus');
     for(const p of [[0,0],[.02,0],[.02,.02],[0,.02]] as [number,number][]){
       await pointer('click', draw.map.project(p));
@@ -782,24 +794,24 @@ async function suite() {
     check(!draw.getFeature('drawn'),'Unaccepted draft entered store');
     check(inspector.textContent?.includes('Area'),'Measurements missing');
     const undo = inspector.querySelector<HTMLButtonElement>('[data-field="action:Undo"]')!;
-    undo.focus(); await window.browserKey!('Control+z');
+    undo.focus(); await browserKey('Control+z');
     const undone=editor.getState().draft?.shape;
     check(undone?.kind==='polygon'&&undone.vertices.length===3,'Nested controls applied Undo more than once');
     check(document.activeElement?.getAttribute('data-field')==='action:Undo','Undo lost keyboard focus');
     const redo = inspector.querySelector<HTMLButtonElement>('[data-field="action:Redo"]')!;
-    redo.focus(); await window.browserKey!('Control+Shift+z');
+    redo.focus(); await browserKey('Control+Shift+z');
     const redone=editor.getState().draft?.shape;
     check(redone?.kind==='polygon'&&redone.vertices.length===4,'Nested controls applied Redo more than once');
     check(inspector.contains(document.activeElement),'Disabled redo lost keyboard focus');
     editor.setStyle({fillOpacity:0.29});
     check(inspector.querySelector<HTMLInputElement>('[data-field="Opacity (%)"]')?.value==='29','Opacity displayed floating-point noise');
-    await window.browserClick!('[data-field="action:Finish"]');
+    await browserClick('[data-field="action:Finish"]');
     await until(() => accepts === 1, 'drawing accepted through Finish control');
     check(accepts===1&&draw.getFeature('drawn')?.geometry.type==='Polygon','Accepted polygon not stored');
     editor.edit('drawn');
     const original=JSON.stringify(editor.getState().draft?.shape);
     const handle=container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]')!;
-    handle.focus();await window.browserKey!('ArrowRight');
+    handle.focus();await browserKey('ArrowRight');
     check(JSON.stringify(editor.getState().draft?.shape)!==original,'Keyboard did not move a vertex');
     editor.undo();check(JSON.stringify(editor.getState().draft?.shape)===original,'Draft undo failed');
     draw.configure({basemap:style('#dddddd'),projection:'globe'});
@@ -846,7 +858,7 @@ async function suite() {
     check(draw.getStyle(draw.getFeature('line')!).color==='#cc2222','Consumer style stopped following properties');
     deleteOnly=true;editor.edit('line');
     const button=inspector.querySelector<HTMLButtonElement>('[data-field="action:Delete drawing"]')!;
-    check(!button.disabled,'Delete-only permission disabled the Delete control');await window.browserClick!('[data-field="action:Delete drawing"]');
+    check(!button.disabled,'Delete-only permission disabled the Delete control');await browserClick('[data-field="action:Delete drawing"]');
     await until(()=>!draw.getFeature('line'),'delete-only action applied');
     controls.destroy();editor.destroy();draw.destroy();tools.remove();inspector.remove();
   });
@@ -870,12 +882,20 @@ async function suite() {
     current=draw;await draw.ready;
     let nextId=0;
     const editor=attachDrawing(draw,{createFeature:()=>({id:`pointer-${nextId++}`,properties:{}}),submit:()=>({accepted:true})});
+    const visibleDraft=()=>draw.map.queryRenderedFeatures({layers:['rl:draft-fill']}).map(feature=>feature.geometry);
+    const previewDistance=(target:{x:number;y:number})=>Math.min(...visibleDraft().flatMap(geometry=>
+      geometry.type==='Polygon'?(geometry.coordinates[0]??[]).map(([lng,lat])=>{
+        if(lng===undefined||lat===undefined)return Infinity;
+        const edge=draw.map.project([lng,lat]);
+        return Math.hypot(edge.x-target.x,edge.y-target.y);
+      }):[]));
     const center=draw.map.project([0,0]);
     editor.start('circle');
     await pointer('click',center);
     const circleBefore=editor.getState(),circleDraft=JSON.stringify(circleBefore.draft),circleUndo=circleBefore.canUndo;
     const circleEdge={x:center.x+70,y:center.y};
     await pointer('move',circleEdge);
+    await until(()=>previewDistance(circleEdge)<1.5,'visible circle preview reaches pointer');
     const circlePreview=editor.getMeasurements();
     check(circlePreview.length>0&&circlePreview.area!>0,'Circle preview did not follow the pointer');
     const circleDuring=editor.getState();
@@ -902,6 +922,7 @@ async function suite() {
     const rectangleBefore=editor.getState(),rectangleDraft=JSON.stringify(rectangleBefore.draft),rectangleUndo=rectangleBefore.canUndo;
     const rectanglePoint={x:center.x+86,y:center.y-42};
     await pointer('move',rectanglePoint);
+    await until(()=>previewDistance(rectanglePoint)<1.5,'visible rectangle preview reaches pointer');
     const rectanglePreview=editor.getMeasurements();
     check(rectanglePreview.length>0&&rectanglePreview.area!>0,'Rectangle preview did not follow the pointer');
     const rectangleDuring=editor.getState();
@@ -963,7 +984,7 @@ async function suite() {
     });
     reloaded.edit('stored-0');
     const circle = reloaded.getState().draft?.shape;
-    if (circle?.kind !== 'circle' || circle.radius <= 0) throw new Error('Circle radius was not restored');
+    if (circle?.kind !== 'circle' || Math.abs(circle.radius - 556) > 1) throw new Error('Circle radius was not restored');
     check(JSON.stringify(circle) === JSON.stringify(originalShapes[0]), 'Circle definition changed during storage');
     reloaded.setShape({ ...circle, radius: circle.radius + 100 });
     check(await reloaded.finish(), 'Reloaded circle could not be edited');
@@ -978,7 +999,7 @@ async function suite() {
     check(editedRectangle?.kind === 'rectangle' && editedRectangle.width === 700, 'Rectangle width edit was not saved');
     reloaded.edit('stored-2');
     const arrow = reloaded.getState().draft?.shape;
-    if (arrow?.kind !== 'arrow' || arrow.vertices.length !== 2) throw new Error('Arrow direction was not restored');
+    if (arrow?.kind !== 'arrow' || JSON.stringify(arrow.vertices) !== JSON.stringify([[0, 0], [.005, .005]])) throw new Error('Arrow direction was not restored');
     check(JSON.stringify(arrow) === JSON.stringify(originalShapes[2]), 'Arrow definition changed during storage');
     reloaded.setShape({ ...arrow, vertices: [[0, 0], [.01, .005]] });
     check(await reloaded.finish(), 'Reloaded arrow could not be edited');
@@ -997,25 +1018,37 @@ async function suite() {
     const tools = document.createElement('div'), inspector = document.createElement('div');
     container.after(tools, inspector);
     const controls = attachDrawingControls(draw, editor, { tools, inspector });
-    await window.browserClick!('[data-field="action:Circle"]');
+    await browserClick('[data-field="action:Circle"]');
     await pointer('click', draw.map.project([0, 0]));
     await pointer('click', draw.map.project([.005, 0]));
-    await window.browserClick!('[data-field="action:Finish"]');
+    await browserClick('[data-field="action:Finish"]');
     await until(() => editor.getState().phase === 'rejected', 'rejection feedback');
     check(!draw.getFeature('rejected') && editor.getState().draft?.shape.kind === 'circle', 'Rejection lost draft or saved it');
+    const rejectedShape = editor.getState().draft?.shape;
+    if (rejectedShape?.kind !== 'circle') throw new Error('Rejected circle shape missing');
+    const radiusInput = inspector.querySelector<HTMLInputElement>('[data-field="Radius (m)"]');
+    if (!radiusInput || radiusInput.disabled) throw new Error('Rejected circle lost its editable radius field');
+    await browserClick('[data-field="Radius (m)"]');
+    await browserKey('Control+A');
+    for (const digit of '700') await browserKey(digit);
+    await browserKey('Tab');
+    const revisedShape = editor.getState().draft?.shape;
+    if (revisedShape?.kind !== 'circle' || revisedShape.radius !== 700) throw new Error('Editing the rejected draft did not change its radius');
     accept = true;
-    await window.browserClick!('[data-field="action:Finish"]');
+    await browserClick('[data-field="action:Finish"]');
     await until(() => Boolean(draw.getFeature('rejected')), 'accepted retry');
+    const acceptedShape = draw.getFeature('rejected')?.drawing?.shape;
+    check(acceptedShape?.kind === 'circle' && Math.abs(acceptedShape.radius - revisedShape.radius) < .001, 'Accepted retry lost the draft edit');
     const accepted = JSON.stringify(draw.getFeature('rejected'));
     editor.edit('rejected');
     const shape = editor.getState().draft?.shape;
     if (shape?.kind !== 'circle') throw new Error('Accepted circle could not be edited');
     editor.setShape({ ...shape, radius: shape.radius + 200 });
-    await window.browserClick!('[data-field="action:Cancel"]');
+    await browserClick('[data-field="action:Cancel"]');
     check(JSON.stringify(draw.getFeature('rejected')) === accepted, 'Cancel changed accepted feature');
     controls.destroy(); editor.destroy(); draw.destroy(); tools.remove(); inspector.remove();
   });
-  await run('Dragging a vertex back to its unchanged snap target restores its handle', async () => {
+  await run('Vertex dragging moves the draft and restores unchanged snap targets', async () => {
     const line:MapFeature={type:'Feature',id:'line',properties:{},geometry:{type:'LineString',coordinates:[[0,0],[.01,0]]}};
     const draw=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:13},features:[line,point('anchor',0)],logger:()=>{}});
     current=draw;await draw.ready;
@@ -1024,11 +1057,15 @@ async function suite() {
     await until(()=>draw.map.loaded(),'handle map ready');
     const handle=container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]')!;
     const rect=handle.getBoundingClientRect(),x=rect.x+rect.width/2,y=rect.y+rect.height/2;
-    await window.browserDrag!(x,y,x+7,y);
+    await browserDrag(x,y,x+7,y);
     await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
     const shape=editor.getState().draft?.shape,end=handle.getBoundingClientRect();
     check(shape?.kind==='line'&&shape.vertices[0]?.[0]===0&&shape.vertices[0]?.[1]===0,'Dragged vertex did not snap back to its anchor');
     check(Math.abs(end.x+end.width/2-x)<0.5&&Math.abs(end.y+end.height/2-y)<0.5,'Handle stayed displaced from its unchanged snap target');
+    await browserDrag(x,y,x+30,y+35);
+    const moved=editor.getState().draft?.shape,movedRect=handle.getBoundingClientRect();
+    check(moved?.kind==='line'&&Math.abs(moved.vertices[0]![0])>.0001&&Math.abs(moved.vertices[0]![1])>.0001,'Dragging did not move the vertex in the draft');
+    check(Math.abs(movedRect.x+movedRect.width/2-x-30)<1&&Math.abs(movedRect.y+movedRect.height/2-y-35)<1,'Handle did not follow the moved vertex');
     editor.destroy();draw.destroy();
   });
   await run('Whole-shape dragging follows the pointer without snapping to its own vertices', async () => {
@@ -1042,7 +1079,7 @@ async function suite() {
     const handle=container.querySelector<HTMLButtonElement>('[aria-label="Move drawing"]')!;
     const rect=handle.getBoundingClientRect(),x=rect.x+rect.width/2,y=rect.y+rect.height/2;
     const origin=draw.map.project([0,0]);
-    await window.browserDrag!(x,y,x+30,y+30);
+    await browserDrag(x,y,x+30,y+30);
     const draft=editor.getState().draft?.shape;
     if(draft?.kind!=='polygon')throw new Error('Missing polygon draft');
     const center=draw.map.project([draft.vertices.reduce((sum,p)=>sum+p[0],0)/draft.vertices.length,draft.vertices.reduce((sum,p)=>sum+p[1],0)/draft.vertices.length]);

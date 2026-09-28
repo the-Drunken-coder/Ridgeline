@@ -1,3 +1,4 @@
+// Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
   'Destroy during initialization, repeat destroy, then remount',
   'Queued features render with stable string IDs and click events',
@@ -36,7 +37,7 @@ export const browserCases = [
   'Real pointer drawing previews stay ephemeral and match circle and rotated rectangle placement',
   'Accepted shape definitions survive consumer storage and viewport recreation',
   'Rejected drawing remains editable and cancellation preserves accepted data',
-  'Dragging a vertex back to its unchanged snap target restores its handle',
+  'Vertex dragging moves the draft and restores unchanged snap targets',
   'Whole-shape dragging follows the pointer without snapping to its own vertices',
   'Arrowheads follow accepted geometry updates and disappear on deletion',
   'Terrain visibility colors the approach green and the hill shadow red',
