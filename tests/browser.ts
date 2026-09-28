@@ -1,8 +1,8 @@
 import { checkGpuVote } from './gpu-vote';
 import { createViewport, attachInteractions, attachDrawing, attachDrawingControls, shapeGeometry, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
-import { GeoJSONSource, ErrorEvent as MapErrorEvent, setWorkerUrl } from 'maplibre-gl';
-import type { ImageSource, StyleSpecification } from 'maplibre-gl';
+import { GeoJSONSource, ErrorEvent as MapErrorEvent, MercatorCoordinate, setWorkerUrl } from 'maplibre-gl';
+import type { CustomLayerInterface, ImageSource, StyleSpecification } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import '@ridgeline/map/style.css';
@@ -691,34 +691,60 @@ async function suite() {
   await run('Exaggerated terrain keeps sphere and plain camera volume pickable', async () => {
     const dem = document.createElement('canvas'); dem.width = dem.height = 256;
     const context = dem.getContext('2d')!; context.fillStyle = 'rgb(1,0,0)'; context.fillRect(0,0,256,256);
-    const air = createViewport({ container, basemap: style(), terrain: true,
+    const air = createViewport({ container, basemap: style(), terrain: true, exaggeration: 1,
       elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 100, greenFactor: 0, blueFactor: 0, baseShift: 0, maxzoom: 0 },
-      camera: { center: [0,0], zoom: 17, pitch: 0 }, logger: () => {} });
+      camera: { center: [0,0], zoom: 14, pitch: 60 }, logger: () => {} });
     current = air; await air.ready;
-    const feature: MapFeature = { ...point('pick-exaggerated'), entity: { altitude: { meters: 300, reference: 'ground' }, attachments: [
-      { id: 'sphere', type: 'sphere', radius: 40 },
-      { id: 'camera', type: 'camera', bearing: 0, elevation: -90, fovX: 60, fovY: 60, range: 1000, volumeOpacity: .2 },
-    ] } };
+    const sphere: MapFeature = { ...point('pick-sphere', -.004), entity: { altitude: { meters: 200, reference: 'ground' },
+      attachments: [{ id: 'sphere', type: 'sphere', radius: 35 }] } };
+    const camera: MapFeature = { ...point('pick-camera', .004), entity: { altitude: { meters: 200, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', bearing: 0, elevation: 90, fovX: 60, fovY: 60,
+        range: 180, volumeOpacity: .3, fillOpacity: 0, outline: false }] } };
+    let projection: number[] | undefined;
+    const projectionLayer: CustomLayerInterface = { id: 'test:height-projection', type: 'custom', renderingMode: '3d',
+      render(_gl, input) { projection = Array.from(input.defaultProjectionData.mainMatrix); } };
+    air.map.addLayer(projectionLayer);
+    const projectHeight = (lng: number, height: number) => {
+      const matrix = projection;
+      if (!matrix) throw new Error('Map projection is unavailable');
+      const coordinate = MercatorCoordinate.fromLngLat([lng, 0], height);
+      const point = [coordinate.x, coordinate.y, coordinate.z, 1];
+      const clip = [0, 1, 2, 3].map(row => matrix[row]! * point[0]! + matrix[row + 4]! * point[1]!
+        + matrix[row + 8]! * point[2]! + matrix[row + 12]!);
+      const canvas = air.map.getCanvas();
+      return { x: (clip[0]! / clip[3]! + 1) * canvas.clientWidth / 2,
+        y: (1 - clip[1]! / clip[3]!) * canvas.clientHeight / 2 };
+    };
     let picked: string[] = [];
-    air.on('click', event => { picked = event.attachments.filter(hit => hit.entityId === feature.id).map(hit => hit.attachmentId); });
-    const pick = (lng: number, lat: number) => {
-      const screen = air.map.project([lng, lat]);
+    let clicks = 0;
+    air.on('click', event => { clicks++; picked = event.attachments.map(hit => hit.attachmentId); });
+    const pick = async (screen: { x: number; y: number }) => {
+      const before = clicks;
       picked = [];
-      air.map.fire('click', { point: screen, lngLat: air.map.unproject(screen), originalEvent: new MouseEvent('click') });
+      await pointer('click', screen);
+      check(clicks > before, 'Real pointer click did not reach the viewport');
       return picked;
     };
-    air.upsert([feature]);
-    await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'exaggerated picking geometry');
-    for (const exaggeration of [0.5, 2]) {
-      const before = air.getEntityState(feature.id)!.computedAt;
+    air.upsert([sphere, camera]);
+    await until(() => air.getEntityState(sphere.id)?.coverage === 'ready'
+      && air.getEntityState(camera.id)?.coverage === 'ready' && Boolean(projection), 'exaggerated picking geometry');
+    for (const exaggeration of [1, 2]) {
+      const before = air.getEntityState(sphere.id)!.computedAt;
       air.configure({ exaggeration });
-      await until(() => air.getEntityState(feature.id)!.computedAt > before && air.getEntityState(feature.id)?.coverage === 'ready', 'exaggerated picking update');
+      if (exaggeration !== 1) await until(() => air.getEntityState(sphere.id)!.computedAt > before
+        && air.getEntityState(camera.id)?.coverage === 'ready', 'exaggerated picking update');
       await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-      check(pick(0, 0).includes('sphere'), `Sphere was not pickable at exaggeration ${exaggeration}`);
-      check(pick(.0006, .0004).includes('camera'), `Plain camera volume was not pickable at exaggeration ${exaggeration}`);
+      check((await pick(projectHeight(-.004, 300 * exaggeration))).includes('sphere'),
+        `Sphere was not pickable at exaggeration ${exaggeration}`);
+      check((await pick(projectHeight(.004, 370 * exaggeration))).includes('camera'),
+        `Plain camera face was not pickable at exaggeration ${exaggeration}`);
+      if (exaggeration === 2) {
+        check(!(await pick(projectHeight(-.004, 300))).includes('sphere'), 'Sphere remained pickable at its raw-height position');
+        check(!(await pick(projectHeight(.004, 370))).includes('camera'), 'Camera face remained pickable at its raw-height position');
+      }
     }
     air.destroy();
-  });
+  }, { realPointer: true });
   await run('Visible footprint stays filled when displayed terrain differs slightly from sampled terrain', async () => {
     const dem=document.createElement('canvas'); dem.width=dem.height=256;
     const context=dem.getContext('2d')!; context.fillStyle='rgb(105,0,0)'; context.fillRect(0,0,256,256);
