@@ -105,15 +105,27 @@ export function cameraRay(camera: CameraAttachment, x: number, y: number): Vec3 
 
 /** Four corner projection onto the local ground plane. Terrain only drapes the result. */
 export function cameraFootprint(origin: GeoPoint, camera: CameraAttachment, ground: number) {
-  const rays = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([x, y]) => cameraRay(camera, x!, y!));
+  const rays = cameraCornerRays(camera);
   if (origin[2] <= ground || rays.every(ray => ray[2] >= 0)) return [];
   const local = localFrame(origin);
-  const corners = rays.map(ray => {
-    const distance = ray[2] < 0 ? Math.min(camera.range, (origin[2] - ground) / -ray[2]) : camera.range;
-    const point = local(ray[0] * distance, ray[1] * distance, ground - origin[2]);
+  const corners = cameraGroundCornerOffsets(origin, camera, ground).map(offset => {
+    const point = local(offset[0], offset[1], ground - origin[2]);
     return [point[0], point[1], ground] as GeoPoint;
   });
   return corners;
+}
+
+const cameraCornerRays = (camera: CameraAttachment) =>
+  ([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([x, y]) => cameraRay(camera, x, y));
+
+/** Ray endpoints stop at the flat ground plane when downward, or at range. */
+export function cameraGroundCornerOffsets(origin: GeoPoint, camera: CameraAttachment, ground: number): Vec3[] {
+  return cameraCornerRays(camera).map(ray => {
+    const distance = ray[2] < 0
+      ? Math.min(camera.range, (origin[2] - ground) / -ray[2])
+      : camera.range;
+    return [ray[0] * distance, ray[1] * distance, ray[2] * distance];
+  });
 }
 
 export function groundZone(origin: GeoPoint, boundary: readonly [number, number][], height: HeightAt, draped = false) {

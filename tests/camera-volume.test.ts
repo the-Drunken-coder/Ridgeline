@@ -1,11 +1,82 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cameraVolume, visibleCameraEdges } from '../src/camera-volume';
-import { cameraRay } from '../src/entity-geometry';
+import { cameraVolume, plainCameraPrimitives, terrainCameraPrimitives, visibleCameraEdges } from '../src/camera-volume';
+import { cameraFootprint, cameraRay } from '../src/entity-geometry';
 import { cameraTerrain } from '../src/gpu-camera-terrain';
 import type { CameraAttachment } from '../src/types';
+
+Object.defineProperty(globalThis, 'OffscreenCanvas', {
+  configurable: true,
+  value: class {
+    getContext() {
+      return {
+        set fillStyle(value: string) { this.color = value; },
+        fillRect() {},
+        getImageData() {
+          const hex = this.color.slice(1);
+          return { data: new Uint8ClampedArray([
+            parseInt(hex.slice(0, 2), 16),
+            parseInt(hex.slice(2, 4), 16),
+            parseInt(hex.slice(4, 6), 16),
+            255,
+          ]) };
+        },
+        color: '#000000',
+      };
+    }
+  },
+});
 const camera:CameraAttachment={id:'camera',type:'camera',bearing:105,elevation:-10,fovX:60,fovY:40,range:6001};
 const dot=(a:number[],b:number[])=>a.reduce((s,v,i)=>s+v*b[i]!,0);
+
+test('plain camera corners share the flat-ground range rule and keep raw heights', () => {
+  const origin: [number, number, number] = [0, 0, 300];
+  const pose = { ...camera, elevation: -90, range: 2000, volumeOpacity: 0.3, wireframe: true };
+  const { geometry, footprintTriangles } = plainCameraPrimitives('entity', origin, 0, pose);
+  const footprint = cameraFootprint(origin, pose, 0);
+  assert.equal(footprintTriangles, 2);
+  const face = geometry.find(part => part.mode === 'triangles')!;
+  const wireframe = geometry.find(part => part.mode === 'lines' && !part.surface)!;
+  const overlay = geometry.find(part => part.mode === 'polygon')!;
+  assert.deepEqual(overlay.vertices, footprint);
+  for (let i = 0; i < 4; i++) {
+    const corner = face.vertices[i * 3 + 1]!;
+    const edge = wireframe.vertices[i * 4 + 1]!;
+    assert.deepEqual(corner, edge);
+    assert.ok(Math.abs(corner[2]) < 0.01);
+    assert.ok(Math.abs(corner[0] - footprint[i]![0]) < 1e-10);
+    assert.ok(Math.abs(corner[1] - footprint[i]![1]) < 1e-10);
+    assert.equal(face.vertices[i * 3]![2], 300);
+  }
+});
+
+test('plain camera uses the existing appearance defaults and omits skyward coverage', () => {
+  const origin: [number, number, number] = [0, 0, 300];
+  const pose = { ...camera, elevation: -90, wireframe: true };
+  const { geometry, footprintTriangles } = plainCameraPrimitives('entity', origin, 0, pose);
+  assert.equal(footprintTriangles, 2);
+  const fill = geometry.find(part => part.mode === 'polygon')!;
+  const outline = geometry.find(part => part.mode === 'lines' && part.surface)!;
+  const wireframe = geometry.find(part => part.mode === 'lines' && !part.surface)!;
+  assert.deepEqual(fill.color, [40 / 255, 139 / 255, 89 / 255, 0.25]);
+  assert.deepEqual(outline.color, [40 / 255, 139 / 255, 89 / 255, 0.95]);
+  assert.equal(outline.size, 3);
+  assert.deepEqual(wireframe.color, [139 / 255, 171 / 255, 151 / 255, 1]);
+  assert.equal(wireframe.size, 3);
+  assert.deepEqual(plainCameraPrimitives('entity', origin, 0, { ...pose, elevation: 90, volumeOpacity: 0.5 }),
+    { geometry: [], footprintTriangles: 0 });
+});
+
+test('terrain-visibility volume vertices remain in raw meters', () => {
+  const origin: [number, number, number] = [0, 0, 300];
+  const terrain = cameraTerrain(0, 0, 1000, () => 0);
+  const pose = { ...camera, range: 1000, volumeOpacity: 0.3, wireframe: true };
+  const volume = cameraVolume(origin, pose, terrain);
+  const geometry = terrainCameraPrimitives('entity', origin, pose, volume, terrain);
+  const faces = geometry.find(part => part.mode === 'triangles')!;
+  assert.deepEqual(faces.vertices.slice(0, 3), [origin, volume.corners[0], volume.corners[1]]);
+  assert.ok(geometry.find(part => part.mode === 'lines')!.vertices.some(point => point[2] === 300));
+});
 
 test('preset upper corners remain on upward rays and within range',()=>{
   const terrain=cameraTerrain(0,0,camera.range,()=>0);
