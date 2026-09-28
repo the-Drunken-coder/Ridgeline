@@ -1,5 +1,6 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Inspector resumes updates after window blur or lost pointer capture',
   'Preparation failures preserve construction and update publication and release the viewport',
   'Removing an entity from preparation leaves accepted data and rendered output absent',
   'Destroying from a restoration diagnostic stops callbacks and resource creation',
