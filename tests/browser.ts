@@ -44,25 +44,41 @@ async function pointer(action: 'move' | 'click', point: { x: number; y: number }
   await drawingPointer(action, point.x, point.y);
   await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 }
-async function pixelAt(viewport: Viewport, coordinates: [number, number]): Promise<number[]> {
-  return new Promise(resolve => {
-    viewport.map.once('render', () => {
-      const canvas = viewport.map.getCanvas();
-      const gl = canvas.getContext('webgl2')!;
-      const scale = canvas.width / canvas.clientWidth;
-      const point = viewport.map.project(coordinates);
-      const pixel = new Uint8Array(4);
-      gl.readPixels(Math.round(point.x * scale), canvas.height - 1 - Math.round(point.y * scale), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
-      resolve([...pixel]);
-    });
-    viewport.map.triggerRepaint();
+async function pixelAt(viewport: Viewport, coordinates: [number, number], timeoutMs: number, description: string): Promise<{ red: number; green: number; blue: number }> {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => { clearTimeout(timeout); viewport.map.off('render', onRender); };
+    const onRender = () => {
+      cleanup();
+      try {
+        const canvas = viewport.map.getCanvas();
+        const gl = canvas.getContext('webgl2');
+        if (!gl) throw new Error(`WebGL2 unavailable while reading pixel: ${description}`);
+        const scale = canvas.width / canvas.clientWidth;
+        const point = viewport.map.project(coordinates);
+        const pixel = new Uint8Array(4);
+        gl.readPixels(Math.round(point.x * scale), canvas.height - 1 - Math.round(point.y * scale), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+        const [red, green, blue] = pixel;
+        if (red === undefined || green === undefined || blue === undefined) throw new Error(`Incomplete pixel sample: ${description}`);
+        resolve({ red, green, blue });
+      } catch (error) { reject(error); }
+    };
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out waiting for map render: ${description}`));
+    }, timeoutMs);
+    try {
+      viewport.map.on('render', onRender);
+      viewport.map.triggerRepaint();
+    } catch (error) { cleanup(); reject(error); }
   });
 }
 async function untilPixel(viewport: Viewport, coordinates: [number, number], visible: boolean, description: string) {
   const start = performance.now();
   while (true) {
-    const [red, green, blue] = await pixelAt(viewport, coordinates);
-    const isLine = Math.max(red!, green!, blue!) - Math.min(red!, green!, blue!) > 35;
+    const remaining = 8_000 - (performance.now() - start);
+    if (remaining <= 0) throw new Error(`Timed out: ${description}`);
+    const { red, green, blue } = await pixelAt(viewport, coordinates, remaining, description);
+    const isLine = Math.max(red, green, blue) - Math.min(red, green, blue) > 35;
     if (isLine === visible) return;
     if (performance.now() - start > 8_000) throw new Error(`Timed out: ${description} (${red}, ${green}, ${blue})`);
   }
