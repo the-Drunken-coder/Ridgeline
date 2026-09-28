@@ -1,6 +1,19 @@
-# Measurements and verification
+# Performance measurements and verification
 
-> The baseline snapshot was recorded on 2026-09-23 for an earlier build and is retained for comparison. It does not describe current bundle sizes, throughput, or test counts. Current workflow validation appears after the snapshot. Camera terrain visibility limits are documented in the README.
+> The baseline measurements later in this document were recorded on 2026-09-23 for an earlier build. They do not describe current bundle sizes, throughput, or test counts. Camera terrain visibility limits are documented in the README.
+
+## Reliability workload snapshot, 2026-09-28
+
+Measured locally on Linux with Node 24.19.0 and the pinned MapLibre GL JS 6.11.0. Ten warm runs used a constant-height custom sampler, a 1.5 km ground circle with 48 boundary points, and a separate 50 km camera terrain patch at latitude 46°. These are local observations, not device budgets.
+
+| Workload | Output geometry | Median | Slowest |
+| --- | ---: | ---: | ---: |
+| Ground circle | 138 triangle vertices and 384 line vertices | 3.0 ms | 7.0 ms |
+| Camera terrain patch | 66,049 height vertices | 10.2 ms | 13.5 ms |
+
+The circle sampled height 19,144 times to verify interior completeness but kept its rendered geometry at 522 vertices. The retained camera height array used 792,588 bytes. In a separate ten-run process measurement with garbage collection before and after, retained V8 heap grew 0.15 MiB and ArrayBuffer storage grew 0.76 MiB. Process RSS also includes allocator and runtime activity, so those values do not establish a long-session memory ceiling.
+
+The packaged Chromium checks additionally observed no new custom-sampler samples during a 700 ms idle interval after incomplete terrain settled, and a 50 km raw-terrain camera reached ready with successful tile responses. Loading time varies with the machine and tile delivery; the checks establish convergence, not a fixed response-time target.
 
 ## Baseline snapshot
 

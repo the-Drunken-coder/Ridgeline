@@ -4,6 +4,8 @@ export type Vec3 = [number, number, number];
 export type GeoPoint = [number, number, number];
 export type HeightAt = ((lng: number, lat: number) => number | null) & {
   maximum?: (west: number, south: number, east: number, north: number) => number | null;
+  forRange?: (range: number, lat: number) => HeightAt;
+  failedAt?: (lng: number, lat: number) => boolean;
 };
 const R = 6_371_008.8;
 const rad = Math.PI / 180;
@@ -120,7 +122,7 @@ export function groundZone(origin: GeoPoint, boundary: readonly [number, number]
   const local = localFrame(origin),
     triangles: GeoPoint[] = [],
     lines: GeoPoint[] = [];
-  let missing = false;
+  let missing = false, failed = false;
   // Native draping supplies interior heights. A complete DEM bound proves the area is known,
   // so it does not need thousands of redundant CPU triangles just to follow terrain.
   const corners = boundary.map(p => local(p[0], p[1], 0));
@@ -131,7 +133,10 @@ export function groundZone(origin: GeoPoint, boundary: readonly [number, number]
   const sample = (p: [number, number]): GeoPoint => {
     const world = local(p[0], p[1], 0),
       z = height(world[0], world[1]);
-    if (z === null) missing = true;
+    if (z === null) {
+      missing = true;
+      failed ||= height.failedAt?.(world[0], world[1]) ?? false;
+    }
     return [world[0], world[1], z ?? 0];
   };
   const middle = (a: [number, number], b: [number, number]): [number, number] => [
@@ -140,7 +145,19 @@ export function groundZone(origin: GeoPoint, boundary: readonly [number, number]
   ];
   const length = (a: [number, number], b: [number, number]) => Math.hypot(a[0] - b[0], a[1] - b[1]);
   const face = (a: [number, number], b: [number, number], c: [number, number], depth: number) => {
-    if (!complete && depth < 6 && Math.max(length(a, b), length(b, c), length(c, a)) > 50) {
+    if (draped) {
+      // The renderer drapes the face. Probe its interior for unknown terrain
+      // without turning a large circle into hundreds of thousands of vertices.
+      if (!complete) {
+        const steps = Math.min(64, Math.ceil(Math.max(length(a, b), length(b, c), length(c, a)) / 75));
+        for (let i = 1; i < steps; i++) for (let j = 1; j < steps - i; j++)
+          sample([
+            a[0] + (b[0] - a[0]) * i / steps + (c[0] - a[0]) * j / steps,
+            a[1] + (b[1] - a[1]) * i / steps + (c[1] - a[1]) * j / steps,
+          ]);
+      }
+      triangles.push(sample(a), sample(b), sample(c));
+    } else if (!complete && depth < 6 && Math.max(length(a, b), length(b, c), length(c, a)) > 50) {
       const ab = middle(a, b),
         bc = middle(b, c),
         ca = middle(c, a);
@@ -161,7 +178,7 @@ export function groundZone(origin: GeoPoint, boundary: readonly [number, number]
       lines.push(sample(at(j / segments)), sample(at((j + 1) / segments)));
     }
   });
-  return { triangles: missing ? [] : triangles, lines: missing ? [] : lines, missing };
+  return { triangles: missing ? [] : triangles, lines: missing ? [] : lines, missing, failed };
 }
 
 export function triangulate(vertices: readonly [number, number][]): number[] {

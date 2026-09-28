@@ -15,6 +15,8 @@ declare global {
     browserDrag?: (fromX: number, fromY: number, toX: number, toY: number) => Promise<void>;
     browserClick?: (selector: string) => Promise<void>;
     cleanupBrowserCase?: () => void;
+    browserMouse?: (action: 'down' | 'move' | 'up' | 'click', x: number, y: number) => Promise<void>;
+    browserFill?: (selector: string, value: string) => Promise<void>;
   }
 }
 
@@ -30,10 +32,10 @@ const selectedCase = new URLSearchParams(location.search).get('case');
 let ran = false;
 const registeredCases: string[] = [];
 status.dataset.state = 'running';
-async function until(predicate: () => boolean, description: string) {
+async function until(predicate: () => boolean, description: string, timeout = 8_000) {
   const start = performance.now();
   while (!predicate()) {
-    if (performance.now() - start > 8_000) throw new Error(`Timed out: ${description}`);
+    if (performance.now() - start > timeout) throw new Error(`Timed out: ${description}`);
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
   }
 }
@@ -43,7 +45,7 @@ async function run(name: string, test: () => Promise<void>) {
   ran = true;
   const row = document.createElement('li'); row.textContent = name; results.append(row);
   try { await test(); row.className = 'pass'; row.textContent = `PASS: ${name}`; }
-  catch (error) { row.className = 'fail'; row.textContent = `FAIL: ${name}: ${String(error)}`; throw error; }
+  catch (error) { row.className = 'fail'; row.textContent = `FAIL: ${name}: ${error instanceof Error ? error.stack : String(error)}`; throw error; }
 }
 async function pointer(action: 'move' | 'click', point: { x: number; y: number }) {
   const drawingPointer = window.drawingPointer;
@@ -64,6 +66,162 @@ async function browserDrag(fromX: number, fromY: number, toX: number, toY: numbe
   await window.browserDrag(fromX, fromY, toX, toY);
 }
 async function suite() {
+  await run('Inspector resumes updates after window blur or lost pointer capture', async () => {
+    const draw = createViewport({ container, basemap: style(), logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'pointer-loss', properties: {} }), submit: () => ({ accepted: true }) });
+    const tools = document.createElement('div'), inspector = document.createElement('div');
+    inspector.style.cssText = 'position:fixed;left:0;top:0;width:320px;height:600px;z-index:10';
+    container.append(tools, inspector);
+    const controls = attachDrawingControls(draw, editor, { tools, inspector });
+    try {
+      editor.start('line'); editor.addPoint([0, 0]); editor.addPoint([.01, 0]);
+      if (!window.browserMouse) throw new Error('Playwright mouse bridge required');
+      for (const loss of ['blur', 'capture']) {
+        const output = inspector.querySelector('output')!;
+        output.scrollIntoView({ block: 'center' });
+        let pointerId: number | undefined;
+        if (loss === 'capture') output.addEventListener('pointerdown', event => {
+          pointerId = event.pointerId;
+          output.setPointerCapture(event.pointerId);
+        }, { once: true });
+        const rect = output.getBoundingClientRect(), x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+        await window.browserMouse('down', x, y);
+        if (loss === 'capture') await window.browserMouse('move', x + 1, y);
+        try {
+          editor.setStyle({ label: loss });
+          check(inspector.querySelector<HTMLInputElement>('[data-field="Label"]')?.value !== loss, `Control rebuilt before the ${loss} pointer press ended`);
+          if (loss === 'blur') {
+            // Browser focus loss is controlled here; the preceding pointer press is native.
+            window.dispatchEvent(new Event('blur'));
+          } else {
+            check(pointerId !== undefined, 'Native press did not reach the inspector');
+            output.releasePointerCapture(pointerId!);
+            await window.browserMouse('move', x + 2, y);
+          }
+          await until(() => inspector.querySelector<HTMLInputElement>('[data-field="Label"]')?.value === loss, `inspector update after ${loss}`);
+        } finally { await window.browserMouse('up', x, y); }
+      }
+    } finally { controls.destroy(); editor.destroy(); draw.destroy(); tools.remove(); inspector.remove(); }
+  });
+  await run('Preparation failures preserve construction and update publication and release the viewport', async () => {
+    for (const immediate of [true, false]) {
+      const errors: RidgelineError[] = [];
+      const feature = (id: string, lng: number): MapFeature => ({ ...point(id, lng), entity: {
+        altitude: { meters: 100, reference: 'sea-level' }, attachments: [{ id: 'body', type: 'sphere', radius: 20 }],
+      } });
+      const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 },
+        features: [feature('initial-preparation', 0)], logger: () => {}, onError: error => errors.push(error),
+        elevationSampler: { sample: () => 0, prepare: () => {
+          if (immediate) throw new Error('Immediate preparation failure');
+          return Promise.reject(new Error('Rejected preparation failure'));
+        } } });
+      current = air;
+      try {
+        await air.ready;
+        await until(() => errors.some(error => error.code === 'ELEVATION_UNAVAILABLE'), 'construction preparation diagnostic');
+        check(air.getFeature('initial-preparation') !== undefined, 'Construction lost accepted data');
+        const changes: string[] = [];
+        air.on('datachange', event => changes.push(...event.ids));
+        errors.length = 0;
+        air.upsert([feature('updated-preparation', .01), point('healthy-preparation', -.01)]);
+        await until(() => errors.some(error => error.code === 'ELEVATION_UNAVAILABLE') &&
+          air.map.queryRenderedFeatures({ layers: ['rl:points'] }).some(hit => hit.properties._rl_feature_id === 'healthy-preparation'),
+        'update diagnostic and healthy publication');
+        check(changes.includes('updated-preparation') && changes.includes('healthy-preparation'), 'Preparation failure interrupted datachange');
+        check(air.getFeature('updated-preparation') !== undefined && air.getEntityState('updated-preparation')?.placement === 'airborne', 'Accepted entity update was abandoned');
+        check(errors.some(error => error.context.operation === 'entities' && error.cause instanceof Error), 'Preparation diagnostic lost context or cause');
+      } finally { air.destroy(); }
+      check(!container.querySelector('canvas'), 'Preparation failure leaked a canvas after destroy');
+    }
+  });
+  await run('Removing an entity from preparation leaves accepted data and rendered output absent', async () => {
+    let removeDuringPreparation = false;
+    const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, logger: () => {},
+      elevationSampler: { sample: () => 0, prepare: async () => {
+        if (removeDuringPreparation) { removeDuringPreparation = false; air.remove(['removed-in-preparation']); }
+      } } });
+    current = air;
+    try {
+      await air.ready;
+      removeDuringPreparation = true;
+      air.upsert([{ ...point('removed-in-preparation'), entity: { altitude: { meters: 100, reference: 'sea-level' },
+        attachments: [{ id: 'zone', type: 'circle', radius: 100 }] } }, point('healthy-after-removal', .01)]);
+      await until(() => !air.getFeature('removed-in-preparation') &&
+        air.map.queryRenderedFeatures({ layers: ['rl:points'] }).some(hit => hit.properties._rl_feature_id === 'healthy-after-removal'),
+      'reentrant removal and healthy publication');
+      await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+      check(!air.getEntityState('removed-in-preparation'), 'Removed entity retained computation state');
+      check(!air.map.querySourceFeatures('rl:features').some(hit => hit.properties._rl_feature_id === 'removed-in-preparation'), 'Removed feature reached the source');
+      check(!air.map.queryRenderedFeatures().some(hit => hit.properties._rl_feature_id === 'removed-in-preparation' || hit.properties.entityId === 'removed-in-preparation'), 'Removed entity left rendered geometry');
+    } finally { air.destroy(); }
+  });
+  await run('Destroying from a restoration diagnostic stops callbacks and resource creation', async () => {
+    let restoring = false, destroyed = false, callbacksAfterDestroy = 0, resourcesAfterDestroy = 0;
+    const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, features: [point('broken-restore'), point('later-restore')],
+      logger: () => {}, style: feature => {
+        if (destroyed) callbacksAfterDestroy++;
+        if (restoring && feature.id === 'broken-restore') throw new Error('Restoration style failure');
+        return {};
+      }, onError: error => {
+        if (restoring && error.code === 'UPDATE_FAILED' && !destroyed) { destroyed = true; air.destroy(); }
+      } });
+    current = air;
+    try {
+      await air.ready;
+      await until(() => air.map.queryRenderedFeatures({ layers: ['rl:points'] }).length > 0, 'initial restoration features');
+      const addSource = air.map.addSource.bind(air.map), addLayer = air.map.addLayer.bind(air.map);
+      air.map.addSource = (...args) => { if (destroyed) resourcesAfterDestroy++; return addSource(...args); };
+      air.map.addLayer = (...args) => { if (destroyed) resourcesAfterDestroy++; return addLayer(...args); };
+      restoring = true;
+      air.configure({ basemap: style('#ffffff') });
+      await until(() => destroyed, 'destruction from restoration error callback');
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      check(callbacksAfterDestroy === 0, 'Restoration called styling after destruction');
+      check(resourcesAfterDestroy === 0, 'Restoration created sources or layers after destruction');
+      check(!container.querySelector('canvas'), 'Restoration destruction left a canvas');
+    } finally { air.destroy(); }
+  });
+  await run('Unrelated terrain failure preserves the displayed mask of a pending replacement', async () => {
+    let pending = false, finish: (() => void) | undefined;
+    const air = createViewport({ container, basemap: style(), camera: { center: [.02, 0], zoom: 16 }, logger: () => {},
+      elevationSampler: {
+        sample: (lng, lat) => !pending || (Math.abs(lat) < 1e-8 && (Math.abs(lng) < 1e-8 || Math.abs(lng - .04) < 1e-8)) ? 0 : null,
+        prepare: positions => {
+          if (!pending) return Promise.resolve();
+          if (Math.abs(positions[0]![0]) < .01) return Promise.reject(new Error('Unrelated region failed'));
+          return new Promise<void>(resolve => { finish = () => { pending = false; resolve(); }; });
+        },
+      } });
+    current = air;
+    const camera: CameraAttachment = { id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0,
+      elevation: -45, fovX: 60, fovY: 40, range: 300, volumeOpacity: 0, wireframe: false };
+    const sensor = (id: string, lng: number): MapFeature => ({ ...point(id, lng), entity: {
+      altitude: { meters: 100, reference: 'sea-level' }, attachments: [camera],
+    } });
+    try {
+      await air.ready;
+      air.upsert([sensor('retained-region', .02)]);
+      await until(() => air.getEntityState('retained-region')?.coverage === 'ready', 'completed retained camera');
+      const mask = air.map.getStyle().layers.find(layer => layer.id.startsWith('rl:camera-mask:'));
+      check(mask, 'Initial camera mask absent');
+      const image = mask && air.map.getSource<ImageSource>(mask.id)?.image;
+      let picked = '';
+      air.on('click', event => { picked = event.attachments[0]?.entityId ?? ''; });
+      await pointer('click', air.map.project([.02, .0008]));
+      check(picked === 'retained-region', 'Initial camera was not selectable at the retained test point');
+      pending = true;
+      air.upsert([sensor('retained-region', .04), sensor('failed-region', 0)]);
+      await until(() => air.getEntityState('failed-region')?.coverage === 'unavailable' &&
+        air.getEntityState('retained-region')?.coverage === 'loading' && Boolean(finish), 'regional failure with retained replacement');
+      check(mask && air.map.getLayer(mask.id) && air.map.getSource<ImageSource>(mask.id)?.image === image, 'Unrelated failure replaced or removed the displayed mask');
+      picked = '';
+      await pointer('click', air.map.project([.02, .0008]));
+      check(picked === 'retained-region', 'Retained camera stopped being selectable');
+      finish!();
+      await until(() => air.getEntityState('retained-region')?.coverage === 'ready', 'replacement completes after unrelated failure');
+    } finally { finish?.(); air.destroy(); }
+  });
   await run('Destroy during initialization, repeat destroy, then remount', async () => {
     const abandoned = createViewport({ container, basemap: style() });
     abandoned.on('destroy', () => abandoned.destroy());
@@ -77,33 +235,118 @@ async function suite() {
   const hits = () => viewport.map.queryRenderedFeatures({ layers: ['rl:points'] });
   viewport.upsert([point('queued')]);
   await viewport.ready;
-  await until(() => hits().some(hit => hit.id === 'queued'), 'base feature rendered');
+  await until(() => hits().some(hit => hit.properties._rl_feature_id === 'queued'), 'base feature rendered');
+  const featureState = (id: string) => {
+    const sourceFeature = viewport.map.querySourceFeatures('rl:features').find(hit => hit.properties._rl_feature_id === id);
+    return sourceFeature?.id === undefined ? {} : viewport.map.getFeatureState({ source: 'rl:features', id: sourceFeature.id });
+  };
   await run('Queued features render with stable string IDs and click events', async () => {
     check(!viewport.map.getLayer('rl:camera-gpu'), 'Ground-only viewport allocated the camera renderer');
-    await until(() => hits().some(hit => hit.id === 'queued'), 'queued feature rendered');
-    check(hits().some(hit => hit.id === 'initial'), 'Initial feature missing');
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === 'queued'), 'queued feature rendered');
+    check(hits().some(hit => hit.properties._rl_feature_id === 'initial'), 'Initial feature missing');
     let ids: string[] = [];
     const off = viewport.on('click', event => { ids = event.features.map(feature => feature.id); });
     await pointer('click', viewport.map.project([0,0]));
     check(ids.includes('queued') && ids.includes('initial'), 'Consumer click IDs missing'); off();
+  });
+  await run('Reserved feature IDs remain selectable without inherited state', async () => {
+    const id = '__proto__';
+    viewport.upsert([point(id, .08)]);
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === id), 'reserved ID rendered');
+    viewport.setSelection([id]);
+    viewport.preview(id);
+    check(viewport.getSelection()[0] === id, 'Reserved ID was rejected by selection');
+    let clicked = '';
+    const off = viewport.on('click', event => { clicked = event.features[0]?.id ?? ''; });
+    await pointer('click', viewport.map.project([.08, 0]));
+    check(clicked === id, `Reserved ID click returned ${clicked}`);
+    const unrelated: Record<string, unknown> = {};
+    check(unrelated.selected === undefined && unrelated.hover === undefined, 'Feature state polluted unrelated objects');
+    off(); viewport.preview(null); viewport.remove([id]);
   });
   await run('Incremental updates replace data without moving the camera', async () => {
     const center = viewport.map.getCenter().toArray().join(',');
     viewport.setSelection(['queued']);
     viewport.upsert([{ ...point('queued', .03), properties: { name: 'Renamed', color: 'red' } }]);
     viewport.remove(['initial', 'unknown']);
-    await until(() => hits().some(hit => hit.id === 'queued' && hit.properties._rl_color === '#ff0000') && !hits().some(hit => hit.id === 'initial'), 'incremental replace/remove');
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === 'queued' && hit.properties._rl_color === '#ff0000') && !hits().some(hit => hit.properties._rl_feature_id === 'initial'), 'incremental replace/remove');
     check(viewport.map.getCenter().toArray().join(',') === center, 'Camera moved');
     check(viewport.getFeature('queued')?.properties.name === 'Renamed', 'Name not replaced');
-    check(viewport.map.getFeatureState({ source: 'rl:features', id: 'queued' }).selected, 'Selection state lost');
+    check(featureState('queued').selected, 'Selection state lost');
+  });
+  await run('A mutating style callback cannot change accepted or rendered feature data', async () => {
+    const mount = document.createElement('div');
+    mount.style.cssText = 'width:320px;height:240px;position:absolute;left:0;top:0';
+    document.body.append(mount);
+    const feature = { ...point('snapshot'), properties: { name: 'Original' } };
+    const map = createViewport({ container: mount, basemap: style(), camera: { center: [0, 0], zoom: 12 },
+      features: [feature], style: value => {
+        value.properties.name = 'Mutated';
+        if (value.geometry.type === 'Point') value.geometry.coordinates[0] = .1;
+        return { color: '#008855' };
+      }, logger: () => {} });
+    try {
+      await map.ready;
+      await until(() => map.map.queryRenderedFeatures(map.map.project([0, 0]), { layers: ['rl:points'] })
+        .some(hit => hit.properties._rl_feature_id === 'snapshot'), 'snapshot rendered at accepted position');
+      const accepted = map.getFeature('snapshot');
+      check(accepted?.properties.name === 'Original', 'Style callback mutated accepted properties');
+      check(accepted?.geometry.type === 'Point' && accepted.geometry.coordinates[0] === 0,
+        'Style callback mutated accepted coordinates');
+      check(!map.map.queryRenderedFeatures(map.map.project([.1, 0]), { layers: ['rl:points'] })
+        .some(hit => hit.properties._rl_feature_id === 'snapshot'), 'Style callback moved rendered geometry');
+    } finally { map.destroy(); mount.remove(); }
+  });
+  await run('Removing and reinserting an airborne ID does not restore its selection', async () => {
+    const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, elevationSampler: { sample: () => 0 }, logger: () => {} });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('selected-air'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'zone', type: 'circle', radius: 100 }] } };
+    try {
+      air.upsert([feature]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'selected airborne entity');
+      air.setSelection([feature.id]);
+      check(air.getSelection()[0] === feature.id, 'Airborne entity was not selected');
+      air.remove([feature.id]);
+      check(air.getSelection().length === 0, 'Removal kept the ID selected');
+      air.upsert([feature]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'reinserted airborne entity');
+      check(air.getSelection().length === 0, 'Reinserted airborne entity regained selection');
+      const sourceFeature = () => air.map.querySourceFeatures('rl:features').find(hit => hit.properties._rl_feature_id === feature.id);
+      await until(() => sourceFeature()?.id !== undefined, 'reinserted source feature');
+      const state = air.map.getFeatureState({ source: 'rl:features', id: sourceFeature()!.id! });
+      check(state.selected !== true, 'Reinserted feature retained renderer selection state');
+    } finally { air.destroy(); }
+  });
+  await run('Mutating object basemaps does not change accepted configuration or style', async () => {
+    const first = style('#112233');
+    const map = createViewport({ container, basemap: first, logger: () => {} });
+    current = map;
+    try {
+      await map.ready;
+      first.layers[0] = { id: 'background', type: 'background', paint: { 'background-color': '#ff0000' } };
+      check(map.map.getPaintProperty('background', 'background-color') === '#112233', 'Creation input changed the displayed style');
+      const acceptedFirst = map.getConfiguration().basemap;
+      check(typeof acceptedFirst !== 'string' && acceptedFirst.layers[0]?.type === 'background' &&
+        acceptedFirst.layers[0].paint?.['background-color'] === '#112233', 'Creation input changed accepted basemap');
+      const second = style('#445566');
+      map.configure({ basemap: second });
+      await until(() => map.map.isStyleLoaded() === true &&
+        map.map.getPaintProperty('background', 'background-color') === '#445566', 'configured basemap loaded');
+      second.layers[0] = { id: 'background', type: 'background', paint: { 'background-color': '#00ff00' } };
+      const acceptedSecond = map.getConfiguration().basemap;
+      check(typeof acceptedSecond !== 'string' && acceptedSecond.layers[0]?.type === 'background' &&
+        acceptedSecond.layers[0].paint?.['background-color'] === '#445566', 'Configure input changed accepted basemap');
+      check(map.map.getPaintProperty('background', 'background-color') === '#445566', 'Configure input changed displayed style');
+    } finally { map.destroy(); }
   });
   await run('Style replacement preserves data and selection', async () => {
     viewport.setSelection(['queued']);
     viewport.configure({ basemap: style('#ddeedd'), projection: 'globe' });
     viewport.upsert([point('during-style')]);
-    await until(() => Boolean(viewport.map.getLayer('rl:points')) && hits().some(hit => hit.id === 'during-style'), 'style rehydration');
+    await until(() => Boolean(viewport.map.getLayer('rl:points')) && hits().some(hit => hit.properties._rl_feature_id === 'during-style'), 'style rehydration');
     check(viewport.getSelection()[0] === 'queued', 'Selected ID lost');
-    check(viewport.map.getFeatureState({ source: 'rl:features', id: 'queued' }).selected, 'Selection display lost');
+    check(featureState('queued').selected, 'Selection display lost');
     const before = viewport.getConfiguration();
     viewport.configure({ basemap: undefined, terrain: undefined, hillshade: undefined });
     const after = viewport.getConfiguration();
@@ -114,26 +357,26 @@ async function suite() {
     const failures: RidgelineError[] = [];
     const off = viewport.on('diagnostic', error => { if (error.code === 'UPDATE_FAILED') failures.push(error); });
     viewport.upsert([point('broken'), point('remove-me')]);
-    await until(() => hits().some(hit => hit.id === 'broken') && hits().some(hit => hit.id === 'remove-me'), 'recovery setup');
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === 'broken') && hits().some(hit => hit.properties._rl_feature_id === 'remove-me'), 'recovery setup');
     viewport.upsert([{ ...point('broken'), properties: { broken: true } }, point('healthy')]);
     viewport.remove(['remove-me']);
-    await until(() => hits().some(hit => hit.id === 'healthy') && !hits().some(hit => hit.id === 'remove-me'), 'healthy changes survive');
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === 'healthy') && !hits().some(hit => hit.properties._rl_feature_id === 'remove-me'), 'healthy changes survive');
     check(failures.length === 1 && failures[0]?.context.featureId === 'broken', 'Failure must identify the feature');
-    check(hits().some(hit => hit.id === 'broken'), 'Last rendered version should remain');
+    check(hits().some(hit => hit.properties._rl_feature_id === 'broken'), 'Last rendered version should remain');
     viewport.upsert([point('healthy', .01)]);
-    await until(() => hits().some(hit => hit.id === 'healthy' && hit.geometry.type === 'Point' && hit.geometry.coordinates[0]! > .005), 'unrelated update');
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === 'healthy' && hit.geometry.type === 'Point' && hit.geometry.coordinates[0]! > .005), 'unrelated update');
     check(failures.length === 1, 'Broken callback retried automatically');
     viewport.retryUpdates();
     await until(() => failures.length === 2, 'explicit retry');
     viewport.upsert([{ ...point('broken'), properties: { color: 'red' } }]);
-    await until(() => hits().some(hit => hit.id === 'broken' && hit.properties._rl_color === '#ff0000'), 'corrected feature');
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === 'broken' && hit.properties._rl_color === '#ff0000'), 'corrected feature');
     viewport.remove(['broken', 'healthy']);
-    await until(() => !hits().some(hit => ['broken', 'healthy'].includes(String(hit.id))), 'recovery cleanup');
+    await until(() => !hits().some(hit => ['broken', 'healthy'].includes(String(hit.properties._rl_feature_id))), 'recovery cleanup');
     off();
   });
   await run('Renderer rejection preserves removals and never restores an older update', async () => {
     viewport.upsert([point('retry-remove'), point('retry-update')]);
-    await until(() => hits().some(hit => hit.id === 'retry-remove') && hits().some(hit => hit.id === 'retry-update'), 'renderer setup');
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === 'retry-remove') && hits().some(hit => hit.properties._rl_feature_id === 'retry-update'), 'renderer setup');
     const source = viewport.map.getSource('rl:features');
     if (!(source instanceof GeoJSONSource)) throw new Error('Missing GeoJSON source');
     const update = source.updateData.bind(source);
@@ -149,15 +392,15 @@ async function suite() {
     await until(() => Boolean(rejectUpdate), 'pending renderer submission');
     viewport.upsert([{ ...point('retry-update', .02), properties: { color: 'red' } }]);
     rejectUpdate!(new Error('Injected renderer rejection'));
-    await until(() => hits().some(hit => hit.id === 'retry-update' && hit.properties._rl_color === '#ff0000'), 'newer replacement');
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === 'retry-update' && hit.properties._rl_color === '#ff0000'), 'newer replacement');
     check(calls === 2, 'Failed batch retried automatically');
-    check(hits().some(hit => hit.id === 'retry-remove'), 'Injected failed removal unexpectedly applied');
+    check(hits().some(hit => hit.properties._rl_feature_id === 'retry-remove'), 'Injected failed removal unexpectedly applied');
     viewport.retryUpdates();
-    await until(() => !hits().some(hit => hit.id === 'retry-remove'), 'removal retry');
-    check(hits().some(hit => hit.id === 'retry-update' && hit.properties._rl_color === '#ff0000'), 'Retry restored stale data');
+    await until(() => !hits().some(hit => hit.properties._rl_feature_id === 'retry-remove'), 'removal retry');
+    check(hits().some(hit => hit.properties._rl_feature_id === 'retry-update' && hit.properties._rl_color === '#ff0000'), 'Retry restored stale data');
     source.updateData = update;
     viewport.remove(['retry-update']);
-    await until(() => !hits().some(hit => hit.id === 'retry-update'), 'renderer cleanup');
+    await until(() => !hits().some(hit => hit.properties._rl_feature_id === 'retry-update'), 'renderer cleanup');
   });
   await run('Source error events retain updates even when updateData resolves', async () => {
     const source = viewport.map.getSource('rl:features');
@@ -170,10 +413,63 @@ async function suite() {
     await until(() => failures === 1, 'source failure diagnostic');
     source.updateData = update;
     viewport.retryUpdates();
-    await until(() => hits().some(hit => hit.id === 'worker-retry'), 'worker error retry');
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === 'worker-retry'), 'worker error retry');
     viewport.remove(['worker-retry']);
-    await until(() => !hits().some(hit => hit.id === 'worker-retry'), 'worker cleanup');
+    await until(() => !hits().some(hit => hit.properties._rl_feature_id === 'worker-retry'), 'worker cleanup');
     off();
+  });
+  await run('An initial GeoJSON worker-load rejection recovers with the latest accepted features', async () => {
+    const mount = document.createElement('div');
+    mount.style.cssText = 'width:320px;height:240px;position:absolute;left:0;top:0';
+    document.body.append(mount);
+    const onAdd = GeoJSONSource.prototype.onAdd;
+    let rejected = false, workerLoads = 0;
+    GeoJSONSource.prototype.onAdd = function(map) {
+      if (this.id === 'rl:features') {
+        this.actorPromise = this.actorPromise.then(actor => new Proxy(actor, {
+          get(target, property, receiver) {
+            if (property !== 'sendAsync') return Reflect.get(target, property, receiver);
+            const send = target.sendAsync.bind(target);
+            return new Proxy(send, { apply(fn, receiver, args) {
+              const message: unknown = args[0];
+              if (message && typeof message === 'object' && 'type' in message && message.type === 'LD') {
+                workerLoads++;
+                if (!rejected) {
+                  rejected = true;
+                  return Promise.reject(new Error('Injected GeoJSON worker load rejection'));
+                }
+              }
+              return Reflect.apply(fn, receiver, args);
+            } });
+          },
+        }));
+      }
+      onAdd.call(this, map);
+    };
+    let map: Viewport | undefined;
+    try {
+      map = createViewport({ container: mount, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+        features: [point('worker-latest'), point('worker-removed')], logger: () => {} });
+      const active = map;
+      const diagnostics: RidgelineError[] = [];
+      active.on('diagnostic', error => diagnostics.push(error));
+      await active.ready;
+      await until(() => rejected && diagnostics.some(error => error.code === 'UPDATE_FAILED' && error.context.sourceId === 'rl:features'),
+        'initial GeoJSON worker rejection reported');
+      const rendered = () => active.map.queryRenderedFeatures({ layers: ['rl:points'] });
+      check(!rendered().some(hit => hit.properties._rl_feature_id === 'worker-latest'), 'Failed initial load appeared before retry');
+      active.upsert([{ ...point('worker-latest', .03), properties: { name: 'Latest' } }]);
+      active.remove(['worker-removed']);
+      active.retryUpdates();
+      await until(() => rendered().some(hit => hit.properties._rl_feature_id === 'worker-latest' &&
+        hit.geometry.type === 'Point' && hit.geometry.coordinates[0]! > .02) &&
+        !rendered().some(hit => hit.properties._rl_feature_id === 'worker-removed'), 'worker recovery with latest snapshot');
+      check(workerLoads >= 2, 'Retry did not reach the GeoJSON worker');
+    } finally {
+      map?.destroy();
+      GeoJSONSource.prototype.onAdd = onAdd;
+      mount.remove();
+    }
   });
   await run('A retired source cannot restore stale changes after a basemap switch', async () => {
     const source = viewport.map.getSource('rl:features');
@@ -184,33 +480,33 @@ async function suite() {
     await until(() => Boolean(rejectUpdate), 'old source submission');
     viewport.configure({ basemap: style('#ddeedd') });
     viewport.upsert([{ ...point('retired-update'), properties: { color: 'red' } }]);
-    await until(() => Boolean(viewport.map.getLayer('rl:points')) && hits().some(hit => hit.id === 'retired-update' && hit.properties._rl_color === '#ff0000'), 'new source snapshot');
+    await until(() => Boolean(viewport.map.getLayer('rl:points')) && hits().some(hit => hit.properties._rl_feature_id === 'retired-update' && hit.properties._rl_color === '#ff0000'), 'new source snapshot');
     rejectUpdate!(new Error('Retired source rejection'));
     viewport.remove(['retired-update']);
     viewport.retryUpdates();
-    await until(() => !hits().some(hit => hit.id === 'retired-update'), 'retired source cleanup');
+    await until(() => !hits().some(hit => hit.properties._rl_feature_id === 'retired-update'), 'retired source cleanup');
     viewport.retryUpdates();
     viewport.upsert([point('during-style')]);
-    await until(() => hits().some(hit => hit.id === 'during-style'), 'new source still accepts updates');
-    check(!hits().some(hit => hit.id === 'retired-update'), 'Old source resurrected removed data');
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === 'during-style'), 'new source still accepts updates');
+    check(!hits().some(hit => hit.properties._rl_feature_id === 'retired-update'), 'Old source resurrected removed data');
   });
   await run('A broken style does not block basemap restoration or later updates', async () => {
     const failures: RidgelineError[] = [];
     const off = viewport.on('diagnostic', error => { if (error.code === 'UPDATE_FAILED') failures.push(error); });
     viewport.upsert([point('rebuild-broken'), point('rebuild-healthy')]);
-    await until(() => hits().some(hit => hit.id === 'rebuild-broken') && hits().some(hit => hit.id === 'rebuild-healthy'), 'rebuild setup');
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === 'rebuild-broken') && hits().some(hit => hit.properties._rl_feature_id === 'rebuild-healthy'), 'rebuild setup');
     viewport.upsert([{ ...point('rebuild-broken'), properties: { name: 'Broken', broken: true } }]);
     await until(() => failures.length === 1, 'broken style diagnostic');
     viewport.configure({ basemap: style('#dce7dc') });
-    await until(() => Boolean(viewport.map.getLayer('rl:points')) && hits().some(hit => hit.id === 'rebuild-healthy'), 'healthy feature after rebuild');
-    check(!hits().some(hit => hit.id === 'rebuild-broken'), 'Broken feature rendered during rebuild');
+    await until(() => Boolean(viewport.map.getLayer('rl:points')) && hits().some(hit => hit.properties._rl_feature_id === 'rebuild-healthy'), 'healthy feature after rebuild');
+    check(!hits().some(hit => hit.properties._rl_feature_id === 'rebuild-broken'), 'Broken feature rendered during rebuild');
     check(failures.length === 2 && failures[1]?.context.featureId === 'rebuild-broken', `Rebuild failure did not identify feature: ${failures.map(error => `${error.context.operation}/${error.context.featureId}: ${error.message}: ${error.cause}`).join('; ')}`);
     viewport.upsert([point('rebuild-later')]);
-    await until(() => hits().some(hit => hit.id === 'rebuild-later'), 'update after partial rebuild');
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === 'rebuild-later'), 'update after partial rebuild');
     viewport.upsert([point('rebuild-broken')]);
-    await until(() => hits().some(hit => hit.id === 'rebuild-broken'), 'corrected feature after rebuild');
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === 'rebuild-broken'), 'corrected feature after rebuild');
     viewport.remove(['rebuild-broken', 'rebuild-healthy', 'rebuild-later']);
-    await until(() => !hits().some(hit => String(hit.id).startsWith('rebuild-')), 'rebuild cleanup');
+    await until(() => !hits().some(hit => String(hit.properties._rl_feature_id).startsWith('rebuild-')), 'rebuild cleanup');
     off();
   });
   await run('Escape reaches consumers unless a picker is open', async () => {
@@ -262,7 +558,7 @@ async function suite() {
   });
   await run('Picker refreshes names, icons and availability without replacing buttons or focus', async () => {
     viewport.upsert([point('queued')]);
-    await until(() => hits().some(hit => hit.id === 'queued'), 'picker setup');
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === 'queued'), 'picker setup');
     const ui = attachInteractions(viewport);
     await pointer('click', viewport.map.project([0,0]));
     const buttons = [...container.querySelectorAll<HTMLButtonElement>('[data-feature-id]')];
@@ -291,9 +587,75 @@ async function suite() {
     check(document.activeElement === buttons[1], 'Keyboard navigation broke after refresh');
     ui.destroy();
   });
+  await run('Replacing a registered icon updates the map and an open picker', async () => {
+    const mount = document.createElement('div');
+    mount.style.cssText = 'width:320px;height:240px;position:absolute;left:0;top:0';
+    document.body.append(mount);
+    const iconMap = createViewport({
+      container: mount, basemap: style(), camera: { center: [0, 0], zoom: 12 },
+      features: [point('icon-target'), point('icon-other')],
+      style: feature => ({ icon: feature.id === 'icon-target' ? 'swap' : undefined }),
+      logger: () => {},
+    });
+    const pixels = (red: boolean) => {
+      const image = new ImageData(24, 24);
+      for (let i = 0; i < image.data.length; i += 4) {
+        image.data[i] = red ? 255 : 0;
+        image.data[i + 1] = red ? 0 : 255;
+        image.data[i + 3] = 255;
+      }
+      return image;
+    };
+    const color = new Uint8Array(4);
+    try {
+      await iconMap.ready;
+      const canvas = iconMap.map.getCanvas();
+      const gl = canvas.getContext('webgl2');
+      check(Boolean(gl), 'Icon map has no WebGL2 context');
+      iconMap.map.on('render', () => {
+        const point = iconMap.map.project([0, 0]);
+        const scale = canvas.width / canvas.clientWidth;
+        gl!.readPixels(Math.round(point.x * scale), canvas.height - 1 - Math.round(point.y * scale), 1, 1, gl!.RGBA, gl!.UNSIGNED_BYTE, color);
+      });
+      iconMap.registerIcon('swap', { image: pixels(true), url: 'data:image/svg+xml,red' });
+      await until(() => color[0]! > 200 && color[1]! < 50, 'first icon rendered red');
+      const ui = attachInteractions(iconMap);
+      if (!window.browserMouse) throw new Error('Playwright mouse bridge required');
+      const iconBox = iconMap.map.getCanvas().getBoundingClientRect();
+      const iconPoint = iconMap.map.project([0, 0]);
+      await window.browserMouse('click', iconBox.left + iconPoint.x, iconBox.top + iconPoint.y);
+      const choice = mount.querySelector<HTMLButtonElement>('[data-feature-id="icon-target"]')!;
+      check(choice.querySelector('img')?.getAttribute('src') === 'data:image/svg+xml,red', 'Picker lacked the first icon');
+      iconMap.registerIcon('swap', { image: pixels(false), url: 'data:image/svg+xml,green' });
+      await until(() => color[1]! > 200 && color[0]! < 50, 'replacement icon rendered green');
+      check(choice.querySelector('img')?.getAttribute('src') === 'data:image/svg+xml,green', 'Open picker kept the old icon');
+      ui.destroy();
+    } finally {
+      iconMap.destroy();
+      mount.remove();
+    }
+  });
+  await run('Icon registration isolates an unrelated failing style callback', async () => {
+    const failures: RidgelineError[] = [];
+    const off = viewport.on('diagnostic', error => { if (error.context.featureId === 'icon-broken') failures.push(error); });
+    viewport.upsert([
+      { ...point('icon-healthy'), properties: { name: 'Healthy icon', icon: 'isolated-icon' } },
+      { ...point('icon-broken'), properties: { name: 'Broken icon', broken: true } },
+    ]);
+    const image = new ImageData(16, 16);
+    for (let i = 0; i < image.data.length; i += 4) { image.data[i] = 255; image.data[i + 3] = 255; }
+    viewport.registerIcon('isolated-icon', { image });
+    await until(() => viewport.map.queryRenderedFeatures({ layers: ['rl:icons'] })
+      .some(hit => hit.properties._rl_feature_id === 'icon-healthy'), 'healthy icon published');
+    check(failures.length > 0, 'Broken style callback did not report its feature ID');
+    viewport.upsert([point('icon-broken')]);
+    viewport.retryUpdates();
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === 'icon-broken'), 'recovered broken icon feature');
+    viewport.remove(['icon-healthy', 'icon-broken']); off();
+  });
   await run('A broken style falls back to names without interrupting the picker', async () => {
     viewport.upsert([point('picker-broken'), point('picker-healthy')]);
-    await until(() => hits().some(hit => hit.id === 'picker-broken') && hits().some(hit => hit.id === 'picker-healthy'), 'picker failure setup');
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === 'picker-broken') && hits().some(hit => hit.properties._rl_feature_id === 'picker-healthy'), 'picker failure setup');
     viewport.upsert([{ ...point('picker-broken'), properties: { name: 'Broken candidate', broken: true } }]);
     const ui = attachInteractions(viewport);
     await pointer('click', viewport.map.project([0,0]));
@@ -309,6 +671,95 @@ async function suite() {
     ui.destroy();
     viewport.upsert([point('picker-broken')]);
     viewport.remove(['picker-broken', 'picker-healthy']);
+  });
+  await run('Hover content follows the current feature and survives unrelated removal', async () => {
+    viewport.upsert([point('hover-current', .08), point('hover-unrelated', -.08)]);
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === 'hover-current'), 'hover feature rendered');
+    const ui = attachInteractions(viewport);
+    await pointer('move', viewport.map.project([.08, 0]));
+    await until(() => container.querySelector('.rl-tooltip')?.textContent === 'hover-current', 'hover tooltip');
+    viewport.upsert([{ ...point('hover-current', .08), properties: { name: 'Current name' } }]);
+    check(container.querySelector('.rl-tooltip')?.textContent === 'Current name', 'Hover tooltip kept stale content');
+    viewport.remove(['hover-unrelated']);
+    check(container.querySelector('.rl-tooltip')?.textContent === 'Current name', 'Unrelated removal hid the hovered feature');
+    ui.destroy();
+    viewport.remove(['hover-current']);
+  });
+  await run('A failed custom picker choice keeps the other choice and keyboard selection usable', async () => {
+    viewport.upsert([point('custom-broken'), point('custom-healthy')]);
+    await until(() => hits().some(hit => hit.properties._rl_feature_id === 'custom-broken') && hits().some(hit => hit.properties._rl_feature_id === 'custom-healthy'), 'custom picker setup');
+    const failures: RidgelineError[] = [];
+    const offDiagnostic = viewport.on('diagnostic', error => { if (error.context.operation === 'renderFeature') failures.push(error); });
+    let selection: string[] = [];
+    const offSelection = viewport.on('selectionrequest', event => { selection = event.ids; });
+    const ui = attachInteractions(viewport, {
+      renderFeature(feature) {
+        if (feature.properties.broken) throw new Error('Custom choice failed');
+        const label = document.createElement('span');
+        label.textContent = viewport.getName(feature);
+        return label;
+      },
+    });
+    await pointer('click', viewport.map.project([0, 0]));
+    const broken = container.querySelector<HTMLButtonElement>('[data-feature-id="custom-broken"]')!;
+    const healthy = container.querySelector<HTMLButtonElement>('[data-feature-id="custom-healthy"]')!;
+    broken.focus();
+    viewport.upsert([
+      { ...point('custom-broken'), properties: { name: 'Broken current', broken: true } },
+      { ...point('custom-healthy'), properties: { name: 'Healthy current' } },
+    ]);
+    check(broken.textContent === 'Broken current' && healthy.textContent === 'Healthy current', 'One custom renderer blocked choice refresh');
+    check(document.activeElement === broken && !broken.disabled, 'Failed choice lost focus or became unavailable');
+    check(failures.length === 1 && failures[0]?.context.featureId === 'custom-broken', 'Custom renderer failure was not reported');
+    if (!window.browserKey) throw new Error('Playwright keyboard bridge required');
+    await window.browserKey('Enter');
+    check(selection[0] === 'custom-broken', 'Failed choice could not be selected with the keyboard');
+    offSelection(); offDiagnostic(); ui.destroy();
+    viewport.remove(['custom-broken', 'custom-healthy']);
+  });
+  await run('Point above a ground area wins the click and picker-free selection', async () => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;left:0;top:0;z-index:9999';
+    const mount = document.createElement('div');
+    mount.style.cssText = 'width:320px;height:240px';
+    overlay.append(mount);
+    document.body.append(overlay);
+    const air = createViewport({ container: mount, basemap: style(), camera: { center: [0, 0], zoom: 16 },
+      elevationSampler: { sample: () => 0 }, logger: () => {} });
+    let ui: ReturnType<typeof attachInteractions> | undefined;
+    try {
+      await air.ready;
+      air.upsert([
+        { ...point('ground-area', -.002), entity: { attachments: [{ id: 'zone', type: 'circle', radius: 500 }] } },
+        point('top-point'),
+      ]);
+      await until(() => {
+        const hits = air.map.queryRenderedFeatures(air.map.project([0, 0]), { layers: ['rl:points', 'rl:entity-ground-fill'] });
+        return air.getEntityState('ground-area')?.coverage === 'ready' &&
+          hits.some(hit => hit.properties._rl_feature_id === 'top-point') &&
+          hits.some(hit => hit.properties.entityId === 'ground-area');
+      },
+      'overlapping ground area and point');
+      const rendered = air.map.queryRenderedFeatures(air.map.project([0, 0]), { layers: ['rl:points', 'rl:entity-ground-fill'] });
+      check(rendered[0]?.properties._rl_feature_id === 'top-point',
+        `Test setup did not render the point above the ground area: ${rendered.slice(0, 4).map(hit => `${hit.layer.id}/${hit.properties._rl_feature_id ?? hit.properties.entityId}`).join(',')}`);
+      let clicked: string[] = [];
+      let requested: string[] = [];
+      let clickEvents = 0;
+      air.on('click', event => { clickEvents++; clicked = event.features.map(feature => feature.id); });
+      air.on('selectionrequest', event => { requested = event.ids; });
+      ui = attachInteractions(air, { picker: false });
+      const pointAt = air.map.project([0, 0]);
+      const rect = air.map.getCanvas().getBoundingClientRect();
+      if (!window.browserClick) throw new Error('Playwright click bridge required');
+      if (!window.browserMouse) throw new Error('Playwright mouse bridge required');
+      await window.browserMouse('click', rect.left + pointAt.x, rect.top + pointAt.y);
+      check(clicked[0] === 'top-point' && clicked.includes('ground-area'),
+        `Click order differed from rendering: ${clicked}; events=${clickEvents}`);
+      check(requested[0] === 'top-point', `Picker-free selection chose ${requested[0]}`);
+    } finally {
+      ui?.destroy(); air.destroy(); overlay.remove();
+    }
   });
   await run('Hillshade options update live and survive toggles and basemap replacement', async () => {
     viewport.configure({ hillshade: true, elevation: { tiles: [], encoding: 'terrarium', tileSize: 256 }, hillshadeOptions: { method: 'igor', direction: 270, altitude: 30, anchor: 'map', intensity: .6, shadowColor: '#123456', highlightColor: '#eeeeee', accentColor: '#345678' } });
@@ -410,6 +861,80 @@ async function suite() {
     await click(); check(attachment === '', 'Invisible camera face intercepted a click');
     air.destroy();
   });
+  await run('A real click selects a visible camera face clipped by the view', async () => {
+    const air = createViewport({ container, basemap: style('#000000'), elevationSampler: { sample: () => 0 },
+      camera: { center: [0, .001], zoom: 18, pitch: 45 }, logger: () => {} });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'clipped-camera', type: 'camera', bearing: 0, elevation: -45,
+      fovX: 60, fovY: 40, range: 1000, color: '#00ff00', volumeOpacity: 1, fillOpacity: 0, outline: false };
+    const feature: MapFeature = { ...point('clipped-aircraft'), entity: { altitude: { meters: 300, reference: 'ground' }, attachments: [camera] } };
+    try {
+      air.upsert([feature]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'clipped camera volume');
+      await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+      const layer = air.map.getLayer('rl:entities') as unknown as { implementation: {
+        draws: { entityId: string; attachmentId?: string; mode: string; vertices: [number, number, number][] }[];
+        project(point: [number, number, number]): { x: number; y: number } | null;
+        clippedTriangle(points: [number, number, number][]): { x: number; y: number }[];
+      } };
+      const geometry = layer.implementation;
+      const face = geometry.draws.find(draw => draw.entityId === feature.id && draw.attachmentId === camera.id && draw.mode === 'triangles');
+      check(face, 'Camera face was not rendered');
+      const canvas = air.map.getCanvas();
+      const inside = (x: number, y: number, polygon: { x: number; y: number }[]) => {
+        let contained = false;
+        for (let a = 0, b = polygon.length - 1; a < polygon.length; b = a++) {
+          const first = polygon[a]!, last = polygon[b]!;
+          if ((first.y > y) !== (last.y > y) && x < (last.x - first.x) * (y - first.y) / (last.y - first.y) + first.x)
+            contained = !contained;
+        }
+        return contained;
+      };
+      const candidates: { x: number; y: number }[] = [];
+      for (let i = 0; i < face!.vertices.length; i += 3) {
+        const triangle = face!.vertices.slice(i, i + 3);
+        const projected = triangle.map(vertex => geometry.project(vertex));
+        if (projected.every(Boolean) || projected.every(point => !point)) continue;
+        const clipped = geometry.clippedTriangle(triangle);
+        if (clipped.length < 3) continue;
+        for (let y = 24; y < canvas.clientHeight - 24; y += 24)
+          for (let x = 24; x < canvas.clientWidth - 24; x += 24)
+            if (inside(x, y, clipped)) candidates.push({ x, y });
+      }
+      check(candidates.length > 0, 'No partially clipped camera face intersects the visible canvas');
+      const visible = await new Promise<{ x: number; y: number } | undefined>((resolve, reject) => {
+        const timeout = window.setTimeout(() => reject(new Error('Timed out reading the clipped camera face')), 5_000);
+        air.map.once('render', () => {
+          window.clearTimeout(timeout);
+          const gl = canvas.getContext('webgl2')!;
+          const scale = canvas.width / canvas.clientWidth;
+          const pixels = new Uint8Array(canvas.width * canvas.height * 4);
+          gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+          for (const candidate of candidates) {
+            const x = Math.round(candidate.x * scale), y = canvas.height - 1 - Math.round(candidate.y * scale);
+            const index = (y * canvas.width + x) * 4;
+            if (pixels[index + 1]! > 100 && pixels[index]! < 80 && pixels[index + 2]! < 80) {
+              resolve(candidate); return;
+            }
+          }
+          resolve(undefined);
+        });
+        air.map.triggerRepaint();
+      });
+      check(visible, 'Clipped camera face was not visibly rendered');
+      const ui = attachInteractions(air, { picker: false });
+      let clicked = '';
+      let selected = '';
+      const offClick = air.on('click', event => { clicked = event.attachments.find(hit => hit.entityId === feature.id)?.attachmentId ?? ''; });
+      const offSelection = air.on('selectionrequest', event => { selected = event.attachments.find(hit => hit.entityId === feature.id)?.attachmentId ?? ''; });
+      try {
+        await pointer('click', visible!);
+        check(clicked === camera.id, `Native click missed the visible clipped face: ${clicked}`);
+        check(selected === camera.id, `Selection request lost the clipped face identity: ${selected}`);
+
+      } finally { offClick(); offSelection(); ui.destroy(); }
+    } finally { air.destroy(); }
+  });
   await run('Incomplete custom camera terrain settles without polling and retries explicitly', async () => {
     let samples = 0, available = false;
     const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
@@ -472,6 +997,111 @@ async function suite() {
     await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'mixed terrain preparation');
     check(preparationExtents.some(extent => extent > 90), `Shared preparation omitted the non-camera terrain extent: ${preparationExtents}`);
     air.destroy();
+  });
+  await run('A ready camera does not hide unavailable ground attachment terrain', async () => {
+    const known = (lng: number, lat: number) => Math.abs(lng) < .00055 && Math.abs(lat) < .00055;
+    const air = createViewport({ container, basemap: style(), elevationSampler: { sample: (lng, lat) => known(lng, lat) ? 0 : null }, logger: () => {} });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'near-camera', type: 'camera', terrainVisibility: true,
+      bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 10 };
+    const near: MapFeature = { ...point('near-only'), entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [camera] } };
+    const mixed: MapFeature = { ...point('near-plus-zone'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [camera, { id: 'wide-zone', type: 'circle', radius: 300 }] } };
+    air.upsert([near, mixed]);
+    await until(() => air.getEntityState(near.id)?.coverage === 'ready', 'near camera ready');
+    await until(() => air.getEntityState(mixed.id)?.coverage === 'unavailable', 'wide ground area unavailable');
+    check(air.getEntityState(mixed.id)?.coverage === 'unavailable', 'Ready camera hid unknown ground terrain');
+    air.destroy();
+  });
+  await run('One failed terrain region does not settle another pending camera', async () => {
+    let secondReady = false;
+    let finishSecond: (() => void) | undefined;
+    const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+      sample(lng, lat) {
+        if (Math.abs(lat) < 1e-8 && (Math.abs(lng) < 1e-8 || Math.abs(lng - .02) < 1e-8)) return 0;
+        return secondReady && Math.abs(lng - .02) < .01 ? 0 : null;
+      },
+      prepare(positions) {
+        if (Math.abs(positions[0]![0]) < .01) return Promise.reject(new Error('First region failed'));
+        return new Promise<void>(resolve => { finishSecond = () => { secondReady = true; resolve(); }; });
+      },
+    } });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'camera', type: 'camera', terrainVisibility: true,
+      bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 };
+    const first: MapFeature = { ...point('failed-region'), entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [camera] } };
+    const second: MapFeature = { ...point('pending-region', .02), entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [camera] } };
+    try {
+      air.upsert([first, second]);
+      await until(() => air.getEntityState(first.id)?.coverage === 'unavailable' &&
+        air.getEntityState(second.id)?.coverage === 'loading' && Boolean(finishSecond), 'independent terrain statuses');
+      finishSecond!();
+      await until(() => air.getEntityState(second.id)?.coverage === 'ready', 'second camera after unrelated failure');
+      check(air.getEntityState(first.id)?.coverage === 'unavailable', 'Unrelated success changed failed region');
+    } finally { finishSecond?.(); air.destroy(); }
+  });
+  await run('A failed airborne style update retains its last complete display', async () => {
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style(), camera: { center: [.005, 0], zoom: 15 },
+      elevationSampler: { sample: () => 0 }, logger: () => {}, onError: error => errors.push(error),
+      style: feature => { if (feature.properties.fail) throw new Error('Airborne style failed'); return { color: '#1166aa' }; } });
+    current = air; await air.ready;
+    const original: MapFeature = { ...point('retained-air'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'zone', type: 'circle', radius: 100 }, { id: 'ball', type: 'sphere', radius: 30 }] } };
+    const moved: MapFeature = { ...original, geometry: { type: 'Point', coordinates: [.01, 0] } };
+    const zoneAt = (lng: number) => air.map.queryRenderedFeatures(air.map.project([lng, 0]), { layers: ['rl:entity-ground-fill'] })
+      .some(hit => hit.properties.entityId === original.id && hit.properties.attachmentId === 'zone');
+    try {
+      air.upsert([original]);
+      await until(() => zoneAt(0), 'initial airborne ground attachment');
+      air.upsert([{ ...moved, properties: { fail: true } }]);
+      await until(() => errors.some(error => error.context.featureId === original.id && error.code === 'UPDATE_FAILED'), 'airborne style failure');
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      check(zoneAt(0) && !zoneAt(.01), 'Failed style update moved or erased retained ground attachment');
+      const accepted = air.getFeature(original.id);
+      check(accepted?.geometry.type === 'Point' && accepted.geometry.coordinates[0] === .01,
+        'Accepted data did not advance after style failure');
+      air.upsert([moved]);
+      await until(() => zoneAt(.01) && !zoneAt(0), 'corrected airborne update');
+    } finally { air.destroy(); }
+  });
+  await run('Airborne shader creation recovers through retryUpdates', async () => {
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style('#ffffff'), camera: { center: [0, 0], zoom: 17, pitch: 45 },
+      elevationSampler: { sample: () => 0 }, logger: () => {}, onError: error => errors.push(error) });
+    current = air; await air.ready;
+    await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+    const gl = air.map.getCanvas().getContext('webgl2')!;
+    const createProgram = gl.createProgram.bind(gl);
+    let failOnce = true;
+    Object.defineProperty(gl, 'createProgram', { configurable: true, value: () => {
+      if (failOnce) { failOnce = false; return null; }
+      return createProgram();
+    } });
+    const feature: MapFeature = { ...point('shader-retry'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'ball', type: 'sphere', radius: 100, color: '#ff0000' }] } };
+    const redPixels = () => new Promise<number>(resolve => {
+      air.map.once('render', () => {
+        const canvas = air.map.getCanvas(), context = canvas.getContext('webgl2')!;
+        const values = new Uint8Array(300 * 300 * 4);
+        context.readPixels(Math.floor(canvas.width / 2) - 150, Math.floor(canvas.height / 2) - 150,
+          300, 300, context.RGBA, context.UNSIGNED_BYTE, values);
+        let count = 0;
+        for (let i = 0; i < values.length; i += 4)
+          if (values[i]! > values[i + 1]! + 20 && values[i]! > values[i + 2]! + 20) count++;
+        resolve(count);
+      });
+      air.map.triggerRepaint();
+    });
+    try {
+      air.upsert([feature]);
+      await until(() => errors.some(error => error.code === 'UPDATE_FAILED' && error.context.operation === 'entities'), 'airborne shader failure');
+      Object.defineProperty(gl, 'createProgram', { configurable: true, value: createProgram });
+      check(await redPixels() === 0, 'Failed shader still drew airborne geometry');
+      air.retryUpdates();
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'entity retry state');
+      check(await redPixels() > 0, 'Retry did not restore airborne geometry');
+    } finally { Object.defineProperty(gl, 'createProgram', { configurable: true, value: createProgram }); air.destroy(); }
   });
   await run('Custom elevation preparation also covers entities with only plain cameras', async () => {
     let prepared = false, prepareCalls = 0;
@@ -544,7 +1174,7 @@ async function suite() {
       air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [movedLng, 0] } }]);
       await until(() => prepareCalls === 1 && air.getEntityState(feature.id)?.placement === 'elevation-unavailable', 'center preparation and placement after movement');
       const pending = air.getEntityState(feature.id);
-      check(pending?.placement === 'elevation-unavailable' && pending.coverage === 'loading', 'Missing center did not remain loading during preparation');
+      check(pending?.placement === 'elevation-unavailable' && pending.coverage === 'loading', `Missing center did not remain loading during preparation: ${JSON.stringify(pending)}; calls=${prepareCalls}`);
       check(preparedPositions.some(([lng, lat]) => Math.abs(lng - movedLng) < 1e-8 && Math.abs(lat) < 1e-8), 'Preparation omitted the moved center');
       check(await pickAt(0, .0008) === camera.id, 'Historical camera coverage disappeared during center preparation');
       centerAvailable = true;
@@ -721,6 +1351,58 @@ async function suite() {
     check(!errors.some(error=>error.code==='UPDATE_FAILED'), 'Entity overlay reported an update failure: '+errors.map(error=>error.message).join(', '));
     air.destroy();
   });
+  await run('Custom DEM shifts agree with the installed renderer on both sides of zero', async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!; context.fillStyle = 'rgb(1,0,0)'; context.fillRect(0, 0, 256, 256);
+    for (const [shift, expected] of [[40, 60], [-40, 140]] as const) {
+      const air = createViewport({ container, basemap: style(), terrain: true,
+        elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 100, greenFactor: 0,
+          blueFactor: 0, baseShift: shift, maxzoom: 0 }, camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+      current = air;
+      try {
+        await air.ready;
+        air.upsert([{ ...point(`shift-${shift}`), entity: {} }]);
+        await until(() => Math.abs((air.getEntityState(`shift-${shift}`)?.ground ?? NaN) - expected) < .1 &&
+          Math.abs((air.map.queryTerrainElevation([0, 0]) ?? NaN) - expected) < .1, `custom shift ${shift} renderer agreement`);
+        check(Math.abs(air.getEntityState(`shift-${shift}`)!.ground! - expected) < .1, `Raw custom shift ${shift} disagreed`);
+      } finally { air.destroy(); }
+    }
+  });
+  await run('TileJSON Terrarium metadata decodes flat ground in raw and displayed terrain', async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!; context.fillStyle = 'rgb(128,0,0)'; context.fillRect(0, 0, 256, 256);
+    const tilejson = { tilejson: '3.0.0', tiles: [dem.toDataURL()], minzoom: 0, maxzoom: 0,
+      encoding: 'terrarium', scheme: 'tms' };
+    const url = `data:application/json,${encodeURIComponent(JSON.stringify(tilejson))}`;
+    const air = createViewport({ container, basemap: style(), terrain: true,
+      elevation: { url }, camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+    current = air;
+    try {
+      await air.ready;
+      air.upsert([{ ...point('tilejson-flat'), entity: {} }]);
+      await until(() => air.getEntityState('tilejson-flat')?.ground === 0 &&
+        Math.abs(air.map.queryTerrainElevation([0, 0]) ?? NaN) < .1, 'TileJSON flat terrain agreement');
+      check(air.getEntityState('tilejson-flat')?.ground === 0, 'TileJSON Terrarium raw height was not zero');
+    } finally { air.destroy(); }
+  });
+  await run('A 50 km camera at latitude 46 settles with bounded raw terrain loading', async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!; context.fillStyle = 'rgb(0,0,0)'; context.fillRect(0, 0, 256, 256);
+    const air = createViewport({ container, basemap: style(),
+      elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 0, greenFactor: 0,
+        blueFactor: 0, baseShift: 0, minzoom: 0, maxzoom: 12 },
+      camera: { center: [0, 46], zoom: 9 }, logger: () => {} });
+    current = air;
+    const feature: MapFeature = { ...point('wide-range'), geometry: { type: 'Point', coordinates: [0, 46] },
+      entity: { altitude: { meters: 1000, reference: 'ground' }, attachments: [{ id: 'camera', type: 'camera',
+        terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 50_000 }] } };
+    try {
+      await air.ready;
+      air.upsert([feature]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', '50 km terrain convergence', 20_000);
+      check(air.getEntityState(feature.id)?.coverage === 'ready', 'Wide camera never reached ready');
+    } finally { air.destroy(); }
+  });
   await run('Visible footprint stays filled when displayed terrain differs slightly from sampled terrain', async () => {
     const dem=document.createElement('canvas'); dem.width=dem.height=256;
     const context=dem.getContext('2d')!; context.fillStyle='rgb(105,0,0)'; context.fillRect(0,0,256,256);
@@ -817,11 +1499,129 @@ async function suite() {
     draw.configure({basemap:style('#dddddd'),projection:'globe'});
     await until(()=>Boolean(draw.map.getLayer('rl:draft-fill')),'draft restored after style replacement');
     check(Boolean(editor.getState().draft),'Style replacement discarded the draft');
-    check(draw.map.getFeatureState({source:'rl:features',id:'drawn'}).editing,'Original feature not hidden during edit');
-    editor.cancel();check(!draw.map.getFeatureState({source:'rl:features',id:'drawn'}).editing,'Cancel left original hidden');
+    await until(() => draw.map.querySourceFeatures('rl:features').some(hit => hit.properties._rl_feature_id === 'drawn'), 'edited source restored');
+    const editedSource = draw.map.querySourceFeatures('rl:features').find(hit => hit.properties._rl_feature_id === 'drawn');
+    await until(() => editedSource?.id !== undefined && Boolean(draw.map.getFeatureState({source:'rl:features',id:editedSource.id}).editing), 'editing state restored');
+    check(editedSource?.id !== undefined && draw.map.getFeatureState({source:'rl:features',id:editedSource.id}).editing,'Original feature not hidden during edit');
+    editor.cancel();check(editedSource?.id !== undefined && !draw.map.getFeatureState({source:'rl:features',id:editedSource.id}).editing,'Cancel left original hidden');
     controls.destroy();editor.destroy();check(!container.querySelector('.rl-drawing-handle'),'Handle leaked on destroy');
     check(!draw.map.getSource('rl:draft'),'Draft source leaked on destroy');
     draw.destroy();tools.remove();inspector.remove();
+  });
+  await run('Inspector label editing preserves Tab and the first real Finish click', async () => {
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+    current = draw; await draw.ready;
+    let accepts = 0;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'inspector-finish', properties: {} }), submit: () => { accepts++; return { accepted: true }; } });
+    const tools = document.createElement('div'), inspector = document.createElement('div');
+    inspector.id = 'case25-inspector'; container.append(tools, inspector);
+    const controls = attachDrawingControls(draw, editor, { tools, inspector });
+    try {
+      editor.start('line'); editor.addPoint([0, 0]); editor.addPoint([.01, 0]);
+      if (!window.browserFill || !window.browserKey || !window.browserClick) throw new Error('Playwright input bridge required');
+      await window.browserFill('#case25-inspector [data-field="Label"]', 'First label');
+      await window.browserKey('Tab');
+      check(document.activeElement?.getAttribute('data-field') === 'Stroke', 'Tab skipped the next inspector field');
+      await window.browserFill('#case25-inspector [data-field="Label"]', 'Final label');
+      await window.browserClick('#case25-inspector [data-field="action:Finish"]');
+      await until(() => Boolean(draw.getFeature('inspector-finish')), 'first Finish click accepted');
+      check(accepts === 1 && draw.getFeature('inspector-finish')?.drawing?.style.label === 'Final label', 'Finish lost the label or submitted twice');
+    } finally {
+      controls.destroy(); editor.destroy(); draw.destroy(); tools.remove(); inspector.remove();
+    }
+  });
+  await run('Inspector rectangle fields retain consecutive native edits and undo history', async () => {
+    const shape = { kind: 'rectangle' as const, center: [0, 0] as [number, number], width: 100, height: 80, bearing: 0 };
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 15 },
+      features: [{ type: 'Feature', id: 'rectangle-fields', properties: {}, geometry: shapeGeometry(shape), drawing: { version: 1, shape, style: { color: '#008855', fillColor: '#008855', lineWidth: 2, fillOpacity: .2, dashed: false, label: '' } } }], logger: () => {} });
+    current = draw; await draw.ready;
+    let accepts = 0;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused', properties: {} }), submit: () => { accepts++; return { accepted: true }; } });
+    const tools = document.createElement('div'), inspector = document.createElement('div');
+    inspector.id = 'rectangle-inspector'; container.append(tools, inspector);
+    const controls = attachDrawingControls(draw, editor, { tools, inspector });
+    const dimensions = (width: number, height: number, bearing: number) => {
+      const current = editor.getState().draft?.shape;
+      check(current?.kind === 'rectangle' && current.width === width && current.height === height && current.bearing === bearing,
+        `Expected rectangle ${width}/${height}/${bearing}, received ${JSON.stringify(current)}`);
+    };
+    try {
+      editor.edit('rectangle-fields');
+      if (!window.browserFill) throw new Error('Playwright fill bridge required');
+      await window.browserFill('#rectangle-inspector [data-field="Width (m)"]', '240');
+      await browserKey('Tab');
+      check(document.activeElement?.getAttribute('data-field') === 'Height (m)', 'Width Tab missed Height');
+      await window.browserFill('#rectangle-inspector [data-field="Height (m)"]', '160');
+      await browserKey('Tab');
+      check(document.activeElement?.getAttribute('data-field') === 'Bearing (°)', 'Height Tab missed Bearing');
+      await window.browserFill('#rectangle-inspector [data-field="Bearing (°)"]', '35');
+      await browserKey('Tab');
+      dimensions(240, 160, 35);
+      await browserClick('#rectangle-inspector [data-field="action:Undo"]'); dimensions(240, 160, 0);
+      await browserClick('#rectangle-inspector [data-field="action:Undo"]'); dimensions(240, 80, 0);
+      await browserClick('#rectangle-inspector [data-field="action:Undo"]'); dimensions(100, 80, 0);
+      for (let i = 0; i < 3; i++) await browserClick('#rectangle-inspector [data-field="action:Redo"]');
+      dimensions(240, 160, 35);
+      await browserClick('#rectangle-inspector [data-field="action:Finish"]');
+      await until(() => accepts === 1 && editor.getState().phase === 'idle', 'rectangle accepted once');
+      const accepted = draw.getFeature('rectangle-fields')?.drawing?.shape;
+      check(accepted?.kind === 'rectangle' && accepted.width === 240 && accepted.height === 160 && accepted.bearing === 35,
+        'Finish lost consecutive rectangle changes');
+    } finally { controls.destroy(); editor.destroy(); draw.destroy(); tools.remove(); inspector.remove(); }
+  });
+  await run('Deleting the focused final vertex keeps keyboard undo reachable', async () => {
+    const line: MapFeature = { type: 'Feature', id: 'focus-line', properties: {}, geometry: { type: 'LineString', coordinates: [[0, 0], [.01, 0]] } };
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 13 }, features: [line], logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'new-focus', properties: {} }), submit: () => ({ accepted: true }) });
+    try {
+      editor.edit('focus-line');
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]')!;
+      handle.focus();
+      if (!window.browserKey) throw new Error('Playwright keyboard bridge required');
+      await window.browserKey('Delete');
+      const shape = editor.getState().draft?.shape;
+      check(shape?.kind === 'line' && shape.vertices.length === 1, 'Delete did not remove the last vertex');
+      const focus = document.activeElement;
+      check(focus instanceof HTMLElement && focus.isConnected &&
+        (focus.getAttribute('aria-label') === 'Vertex 1' || focus.getAttribute('aria-label') === 'Move drawing' || focus === draw.map.getCanvas()),
+      'Deleting the focused handle lost editor focus');
+      await window.browserKey('Control+z');
+      const restored = editor.getState().draft?.shape;
+      check(restored?.kind === 'line' && restored.vertices.length === 2, 'Keyboard undo could not restore the deleted vertex');
+    } finally { editor.destroy(); draw.destroy(); }
+  });
+  await run('Undo during a real vertex drag leaves later edits individually undoable', async () => {
+    const line: MapFeature = { type: 'Feature', id: 'gesture-line', properties: {}, geometry: { type: 'LineString', coordinates: [[0, 0], [.01, 0]] } };
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 13 }, features: [line], logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'new-gesture', properties: {} }), submit: () => ({ accepted: true }) });
+    try {
+      editor.edit('gesture-line');
+      await until(() => draw.map.loaded(), 'gesture map ready');
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]')!;
+      const rect = handle.getBoundingClientRect(), x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+      if (!window.browserMouse || !window.browserKey) throw new Error('Playwright input bridge required');
+      await window.browserMouse('down', x, y);
+      await window.browserMouse('move', x + 40, y);
+      await until(() => {
+        const shape = editor.getState().draft?.shape;
+        return shape?.kind === 'line' && shape.vertices[1]?.[0] !== .01;
+      }, 'vertex moved during drag');
+      await window.browserKey('Control+z');
+      await window.browserMouse('up', x + 40, y);
+      const afterUndo = editor.getState().draft?.shape;
+      check(afterUndo?.kind === 'line' && Math.abs((afterUndo.vertices[1]?.[0] ?? 0) - .01) < 1e-10, 'Undo during drag left the moved vertex');
+      editor.insertVertex(0, [.005, 0]);
+      editor.moveVertex(1, [.006, 0]);
+      editor.undo();
+      const afterMoveUndo = editor.getState().draft?.shape;
+      check(afterMoveUndo?.kind === 'line' && afterMoveUndo.vertices.length === 3 && afterMoveUndo.vertices[1]?.[0] === .005,
+        'Undo skipped the later vertex move');
+      editor.undo();
+      const afterInsertUndo = editor.getState().draft?.shape;
+      check(afterInsertUndo?.kind === 'line' && afterInsertUndo.vertices.length === 2, 'Undo skipped the later insertion');
+    } finally { editor.destroy(); draw.destroy(); }
   });
   await run('Ordinary edits preserve dynamic styles, delete-only controls, and hover recovery', async () => {
     const line: MapFeature = {type:'Feature',id:'line',geometry:{type:'LineString',coordinates:[[-.01,0],[.01,0]]},properties:{closed:false}};
@@ -1091,10 +1891,40 @@ async function suite() {
     const arrow:MapFeature = { type:'Feature', id:'arrow', geometry:shapeGeometry(arrowShape), properties:{}, drawing:{version:1,shape:arrowShape,style:{color:'#ff0000',fillColor:'#ff0000',lineWidth:3,fillOpacity:0,dashed:false,label:''}} };
     const draw=createViewport({container,basemap:style(),features:[arrow],camera:{center:[0,0],zoom:12},logger:()=>{}});current=draw;await draw.ready;
     const heads=()=>draw.map.queryRenderedFeatures({layers:['rl:arrowheads']});
-    await until(()=>heads().some(f=>f.id==='arrow'),'initial arrowhead rendered');
+    await until(()=>heads().some(f=>f.properties._rl_feature_id==='arrow'),'initial arrowhead rendered');
     arrow.drawing!.shape={kind:'arrow',vertices:[[0,-.01],[0,.01]]};arrow.geometry=shapeGeometry(arrow.drawing!.shape);draw.upsert([arrow]);
     await until(()=>heads().some(f=>Math.abs(Number(f.properties.bearing))<1),'arrowhead follows direction');
     draw.remove(['arrow']);await until(()=>heads().length===0,'arrowhead removed');draw.destroy();
+  });
+  await run('A failed arrow update retains its shaft and head while healthy work advances', async () => {
+    const oldShape = { kind: 'arrow' as const, vertices: [[-.01, 0], [.01, 0]] as [number, number][] };
+    const newShape = { kind: 'arrow' as const, vertices: [[-.01, .02], [.01, .02]] as [number, number][] };
+    const arrow: MapFeature = { type: 'Feature', id: 'coherent-arrow', properties: {}, geometry: shapeGeometry(oldShape),
+      drawing: { version: 1, shape: oldShape, style: { color: '#ff0000', fillColor: '#ff0000', lineWidth: 3,
+        fillOpacity: 0, dashed: false, label: '' } } };
+    const errors: RidgelineError[] = [];
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, .01], zoom: 12 },
+      features: [arrow, point('arrow-neighbor')], style: feature => {
+        if (feature.properties.fail) throw new Error('Arrow styling failed');
+        return { color: '#008855' };
+      }, logger: () => {}, onError: error => errors.push(error) });
+    current = draw; await draw.ready;
+    const visible = (layer: string, lng: number, lat: number) => draw.map.queryRenderedFeatures(draw.map.project([lng, lat]), { layers: [layer] })
+      .some(hit => hit.properties._rl_feature_id === arrow.id);
+    try {
+      await until(() => visible('rl:line', 0, 0) && visible('rl:arrowheads', .01, 0), 'original arrow shaft and head');
+      draw.upsert([
+        { ...arrow, geometry: shapeGeometry(newShape), drawing: { ...arrow.drawing!, shape: newShape }, properties: { fail: true } },
+        point('arrow-neighbor', .04),
+      ]);
+      await until(() => errors.some(error => error.context.featureId === arrow.id) &&
+        draw.map.queryRenderedFeatures(draw.map.project([.04, 0]), { layers: ['rl:points'] })
+          .some(hit => hit.properties._rl_feature_id === 'arrow-neighbor'), 'healthy feature advanced after arrow failure');
+      check(visible('rl:line', 0, 0) && visible('rl:arrowheads', .01, 0), 'Failed arrow lost its previous complete shape');
+      check(!visible('rl:line', 0, .02) && !visible('rl:arrowheads', .01, .02), 'Failed arrow published a split new shape');
+      draw.upsert([{ ...arrow, geometry: shapeGeometry(newShape), drawing: { ...arrow.drawing!, shape: newShape } }]);
+      await until(() => visible('rl:line', 0, .02) && visible('rl:arrowheads', .01, .02), 'corrected arrow published');
+    } finally { draw.destroy(); }
   });
   await run('Terrain visibility colors the approach green and the hill shadow red', async () => {
     const meters = Math.PI / 180 * 6371008.8;
@@ -1258,6 +2088,32 @@ async function suite() {
       gl.createFramebuffer = createFramebuffer; gl.deleteFramebuffer = deleteFramebuffer;
       gl.createTexture = createTexture; gl.deleteTexture = deleteTexture;
     }
+  });
+  await run('A null GPU synchronization result reports failure and recovers on retry', async () => {
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 },
+      logger: () => {}, onError: error => errors.push(error) });
+    current = air; await air.ready;
+    const gl = air.map.getCanvas().getContext('webgl2')!;
+    const fenceSync = gl.fenceSync.bind(gl);
+    let failOnce = true;
+    gl.fenceSync = (condition, flags) => {
+      if (failOnce) { failOnce = false; return null; }
+      return fenceSync(condition, flags);
+    };
+    const feature: MapFeature = { ...point('null-fence'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45,
+        fovX: 60, fovY: 40, range: 300 }] } };
+    try {
+      air.upsert([feature]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'unavailable', 'null GPU sync failure');
+      check(errors.some(error => error.code === 'UPDATE_FAILED'), 'Null GPU sync did not report a diagnostic');
+      check(!air.map.getStyle().layers.some(layer => layer.id.startsWith('rl:camera-mask:')), 'Failed sync published camera coverage');
+      gl.fenceSync = fenceSync;
+      air.retryUpdates();
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'GPU sync retry');
+      check(air.map.getStyle().layers.some(layer => layer.id.startsWith('rl:camera-mask:')), 'Retry did not publish camera coverage');
+    } finally { gl.fenceSync = fenceSync; air.destroy(); }
   });
   await run('Coverage readiness follows every camera, pose changes, and ground placement', async () => {
     const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 }, elevationSampler: { sample: () => 0 }, logger: () => {} });

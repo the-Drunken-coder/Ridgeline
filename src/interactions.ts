@@ -19,6 +19,8 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
   let disposed = false;
   let active: HTMLElement | null = null;
   let tooltip: HTMLElement | null = null;
+  let tooltipFeatureId: string | null = null;
+  let tooltipPoint: { x: number; y: number } | null = null;
   let page = 0;
   let candidates: string[] = [];
   let anchor = { x: 0, y: 0 };
@@ -46,11 +48,18 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
       return undefined;
     }
   }
+  function nameFor(feature: MapFeature<P>) {
+    try { return viewport.getName(feature); }
+    catch (cause) {
+      viewport.reportCallbackError(cause, 'name', feature.id);
+      return feature.id;
+    }
+  }
   function refreshChoice(id: string) {
     const choice = choices.get(id);
     if (!choice) return;
     const feature = viewport.getFeature(id);
-    const name = feature ? viewport.getName(feature) : undefined;
+    const name = feature ? nameFor(feature) : undefined;
     const icon = feature && !options.renderFeature ? iconFor(feature) : undefined;
     // Default presentation depends only on the name and registered icon, not position.
     if (!options.renderFeature && choice.name === name && choice.icon === icon && choice.label.hasChildNodes()) return;
@@ -75,7 +84,11 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
     for (const dispose of disposers.splice(0)) { try { dispose(); } catch { /* Finish disposing the remaining UI. */ } }
   }
   function content(feature: MapFeature<P>, disposers: (() => void)[]) {
-    const custom = options.renderFeature?.(feature);
+    let custom: ReturnType<NonNullable<typeof options.renderFeature>> | undefined;
+    try { custom = options.renderFeature?.(feature); }
+    catch (cause) {
+      viewport.reportCallbackError(cause, 'renderFeature', feature.id);
+    }
     if (custom) {
       if (custom instanceof HTMLElement) return custom;
       if (custom.dispose) disposers.push(custom.dispose);
@@ -94,10 +107,13 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
         canvas.setAttribute('aria-hidden', 'true'); element.append(canvas);
       }
     }
-    const name = document.createElement('span'); name.textContent = viewport.getName(feature); element.append(name);
+    const name = document.createElement('span'); name.textContent = nameFor(feature); element.append(name);
     return element;
   }
-  function hideTooltip() { tooltip?.remove(); tooltip = null; release(tooltipDisposers); viewport.preview(null); }
+  function hideTooltip() {
+    tooltip?.remove(); tooltip = null; tooltipFeatureId = null; tooltipPoint = null;
+    release(tooltipDisposers); viewport.preview(null);
+  }
   function close(restoreFocus = false) {
     active?.remove(); active = null; candidates = [];
     releaseChoices(); release(activeDisposers); hideTooltip();
@@ -111,6 +127,8 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
   }
   function hover(feature: MapFeature<P>, point: { x: number; y: number }) {
     hideTooltip();
+    tooltipFeatureId = feature.id;
+    tooltipPoint = point;
     tooltip = document.createElement('div'); tooltip.className = 'rl-tooltip'; tooltip.setAttribute('role', 'tooltip');
     tooltip.append(content(feature, tooltipDisposers)); root.append(tooltip);
     position(tooltip, { x: point.x + 16, y: point.y + 18 });
@@ -211,7 +229,11 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
     active.querySelector('button')?.focus({ preventScroll: true });
   }));
   subscriptions.push(viewport.on('datachange', event => {
-    if (event.removed.length) hideTooltip();
+    if (tooltipFeatureId && event.removed.includes(tooltipFeatureId)) hideTooltip();
+    else if (tooltipFeatureId && tooltipPoint && event.ids.includes(tooltipFeatureId)) {
+      const feature = viewport.getFeature(tooltipFeatureId);
+      if (feature) hover(feature, tooltipPoint);
+    }
     for (const id of new Set([...event.ids, ...event.removed])) refreshChoice(id);
   }));
   root.addEventListener('click', event => event.stopPropagation(), { signal: abort.signal });

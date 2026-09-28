@@ -9,6 +9,7 @@ import type { HeightAt } from './entity-geometry';
 import { RasterElevationSampler } from './elevation-sampler';
 import { SensorCameraCoverage } from './sensor-camera-coverage';
 import { RidgelineError } from './errors';
+import { wrapLongitude } from './longitude';
 import type {
   ElevationSampler,
   CameraAttachment,
@@ -24,6 +25,8 @@ export const DEFAULT_ENTITY_VISIBILITY = {
   zones: true,
   groundLines: false,
 };
+const combineCoverage = (a: EntityState['coverage'], b: EntityState['coverage']): EntityState['coverage'] =>
+  a === 'unavailable' || b === 'unavailable' ? 'unavailable' : a === 'loading' || b === 'loading' ? 'loading' : 'ready';
 type SceneOptions<P extends Properties> = {
   map: GLMap;
   configuration: () => MapConfiguration;
@@ -38,6 +41,7 @@ export class EntityScene<P extends Properties> {
   private groundLayer: EntityGround;
   private features = new Map<string, MapFeature<P>>();
   private states = new Map<string, EntityState>();
+  private nonCameraCoverage = new Map<string, EntityState['coverage']>();
   private positions = new Map<string, [number, number]>();
   private geometry = new Map<string, Primitive[]>();
   private geometryDirty = false;
@@ -52,6 +56,8 @@ export class EntityScene<P extends Properties> {
   private footprintsVisible: boolean;
   private diagnosticKeys = new Map<string, string>();
   constructor(private options: SceneOptions<P>) {
+    const sampler = options.sampler;
+    const prepare = sampler?.prepare?.bind(sampler);
     this.footprintsVisible = options.configuration().entityVisibility.footprints;
     this.groundLayer = new EntityGround(options.map);
     this.layer = new EntityLayer((cause) =>
@@ -65,11 +71,17 @@ export class EntityScene<P extends Properties> {
       ),
     );
     this.raster = this.createSampler();
-    if (!options.sampler) this.height.maximum = (west, south, east, north) => this.raster.maximum(west, south, east, north);
+    if (!sampler) {
+      this.height.maximum = (west, south, east, north) => this.raster.maximum(west, south, east, north);
+      this.height.forRange = (range, lat) => this.raster.forRange(range, lat);
+      this.height.failedAt = (lng, lat) => this.raster.unavailableAt(lng, lat);
+    }
     this.coverage = new SensorCameraCoverage({
       map: options.map,
       height: this.height,
-      prepare: options.sampler?.prepare?.bind(options.sampler),
+      prepare: prepare
+        ? (positions, signal) => prepare(positions.map(([lng, lat]) => [wrapLongitude(lng), lat]), signal)
+        : undefined,
       elevationUnavailable: () => this.raster.unavailable(),
       pollTerrain: !options.sampler,
       diagnostic: cause => options.diagnostic(new RidgelineError(
@@ -91,7 +103,7 @@ export class EntityScene<P extends Properties> {
       },
       displayed: id => {
         const state = this.states.get(id);
-        if (state) state.coverage = this.coverage.status(id);
+        if (state) state.coverage = combineCoverage(this.nonCameraCoverage.get(id) ?? 'ready', this.coverage.status(id));
         this.geometryDirty = true;
         this.renderLayers(false);
         options.changed([id]);
@@ -114,6 +126,7 @@ export class EntityScene<P extends Properties> {
             cause,
           ),
         ),
+      this.options.map.getPixelRatio(),
     );
   }
   set(features: readonly MapFeature<P>[], removed: readonly string[] = []) {
@@ -122,6 +135,7 @@ export class EntityScene<P extends Properties> {
       this.coverage.remove(id);
       this.features.delete(id);
       this.states.delete(id);
+      this.nonCameraCoverage.delete(id);
       this.positions.delete(id);
       this.geometryDirty = this.geometry.delete(id) || this.geometryDirty;
       this.dirty.delete(id);
@@ -136,6 +150,7 @@ export class EntityScene<P extends Properties> {
         this.coverage.remove(feature.id);
         this.features.delete(feature.id);
         this.states.delete(feature.id);
+        this.nonCameraCoverage.delete(feature.id);
         this.positions.delete(feature.id);
         this.geometryDirty = this.geometry.delete(feature.id) || this.geometryDirty;
         this.diagnosticKeys.delete(feature.id);
@@ -175,8 +190,11 @@ export class EntityScene<P extends Properties> {
           }
         }
       const generation = this.customGeneration;
-      const preparation = this.options.sampler.prepare(positions, generation.signal);
-      for (const feature of sharedPreparation) if (feature.entity) this.preparing.set(feature.id, preparation);
+      const prepare = this.options.sampler.prepare.bind(this.options.sampler);
+      const preparation = Promise.resolve().then(() => prepare(
+        positions.map(([lng, lat]) => [wrapLongitude(lng), lat]), generation.signal));
+      for (const feature of sharedPreparation)
+        if (feature.entity && this.features.get(feature.id) === feature) this.preparing.set(feature.id, preparation);
       void preparation
         .catch((cause) => {
           if (!generation.signal.aborted)
@@ -223,14 +241,18 @@ export class EntityScene<P extends Properties> {
     this.invalidate();
   }
   retry() {
+    this.layer.retry();
     this.coverage.retry();
     this.raster.retry();
     this.set([...this.features.values()]);
     this.invalidate();
   }
   selection(ids: readonly string[]) {
-    this.selected = new Set(ids);
-    this.invalidate();
+    const next = new Set(ids);
+    for (const id of new Set([...this.selected, ...next]))
+      if (this.selected.has(id) !== next.has(id) && this.features.has(id)) this.dirty.add(id);
+    this.selected = next;
+    if (this.dirty.size) this.schedule();
   }
   getState(id: string) {
     const state = this.states.get(id);
@@ -252,8 +274,11 @@ export class EntityScene<P extends Properties> {
       offset: airborne ? (config.terrain ? (altitude - ground) * config.exaggeration : altitude) : 0,
     };
   }
-  pick(x: number, y: number, tolerance: number) {
-    return [...this.layer.pick(x, y, tolerance), ...this.groundLayer.pick(x, y, tolerance), ...this.coverage.pick(x, y)];
+  pickAbove(x: number, y: number, tolerance: number) {
+    return [...this.layer.pick(x, y, tolerance), ...this.coverage.pick(x, y)];
+  }
+  pickGround(x: number, y: number, tolerance: number) {
+    return this.groundLayer.pick(x, y, tolerance);
   }
   attach() {
     this.groundLayer.attach();
@@ -271,6 +296,7 @@ export class EntityScene<P extends Properties> {
     this.features.clear();
     this.geometry.clear();
     this.states.clear();
+    this.nonCameraCoverage.clear();
     this.positions.clear();
   }
   private invalidate() {
@@ -281,7 +307,7 @@ export class EntityScene<P extends Properties> {
     if (!this.frame && !this.destroyed) this.frame = requestAnimationFrame(() => this.flush());
   }
   private height: HeightAt = (lng, lat) => {
-    const value = this.options.sampler ? this.options.sampler.sample(lng, lat) : this.raster.sample(lng, lat);
+    const value = this.options.sampler ? this.options.sampler.sample(wrapLongitude(lng), lat) : this.raster.sample(lng, lat);
     return value !== null && Number.isFinite(value) ? value : null;
   };
   private flush() {
@@ -311,10 +337,18 @@ export class EntityScene<P extends Properties> {
     if (ids.length) this.options.changed(ids);
   }
   private build(feature: MapFeature<P>) {
-    const input = { feature, configuration: this.options.configuration(), style: this.options.style(feature), selected: this.selected.has(feature.id) };
-    const unavailable = () => this.options.sampler
+    // A failed style leaves the last complete entity display in place.
+    let style: FeatureStyle;
+    try { style = this.options.style(feature); }
+    catch (cause) {
+      this.options.diagnostic(new RidgelineError('CALLBACK_FAILED', 'An entity style callback threw.',
+        { operation: 'style', recoverable: true, featureId: feature.id }, cause));
+      return;
+    }
+    const input = { feature, configuration: this.options.configuration(), style, selected: this.selected.has(feature.id) };
+    const unavailable = (lng: number, lat: number) => this.options.sampler
       ? !this.preparing.has(feature.id) && !this.coverage.isPreparing(feature.id)
-      : this.raster.unavailable();
+      : this.raster.unavailableAt(lng, lat);
     const result = computeEntity(input, this.height, unavailable);
     const ground = result.state.ground ?? 0;
     const altitude = result.state.altitude ?? ground;
@@ -325,10 +359,16 @@ export class EntityScene<P extends Properties> {
       placement: result.state.placement,
       cameras: feature.entity?.attachments?.filter((attachment): attachment is CameraAttachment => attachment.type === 'camera') ?? [],
       configuration: input.configuration,
-      elevationUnavailable: this.options.sampler ? !this.preparing.has(feature.id) : this.raster.unavailable(),
+      elevationUnavailable: result.state.placement === 'elevation-unavailable' &&
+        (this.options.sampler ? !this.preparing.has(feature.id) : this.raster.unavailableAt(result.position[0], result.position[1])),
       elevationPreparing: this.options.sampler ? this.preparing.has(feature.id) : false,
     });
-    result.state.coverage = camera.coverage === 'ready' ? result.state.coverage : camera.coverage;
+    if (this.destroyed || this.features.get(feature.id) !== feature) return;
+    const placementCoverage = result.state.placement === 'elevation-unavailable' &&
+      this.coverage.isPreparing(feature.id) && result.state.coverage === 'unavailable'
+      ? 'loading' : result.state.coverage;
+    this.nonCameraCoverage.set(feature.id, placementCoverage);
+    result.state.coverage = combineCoverage(placementCoverage, camera.coverage);
     result.state.footprintTriangles = camera.footprintTriangles;
     this.apply(feature.id, result);
   }

@@ -16,6 +16,14 @@ for (const name of browserCases) {
     });
     await page.exposeFunction('browserKey', (key: string) => page.keyboard.press(key));
     await page.exposeFunction('browserClick', (selector: string) => page.locator(selector).click({ timeout: 5_000 }));
+    await page.exposeFunction('browserFill', (selector: string, value: string) => page.locator(selector).fill(value, { timeout: 5_000 }));
+    await page.exposeFunction('browserMouse', async (action: string, x: number, y: number) => {
+      if (!['down', 'move', 'up', 'click'].includes(action) || ![x, y].every(Number.isFinite)) throw new Error('Invalid mouse action');
+      await page.mouse.move(x, y);
+      if (action === 'down') await page.mouse.down();
+      else if (action === 'up') await page.mouse.up();
+      else if (action === 'click') await page.mouse.click(x, y);
+    });
     await page.exposeFunction('browserDrag', async (fromX: number, fromY: number, toX: number, toY: number) => {
       await page.mouse.move(fromX, fromY);
       await page.mouse.down();

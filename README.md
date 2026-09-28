@@ -106,9 +106,10 @@ Give the container an explicit height and `position: relative`. This is a browse
 | `fitBounds(bounds, { duration, padding })` | Frame coordinates, with 48 px padding by default. |
 | `configure(settings)` | Independently change basemap, projection, terrain, hillshade, exaggeration, or elevation provider. |
 | `on(event, callback)` | Subscribe; the returned function unsubscribes. |
+| `reportCallbackError(cause, operation, featureId?)` | Send an attached UI callback failure through the viewport's diagnostic and logger channels. |
 | `destroy()` | Release the map, workers owned by that map, listeners, animation frame, observer, and attached UI. Safe before readiness or repeatedly. |
 
-Updates are accumulated by ID and submitted once per animation frame using MapLibre's incremental GeoJSON API. Moving a feature never moves the camera. The library snapshots data, so properties must be structured-cloneable. Replacing an ID also replaces its name and styling inputs. Use immutable IDs separate from display names.
+Updates are accumulated by ID and submitted once per animation frame using MapLibre's incremental GeoJSON API. Moving a feature never moves the camera. The library snapshots data, so properties must be structured-cloneable. Name and style callbacks receive detached snapshots; mutating their arguments cannot alter accepted data. Replacing an ID also replaces its name and styling inputs. Use immutable IDs separate from display names.
 
 Only one renderer submission runs at a time; updates arriving during it are coalesced for the next frame. A throwing style callback leaves that feature's last rendered version visible and reports `UPDATE_FAILED` with its `featureId`. Other features and removals in the batch still proceed. Renderer rejections and source error events retain the submitted IDs for recovery. No failed update retries automatically. Fix the callback or renderer problem, then call `retryUpdates()`, or replace the affected feature with `upsert()`. Retries use current data and cannot overwrite a newer queued change. A basemap rebuild restores features whose styling succeeds and retains failed IDs for retry. Store reads reflect accepted data immediately, so failed features may differ from the display until recovery succeeds.
 
@@ -153,7 +154,7 @@ Camera appearance supports `volumeOpacity`, `wireframe`, and `wireframeWidth`. T
 
 Pointer events include `attachments: { entityId, attachmentId }[]`. Visible camera faces, wireframes, and footprints can select their owning attachment. The optional interaction helper carries attachment hits into `selectionrequest`; the consumer owns selection policy.
 
-An optional `elevationSampler` supplies raw unexaggerated meters through `sample(lng, lat): number | null`; its optional asynchronous `prepare(positions, signal)` loads the needed area. Return null for unknown terrain. Incomplete camera terrain reports loading while preparation is pending, then unavailable if samples remain unknown. Completing preparation refreshes incomplete patches; known terrain stays cached during movement. Call `retryUpdates()` when already loaded terrain changes or when data loads without `prepare`. This source changes computation, not the map's displayed DEM, so keep their datums and data aligned.
+An optional `elevationSampler` supplies raw unexaggerated meters through `sample(lng, lat): number | null`; its optional asynchronous `prepare(positions, signal)` loads the needed area. Both methods receive longitude normalized to [-180, 180) and latitude in degrees. Return null for unknown terrain. Incomplete camera terrain reports loading while preparation is pending, then unavailable if required samples remain unknown. A failure elsewhere does not change that camera's status. Completing preparation refreshes incomplete patches; known terrain stays cached during movement. Call `retryUpdates()` when already loaded terrain changes or when data loads without `prepare`. This source changes computation, not the map's displayed DEM, so keep their datums and data aligned.
 
 ## Interaction and application UI
 
@@ -161,21 +162,21 @@ Core events are `click`, `hover`, `contextmenu`, `selectionrequest`, `datachange
 
 `attachInteractions(viewport, options)` is optional. It adds name/icon hover UI and an eight-per-page radial picker. Arrow keys move between candidates; Enter selects; Escape closes. Hovering previews without selecting. Candidate slots stay fixed while features move; removed choices become disabled. Closing the picker, clicking outside it, or moving the map preserves selection. Set `hover: false` or `picker: false` to disable either behavior; without the picker, a click requests the top candidate.
 
-Open picker choices refresh their names, icons, and availability when their feature changes. Reintroducing an ID enables its existing button. Default content stays intact on position-only updates. Custom `renderFeature` content is recreated for affected visible candidates and its previous `dispose` hook runs once; the button, candidate order, and button focus remain intact.
+Open picker choices refresh their names, icons, and availability when their feature changes or a registered icon is replaced. Hover content also refreshes when its feature changes. Reintroducing an ID enables its existing button. Default content stays intact on position-only updates. Custom `renderFeature` content is recreated for affected visible candidates and its previous `dispose` hook runs once; the button, candidate order, and button focus remain intact.
 
-If a feature's style callback throws while its picker is open, the choice remains available by name without an icon. Other candidates still refresh.
+If a feature's style callback throws while its picker is open, the choice remains available by name without an icon. If custom content throws, the choice uses default content. Other candidates still refresh. Custom content and name callback failures produce `CALLBACK_FAILED` diagnostics with the affected feature ID.
 
 Use `renderFeature(feature)` to supply custom name/icon markup. Use `contextMenu(interaction, close)` to supply application actions. Either hook can return an element or `{ element, dispose }`, for framework mounting and cleanup. The context hook may return `null`. Display names use text content by default. The playground demonstrates a consumer-owned right-click menu.
 
 Override `--rl-surface`, `--rl-text`, `--rl-border`, `--rl-active`, and `--rl-muted` on `.rl-ui` to match your application. Native buttons retain keyboard operation. Current validation is for desktop; touch interaction and a complete accessibility audit remain future work.
 
-`viewport.map` exposes MapLibre for advanced integrations. The `rl:` source/layer/image namespace is reserved. Use `configure` for basemap changes so Ridgeline can restore its features and selection. Consumers own the restoration of their own MapLibre additions after a style change.
+`viewport.map` exposes MapLibre for advanced integrations. The `rl:` source/layer/image namespace is reserved. Ridgeline encodes feature IDs inside its MapLibre sources; treat rendered source IDs as internal and use `_rl_feature_id` or viewport events for the original consumer ID. Use `configure` for basemap changes so Ridgeline can restore its features and selection. Consumers own the restoration of their own MapLibre additions after a style change.
 
 ## Maps, terrain, and network access
 
 Library defaults: OpenFreeMap Liberty, flat projection, terrain off, hillshade off, exaggeration 1. The playground explicitly enables terrain and hillshade. Both use the configured Mapterhorn Terrarium dataset through separate MapLibre DEM sources, as required by the rendering setup. The attribution control remains visible.
 
-`configure({ projection: 'globe', terrain: true, hillshade: false })` changes those capabilities independently. `elevation` accepts a MapLibre raster DEM configuration without its `type`; supply a TileJSON URL or tile URLs with the correct encoding. `basemap` accepts a style URL or style object. Camera, feature IDs, and selection survive these changes.
+`configure({ projection: 'globe', terrain: true, hillshade: false })` changes those capabilities independently. `elevation` accepts a MapLibre raster DEM configuration without its `type`; supply a TileJSON URL or tile URLs with the correct encoding. Raw computation reads TileJSON encoding, zoom limits, and XYZ/TMS scheme unless the configuration overrides them. It resolves `{z}`, `{x}`, `{y}`, `{ratio}`, `{prefix}`, `{quadkey}`, and `{bbox-epsg-3857}` in tile URLs. For `encoding: 'custom'`, MapLibre 6.11.0 and Ridgeline compute height as `red * redFactor + green * greenFactor + blue * blueFactor - baseShift`. Positive `baseShift` lowers the decoded height. Wide camera patches use coarser available DEM zoom levels to keep tile loading within the bounded cache. `basemap` accepts a style URL or style object and snapshots object inputs. Camera, feature IDs, and selection survive these changes.
 
 Use `hillshadeOptions` at creation or through `configure()` to tune shading independently of the `hillshade` toggle:
 

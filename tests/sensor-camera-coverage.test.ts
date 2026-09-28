@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { Map as GLMap } from 'maplibre-gl';
 import type { CameraAttachment, MapConfiguration } from '../src/types';
 import type { GpuCamera } from '../src/gpu-cameras';
+import { cameraTerrain } from '../src/gpu-camera-terrain';
 import {
   SensorCameraCoverage,
   type SensorCameraAdapterFactory,
@@ -500,6 +501,77 @@ test('confirmed unavailability takes precedence over a pending camera in either 
     assert.equal(coverage.status('entity'), 'unavailable', 'Completing the near camera must not hide far unavailability');
     coverage.destroy();
   }
+});
+
+test('a failed required tile clears only its camera while another region remains pending', () => {
+  let missing = false;
+  const height = Object.assign((lng: number, _lat: number) => missing && lng > 0.01 ? null : 0,
+    { failedAt: (lng: number, _lat: number) => missing && lng > 0.01 });
+  const adapter = controlledAdapter();
+  const { coverage } = owner(adapter, { height });
+  update(coverage, input());
+  const previous = latestRequest(adapter);
+  adapter.complete(previous);
+  missing = true;
+  const failed = input({ origin: [0.02, 0, 100] });
+  assert.equal(update(coverage, failed).coverage, 'unavailable');
+  assert.deepEqual(coverage.output('entity'), []);
+  assert.equal(adapter.complete(previous), false);
+  coverage.destroy();
+});
+
+test('a failed region leaves a completed camera elsewhere ready', () => {
+  const height = Object.assign((lng: number, _lat: number) => lng > .01 ? null : 0,
+    { failedAt: (lng: number, _lat: number) => lng > .01 });
+  const adapter = controlledAdapter();
+  const { coverage } = owner(adapter, { height });
+  update(coverage, input({ entityId: 'healthy' }));
+  adapter.complete(latestRequest(adapter, 'healthy'));
+  assert.equal(coverage.status('healthy'), 'ready');
+  assert.equal(update(coverage, input({ entityId: 'failed', origin: [.02, 0, 100] })).coverage, 'unavailable');
+  assert.equal(coverage.status('healthy'), 'ready');
+  assert.ok(coverage.output('healthy').length);
+  coverage.destroy();
+});
+
+test('camera computation failure clears obsolete output and retry can recover', () => {
+  let fail = false;
+  const adapter = controlledAdapter();
+  const { coverage, diagnostics } = owner(adapter, {
+    height: () => { if (fail) throw new Error('sampling failed'); return 0; },
+  });
+  update(coverage, input());
+  const previous = latestRequest(adapter);
+  adapter.complete(previous);
+  fail = true;
+  assert.equal(update(coverage, input({ origin: [0.02, 0, 100] })).coverage, 'unavailable');
+  assert.deepEqual(coverage.output('entity'), []);
+  assert.equal(diagnostics.length, 1);
+  fail = false;
+  coverage.retry();
+  assert.equal(update(coverage, input({ origin: [0.02, 0, 100] })).coverage, 'loading');
+  const current = latestRequest(adapter);
+  assert.equal(adapter.complete(current), true);
+  assert.equal(coverage.status('entity'), 'ready');
+  coverage.destroy();
+});
+
+test('preparation covers sampled patch and uses bounded date-line coordinates', async () => {
+  let positions: readonly [number, number][] = [];
+  const { coverage } = owner(controlledAdapter(), {
+    height: () => null,
+    prepare: async values => { positions = values; },
+  });
+  update(coverage, input({ origin: [179.999, 46, 100], cameras: [{ ...camera(), range: 50_000 }] }));
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.ok(positions.length);
+  assert.ok(positions.every(([lng]) => lng >= -180 && lng < 180));
+  const south = Math.min(...positions.map(([, lat]) => lat));
+  const north = Math.max(...positions.map(([, lat]) => lat));
+  const sampled: number[] = [];
+  cameraTerrain(179.999, 46, 50_000, (_lng, lat) => { sampled.push(lat); return 0; });
+  assert.ok(sampled.every(lat => lat >= south && lat <= north));
+  coverage.destroy();
 });
 
 test('a batch submits the full camera collection once and still publishes cameras independently', () => {

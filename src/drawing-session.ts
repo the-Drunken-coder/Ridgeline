@@ -26,7 +26,7 @@ import {
 
 type DrawingHost<P extends Properties> = Pick<
   Viewport<P>,
-  "getFeature" | "getStyle" | "upsert" | "remove" | "acquireInteraction"
+  "getFeature" | "getStyle" | "upsert" | "remove" | "acquireInteraction" | "reportCallbackError"
 > & {
   on(
     event: "datachange",
@@ -61,6 +61,7 @@ export function createDrawingSession<P extends Properties>(
   let initialStyle: DrawingStyle | undefined;
   let snapshot: DrawingState<P> | undefined;
   let gesture: DrawingDraft<P> | undefined;
+  let gestureCancelled = false;
   const listeners = new Set<() => void>();
   const tools = [...(options.tools ?? DRAWING_TOOLS)];
   const styleFields =
@@ -120,7 +121,22 @@ export function createDrawingSession<P extends Properties>(
   }
   function notify() {
     snapshot = undefined;
-    for (const listener of listeners) listener();
+    for (const listener of listeners) {
+      try {
+        listener();
+      } catch (cause) {
+        host.reportCallbackError(cause, "drawing.onChange");
+      }
+    }
+  }
+  function sameDraft(a: DrawingDraft<P>, b: DrawingDraft<P>) {
+    return a.placed === b.placed && a.placing === b.placing &&
+      JSON.stringify(a.shape) === JSON.stringify(b.shape) &&
+      JSON.stringify(a.style) === JSON.stringify(b.style);
+  }
+  function pushPast(previous: DrawingDraft<P>) {
+    past.push(previous);
+    if (past.length > 100) past.shift();
   }
   function requireDraft(operation?: DrawingChange<P>["kind"]) {
     if (disposed) throw new Error("Drawing session has been destroyed.");
@@ -129,14 +145,12 @@ export function createDrawingSession<P extends Properties>(
     return draft;
   }
   function change(update: (current: DrawingDraft<P>) => void) {
-    const current = requireDraft(),
-      before = structuredClone(current);
+    const current = requireDraft();
+    if (gestureCancelled) return;
+    const before = structuredClone(current);
     update(current);
-    if (JSON.stringify(before) === JSON.stringify(current)) return;
-    if (!gesture) {
-      past.push(before);
-      if (past.length > 100) past.shift();
-    }
+    if (sameDraft(before, current)) return;
+    if (!gesture) pushPast(before);
     future = [];
     reason = undefined;
     notify();
@@ -156,15 +170,17 @@ export function createDrawingSession<P extends Properties>(
   function cancel() {
     if (pending)
       throw new Error("Wait for the application to decide before cancelling.");
+    const owned = release;
+    release = undefined;
     draft = undefined;
     initialStyle = undefined;
     past = [];
     future = [];
     gesture = undefined;
+    gestureCancelled = false;
     conflict = false;
     reason = undefined;
-    release?.();
-    release = undefined;
+    owned?.();
     notify();
   }
   function start(tool: DrawingTool) {
@@ -236,9 +252,9 @@ export function createDrawingSession<P extends Properties>(
       if ("vertices" in s) {
         const last = s.vertices.at(-1);
         if (last && distance(last, p) < 0.001) return;
-        s.vertices.push(p);
+        s.vertices.push([...p]);
       } else if (s.kind === "circle" || s.kind === "rectangle") {
-        if (!current.placed) s.center = p;
+        if (!current.placed) s.center = [...p];
         else {
           current.shape = sizeFromPoint(s, p);
           current.placing = false;
@@ -272,9 +288,9 @@ export function createDrawingSession<P extends Properties>(
       const s = current.shape;
       if ("vertices" in s) {
         if (!s.vertices[index]) throw new Error("Unknown vertex.");
-        s.vertices[index] = p;
-      } else if (s.kind === "point") s.position = p;
-      else if (index === 0) s.center = p;
+        s.vertices[index] = [...p];
+      } else if (s.kind === "point") s.position = [...p];
+      else if (index === 0) s.center = [...p];
       else if (s.kind === "circle") s.radius = distance(s.center, p);
       else if (index === 1)
         s.width =
@@ -296,7 +312,7 @@ export function createDrawingSession<P extends Properties>(
   function insertVertex(after: number, p: DrawingPosition) {
     change((current) => {
       if ("vertices" in current.shape)
-        current.shape.vertices.splice(after + 1, 0, p);
+        current.shape.vertices.splice(after + 1, 0, [...p]);
     });
   }
   function removeVertex(index: number) {
@@ -316,6 +332,17 @@ export function createDrawingSession<P extends Properties>(
   }
   function undo() {
     requireDraft();
+    if (gesture) {
+      if (!sameDraft(gesture, draft!)) {
+        future.push(structuredClone(draft!));
+        draft = gesture;
+      }
+      gesture = undefined;
+      gestureCancelled = true;
+      reason = undefined;
+      notify();
+      return;
+    }
     const next = past.pop();
     if (next) {
       future.push(structuredClone(draft!));
@@ -328,7 +355,7 @@ export function createDrawingSession<P extends Properties>(
     requireDraft();
     const next = future.pop();
     if (next) {
-      past.push(structuredClone(draft!));
+      pushPast(structuredClone(draft!));
       draft = next;
       reason = undefined;
       notify();
@@ -337,13 +364,15 @@ export function createDrawingSession<P extends Properties>(
   function beginGesture() {
     requireDraft();
     gesture = structuredClone(draft);
+    gestureCancelled = false;
   }
   function endGesture() {
-    if (gesture && draft && JSON.stringify(gesture) !== JSON.stringify(draft)) {
-      past.push(gesture);
+    if (gesture && draft && !sameDraft(gesture, draft)) {
+      pushPast(gesture);
       future = [];
     }
     gesture = undefined;
+    gestureCancelled = false;
     notify();
   }
   async function submit(remove = false) {
@@ -364,6 +393,7 @@ export function createDrawingSession<P extends Properties>(
       ...structuredClone(current.feature),
       geometry: shapeGeometry(current.shape),
     };
+    delete after.bbox;
     if (
       !current.before || current.before.drawing ||
       JSON.stringify(current.style) !== JSON.stringify(initialStyle)
@@ -380,16 +410,17 @@ export function createDrawingSession<P extends Properties>(
     };
     pending = true;
     reason = undefined;
-    submission = { controller: new AbortController(), kind: request.kind };
+    const active = { controller: new AbortController(), kind: request.kind };
+    submission = active;
     notify();
     try {
       const decision = await options.submit(
         structuredClone(request),
-        submission.controller.signal,
+        active.controller.signal,
       );
-      if (disposed) return false;
+      if (disposed || submission !== active || draft !== current) return false;
       pending = false;
-      if (conflict || submission.controller.signal.aborted || !allowed(request.kind)) {
+      if (conflict || active.controller.signal.aborted || !allowed(request.kind)) {
         reason ??= "Permission changed while this request was pending. Review the draft and try again.";
         notify();
         return false;
@@ -406,10 +437,10 @@ export function createDrawingSession<P extends Properties>(
       } finally {
         applying = false;
       }
-      cancel();
+      if (draft === current) cancel();
       return true;
     } catch (error) {
-      if (!disposed) {
+      if (!disposed && submission === active && draft === current) {
         pending = false;
         reason =
           error instanceof Error
@@ -419,13 +450,19 @@ export function createDrawingSession<P extends Properties>(
       }
       return false;
     } finally {
-      submission = undefined;
+      if (submission === active) submission = undefined;
     }
   }
   const off = host.on("datachange", ({ ids, removed }) => {
+    if (applying) {
+      if (draft && (ids.includes(draft.feature.id) || removed.includes(draft.feature.id))) {
+        pending = false;
+        cancel();
+      }
+      return;
+    }
     if (
       !draft ||
-      applying ||
       (!ids.includes(draft.feature.id) && !removed.includes(draft.feature.id))
     )
       return;

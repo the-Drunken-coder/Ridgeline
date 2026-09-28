@@ -11,6 +11,7 @@ import {
   validateShape,
 } from "../src/drawing-geometry";
 import { FeatureStore } from "../src/features";
+import { RidgelineError } from "../src/errors";
 import { arrowFeatures } from "../src/drawing-render";
 import type {
   DrawingChange,
@@ -27,6 +28,7 @@ function fixture(overrides: Partial<DrawingOptions<Properties>> = {}) {
     (event: { ids: string[]; removed: string[] }) => void
   >();
   let owner: string | null = null;
+  const diagnostics: RidgelineError[] = [];
   const host = {
     getFeature: (id: string) => store.get(id),
     getStyle: () => ({}),
@@ -55,6 +57,10 @@ function fixture(overrides: Partial<DrawingOptions<Properties>> = {}) {
         owner = null;
       };
     },
+    reportCallbackError: (cause: unknown, operation: string) => {
+      diagnostics.push(new RidgelineError("CALLBACK_FAILED", "A consumer callback threw.",
+        { operation, recoverable: true }, cause));
+    },
   };
   const requests: DrawingChange[] = [];
   const editor = createDrawingSession(host, {
@@ -68,7 +74,7 @@ function fixture(overrides: Partial<DrawingOptions<Properties>> = {}) {
     },
     ...overrides,
   });
-  return { host, editor, requests, owner: () => owner };
+  return { host, editor, requests, diagnostics, owner: () => owner };
 }
 function line(editor: ReturnType<typeof fixture>["editor"]) {
   editor.start("line");
@@ -116,6 +122,15 @@ test("Circle and rotated rectangle retain meter-based definitions across storage
       distance([179.999, 45], destination([179.999, 45], 1000, 90)) - 1000,
     ) < 0.001,
   );
+});
+
+test("Small circle areas use the stable spherical result", () => {
+  for (const radius of [0.06, 0.07]) {
+    const shape: DrawingShape = { kind: "circle", center: [0, 0], radius };
+    const expected = Math.PI * radius ** 2 *
+      (1 - radius ** 2 / (12 * 6_371_008.8 ** 2));
+    assert.ok(Math.abs(measurements(shape).area! - expected) < expected * 1e-10);
+  }
 });
 test("Reject crossing, repeated, polar and hemisphere-sized shapes; preserve date-line geometry", () => {
   assert.match(
@@ -286,6 +301,77 @@ test("Draft undo, gesture grouping and cancellation never mutate consumer data",
   assert.equal(owner(), null);
   assert.equal(host.getFeature("new"), undefined);
 });
+
+test("Drawing snapshots coordinates at every point mutation", async () => {
+  const { editor, requests } = fixture();
+  const first: DrawingPosition = [0, 0], second: DrawingPosition = [1, 0];
+  editor.start("line");
+  editor.addPoint(first);
+  editor.addPoint(second);
+  first[0] = 50;
+  second[0] = 50;
+  const inserted: DrawingPosition = [0.5, 0];
+  editor.insertVertex(0, inserted);
+  inserted[0] = 60;
+  const moved: DrawingPosition = [2, 0];
+  editor.moveVertex(2, moved);
+  moved[0] = 70;
+  assert.deepEqual(editor.getState().draft?.shape, {
+    kind: "line", vertices: [[0, 0], [0.5, 0], [2, 0]],
+  });
+  editor.undo();
+  assert.deepEqual(editor.getState().draft?.shape, {
+    kind: "line", vertices: [[0, 0], [0.5, 0], [1, 0]],
+  });
+  editor.redo();
+  assert.equal(await editor.finish(), true);
+  assert.deepEqual(requests[0]?.after?.geometry, {
+    type: "LineString", coordinates: [[0, 0], [0.5, 0], [2, 0]],
+  });
+});
+
+test("History keeps only the last 100 completed changes, including gestures and redo", () => {
+  const { editor } = fixture();
+  line(editor);
+  for (let i = 1; i <= 120; i++) {
+    editor.beginGesture();
+    editor.moveVertex(1, [i / 100, 0]);
+    editor.endGesture();
+  }
+  for (let i = 0; i < 100; i++) editor.undo();
+  assert.equal(editor.getState().canUndo, false);
+  assert.deepEqual(editor.getState().draft?.shape, {
+    kind: "line", vertices: [[0, 0], [0.2, 0]],
+  });
+  for (let i = 0; i < 100; i++) editor.redo();
+  assert.equal(editor.getState().canRedo, false);
+  editor.undo();
+  editor.setStyle({ label: "Later" });
+  assert.equal(editor.getState().canRedo, false);
+});
+
+test("Undo during a gesture settles that gesture before later edits", () => {
+  const { editor } = fixture();
+  line(editor);
+  editor.beginGesture();
+  editor.moveVertex(1, [2, 0]);
+  editor.undo();
+  editor.moveVertex(1, [3, 0]); // A late drag event before pointer release.
+  editor.endGesture();
+  assert.deepEqual(editor.getState().draft?.shape, {
+    kind: "line", vertices: [[0, 0], [0.01, 0]],
+  });
+  editor.addPoint([4, 0]);
+  editor.moveVertex(1, [5, 0]);
+  editor.undo();
+  assert.deepEqual(editor.getState().draft?.shape, {
+    kind: "line", vertices: [[0, 0], [0.01, 0], [4, 0]],
+  });
+  editor.undo();
+  assert.deepEqual(editor.getState().draft?.shape, {
+    kind: "line", vertices: [[0, 0], [0.01, 0]],
+  });
+});
 test("A completed edit is submitted once and applies only after acceptance", async () => {
   let decide: (value: DrawingDecision) => void = () => {};
   const { host, editor } = fixture({
@@ -304,6 +390,154 @@ test("A completed edit is submitted once and applies only after acceptance", asy
   assert.equal(await pending, true);
   assert.equal(editor.getState().phase, "idle");
   assert.equal(host.getFeature("new")?.drawing?.shape.kind, "line");
+});
+
+test("A failing drawing observer cannot block another observer or submission cleanup", async () => {
+  const { editor, host, owner, diagnostics } = fixture();
+  editor.onChange(() => { throw new Error("observer failed"); });
+  let healthy = 0;
+  editor.onChange(() => { healthy++; });
+  line(editor);
+  assert.equal(await editor.finish(), true);
+  assert.equal(owner(), null);
+  assert.equal(host.getFeature("new")?.geometry.type, "LineString");
+  assert.ok(healthy >= 4);
+  assert.ok(diagnostics.some(error =>
+    error.code === "CALLBACK_FAILED" &&
+    error.context.operation === "drawing.onChange" &&
+    error.cause instanceof Error && error.cause.message === "observer failed"));
+});
+
+test("A rejected submission cannot clear a newer request started in its notification", async () => {
+  const decisions: ((value: DrawingDecision) => void)[] = [];
+  const { editor, host } = fixture({
+    submit: () => new Promise(resolve => { decisions.push(resolve); }),
+  });
+  line(editor);
+  let restarted: Promise<boolean> | undefined;
+  editor.onChange(() => {
+    if (editor.getState().phase === "rejected" && !restarted) {
+      editor.setStyle({ label: "Again" });
+      restarted = editor.finish();
+    }
+  });
+  const first = editor.finish();
+  decisions[0]!({ accepted: false, reason: "Try again" });
+  assert.equal(await first, false);
+  assert.equal(editor.getState().phase, "pending");
+  decisions[1]!({ accepted: true });
+  assert.equal(await restarted, true);
+  assert.equal(host.getFeature("new")?.drawing?.style.label, "Again");
+});
+
+test("An accepted submission cannot clear a newer request started in its notification", async () => {
+  const decisions: ((value: DrawingDecision) => void)[] = [];
+  let nextId = 0;
+  const { editor, host } = fixture({
+    createFeature: () => ({ id: `new-${++nextId}`, properties: {} }),
+    submit: () => new Promise(resolve => { decisions.push(resolve); }),
+  });
+  line(editor);
+  let restarted: Promise<boolean> | undefined;
+  editor.onChange(() => {
+    if (editor.getState().phase === "idle" && !restarted) {
+      editor.start("line");
+      editor.addPoint([10, 0]);
+      editor.addPoint([11, 0]);
+      restarted = editor.finish();
+    }
+  });
+  const first = editor.finish();
+  decisions[0]!({ accepted: true });
+  assert.equal(await first, true);
+  assert.equal(editor.getState().phase, "pending");
+  decisions[1]!({ accepted: true });
+  assert.equal(await restarted, true);
+  assert.ok(host.getFeature("new-1"));
+  assert.ok(host.getFeature("new-2"));
+});
+
+test("Editing properties with BigInt and cycles retains them through history and acceptance", async () => {
+  const { editor, host, requests } = fixture();
+  const properties: Properties = { amount: 12n };
+  properties.self = properties;
+  const before = feature({ kind: "line", vertices: [[0, 0], [1, 0]] });
+  before.properties = properties;
+  host.upsert([before]);
+  editor.edit(before.id);
+  editor.moveVertex(1, [2, 0]);
+  editor.undo();
+  editor.redo();
+  assert.equal(await editor.finish(), true);
+  assert.equal(requests[0]?.after?.properties.amount, 12n);
+  assert.equal(requests[0]?.after?.properties.self, requests[0]?.after?.properties);
+  assert.deepEqual(host.getFeature(before.id)?.geometry, {
+    type: "LineString", coordinates: [[0, 0], [2, 0]],
+  });
+});
+
+test("Edited geometry drops an imported bounding box that no longer contains it", async () => {
+  const { editor, host, requests } = fixture();
+  const before: MapFeature = {
+    type: "Feature", id: "bounded", properties: {},
+    geometry: { type: "LineString", coordinates: [[0, 0], [1, 1]] },
+    bbox: [0, 0, 1, 1],
+  };
+  host.upsert([before]);
+  editor.edit(before.id);
+  editor.moveVertex(1, [2, 2]);
+  assert.equal(await editor.finish(), true);
+  assert.equal(requests[0]?.after?.bbox, undefined);
+  assert.equal(host.getFeature(before.id)?.bbox, undefined);
+  assert.deepEqual(host.getFeature(before.id)?.geometry, {
+    type: "LineString", coordinates: [[0, 0], [2, 2]],
+  });
+});
+
+test("Replacement drafts retain their own interaction release", () => {
+  const { editor, host, owner } = fixture();
+  const original = host.acquireInteraction;
+  let replace = false;
+  host.acquireInteraction = (name) => {
+    const release = original(name);
+    return () => {
+      release();
+      if (replace) {
+        replace = false;
+        editor.start("line");
+      }
+    };
+  };
+  line(editor);
+  replace = true;
+  editor.cancel();
+  assert.equal(owner(), "drawing");
+  editor.cancel();
+  assert.equal(owner(), null);
+  editor.start("line");
+  editor.destroy();
+  assert.equal(owner(), null);
+});
+
+test("A draft opened by accepted datachange survives the prior submission", async () => {
+  const { editor, host } = fixture();
+  const before = feature({ kind: "line", vertices: [[0, 0], [1, 0]] });
+  host.upsert([before]);
+  editor.edit(before.id);
+  editor.moveVertex(1, [2, 0]);
+  let opened = false;
+  host.on("datachange", ({ ids }) => {
+    if (!opened && ids.includes(before.id)) {
+      opened = true;
+      editor.edit(before.id);
+      editor.moveVertex(1, [3, 0]);
+    }
+  });
+  assert.equal(await editor.finish(), true);
+  assert.equal(editor.getState().phase, "editing");
+  assert.deepEqual(editor.getState().draft?.shape, {
+    kind: "line", vertices: [[0, 0], [3, 0]],
+  });
 });
 test("Rejection retains draft; unrelated updates leave it intact; accepted edit preserves properties", async () => {
   const { host, editor } = fixture({

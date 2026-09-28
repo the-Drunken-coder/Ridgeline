@@ -16,7 +16,7 @@ export type EntityComputationResult = {
   state: EntityState;
   diagnostic?: 'ALTITUDE_MISSING' | 'BELOW_TERRAIN';
 };
-export function computeEntity(input: EntityComputationInput, height: HeightAt, unavailable: () => boolean): EntityComputationResult {
+export function computeEntity(input: EntityComputationInput, height: HeightAt, unavailable: (lng: number, lat: number) => boolean): EntityComputationResult {
   const { feature, configuration: config, style, selected } = input;
   if (feature.geometry.type !== 'Point' || !feature.entity) throw new Error('Expected a point entity.');
   const started = performance.now(),
@@ -41,7 +41,10 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
         ? 'BELOW_TERRAIN'
         : undefined;
   const primitives: Primitive[] = [];
-  let missing = ground === null;
+  let missing = ground === null, failed = missing && unavailable(lng, lat);
+  const zoneHeight: HeightAt = (zoneLng, zoneLat) => height(zoneLng, zoneLat);
+  zoneHeight.maximum = height.maximum;
+  zoneHeight.failedAt = unavailable;
   const entityColor = parseColor(style.color ?? '#216e5b', 1, { initialCss: '#216e5b' });
   const display = (p: GeoPoint): GeoPoint => [
     p[0],
@@ -104,8 +107,9 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
                   Math.sin((i * Math.PI) / 24) * attachment.radius,
                   Math.cos((i * Math.PI) / 24) * attachment.radius,
                 ]);
-          const zone = groundZone(origin, boundary, height, true);
+          const zone = groundZone(origin, boundary, zoneHeight, true);
           missing ||= zone.missing;
+          failed ||= zone.failed;
           add(zone.triangles, 'triangles', rgba, attachment.id, true);
           add(zone.lines, 'lines', [rgba[0], rgba[1], rgba[2], 0.9], attachment.id, true);
         } else if (placement === 'airborne') {
@@ -119,7 +123,7 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
     placement,
     altitude,
     ground: ground ?? undefined,
-    coverage: missing ? (unavailable() ? 'unavailable' : 'loading') : 'ready',
+    coverage: missing ? (failed ? 'unavailable' : 'loading') : 'ready',
     footprintTriangles: 0,
     computedAt: performance.timeOrigin + performance.now(),
     computationMs: performance.now() - started,

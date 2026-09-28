@@ -8,8 +8,9 @@ import {
   triangulate,
 } from '../src/entity-geometry';
 import { decodeElevation, tilePosition } from '../src/elevation-sampler';
+import { computeEntity } from '../src/entity-computation';
 import { FeatureStore } from '../src/features';
-import type { CameraAttachment, MapFeature } from '../src/types';
+import type { CameraAttachment, MapConfiguration, MapFeature } from '../src/types';
 
 const camera: CameraAttachment = {
   id: 'camera',
@@ -137,8 +138,9 @@ test('raw DEM decoding does not use any display exaggeration', () => {
   close(decodeElevation(1, 134, 160, 'mapbox'), 0);
   close(
     decodeElevation(2, 3, 4, 'custom', { redFactor: 100, greenFactor: 10, blueFactor: 1, baseShift: -50 }),
-    184,
+    284,
   );
+  close(decodeElevation(2, 3, 4, 'custom', { redFactor: 100, greenFactor: 10, blueFactor: 1, baseShift: 50 }), 184);
 });
 
 test('ground zones sample hills inside their boundary and withhold incomplete terrain', () => {
@@ -171,6 +173,48 @@ test('ground zones sample hills inside their boundary and withhold incomplete te
   assert.equal(incomplete.missing, true);
   assert.deepEqual(incomplete.triangles, []);
   assert.deepEqual(incomplete.lines, []);
+});
+
+test('a public custom sampler keeps a large draped ground area compact', () => {
+  const boundary = Array.from({ length: 48 }, (_, i): [number, number] => [
+    Math.sin(i * Math.PI / 24) * 1500,
+    Math.cos(i * Math.PI / 24) * 1500,
+  ]);
+  const zone = groundZone([0, 0, 300], boundary, () => 25, true);
+  assert.equal(zone.missing, false);
+  assert.ok(zone.triangles.length < 1000, `Unexpected ${zone.triangles.length} vertices`);
+  assert.equal(groundZone([0, 0, 300], boundary, () => null, true).missing, true);
+});
+
+test('unknown ground attachment reports unavailable independent of its camera', () => {
+  const originalCanvas = globalThis.OffscreenCanvas;
+  Object.defineProperty(globalThis, 'OffscreenCanvas', {
+    configurable: true,
+    value: class { getContext() { return {
+      fillStyle: '', fillRect() {}, getImageData() { return { data: new Uint8ClampedArray([33, 110, 92, 255]) }; },
+    }; } },
+  });
+  try {
+    const configuration: MapConfiguration = {
+      basemap: { version: 8, sources: {}, layers: [] }, projection: 'flat', terrain: false,
+      hillshade: false, hillshadeOptions: {}, exaggeration: 1,
+      elevation: { tiles: [], encoding: 'terrarium', tileSize: 256 },
+      entityVisibility: { footprints: true, zones: true, groundLines: false },
+    };
+    const feature: MapFeature = {
+      type: 'Feature', id: 'asset', geometry: { type: 'Point', coordinates: [0, 0] }, properties: {},
+      entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [
+        { ...camera, terrainVisibility: true }, { id: 'area', type: 'circle', radius: 1500 },
+      ] },
+    };
+    const unavailable = (lng: number) => lng > .002;
+    const result = computeEntity({ feature, configuration, style: {}, selected: false },
+      lng => unavailable(lng) ? null : 0, unavailable);
+    assert.equal(result.state.coverage, 'unavailable');
+    assert.equal(result.primitives.some(value => value.attachmentId === 'area'), false);
+  } finally {
+    Object.defineProperty(globalThis, 'OffscreenCanvas', { configurable: true, value: originalCanvas });
+  }
 });
 
 

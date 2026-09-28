@@ -13,10 +13,15 @@ type ErrorListener = Parameters<FeaturePublicationSource['on']>[1];
 class ControlledSource implements FeaturePublicationSource {
   readonly features = new Map<string, MapFeature>();
   readonly listeners = new Set<ErrorListener>();
-  readonly calls: { changes: FeatureChanges; resolve: () => void; reject: (cause: Error) => void }[] = [];
+  readonly calls: { changes: FeatureChanges; resolve: () => void; reject: (cause: Error) => void; reset?: boolean }[] = [];
   constructor(features: MapFeature[]) { for (const feature of features) this.features.set(feature.id, feature); }
   updateData(changes: FeatureChanges) {
     return new Promise<void>((resolve, reject) => { this.calls.push({ changes, resolve, reject }); });
+  }
+  setData(data: { features: MapFeature[] }) {
+    return new Promise<void>((resolve, reject) => {
+      this.calls.push({ changes: { add: data.features, remove: [] }, resolve, reject, reset: true });
+    });
   }
   on(_type: 'error', listener: ErrorListener) { this.listeners.add(listener); }
   off(_type: 'error', listener: ErrorListener) { this.listeners.delete(listener); }
@@ -32,23 +37,28 @@ class ControlledSource implements FeaturePublicationSource {
   }
   succeed(index: number) {
     const call = this.getCall(index);
+    if (call.reset) this.features.clear();
     this.apply(call.changes);
     call.resolve();
   }
 }
 
-function fixture(render: (feature: MapFeature) => MapFeature = feature => feature) {
+function fixture(render: (feature: MapFeature) => MapFeature = feature => feature, onDiagnostic?: (error: RidgelineError) => void) {
   const store = new FeatureStore<Properties>();
   const diagnostics: RidgelineError[] = [];
   const published: string[] = [];
   const frames = new Map<number, () => void>();
   let frameId = 0;
-  let beforeSubmissions = 0;
   let source: ControlledSource | undefined;
+  let initialFailure: ((cause: unknown) => void) | undefined;
   const publication = createFeaturePublication({
-    store, render, diagnostic: error => diagnostics.push(error),
-    target: { current: () => source, create: features => { source = new ControlledSource(features); } },
-    beforeSubmit: () => { beforeSubmissions++; }, published: id => published.push(id),
+    store, render, diagnostic: error => { diagnostics.push(error); onDiagnostic?.(error); },
+    target: {
+      current: () => source,
+      create: features => { source = new ControlledSource(features); },
+      watchInitial: failed => { initialFailure = failed; return () => { if (initialFailure === failed) initialFailure = undefined; }; },
+    },
+    published: id => published.push(id),
     frames: {
       request(callback) { const id = ++frameId; frames.set(id, callback); return id; },
       cancel(id) { frames.delete(id); },
@@ -57,13 +67,32 @@ function fixture(render: (feature: MapFeature) => MapFeature = feature => featur
   return {
     publication, store, diagnostics, published, frames,
     source() { assert.ok(source); return source; },
-    get beforeSubmissions() { return beforeSubmissions; },
     upsert(...features: MapFeature[]) { publication.update(store.upsert(features)); },
     remove(...ids: string[]) { publication.update([], store.remove(ids)); },
     frame() { const callbacks = [...frames.values()]; frames.clear(); for (const callback of callbacks) callback(); },
     replaceStyle() { publication.retire(); source = undefined; },
+    failInitial() { initialFailure?.(new Error('Initial load failed')); },
   };
 }
+
+test('retry replaces a failed initial source with the latest accepted snapshot', async () => {
+  const f = fixture();
+  f.upsert(point('a'), point('removed'));
+  f.publication.restore();
+  f.failInitial();
+  f.upsert(point('a', 2));
+  f.remove('removed');
+  f.frame();
+  f.source().succeed(0);
+  await Promise.resolve();
+  f.publication.retry();
+  f.frame();
+  assert.deepEqual(f.source().getCall(1).changes.add, [point('a', 2)]);
+  f.source().succeed(1);
+  await Promise.resolve();
+  assert.deepEqual([...f.source().features.values()], [point('a', 2)]);
+  assert.equal(f.diagnostics.length, 1);
+});
 
 test('coalesces each frame and waits for the current submission before sending newer changes', async () => {
   const f = fixture();
@@ -88,7 +117,6 @@ test('coalesces each frame and waits for the current submission before sending n
   f.source().succeed(1);
   await Promise.resolve();
   assert.deepEqual(f.source().features.get('a'), point('a', 4));
-  assert.equal(f.beforeSubmissions, 2);
   assert.deepEqual(f.published, ['a', 'b', 'a']);
   assert.equal(f.frames.size, 0);
 });
@@ -322,4 +350,57 @@ test('destroy cancels scheduled publication and makes outstanding worker results
   assert.equal(scheduled.frames.size, 0);
   scheduled.frame();
   assert.equal(scheduled.source().calls.length, 0);
+});
+
+test('reentrant removal during preparation does not publish the removed feature', async () => {
+  let f: ReturnType<typeof fixture>;
+  f = fixture(feature => {
+    if (feature.id === 'removed') f.remove('removed');
+    return feature;
+  });
+  f.publication.restore();
+  f.upsert(point('removed'), point('healthy'));
+  f.frame();
+  assert.deepEqual(f.source().getCall(0).changes, { add: [point('healthy')], remove: [] });
+  f.source().succeed(0);
+  await Promise.resolve();
+  f.frame();
+  f.source().succeed(1);
+  await Promise.resolve();
+  assert.deepEqual([...f.source().features.keys()], ['healthy']);
+});
+
+test('restoration stops when a preparation diagnostic destroys the publisher', () => {
+  let f: ReturnType<typeof fixture>;
+  let renders = 0;
+  f = fixture(feature => {
+    renders++;
+    if (feature.id === 'broken') throw new Error('Broken style');
+    return feature;
+  }, () => f.publication.destroy());
+  f.upsert(point('broken'), point('later'));
+  f.publication.restore();
+  assert.equal(renders, 1);
+  assert.equal(f.frames.size, 0);
+});
+
+test('source creation stops restoration when an error observer destroys publication', () => {
+  const store = new FeatureStore<Properties>();
+  store.upsert([point('a')]);
+  let restored = 0;
+  let watched = 0;
+  let publication: ReturnType<typeof createFeaturePublication<Properties>>;
+  publication = createFeaturePublication({
+    store, render: feature => feature, diagnostic: () => {}, published: () => {},
+    restored: () => { restored++; },
+    frames: { request: () => 1, cancel: () => {} },
+    target: {
+      current: () => undefined,
+      create: () => publication.destroy(),
+      watchInitial: () => { watched++; return () => {}; },
+    },
+  });
+  publication.restore();
+  assert.equal(restored, 0);
+  assert.equal(watched, 0);
 });

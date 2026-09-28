@@ -39,8 +39,46 @@ export function attachDrawingControls<P extends Properties>(
   options.inspector.append(panel);
   let units = options.units ?? "metric",
     error: string | undefined,
-    disposed = false;
+    disposed = false,
+    rendering = false,
+    changingField = false,
+    pointerPressed = false,
+    renderTimer: ReturnType<typeof setTimeout> | undefined;
   const abort = new AbortController();
+  function refreshDraftActions() {
+    const state = editor.getState();
+    if (!state.draft) return;
+    const disabled: Record<string, boolean> = {
+      Undo: !state.canUndo,
+      Redo: !state.canRedo,
+      Finish: !["editing", "rejected"].includes(state.phase) || Boolean(state.validation),
+      Cancel: state.phase === "pending",
+      "Delete drawing": !editor.canDelete(),
+    };
+    for (const button of panel.querySelectorAll<HTMLButtonElement>("button[data-field]")) {
+      const label = button.dataset.field?.slice("action:".length);
+      const value = label === undefined ? undefined : disabled[label];
+      if (value !== undefined) button.disabled = value;
+    }
+  }
+  function scheduleRender() {
+    if (renderTimer !== undefined || pointerPressed) return;
+    renderTimer = setTimeout(() => {
+      renderTimer = undefined;
+      if (!pointerPressed && !(document.activeElement instanceof HTMLInputElement && panel.contains(document.activeElement))) render();
+    }, 0);
+  }
+  function fieldChanged(update: () => void) {
+    changingField = true;
+    try {
+      update();
+    } catch (cause) {
+      fail(cause);
+    } finally {
+      changingField = false;
+      scheduleRender();
+    }
+  }
   const action = (
     label: string,
     fn: () => void | Promise<unknown>,
@@ -69,7 +107,8 @@ export function attachDrawingControls<P extends Properties>(
       cause instanceof Error
         ? cause.message
         : "The drawing could not be changed.";
-    render();
+    if (changingField || pointerPressed) scheduleRender();
+    else render();
   }
   function field(label: string, input: HTMLElement) {
     const row = document.createElement("label");
@@ -89,13 +128,7 @@ export function attachDrawingControls<P extends Properties>(
     input.value = value;
     input.disabled = disabled;
     input.dataset.field = label;
-    input.addEventListener("change", () => {
-      try {
-        onChange(input.value);
-      } catch (cause) {
-        fail(cause);
-      }
-    });
+    input.addEventListener("change", () => fieldChanged(() => onChange(input.value)));
     return field(label, input);
   }
   function select(
@@ -115,13 +148,7 @@ export function attachDrawingControls<P extends Properties>(
       input.append(item);
     }
     input.value = value;
-    input.addEventListener("change", () => {
-      try {
-        onChange(input.value);
-      } catch (cause) {
-        fail(cause);
-      }
-    });
+    input.addEventListener("change", () => fieldChanged(() => onChange(input.value)));
     return field(label, input);
   }
   function row(...children: HTMLElement[]) {
@@ -149,8 +176,13 @@ export function attachDrawingControls<P extends Properties>(
       (panel.contains(document.activeElement) || rail.contains(document.activeElement))
         ? document.activeElement.dataset.field
         : undefined;
-    rail.replaceChildren();
-    panel.replaceChildren();
+    rendering = true;
+    try {
+      rail.replaceChildren();
+      panel.replaceChildren();
+    } finally {
+      rendering = false;
+    }
     for (const tool of editor.tools) {
       const button = action(
         names[tool],
@@ -242,7 +274,11 @@ export function attachDrawingControls<P extends Properties>(
             `Radius (${suffix})`,
             String(Number((shape.radius / scale).toFixed(2))),
             (value) =>
-              editor.setShape({ ...shape, radius: Number(value) * scale }),
+              {
+                const current = editor.getState().draft?.shape;
+                if (current?.kind === "circle")
+                  editor.setShape({ ...current, radius: Number(value) * scale });
+              },
             locked,
             "number",
           ),
@@ -254,7 +290,11 @@ export function attachDrawingControls<P extends Properties>(
               `Width (${suffix})`,
               String(Number((shape.width / scale).toFixed(2))),
               (value) =>
-                editor.setShape({ ...shape, width: Number(value) * scale }),
+                {
+                const current = editor.getState().draft?.shape;
+                if (current?.kind === "rectangle")
+                  editor.setShape({ ...current, width: Number(value) * scale });
+              },
               locked,
               "number",
             ),
@@ -262,7 +302,11 @@ export function attachDrawingControls<P extends Properties>(
               `Height (${suffix})`,
               String(Number((shape.height / scale).toFixed(2))),
               (value) =>
-                editor.setShape({ ...shape, height: Number(value) * scale }),
+                {
+                const current = editor.getState().draft?.shape;
+                if (current?.kind === "rectangle")
+                  editor.setShape({ ...current, height: Number(value) * scale });
+              },
               locked,
               "number",
             ),
@@ -272,7 +316,11 @@ export function attachDrawingControls<P extends Properties>(
           text(
             "Bearing (°)",
             String(Number(shape.bearing.toFixed(2))),
-            (value) => editor.setShape({ ...shape, bearing: Number(value) }),
+            (value) => {
+                const current = editor.getState().draft?.shape;
+                if (current?.kind === "rectangle")
+                  editor.setShape({ ...current, bearing: Number(value) });
+              },
             locked,
             "number",
           ),
@@ -413,7 +461,11 @@ export function attachDrawingControls<P extends Properties>(
   });
   const off = editor.onChange(() => {
       error = undefined;
-      render();
+      if (changingField || pointerPressed) {
+        refreshDraftActions();
+        scheduleRender();
+      }
+      else render();
     }),
     offSelection = viewport.on("selectionchange", render),
     offData = viewport.on("datachange", () => {
@@ -459,6 +511,7 @@ export function attachDrawingControls<P extends Properties>(
   function destroy() {
     if (disposed) return;
     disposed = true;
+    if (renderTimer !== undefined) clearTimeout(renderTimer);
     abort.abort();
     off();
     offPreview();
@@ -469,6 +522,37 @@ export function attachDrawingControls<P extends Properties>(
     panel.remove();
   }
   const offDestroy = viewport.on("destroy", destroy);
+  panel.addEventListener("focusout", () => {
+    if (!rendering && !pointerPressed) scheduleRender();
+  }, { signal: abort.signal });
+  panel.addEventListener("pointerdown", () => {
+    pointerPressed = true;
+    if (renderTimer !== undefined) {
+      clearTimeout(renderTimer);
+      renderTimer = undefined;
+    }
+  }, { signal: abort.signal });
+  document.addEventListener("click", () => {
+    if (!pointerPressed) return;
+    pointerPressed = false;
+    scheduleRender();
+  }, { signal: abort.signal });
+  document.addEventListener("pointerup", () => {
+    if (!pointerPressed) return;
+    setTimeout(() => {
+      if (pointerPressed && !disposed) {
+        pointerPressed = false;
+        scheduleRender();
+      }
+    }, 0);
+  }, { signal: abort.signal });
+  function endPointerPress() {
+    pointerPressed = false;
+    scheduleRender();
+  }
+  document.addEventListener("pointercancel", endPointerPress, { signal: abort.signal });
+  document.addEventListener("lostpointercapture", endPointerPress, { signal: abort.signal });
+  window.addEventListener("blur", endPointerPress, { signal: abort.signal });
   render();
   return { destroy, refresh: render };
 }

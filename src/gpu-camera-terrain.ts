@@ -1,5 +1,6 @@
 import { MercatorCoordinate } from 'maplibre-gl';
 import type { GeoPoint, HeightAt } from './entity-geometry';
+import { wrapLongitude } from './longitude';
 
 export const TERRAIN_CELLS = 256;
 export type CameraTerrain = {
@@ -8,7 +9,20 @@ export type CameraTerrain = {
   half: number;
   vertices: Float32Array;
   ready: boolean;
+  failed: boolean;
 };
+
+/** Geographic bounds of the same Mercator square sampled by cameraTerrain. */
+export function cameraTerrainPreparationBounds(lng: number, lat: number, range: number): [number, number, number, number] {
+  const centre = MercatorCoordinate.fromLngLat([lng, lat]);
+  const margin = range * 1.3 * centre.meterInMercatorCoordinateUnits();
+  const west = new MercatorCoordinate(centre.x - margin, centre.y).toLngLat().lng;
+  const east = new MercatorCoordinate(centre.x + margin, centre.y).toLngLat().lng;
+  const south = new MercatorCoordinate(centre.x, centre.y + margin).toLngLat().lat;
+  const north = new MercatorCoordinate(centre.x, centre.y - margin).toLngLat().lat;
+  // Allow for floating-point roundoff between corner and grid coordinate paths.
+  return [west - 1e-10, south - 1e-10, east + 1e-10, north + 1e-10];
+}
 
 /** Cache a patch with a movement margin; unknown samples never become visible ground. */
 export function cameraTerrain(lng: number, lat: number, range: number, height: HeightAt, previous?: CameraTerrain): CameraTerrain {
@@ -20,17 +34,28 @@ export function cameraTerrain(lng: number, lat: number, range: number, height: H
     if (distance + range <= previous.half && previous.half <= range * 2 && previous.ready) return previous;
   }
   const scale = centre.meterInMercatorCoordinateUnits(), half = range * 1.3;
-  const vertices = new Float32Array((TERRAIN_CELLS + 1) ** 2 * 3);
-  let ready = true;
+  // Preserve completed samples while tiles for the remaining samples load.
+  // Other cameras may evict those source tiles before this patch completes.
+  const continuing = previous && !previous.ready && previous.centre.x === centre.x &&
+    previous.centre.y === centre.y && previous.half === half;
+  const vertices = continuing ? previous.vertices.slice() : new Float32Array((TERRAIN_CELLS + 1) ** 2 * 3);
+  let ready = true, failed = false;
+  const sample = height.forRange?.(range, lat) ?? height;
   for (let y = 0; y <= TERRAIN_CELLS; y++) for (let x = 0; x <= TERRAIN_CELLS; x++) {
+    const index = (y * (TERRAIN_CELLS + 1) + x) * 3;
+    if (continuing && Number.isFinite(vertices[index + 2])) continue;
     const east = (x / TERRAIN_CELLS * 2 - 1) * half;
     const north = (y / TERRAIN_CELLS * 2 - 1) * half;
     const p = new MercatorCoordinate(centre.x + east * scale, centre.y - north * scale).toLngLat();
-    const z = height(p.lng, p.lat);
-    if (z === null) ready = false;
-    vertices.set([east, north, z ?? 0], (y * (TERRAIN_CELLS + 1) + x) * 3);
+    const boundedLng = wrapLongitude(p.lng);
+    const z = sample(boundedLng, p.lat);
+    if (z === null) {
+      ready = false;
+      failed ||= sample.failedAt?.(boundedLng, p.lat) ?? false;
+    }
+    vertices.set([east, north, z ?? NaN], index);
   }
-  return { centre, scale, half, vertices, ready };
+  return { centre, scale, half, vertices, ready, failed };
 }
 
 export function terrainCoordinates(terrain: CameraTerrain): [[number, number], [number, number], [number, number], [number, number]] {
