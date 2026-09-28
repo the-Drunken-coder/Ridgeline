@@ -63,14 +63,17 @@ export class RasterElevationSampler {
   }
   /** Large patches use coarser source tiles while retaining the fixed analysis mesh. */
   forRange(range: number, lat: number) {
-    const tileBudgetAcross = 10;
-    const zoom = () => Math.max(this.minZoom, Math.min(this.zoom, Math.floor(Math.log2(
-      tileBudgetAcross * WORLD_METERS * Math.cos(lat * Math.PI / 180) / (range * 2.6),
-    ))));
+    const zoom = () => this.rangeZoom(range, lat);
     return Object.assign(
       (lng: number, latitude: number) => this.sampleAt(lng, latitude, zoom()),
       { failedAt: (lng: number, latitude: number) => this.unavailableAt(lng, latitude, zoom()) },
     );
+  }
+  private rangeZoom(range: number, lat: number) {
+    const tileBudgetAcross = 10;
+    return Math.max(this.minZoom, Math.min(this.zoom, Math.floor(Math.log2(
+      tileBudgetAcross * WORLD_METERS * Math.cos(lat * Math.PI / 180) / (range * 2.6),
+    ))));
   }
   private sampleAt(lng: number, lat: number, zoom: number): number | null {
     if (!this.started) {
@@ -235,19 +238,22 @@ export class RasterElevationSampler {
     return false;
   }
   /** Unknown samples settle only when this area needs failed data. */
-  readiness(center: readonly [number, number], radiusMeters: number, geographicBounds?: readonly [number, number, number, number]): 'loading' | 'unavailable' {
+  readiness(center: readonly [number, number], radiusMeters: number, geographicBounds?: readonly [number, number, number, number], sampleRange?: number): 'loading' | 'unavailable' {
     if (this.failed.has('source')) return 'unavailable';
-    const bounds = this.areaBounds(center, radiusMeters, this.zoom, geographicBounds);
+    const zoom = sampleRange === undefined ? this.zoom : this.rangeZoom(sampleRange, center[1]);
+    const bounds = this.areaBounds(center, radiusMeters, zoom, geographicBounds);
     if (!bounds) return 'unavailable';
     if (!this.ready) return 'loading';
     const { n, firstX, lastX, firstY, lastY } = bounds;
     if (lastX - firstX >= n) {
       for (const key of this.failed) {
-        const y = Number(key.split('/')[2]);
+        const [tileZoom, , y] = key.split('/').map(Number);
+        if (tileZoom !== zoom || y === undefined) continue;
         if (Number.isInteger(y) && y >= firstY && y <= lastY) return 'unavailable';
       }
       for (const [key, missing] of this.noData) {
-        const [, canonicalX, y] = key.split('/').map(Number);
+        const [tileZoom, canonicalX, y] = key.split('/').map(Number);
+        if (tileZoom !== zoom) continue;
         if (canonicalX === undefined || y === undefined || y < firstY || y > lastY) continue;
         const x = firstX + ((canonicalX - firstX) % n + n) % n;
         if (this.missingInBounds(missing, x, y, bounds)) return 'unavailable';
@@ -257,7 +263,7 @@ export class RasterElevationSampler {
     // Readiness examines only tiles intersecting this request, regardless of
     // how many failures have accumulated elsewhere in the world.
     for (let y = firstY; y <= lastY; y++) for (let x = firstX; x <= lastX; x++) {
-      const key = `${this.zoom}/${((x % n) + n) % n}/${y}`;
+      const key = `${zoom}/${((x % n) + n) % n}/${y}`;
       if (this.failed.has(key)) return 'unavailable';
       const missing = this.noData.get(key);
       if (missing && this.missingInBounds(missing, x, y, bounds)) return 'unavailable';

@@ -351,3 +351,24 @@ test('an active no-data area retains failure knowledge without pinning its sourc
     else Reflect.deleteProperty(globalThis, 'OffscreenCanvas');
   }
 });
+
+test('a contained requester still prepares when its scheduled covering requester is released', async () => {
+  const source = controlled();
+  const { elevation, changes } = fixture(source.sampler);
+  try {
+    elevation.request('outer', [0, 0], 1000);
+    elevation.request('inner', [0, 0], 100);
+    elevation.release('outer');
+    await flush();
+    assert.equal(source.calls.length, 1, 'The remaining area must start preparation');
+    const call = source.calls[0]!;
+    assert.ok(call.positions.length > 0);
+    assert.equal(call.signal.aborted, false);
+    assert.equal(elevation.readiness('inner'), 'loading');
+    for (const [lng, lat] of call.positions) source.heights.set(`${lng},${lat}`, 42);
+    call.completion.resolve();
+    await flush();
+    assert.equal(elevation.height(0, 0), 42);
+    assert.deepEqual(changes.at(-1), ['inner']);
+  } finally { elevation.destroy(); }
+});

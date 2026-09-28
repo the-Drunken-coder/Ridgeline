@@ -308,3 +308,58 @@ test('a no-data pixel does not settle a distant area inside the same tile', asyn
     else Reflect.deleteProperty(globalThis, 'OffscreenCanvas');
   }
 });
+
+test('a failed fine tile does not clear retained camera output awaiting coarser terrain', async () => {
+  await withTiles(async () => {
+    const fetchTile = globalThis.fetch;
+    let hold = false;
+    let resume!: () => void;
+    const pending = new Promise<void>(resolve => { resume = resolve; });
+    globalThis.fetch = async (input, init) => {
+      if (String(input).includes('/12/')) throw new Error('Fine placement tile failed');
+      if (hold) await pending;
+      return fetchTile(input, init);
+    };
+    const provider = { tiles: ['https://tiles.test/{z}/{x}/{y}.png'], encoding: 'terrarium' as const };
+    const elevation = new Elevation({ provider, changed: () => {}, diagnostic: () => {} });
+    let submitted: readonly GpuCamera[] = [];
+    let complete: (camera: GpuCamera, publish: () => void) => boolean = () => false;
+    const coverage = new SensorCameraCoverage({
+      map: {} as GLMap, elevation, rendererDiagnostic: cause => assert.fail(String(cause)), changed: () => {},
+      adapter: (_map, completed) => {
+        complete = completed;
+        return { set: values => { submitted = values; }, attach() {}, retry() {}, destroy() {}, pick: () => [] };
+      },
+    });
+    const value: SensorCameraInput = {
+      entityId: 'camera', origin: [6, 46, 100], ground: 0, placement: 'airborne',
+      cameras: [{ id: 'sensor', type: 'camera', bearing: 0, elevation: -45, fovX: 60, fovY: 40,
+        range: 50_000, terrainVisibility: true, volumeOpacity: .3 }],
+      configuration: { basemap: { version: 8, sources: {}, layers: [] }, projection: 'flat', terrain: false,
+        hillshade: false, hillshadeOptions: {}, exaggeration: 1, elevation: provider,
+        entityVisibility: { footprints: true, zones: true, groundLines: true } },
+    };
+    try {
+      for (let attempt = 0; attempt < 20 && !submitted.length; attempt++) {
+        coverage.update(value); coverage.flush();
+        await new Promise<void>(resolve => setImmediate(resolve));
+      }
+      const initial = submitted[0]!;
+      assert.ok(initial);
+      assert.equal(complete(initial, () => {}), true);
+      const displayed = coverage.output('camera');
+      assert.ok(displayed.length);
+      elevation.height(7.2, 46);
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(elevation.failedAt('unregistered', 7.2, 46), true);
+      hold = true;
+      const result = coverage.update({ ...value, origin: [7, 46, 100] });
+      coverage.flush();
+      assert.equal(result.coverage, 'loading');
+      assert.deepEqual(coverage.output('camera'), displayed, 'An unrelated source resolution must not invalidate displayed output');
+    } finally {
+      coverage.destroy(); elevation.destroy(); resume();
+      await new Promise<void>(resolve => setImmediate(resolve));
+    }
+  });
+});

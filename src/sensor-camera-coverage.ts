@@ -156,7 +156,7 @@ export class SensorCameraCoverage {
         continue;
       }
       this.options.elevation.request(this.terrainKey(entityId, range), center, range * 1.3,
-        cameraTerrainPreparationBounds(center[0], center[1], range));
+        cameraTerrainPreparationBounds(center[0], center[1], range), range);
       next.set(range, [center[0], center[1]]);
     }
     if (ranges.size) this.requestedRanges.set(entityId, next);
