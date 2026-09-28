@@ -45,7 +45,6 @@ export type SensorCameraOutput = {
   coverage: EntityState['coverage'];
 };
 
-type Displayed = { geometry: Primitive[]; terrain: boolean; value?: GpuCamera };
 type TerrainPatch = { terrain: CameraTerrain; time: number };
 
 type TerrainWork = {
@@ -53,19 +52,61 @@ type TerrainWork = {
   preparing?: AbortController;
   settled?: [number, number];
 };
-type CameraState = {
-  lifecycle: number;
-  requested?: GpuCamera;
-  displayed?: Displayed;
-  terrainPending: boolean;
-};
+type TerrainReadiness =
+  | { kind: 'ready'; terrain: CameraTerrain }
+  | { kind: 'preparing' }
+  | { kind: 'unavailable' };
+type CameraPhase =
+  | { kind: 'plain'; geometry?: Primitive[] }
+  | { kind: 'waiting'; shown?: GpuCamera; inFlight?: GpuCamera }
+  | { kind: 'requested'; request: GpuCamera; shown?: GpuCamera }
+  | { kind: 'displayed'; request: GpuCamera; shown: GpuCamera }
+  | { kind: 'unavailable' };
+type CameraState = { lifecycle: number; phase: CameraPhase };
 type EntityCoverage = {
   input: SensorCameraInput;
   cameras: Map<string, CameraState>;
   terrain: Map<number, TerrainWork>;
-  status: EntityState['coverage'];
   timer?: ReturnType<typeof setTimeout>;
 };
+
+function shown(phase: CameraPhase): GpuCamera | undefined {
+  return phase.kind === 'waiting' || phase.kind === 'requested' || phase.kind === 'displayed'
+    ? phase.shown : undefined;
+}
+
+function submitted(phase: CameraPhase): GpuCamera | undefined {
+  if (phase.kind === 'waiting') return phase.inFlight;
+  if (phase.kind === 'requested' || phase.kind === 'displayed') return phase.request;
+}
+
+function requestCamera(phase: CameraPhase, request: GpuCamera): CameraPhase {
+  const previous = shown(phase);
+  if (previous && sameCamera(previous, request)) return { kind: 'displayed', request, shown: previous };
+  return { kind: 'requested', request, shown: previous };
+}
+
+function waitForCamera(phase: CameraPhase): CameraPhase {
+  return { kind: 'waiting', shown: shown(phase), inFlight: submitted(phase) };
+}
+
+function completeCamera(phase: CameraPhase, value: GpuCamera): CameraPhase {
+  if (phase.kind === 'waiting') return { ...phase, shown: value };
+  if (phase.kind === 'requested' || phase.kind === 'displayed')
+    return sameCamera(value, phase.request)
+      ? { kind: 'displayed', request: phase.request, shown: value }
+      : { kind: 'requested', request: phase.request, shown: value };
+  return phase;
+}
+
+function restampCamera(phase: CameraPhase, lifecycle: number): CameraPhase {
+  if (phase.kind === 'waiting') return {
+    ...phase, inFlight: phase.inFlight && { ...phase.inFlight, lifecycle },
+  };
+  if (phase.kind === 'requested' || phase.kind === 'displayed')
+    return { ...phase, request: { ...phase.request, lifecycle } };
+  return phase;
+}
 
 function plainCameraPrimitives(
   entityId: string,
@@ -206,7 +247,7 @@ export class SensorCameraCoverage {
     if (this.destroyed) return { geometry: [], footprintTriangles: 0, coverage: 'unavailable' };
     let entity = this.entities.get(input.entityId);
     if (!entity) {
-      entity = { input, cameras: new Map(), terrain: new Map(), status: 'ready' };
+      entity = { input, cameras: new Map(), terrain: new Map() };
       this.entities.set(input.entityId, entity);
     }
     entity.input = input;
@@ -215,8 +256,16 @@ export class SensorCameraCoverage {
     const waitingForPlacement = input.placement === 'elevation-unavailable' && visible;
     const active = new Set((usable || waitingForPlacement) ? input.cameras.map(camera => camera.id) : []);
     for (const id of entity.cameras.keys()) if (!active.has(id)) entity.cameras.delete(id);
-    for (const id of active) if (!entity.cameras.has(id)) {
-      entity.cameras.set(id, { lifecycle: ++this.lifecycleSequence, terrainPending: false });
+    for (const camera of input.cameras) if (active.has(camera.id)) {
+      const state = entity.cameras.get(camera.id);
+      if (!state) entity.cameras.set(camera.id, {
+        lifecycle: ++this.lifecycleSequence,
+        phase: camera.terrainVisibility ? { kind: 'waiting' } : { kind: 'plain' },
+      });
+      else if (camera.terrainVisibility === (state.phase.kind === 'plain')) {
+        state.lifecycle = ++this.lifecycleSequence;
+        state.phase = camera.terrainVisibility ? { kind: 'waiting' } : { kind: 'plain' };
+      }
     }
     const terrainRanges = usable || waitingForPlacement
       ? new Set(input.cameras.filter(camera => camera.terrainVisibility).map(camera => camera.range))
@@ -227,16 +276,9 @@ export class SensorCameraCoverage {
     if (usable) {
       for (const camera of input.cameras) {
         const state = entity.cameras.get(camera.id)!;
-        if (camera.terrainVisibility) {
-          // Switching to terrain visibility must not retain the plain geometry
-          // while the first terrain mask is pending.
-          if (!state.displayed?.terrain) state.displayed = undefined;
-          continue;
-        }
-        state.requested = undefined;
-        state.terrainPending = false;
+        if (camera.terrainVisibility) continue;
         const plain = plainCameraPrimitives(input.entityId, input.origin, input.ground, camera, input.configuration);
-        state.displayed = { geometry: plain.geometry, terrain: false };
+        state.phase = { kind: 'plain', geometry: plain.geometry };
         footprintTriangles += plain.footprintTriangles;
       }
       this.updateTerrain(entity);
@@ -244,13 +286,12 @@ export class SensorCameraCoverage {
       this.updateTerrain(entity);
       if (input.elevationUnavailable && !this.isPreparing(input.entityId)) {
         for (const camera of input.cameras) if (!camera.terrainVisibility)
-          entity.cameras.get(camera.id)!.displayed = undefined;
+          entity.cameras.get(camera.id)!.phase = { kind: 'plain' };
       }
     }
 
     this.adapterDirty = true;
-    entity.status = this.coverageFor(entity);
-    return { geometry: this.output(input.entityId), footprintTriangles, coverage: entity.status };
+    return { geometry: this.output(input.entityId), footprintTriangles, coverage: this.coverageFor(entity) };
   }
 
   remove(entityId: string) {
@@ -262,7 +303,8 @@ export class SensorCameraCoverage {
 
   output(entityId: string): Primitive[] {
     const entity = this.entities.get(entityId);
-    return entity ? [...entity.cameras.values()].flatMap(camera => camera.displayed?.geometry ?? []) : [];
+    return entity ? [...entity.cameras.values()].flatMap(camera => camera.phase.kind === 'plain'
+      ? camera.phase.geometry ?? [] : shown(camera.phase)?.geometry ?? []) : [];
   }
 
   allGeometry(): Primitive[] {
@@ -270,7 +312,8 @@ export class SensorCameraCoverage {
   }
 
   status(entityId: string) {
-    return this.entities.get(entityId)?.status ?? 'ready';
+    const entity = this.entities.get(entityId);
+    return entity ? this.coverageFor(entity) : 'ready';
   }
 
   isPreparing(entityId: string) {
@@ -284,7 +327,7 @@ export class SensorCameraCoverage {
       if (entityId !== undefined && id !== entityId) continue;
       for (const camera of entity.cameras.values()) {
         camera.lifecycle = ++this.lifecycleSequence;
-        if (camera.requested) camera.requested = { ...camera.requested, lifecycle: camera.lifecycle };
+        camera.phase = restampCamera(camera.phase, camera.lifecycle);
       }
     }
   }
@@ -331,11 +374,9 @@ export class SensorCameraCoverage {
       // Keep the accepted display while refreshed terrain loads, but require a
       // newly built request before any result can publish or become ready.
       camera.lifecycle = ++this.lifecycleSequence;
-      camera.requested = undefined;
-      camera.terrainPending = entity.input.cameras.some(input => input.id === id && input.terrainVisibility);
+      if (entity.input.cameras.some(input => input.id === id && input.terrainVisibility))
+        camera.phase = { kind: 'waiting', shown: shown(camera.phase) };
     }
-    entity.status = !this.failed && [...entity.cameras.values()].some(camera => camera.terrainPending)
-      ? 'loading' : this.coverageFor(entity);
     this.adapterDirty = true;
   }
 
@@ -352,18 +393,19 @@ export class SensorCameraCoverage {
     for (const camera of input.cameras) {
       if (!camera.terrainVisibility) continue;
       const state = entity.cameras.get(camera.id)!;
-      const terrain = this.terrainFor(entity, camera.range);
-      if (!terrain.ready || input.placement === 'elevation-unavailable') {
-        state.terrainPending = true;
-        if (this.terrainUnavailable(entity, camera.range)) {
-          state.displayed = undefined;
-          state.requested = undefined;
-        }
+      if (this.failed) {
+        state.phase = { kind: 'unavailable' };
         continue;
       }
-      state.terrainPending = false;
+      const readiness = this.terrainReadiness(entity, camera.range);
+      if (readiness.kind !== 'ready') {
+        state.phase = readiness.kind === 'unavailable'
+          ? { kind: 'unavailable' } : waitForCamera(state.phase);
+        continue;
+      }
+      const terrain = readiness.terrain;
       const volume = cameraVolume(input.origin, camera, terrain);
-      state.requested = {
+      const request: GpuCamera = {
         entityId: input.entityId,
         camera,
         lifecycle: state.lifecycle,
@@ -372,7 +414,17 @@ export class SensorCameraCoverage {
         volume,
         geometry: cameraVolumePrimitives(input.entityId, input.origin, camera, volume, input.configuration, terrain),
       };
+      state.phase = requestCamera(state.phase, request);
     }
+  }
+
+  /** Translate the current preparation and placement inputs into one camera answer. */
+  private terrainReadiness(entity: EntityCoverage, range: number): TerrainReadiness {
+    const terrain = this.terrainFor(entity, range);
+    if (terrain.ready && entity.input.placement !== 'elevation-unavailable')
+      return { kind: 'ready', terrain };
+    return this.terrainUnavailable(entity, range)
+      ? { kind: 'unavailable' } : { kind: 'preparing' };
   }
 
   private terrainFor(entity: EntityCoverage, range: number) {
@@ -440,11 +492,12 @@ export class SensorCameraCoverage {
     const entity = this.entities.get(value.entityId);
     const state = entity?.cameras.get(value.camera.id);
     const camera = entity?.input.cameras.find(camera => camera.id === value.camera.id);
-    if (this.destroyed || this.failed || state?.lifecycle !== value.lifecycle || !state.requested || !camera || !sameCameraAppearance(value, { camera })) return false;
+    if (this.destroyed || this.failed || state?.lifecycle !== value.lifecycle
+      || !submitted(state.phase) || !camera || !camera.terrainVisibility
+      || !sameCameraAppearance(value, { camera })) return false;
     publish();
-    state.displayed = { geometry: value.geometry, terrain: true, value };
+    state.phase = completeCamera(state.phase, value);
     if (entity) {
-      entity.status = this.coverageFor(entity);
       this.options.displayed?.(value.entityId);
     }
     return true;
@@ -454,12 +507,12 @@ export class SensorCameraCoverage {
     if (this.destroyed || this.failed) return;
     this.failed = true;
     for (const entity of this.entities.values()) {
-      for (const camera of entity.cameras.values()) if (camera.displayed?.terrain) camera.displayed = undefined;
+      for (const camera of entity.cameras.values()) if (camera.phase.kind !== 'plain')
+        camera.phase = { kind: 'unavailable' };
     }
     (this.options.rendererDiagnostic ?? this.options.diagnostic)(cause);
     try { this.adapter.set([]); } catch { /* the adapter already reported the renderer failure */ }
-    for (const [entityId, entity] of this.entities) {
-      entity.status = this.coverageFor(entity);
+    for (const entityId of this.entities.keys()) {
       this.options.changed(entityId);
     }
   }
@@ -469,19 +522,9 @@ export class SensorCameraCoverage {
     if (!entity.cameras.size) return input.elevationUnavailable && input.placement === 'elevation-unavailable' ? 'unavailable' : 'ready';
     let coverage: EntityState['coverage'] = 'ready';
     if (input.placement === 'elevation-unavailable' && input.elevationPreparing) coverage = 'loading';
-    for (const camera of input.cameras) {
-      const state = entity.cameras.get(camera.id);
-      if (!camera.terrainVisibility || !state) continue;
-      const preparing = entity.terrain.get(camera.range)?.preparing !== undefined;
-      if (this.failed || input.elevationUnavailable && !preparing && !state.requested && !state.terrainPending) return 'unavailable';
-      if (state.terrainPending) {
-        if (this.terrainUnavailable(entity, camera.range)) return 'unavailable';
-        coverage = 'loading';
-      } else if (state.requested && (!state.displayed?.value || !sameCamera(state.displayed.value, state.requested))) coverage = 'loading';
-      else if (!state.requested && !state.displayed) {
-        if (input.elevationUnavailable) return 'unavailable';
-        coverage = 'loading';
-      }
+    for (const { phase } of entity.cameras.values()) {
+      if (phase.kind === 'unavailable') return 'unavailable';
+      if (phase.kind === 'waiting' || phase.kind === 'requested') coverage = 'loading';
     }
     return coverage;
   }
@@ -517,8 +560,12 @@ export class SensorCameraCoverage {
     const requested: GpuCamera[] = [];
     const retained: GpuCamera[] = [];
     if (!this.failed) for (const entity of this.entities.values()) for (const camera of entity.cameras.values()) {
-      if (camera.requested) requested.push(camera.requested);
-      else if (camera.displayed?.value) retained.push(camera.displayed.value);
+      const request = submitted(camera.phase);
+      if (request) requested.push(request);
+      else {
+        const previous = shown(camera.phase);
+        if (previous) retained.push(previous);
+      }
     }
     try { this.adapter.set(requested, retained); }
     catch (cause) { this.fail(cause); }
