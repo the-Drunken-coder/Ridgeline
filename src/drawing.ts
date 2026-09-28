@@ -42,6 +42,7 @@ export function attachDrawing<P extends Properties>(
   const internals = getViewportDrawingInternals(viewport);
   if (!internals)
     throw new Error("Drawing requires a viewport created by createViewport.");
+  const drawingInternals = internals;
   attached.add(viewport);
   const session = createDrawingSession(viewport, options),
     map = viewport.map;
@@ -435,7 +436,7 @@ export function attachDrawing<P extends Properties>(
       cursor = undefined;
     }
     const editingId = session.getState().draft?.before?.id;
-    internals.setEditing(editingId ?? null);
+    drawingInternals.setEditing(editingId ?? null);
     active = next;
     map
       .getCanvas()
@@ -521,13 +522,13 @@ export function attachDrawing<P extends Properties>(
     { signal: abort.signal },
   );
   const off = session.onChange(render);
-  const offPrepared = internals.onPrepared(prepare);
+  const offPrepared = drawingInternals.onPrepared(prepare);
   let offDestroy = () => {};
   function destroy() {
     if (disposed) return;
     session.destroy();
     disposed = true;
-    internals.setEditing(null);
+    drawingInternals.setEditing(null);
     previewListeners.clear();
     attached.delete(viewport);
     off();
