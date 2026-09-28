@@ -66,6 +66,53 @@ async function browserDrag(fromX: number, fromY: number, toX: number, toY: numbe
   await window.browserDrag(fromX, fromY, toX, toY);
 }
 async function suite() {
+  await run('Raw terrain and the installed renderer agree on nonzero TMS tile templates', async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!;
+    context.fillStyle = 'rgb(128,0,0)'; context.fillRect(0, 0, 256, 256);
+    const image = dem.toDataURL();
+    const prefix = 'https://terrain-addressing.test/';
+    const tiles = [`${prefix}{z}/{x}/{y}.png?quadkey={quadkey}&prefix={prefix}&bounds={bbox-epsg-3857}`];
+    const metadata = `data:application/json,${encodeURIComponent(JSON.stringify({
+      tilejson: '3.0.0', tiles, minzoom: 2, maxzoom: 2, encoding: 'terrarium', scheme: 'tms',
+    }))}`;
+    const rawRequests: string[] = [], rendererRequests: string[] = [];
+    const fetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.startsWith(prefix)) { rawRequests.push(url); return fetch(image, init); }
+      return fetch(input, init);
+    };
+    let air: Viewport | undefined;
+    try {
+      air = createViewport({ container, basemap: style(), camera: { center: [-45, 40], zoom: 3 }, logger: () => {} });
+      current = air;
+      const active = air;
+      await active.ready;
+      active.map.setTransformRequest(url => {
+        if (url.startsWith(prefix)) { rendererRequests.push(url); return { url: image }; }
+        return { url };
+      });
+      active.configure({ terrain: true, elevation: { url: metadata, tileSize: 256 } });
+      active.upsert([{ ...point('addressed-terrain'), geometry: { type: 'Point', coordinates: [-45, 40] }, entity: {} }]);
+      await until(() => active.getEntityState('addressed-terrain')?.ground === 0 &&
+        active.map.queryTerrainElevation([-45, 40]) === 0 &&
+        rawRequests.some(url => new URL(url).pathname === '/2/1/2.png') &&
+        rendererRequests.some(url => new URL(url).pathname === '/2/1/2.png'), 'raw and rendered TMS requests and known flat height');
+      const raw = rawRequests.find(url => new URL(url).pathname === '/2/1/2.png')!;
+      const rendered = rendererRequests.find(url => new URL(url).pathname === '/2/1/2.png')!;
+      check(new URL(raw).pathname === new URL(rendered).pathname, 'Raw and renderer disagree on TMS addressing');
+      for (const url of [raw, rendered]) {
+        const parameters = new URL(url).searchParams;
+        check(parameters.get('quadkey') === '03' && parameters.get('prefix') === '11', 'Tile template tokens do not match the independently known tile');
+        const bounds = parameters.get('bounds')?.split(',').map(Number);
+        const expected = [-10018754.171394622, 0, 0, 10018754.171394622];
+        // Equivalent projection calculations can differ in their last floating-point digit.
+        check(bounds?.length === 4 && bounds.every((value, i) => Math.abs(value - expected[i]!) < 1e-6), 'Projected tile bounds differ from the known northwest equatorial tile');
+      }
+      check([...rawRequests, ...rendererRequests].every(url => !/[{}]/.test(url)), 'A terrain template token remained unresolved');
+    } finally { air?.destroy(); window.fetch = fetch; }
+  });
   await run('Preparation failures preserve construction and update publication and release the viewport', async () => {
     for (const immediate of [true, false]) {
       const errors: RidgelineError[] = [];

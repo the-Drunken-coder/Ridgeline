@@ -1,5 +1,6 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Raw terrain and the installed renderer agree on nonzero TMS tile templates',
   'Preparation failures preserve construction and update publication and release the viewport',
   'Removing an entity from preparation leaves accepted data and rendered output absent',
   'Destroying from a restoration diagnostic stops callbacks and resource creation',
