@@ -1,7 +1,8 @@
 import type { Position } from 'geojson';
 import { RidgelineError } from './errors';
 import type { MapFeature, Properties } from './types';
-import { shapeGeometry, validateDrawingStyle, validateShape } from './drawing-geometry';
+import { validateDrawingStyle } from './drawing-geometry';
+import { shapeGeometry, validateShape } from './drawing-shapes';
 import { validateEntity } from './entity-geometry';
 
 // Allow storage rounding within about a centimetre while retaining shape and topology checks.

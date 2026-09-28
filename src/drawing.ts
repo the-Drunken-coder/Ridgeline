@@ -1,27 +1,26 @@
 import { GeoJSONSource, Marker } from "maplibre-gl";
 import type { MapMouseEvent } from "maplibre-gl";
 import type { Feature, Geometry } from "geojson";
-import type { Properties, Viewport } from "./types";
+import type { MapFeature, Properties, Viewport } from "./types";
 import type {
   DrawingOptions,
   DrawingPosition,
-  DrawingShape,
 } from "./drawing-types";
-import { createDrawingSession, drawingHandles } from "./drawing-session";
+import { createDrawingSession } from "./drawing-session";
 import {
-  bearing,
-  destination,
-  distance,
-  measurements,
   position,
-  shapeGeometry,
-  sizeFromPoint,
-  shapeVertices,
   unroll,
   wrapLongitude,
 } from "./drawing-geometry";
-import { addArrowImage, arrowFeatures, ARROW_IMAGE } from "./drawing-render";
-import { sourceFeatureId } from "./maplibre-feature-publication";
+import { createArrowheads } from "./arrowheads";
+import { getViewportDrawingInternals } from "./viewport";
+import {
+  shapeGeometry,
+  shapeHandles,
+  shapeInsertHandles,
+  shapeMoveHandle,
+  shapeVertices,
+} from "./drawing-shapes";
 
 const attached = new WeakSet<object>();
 const SOURCE = "rl:draft";
@@ -30,7 +29,6 @@ const layers = [
   "rl:draft-line",
   "rl:draft-points",
   "rl:draft-label",
-  "rl:draft-arrow",
 ];
 
 /** Map gestures and draft rendering. Controls are optional and attach separately. */
@@ -38,11 +36,16 @@ export function attachDrawing<P extends Properties>(
   viewport: Viewport<P>,
   options: DrawingOptions<P>,
 ) {
-  if (attached.has(viewport))
+  if (attached.has(viewport.map))
     throw new Error("Drawing is already attached to this viewport.");
-  attached.add(viewport);
+  const internals = getViewportDrawingInternals(viewport);
+  if (!internals)
+    throw new Error("Drawing requires a viewport created by createViewport.");
+  const drawingInternals = internals;
+  attached.add(viewport.map);
   const session = createDrawingSession(viewport, options),
     map = viewport.map;
+  const draftArrowheads = createArrowheads(map, "rl:draft-arrows", "rl:draft-arrow");
   const markers = new Map<
     string,
     {
@@ -53,14 +56,11 @@ export function attachDrawing<P extends Properties>(
     }
   >();
   let disposed = false,
-    cursor: DrawingPosition | undefined,
     active = false,
     restoreDoubleClick = false;
-  let hiddenId: string | undefined;
   let snapEnabled = true,
     pointerType = "mouse",
     bypassSnap = false;
-  const previewListeners = new Set<() => void>();
   const abort = new AbortController();
   function editable() {
     return ["editing", "rejected"].includes(session.getState().phase);
@@ -103,7 +103,7 @@ export function attachDrawing<P extends Properties>(
     }
     if (state.draft && except !== "draft")
       candidates.push(
-        ...drawingHandles(state.draft.shape)
+        ...shapeHandles(state.draft.shape)
           .filter((_, i) => i !== except)
           .map((h) => h.position),
       );
@@ -129,36 +129,14 @@ export function attachDrawing<P extends Properties>(
     }
     return chosen;
   }
-  function previewShape(): DrawingShape | undefined {
-    const draft = session.getState().draft;
-    if (!draft) return;
-    const shape = structuredClone(draft.shape);
-    if (draft.placing && cursor && editable()) {
-      if ("vertices" in shape) {
-        if (
-          !shape.vertices.at(-1) ||
-          distance(shape.vertices.at(-1)!, cursor) > 0.001
-        )
-          shape.vertices.push(cursor);
-      } else if (
-        draft.placed &&
-        (shape.kind === "circle" || shape.kind === "rectangle")
-      )
-        return sizeFromPoint(shape, cursor);
-    }
-    return shape;
-  }
   function renderGeometry() {
     if (disposed || !map.getSource(SOURCE)) return;
     const state = session.getState(),
       draft = state.draft,
-      shape = previewShape();
+      shape = session.getPreview();
     const features: Feature<Geometry>[] = [];
-    if (
-      draft &&
-      shape &&
-      (draft.placed || ("vertices" in shape && shape.vertices.length))
-    ) {
+    let arrow: MapFeature | undefined;
+    if (draft && shape) {
       const points = shapeVertices(shape),
         style = draft.style;
       let geometry: Geometry = shapeGeometry(shape, true);
@@ -182,14 +160,7 @@ export function attachDrawing<P extends Properties>(
           },
         });
       if (shape.kind === "arrow")
-        features.push(
-          ...arrowFeatures([
-            { ...draft.feature, drawing: { version: 1, shape, style } },
-          ]).features.map((f) => ({
-            ...f,
-            properties: { ...f.properties, arrow: true },
-          })),
-        );
+        arrow = { ...draft.feature, drawing: { version: 1, shape, style } };
       map.setPaintProperty(
         "rl:draft-line",
         "line-dasharray",
@@ -199,16 +170,15 @@ export function attachDrawing<P extends Properties>(
     const source = map.getSource(SOURCE);
     if (source instanceof GeoJSONSource)
       source.setData({ type: "FeatureCollection", features });
-    for (const listener of previewListeners) listener();
+    draftArrowheads.show(arrow ? [arrow] : []);
   }
   function prepare() {
-    if (disposed || !map.getLayer("rl:fill")) return;
+    if (disposed) return;
     if (!map.getSource(SOURCE))
       map.addSource(SOURCE, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       });
-    addArrowImage(map);
     if (!map.getLayer(layers[0]!)) {
       map.addLayer({
         id: layers[0]!,
@@ -234,14 +204,13 @@ export function attachDrawing<P extends Properties>(
         id: layers[2]!,
         type: "circle",
         source: SOURCE,
-        filter: ["all", ["==", "$type", "Point"], ["!=", "arrow", true]],
+        filter: ["==", "$type", "Point"],
         paint: { "circle-radius": 4, "circle-color": ["get", "color"] },
       });
       map.addLayer({
         id: layers[3]!,
         type: "symbol",
         source: SOURCE,
-        filter: ["!=", "arrow", true],
         layout: {
           "text-field": ["get", "label"],
           "text-font": ["Noto Sans Regular"],
@@ -253,19 +222,6 @@ export function attachDrawing<P extends Properties>(
           "text-halo-color": "#ffffff",
           "text-halo-width": 1.5,
         },
-      });
-      map.addLayer({
-        id: layers[4]!,
-        type: "symbol",
-        source: SOURCE,
-        filter: ["==", "arrow", true],
-        layout: {
-          "icon-image": ARROW_IMAGE,
-          "icon-rotate": ["get", "bearing"],
-          "icon-rotation-alignment": "map",
-          "icon-allow-overlap": true,
-        },
-        paint: { "icon-color": ["get", "color"] },
       });
     }
     render();
@@ -346,11 +302,14 @@ export function attachDrawing<P extends Properties>(
         });
         marker.on("drag", () => {
           if (!editable()) return;
+          const current = session.getState().draft,
+            currentHandle = index === undefined || !current
+              ? undefined
+              : shapeHandles(current.shape)[index];
           const next = snap(
             position(marker.getLngLat().toArray()),
             bypassSnap,
-            key === "move" || (index === 0 && draft && "center" in draft.shape)
-              ? "draft" : index,
+            key === "move" || currentHandle?.carriesShape ? "draft" : index,
           );
           if (key === "move") {
             session.translate(previous, next);
@@ -363,7 +322,12 @@ export function attachDrawing<P extends Properties>(
           (e) => {
             if (!editable()) return;
             if (e.key === "Delete" || e.key === "Backspace") {
-              if (index !== undefined && draft && "vertices" in draft.shape) {
+              const current = session.getState().draft;
+              if (
+                index !== undefined &&
+                current &&
+                shapeHandles(current.shape)[index]?.removable
+              ) {
                 e.preventDefault();
                 e.stopPropagation();
                 session.removeVertex(index);
@@ -412,8 +376,8 @@ export function attachDrawing<P extends Properties>(
         item.marker.setDraggable(!locked && !insert);
       item.button.disabled = locked;
     }
-    if (draft && (draft.placed || !draft.placing)) {
-      drawingHandles(draft.shape).forEach((h, i) =>
+    if (draft && session.getPreview()) {
+      shapeHandles(draft.shape).forEach((h, i) =>
         handle(
           `vertex-${i}`,
           h.label,
@@ -422,31 +386,17 @@ export function attachDrawing<P extends Properties>(
           i,
         ),
       );
-      if ("vertices" in draft.shape) {
-        const points = unroll(draft.shape.vertices);
-        if (points.length) {
-          const center: DrawingPosition = [
-            wrapLongitude(points.reduce((s, p) => s + p[0], 0) / points.length),
-            points.reduce((s, p) => s + p[1], 0) / points.length,
-          ];
-          handle("move", "Move drawing", center, () => {});
-        }
-        const edgeCount =
-          draft.shape.kind === "polygon" ? points.length : points.length - 1;
-        for (let i = 0; i < edgeCount; i++) {
-          const a = points[i]!,
-            b = points[(i + 1) % points.length]!;
-          const midpoint = destination(a, distance(a, b) / 2, bearing(a, b));
-          handle(
-            `insert-${i}`,
-            `Insert vertex after ${i + 1}`,
-            midpoint,
-            () => {},
-            undefined,
-            () => session.insertVertex(i, midpoint),
-          );
-        }
-      }
+      const move = shapeMoveHandle(draft.shape);
+      if (move) handle("move", move.label, move.position, () => {});
+      for (const insert of shapeInsertHandles(draft.shape))
+        handle(
+          `insert-${insert.after}`,
+          insert.label,
+          insert.position,
+          () => {},
+          undefined,
+          () => session.insertVertex(insert.after, insert.position),
+        );
     }
     for (const [key, item] of markers)
       if (!keep.has(key)) {
@@ -455,24 +405,15 @@ export function attachDrawing<P extends Properties>(
       }
   }
   function render() {
-    cursor = undefined;
     const next = Boolean(session.getState().draft);
     if (next && !active) {
       restoreDoubleClick = map.doubleClickZoom.isEnabled();
       map.doubleClickZoom.disable();
     } else if (!next && active) {
       if (restoreDoubleClick) map.doubleClickZoom.enable();
-      cursor = undefined;
     }
     const editingId = session.getState().draft?.before?.id;
-    for (const source of ["rl:features", "rl:arrows"])
-      if (map.getSource(source)) {
-        if (hiddenId && hiddenId !== editingId)
-          map.removeFeatureState({ source, id: sourceFeatureId(hiddenId) }, "editing");
-        if (editingId)
-          map.setFeatureState({ source, id: sourceFeatureId(editingId) }, { editing: true });
-      }
-    hiddenId = editingId;
+    drawingInternals.setEditing(editingId ?? null);
     active = next;
     map
       .getCanvas()
@@ -496,12 +437,12 @@ export function attachDrawing<P extends Properties>(
   }
   function onMove(event: MapMouseEvent) {
     if (!session.getState().draft?.placing || !editable()) return;
-    cursor = snap(position(event.lngLat.toArray()), event.originalEvent.altKey);
-    renderGeometry();
+    session.setCursor(
+      snap(position(event.lngLat.toArray()), event.originalEvent.altKey),
+    );
   }
   map.on("click", onClick);
   map.on("mousemove", onMove);
-  map.on("style.load", prepare);
   map.getCanvas().addEventListener(
     "pointerdown",
     (event) => {
@@ -559,40 +500,33 @@ export function attachDrawing<P extends Properties>(
     { signal: abort.signal },
   );
   const off = session.onChange(render);
-  void viewport.ready.then(prepare).catch(() => {});
+  const offPrepared = drawingInternals.onPrepared(prepare);
+  const offPreview = session.onPreview(renderGeometry);
   let offDestroy = () => {};
   function destroy() {
     if (disposed) return;
     session.destroy();
     disposed = true;
-    previewListeners.clear();
-    attached.delete(viewport);
+    drawingInternals.setEditing(null);
+    attached.delete(viewport.map);
     off();
+    offPrepared();
+    offPreview();
     offDestroy();
     abort.abort();
     map.off("click", onClick);
     map.off("mousemove", onMove);
-    map.off("style.load", prepare);
     for (const item of markers.values()) item.marker.remove();
     markers.clear();
     for (const layer of [...layers].reverse())
       if (map.getLayer(layer)) map.removeLayer(layer);
+    draftArrowheads.remove();
     if (map.getSource(SOURCE)) map.removeSource(SOURCE);
   }
   offDestroy = viewport.on("destroy", destroy);
   return {
     ...session,
     destroy,
-    getMeasurements: () => {
-      const shape = previewShape();
-      return shape ? measurements(shape) : { length: 0 };
-    },
-    onPreview: (listener: () => void) => {
-      previewListeners.add(listener);
-      return () => {
-        previewListeners.delete(listener);
-      };
-    },
     setSnapping(value: boolean) {
       snapEnabled = value;
     },
