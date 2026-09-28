@@ -29,9 +29,13 @@ pnpm dev
 pnpm check
 pnpm test
 pnpm test:browser
+pnpm test:controls:browser
+pnpm validate
 pnpm build:playground
 pnpm measure
 ```
+
+`pnpm test` runs the fast module and control-lab state tests. `pnpm validate` runs type checking, those tests, both browser suites, and the playground and control-lab builds. The pull-request workflow runs the same full command.
 
 `pnpm build` produces the importable ESM library and declarations in `dist`. `pnpm build:playground` also builds the playground against those exports, without development source aliases. This package is private and has not been published to npm. Install a local tarball in another application:
 
@@ -44,7 +48,7 @@ pnpm add /absolute/path/to/Ridgeline/.artifacts/ridgeline-map-0.1.0.tgz maplibre
 
 ## Everyday map control lab
 
-Run `pnpm dev:controls` for the separate [control lab](control-lab/README.md). It demonstrates the everyday map controls: pan, zoom, select simulated units, and move them to a clicked destination. `pnpm test:controls` and `pnpm build:controls` validate this application.
+Run `pnpm dev:controls` for the separate [control lab](control-lab/README.md). It demonstrates the everyday map controls: pan, zoom, select simulated units, and move them to a clicked destination. `pnpm test:controls` checks its state transitions; `pnpm test:controls:browser` exercises its controls with real browser input. `pnpm build:controls` checks the application build.
 
 The control lab uses simulated units and a fixed SVG street sample. It is an interaction experiment, not an integration with the Ridgeline viewport. Its React dependencies remain in its own private workspace package; the map library and existing playground are unchanged.
 
@@ -202,28 +206,21 @@ Recoverable tile failures leave the rest of the map usable. The elevation-unavai
 
 ## Verification
 
-Focused Node tests cover replacement semantics, atomic invalid batches, snapshot ownership, geometry validation, diagnostics, and hillshade option validation. Install Chromium once, then run the browser checks with one command:
+Focused Node tests cover replacement semantics, atomic invalid batches, snapshot ownership, geometry validation, diagnostics, and hillshade option validation. Install Chromium once, then run both browser suites:
 
 ```sh
 pnpm exec playwright install chromium
 pnpm test:browser
+pnpm test:controls:browser
 ```
 
-The command builds and packs the library, installs it in a fresh separate consumer, checks its declarations, builds that consumer, and runs the existing fixture in headless Chromium with software WebGL. It exits nonzero for a failed check, uncaught browser error, timeout, or build/setup failure. It uses a local background style and no external map services. Dependency and browser installation require network access on a fresh machine. Playwright is a development dependency only.
+`pnpm test:browser` builds and packs the library, installs it in a fresh separate consumer, checks its declarations, builds that consumer, then runs independent Playwright cases in headless Chromium with software WebGL. The consumer imports package exports and styles without a source alias and uses local map resources. Each case starts with a fresh page, and failures keep a screenshot and trace in `.artifacts/playwright/`. Package setup and failing cases return a nonzero exit status. Use `pnpm test:browser -- --grep 'Picker'` to run matching cases after the same package preparation.
 
-For interactive debugging, the same fixture can still be prepared manually:
+`pnpm test:controls:browser` opens the separate control lab and uses real mouse, keyboard, and wheel input. Its failure artifacts are in `control-lab/test-results/`. Run one case with `pnpm exec playwright test -c control-lab/playwright.config.ts -g 'dragging an armed map'`.
 
-```sh
-pnpm build
-pnpm pack --pack-destination .artifacts
-node scripts/prepare-consumer.mjs
-cd .artifacts/consumer
-pnpm install
-pnpm build
-pnpm dev
-```
+`pnpm validate` runs both browser suites with type checking, module tests, and affected consumer builds. The pull-request workflow runs this command and uploads browser failure artifacts. Repository administrators should require its **validate** job before merging. Dependency and browser installation require network access on a fresh machine. Playwright is a development dependency only. Desktop Chromium with software WebGL does not establish touch behavior, complete accessibility, or hardware GPU coverage.
 
-Open that fixture at port 5174 to inspect its results. It has no source alias and includes focused recovery, picker-refresh, and hillshade configuration regressions. See [measured results](docs/performance.md) for bundle size, workload observations, and validation limits.
+Add `--headed` to the targeted browser command to watch the case run. See [measured results](docs/performance.md) for bundle size, workload observations, and validation limits.
 
 ## Drawing and editing
 
