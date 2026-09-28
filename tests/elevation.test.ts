@@ -372,3 +372,18 @@ test('a contained requester still prepares when its scheduled covering requester
     assert.deepEqual(changes.at(-1), ['inner']);
   } finally { elevation.destroy(); }
 });
+
+test('preparation and sampling use identical normalized center coordinates', async () => {
+  const prepared = new Map<string, number>();
+  const { elevation } = fixture({
+    sample: (lng, lat) => prepared.get(`${lng},${lat}`) ?? null,
+    prepare: async positions => {
+      for (const [lng, lat] of positions) prepared.set(`${lng},${lat}`, 42);
+    },
+  });
+  try {
+    elevation.request('placement', [.01, 0], 0);
+    await flush();
+    assert.equal(elevation.height(.01, 0), 42);
+  } finally { elevation.destroy(); }
+});
