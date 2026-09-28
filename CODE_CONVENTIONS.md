@@ -2,6 +2,10 @@
 
 These are Ridgeline's implementation and review standards. Apply them to the work being changed; keep unrelated cleanup out of the patch. Compiler and build settings remain authoritative in their configuration files.
 
+## Keep the final code lean
+
+Review every addition critically before finishing. Remove code left over from experiments, debugging, and temporary test setup. Delete duplicate paths and speculative abstractions; keep production code and tests only when they support a real behavior, constraint, or failure mode. Work that helped during development does not need to remain in the product.
+
 ## Core qualities and priorities
 
 - **Easy to use.** Make common mapping tasks straightforward through a clear public API, useful defaults, and practical examples. Keep integration and ongoing maintenance simple for consumers.
