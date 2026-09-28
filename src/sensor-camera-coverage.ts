@@ -3,7 +3,7 @@ import type { CameraAttachment, EntityState, MapConfiguration } from './types';
 import type { HeightAt, GeoPoint } from './entity-geometry';
 import { cameraFootprint, cameraRay, localFrame } from './entity-geometry';
 import { cameraVolume, visibleCameraEdges } from './camera-volume';
-import { cameraTerrain } from './gpu-camera-terrain';
+import { cameraTerrain, cameraTerrainPreparationBounds } from './gpu-camera-terrain';
 import type { CameraTerrain } from './gpu-camera-terrain';
 import type { Primitive } from './entity-layer';
 import { GpuCameras, sameCamera, sameCameraAppearance } from './gpu-cameras';
@@ -58,6 +58,7 @@ type CameraState = {
   requested?: GpuCamera;
   displayed?: Displayed;
   terrainPending: boolean;
+  computationFailed?: boolean;
 };
 type EntityCoverage = {
   input: SensorCameraInput;
@@ -352,7 +353,30 @@ export class SensorCameraCoverage {
     for (const camera of input.cameras) {
       if (!camera.terrainVisibility) continue;
       const state = entity.cameras.get(camera.id)!;
-      const terrain = this.terrainFor(entity, camera.range);
+      let terrain: CameraTerrain;
+      try {
+        terrain = this.terrainFor(entity, camera.range);
+        if (terrain.ready && input.placement !== 'elevation-unavailable') {
+          const volume = cameraVolume(input.origin, camera, terrain);
+          state.requested = {
+            entityId: input.entityId,
+            camera,
+            lifecycle: state.lifecycle,
+            origin: input.origin,
+            terrain,
+            volume,
+            geometry: cameraVolumePrimitives(input.entityId, input.origin, camera, volume, input.configuration, terrain),
+          };
+        }
+        state.computationFailed = false;
+      } catch (cause) {
+        state.computationFailed = true;
+        state.terrainPending = false;
+        state.displayed = undefined;
+        state.requested = undefined;
+        this.options.diagnostic(cause);
+        continue;
+      }
       if (!terrain.ready || input.placement === 'elevation-unavailable') {
         state.terrainPending = true;
         if (this.terrainUnavailable(entity, camera.range)) {
@@ -362,16 +386,6 @@ export class SensorCameraCoverage {
         continue;
       }
       state.terrainPending = false;
-      const volume = cameraVolume(input.origin, camera, terrain);
-      state.requested = {
-        entityId: input.entityId,
-        camera,
-        lifecycle: state.lifecycle,
-        origin: input.origin,
-        terrain,
-        volume,
-        geometry: cameraVolumePrimitives(input.entityId, input.origin, camera, volume, input.configuration, terrain),
-      };
     }
   }
 
@@ -395,7 +409,7 @@ export class SensorCameraCoverage {
       // A reusable patch says nothing about the current center sample. Resolve
       // placement before constructing a request, even when this patch is ready.
       if (!input.elevationPreparing) this.requestPreparation(entity, range, work);
-      if (this.options.pollTerrain !== false && !this.options.elevationUnavailable() && !this.options.prepare && !entity.timer) {
+      if (this.options.pollTerrain !== false && !terrain.failed && !this.options.prepare && !entity.timer) {
         entity.timer = setTimeout(() => {
           entity.timer = undefined;
           if (!this.destroyed) this.options.changed(input.entityId);
@@ -409,13 +423,11 @@ export class SensorCameraCoverage {
     if (!this.options.prepare || work.preparing || work.settled) return;
     const input = entity.input;
     const origin: [number, number] = [input.origin[0], input.origin[1]];
-    const local = localFrame([...origin, 0]);
     const positions: [number, number][] = [origin];
-    const margin = range * 1.3;
-    for (const x of [-margin, 0, margin]) for (const y of [-margin, 0, margin]) {
-      const point = local(x, y, 0);
-      positions.push([point[0], point[1]]);
-    }
+    const [west, south, east, north] = cameraTerrainPreparationBounds(origin[0], origin[1], range);
+    const bounded = (lng: number) => ((lng + 180) % 360 + 360) % 360 - 180;
+    for (const lng of [west, origin[0], east]) for (const lat of [south, origin[1], north])
+      positions.push([bounded(lng), lat]);
     // A range may serve several cameras. Cancel its work only when no active
     // camera needs it, without aborting another entity or range's preparation.
     const controller = new AbortController();
@@ -473,13 +485,15 @@ export class SensorCameraCoverage {
       const state = entity.cameras.get(camera.id);
       if (!camera.terrainVisibility || !state) continue;
       const preparing = entity.terrain.get(camera.range)?.preparing !== undefined;
-      if (this.failed || input.elevationUnavailable && !preparing && !state.requested && !state.terrainPending) return 'unavailable';
+      if (this.failed || state.computationFailed || input.elevationUnavailable &&
+        (input.placement === 'elevation-unavailable' || !this.options.height.forRange) &&
+        !preparing && !state.requested && !state.terrainPending) return 'unavailable';
       if (state.terrainPending) {
         if (this.terrainUnavailable(entity, camera.range)) return 'unavailable';
         coverage = 'loading';
       } else if (state.requested && (!state.displayed?.value || !sameCamera(state.displayed.value, state.requested))) coverage = 'loading';
       else if (!state.requested && !state.displayed) {
-        if (input.elevationUnavailable) return 'unavailable';
+        if (input.elevationUnavailable && (input.placement === 'elevation-unavailable' || !this.options.height.forRange)) return 'unavailable';
         coverage = 'loading';
       }
     }
@@ -492,7 +506,9 @@ export class SensorCameraCoverage {
     // A successful cached patch cannot settle a later placement preparation.
     if (work?.patch?.terrain.ready && entity.input.elevationPreparing) return false;
     // One settled range must not wait for an unrelated camera's preparation.
-    return Boolean(work?.settled) || entity.input.elevationUnavailable;
+    return Boolean(work?.patch?.terrain.failed || work?.settled ||
+      entity.input.elevationUnavailable &&
+      (entity.input.placement === 'elevation-unavailable' || !this.options.height.forRange));
   }
 
   private clearTerrainWork(entity: EntityCoverage) {

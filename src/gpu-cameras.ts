@@ -321,7 +321,9 @@ export class GpuCameras implements CustomLayerInterface {
         gl.readPixels(0, 0, DISPLAY_SIZE, DISPLAY_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, 0);
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER,null);
         item.submitted={value:item.value};
-        item.pending=gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0)!;
+        const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0);
+        if (!sync) throw new Error('Camera GPU synchronization could not be allocated.');
+        item.pending=sync;
         gl.flush();this.map.triggerRepaint();
         item.dirty = false;
       }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cameraTerrain, terrainCoordinates, cameraRangeBounds } from '../src/gpu-camera-terrain';
+import { cameraTerrain, terrainCoordinates, cameraRangeBounds, cameraTerrainPreparationBounds } from '../src/gpu-camera-terrain';
 
 test('camera movement reuses terrain samples until it leaves the cached margin', () => {
   let samples = 0;
@@ -30,4 +30,22 @@ test('camera range bounds include the entire range across the dateline', () => {
   const [x, y, width, height] = cameraRangeBounds(terrain, [-180.001, 0, 100], terrain.half / 4, 1024);
   assert.ok(x >= 381 && x <= 382 && y >= 381 && y <= 382);
   assert.ok(width >= 260 && width <= 262 && height >= 260 && height <= 262);
+});
+
+test('patch preparation bounds include every sampled latitude at 46 degrees', () => {
+  const sampled: [number, number][] = [];
+  cameraTerrain(6, 46, 50_000, (lng, lat) => { sampled.push([lng, lat]); return 0; });
+  const [west, south, east, north] = cameraTerrainPreparationBounds(6, 46, 50_000);
+  assert.ok(sampled.every(([lng, lat]) => lng >= west && lng <= east && lat >= south && lat <= north));
+});
+
+test('camera samples use bounded longitudes across the date line', () => {
+  const sampled: number[] = [];
+  const patch = cameraTerrain(179.999, 0, 2000, (lng) => {
+    sampled.push(lng);
+    return lng >= -180 && lng < 180 ? 0 : null;
+  });
+  assert.equal(patch.ready, true);
+  assert.ok(sampled.some(lng => lng < -179.9));
+  assert.ok(sampled.every(lng => lng >= -180 && lng < 180));
 });

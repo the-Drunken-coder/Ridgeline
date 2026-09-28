@@ -3,6 +3,7 @@ import { ElevationBounds } from './elevation-bounds';
 
 type Tile = { size: number; values: Float32Array; bounds: ElevationBounds };
 const MAX_LAT = 85.05112878;
+const WORLD_METERS = 2 * Math.PI * 6_378_137;
 export function tilePosition(lng: number, lat: number, zoom: number) {
   const n = 2 ** zoom,
     latitude = (Math.max(-MAX_LAT, Math.min(MAX_LAT, lat)) * Math.PI) / 180;
@@ -23,7 +24,7 @@ export function decodeElevation(
       red * (factors.redFactor ?? 1) +
       green * (factors.greenFactor ?? 1) +
       blue * (factors.blueFactor ?? 1) +
-      (factors.baseShift ?? 0)
+      -(factors.baseShift ?? 0)
     );
   return encoding === 'terrarium'
     ? red * 256 + green + blue / 256 - 32768
@@ -33,34 +34,52 @@ export function decodeElevation(
 /** Raw DEM heights stay independent of MapLibre terrain visibility and exaggeration. */
 export class RasterElevationSampler {
   private tiles = new Map<string, Tile>();
-  private queued = new Map<string, [number, number]>();
+  private queued = new Map<string, [number, number, number]>();
   private pending = new Set<string>();
   private failed = new Set<string>();
   private controller = new AbortController();
   private templates: string[] = [];
   private zoom = 12;
+  private minZoom = 0;
+  private encoding: ElevationProvider['encoding'] = 'mapbox';
+  private scheme: 'xyz' | 'tms' = 'xyz';
   private ready = false;
   private started = false;
   constructor(
     private provider: ElevationProvider,
     private changed: () => void,
     private error: (cause: unknown) => void,
+    private pixelRatio = globalThis.devicePixelRatio ?? 1,
   ) {}
 
   sample(lng: number, lat: number): number | null {
+    return this.sampleAt(lng, lat, this.zoom);
+  }
+  /** Large patches use coarser source tiles while retaining the fixed analysis mesh. */
+  forRange(range: number, lat: number) {
+    const tileBudgetAcross = 10;
+    const zoom = () => Math.max(this.minZoom, Math.min(this.zoom, Math.floor(Math.log2(
+      tileBudgetAcross * WORLD_METERS * Math.cos(lat * Math.PI / 180) / (range * 2.6),
+    ))));
+    return Object.assign(
+      (lng: number, latitude: number) => this.sampleAt(lng, latitude, zoom()),
+      { failedAt: (lng: number, latitude: number) => this.unavailableAt(lng, latitude, zoom()) },
+    );
+  }
+  private sampleAt(lng: number, lat: number, zoom: number): number | null {
     if (!this.started) {
       this.started = true;
       void this.initialize();
+      return null;
     }
     if (!this.ready) return null;
     if (Math.abs(lat) > MAX_LAT) {
-      this.failed.add('latitude');
       return null;
     }
-    const p = tilePosition(lng, lat, this.zoom),
+    const p = tilePosition(lng, lat, zoom),
       x = Math.floor(p.x),
       y = Math.floor(p.y);
-    const tile = this.getTile(x, y);
+    const tile = this.getTile(x, y, zoom);
     if (!tile) return null;
     // DEM values represent pixel centres. Sample adjacent tiles across borders.
     const px = (p.x - x) * tile.size - 0.5,
@@ -76,17 +95,17 @@ export class RasterElevationSampler {
         tile.values[i + 1]! * fx * (1 - fy) +
         tile.values[i + tile.size]! * (1 - fx) * fy +
         tile.values[i + tile.size + 1]! * fx * fy;
-      if (!Number.isFinite(result)) this.failed.add('nodata');
+      if (!Number.isFinite(result)) this.failed.add(`${zoom}/${x}/${y}`);
       return Number.isFinite(result) ? result : null;
     }
     const value = (xx: number, yy: number) => {
       const dx = Math.floor(xx / tile.size),
         dy = Math.floor(yy / tile.size);
-      const neighbour = dx || dy ? this.getTile(x + dx, y + dy) : tile;
+      const neighbour = dx || dy ? this.getTile(x + dx, y + dy, zoom) : tile;
       if (!neighbour || neighbour.size !== tile.size) return NaN;
       const result =
         neighbour.values[((yy + tile.size) % tile.size) * tile.size + ((xx + tile.size) % tile.size)]!;
-      if (!Number.isFinite(result)) this.failed.add('nodata');
+      if (!Number.isFinite(result)) this.failed.add(`${zoom}/${((x + dx) % 2 ** zoom + 2 ** zoom) % 2 ** zoom}/${y + dy}`);
       return result;
     };
     const result =
@@ -118,23 +137,37 @@ export class RasterElevationSampler {
       }
     return Number.isFinite(maximum) ? maximum : null;
   }
-  private getTile(x: number, y: number) {
-    const n = 2 ** this.zoom;
+  private getTile(x: number, y: number, zoom = this.zoom) {
+    const n = 2 ** zoom;
     if (y < 0 || y >= n) {
-      this.failed.add('latitude');
       return undefined;
     }
     x = (x + n) % n;
-    const key = `${x}/${y}`,
+    const key = `${zoom}/${x}/${y}`,
       tile = this.tiles.get(key);
+    if (tile) { this.tiles.delete(key); this.tiles.set(key, tile); }
     if (!tile && !this.pending.has(key) && !this.failed.has(key)) {
-      this.queued.set(key, [x, y]);
+      this.queued.set(key, [x, y, zoom]);
       this.pump();
     }
     return tile;
   }
   unavailable() {
     return this.failed.size > 0;
+  }
+  unavailableAt(lng: number, lat: number, zoom = this.zoom) {
+    if (this.failed.has('source') || Math.abs(lat) > MAX_LAT) return true;
+    const p = tilePosition(lng, lat, zoom);
+    const n = 2 ** zoom;
+    const size = this.tiles.get(`${zoom}/${Math.floor(p.x)}/${Math.floor(p.y)}`)?.size;
+    if (!size) return this.failed.has(`${zoom}/${Math.floor(p.x)}/${Math.floor(p.y)}`);
+    const x0 = Math.floor(p.x * size - .5), y0 = Math.floor(p.y * size - .5);
+    for (const px of [x0, x0 + 1]) for (const py of [y0, y0 + 1]) {
+      const x = ((Math.floor(px / size) % n) + n) % n;
+      const y = Math.floor(py / size);
+      if (this.failed.has(`${zoom}/${x}/${y}`)) return true;
+    }
+    return false;
   }
   retry() {
     this.failed.clear();
@@ -154,6 +187,9 @@ export class RasterElevationSampler {
       let templates = this.provider.tiles;
       let maxzoom = this.provider.maxzoom ?? 12,
         minzoom = this.provider.minzoom ?? 0;
+      let encoding = this.provider.encoding ?? 'mapbox';
+      const configuredScheme = 'scheme' in this.provider ? this.provider.scheme : undefined;
+      let scheme: 'xyz' | 'tms' = configuredScheme === 'tms' ? 'tms' : 'xyz';
       if (!templates?.length && this.provider.url) {
         const response = await fetch(this.provider.url, {
           signal: this.controller.signal,
@@ -171,8 +207,13 @@ export class RasterElevationSampler {
         templates = json.tiles.map((value) =>
           new URL(value, this.provider.url).href.replaceAll('%7B', '{').replaceAll('%7D', '}'),
         );
-        if ('maxzoom' in json && typeof json.maxzoom === 'number') maxzoom = Math.min(maxzoom, json.maxzoom);
-        if ('minzoom' in json && typeof json.minzoom === 'number') minzoom = Math.max(minzoom, json.minzoom);
+        if (this.provider.maxzoom === undefined && 'maxzoom' in json && typeof json.maxzoom === 'number') maxzoom = json.maxzoom;
+        if (this.provider.minzoom === undefined && 'minzoom' in json && typeof json.minzoom === 'number') minzoom = json.minzoom;
+        if (this.provider.encoding === undefined && 'encoding' in json &&
+          (json.encoding === 'mapbox' || json.encoding === 'terrarium' || json.encoding === 'custom'))
+          encoding = json.encoding;
+        if (configuredScheme === undefined && 'scheme' in json && (json.scheme === 'xyz' || json.scheme === 'tms'))
+          scheme = json.scheme;
       }
       if (!templates?.length) throw new Error('Elevation source needs tiles or a TileJSON URL.');
       if (this.controller.signal.aborted) return;
@@ -180,6 +221,9 @@ export class RasterElevationSampler {
         throw new Error('Elevation zoom bounds must be integers between 0 and 24.');
       this.templates = templates;
       this.zoom = Math.max(minzoom, Math.min(12, maxzoom));
+      this.minZoom = minzoom;
+      this.encoding = encoding;
+      this.scheme = scheme;
       this.ready = true;
       this.changed();
     } catch (cause) {
@@ -194,10 +238,10 @@ export class RasterElevationSampler {
     while (this.pending.size < 6 && this.queued.size && !this.controller.signal.aborted) {
       const entry = this.queued.entries().next().value;
       if (!entry) return;
-      const [key, [x, y]] = entry;
+      const [key, [x, y, zoom]] = entry;
       this.queued.delete(key);
       this.pending.add(key);
-      void this.load(x, y)
+      void this.load(x, y, zoom)
         .then((tile) => {
           if (this.controller.signal.aborted) return;
           this.tiles.set(key, tile);
@@ -218,14 +262,24 @@ export class RasterElevationSampler {
         });
     }
   }
-  private async load(x: number, y: number): Promise<Tile> {
+  private async load(x: number, y: number, zoom: number): Promise<Tile> {
     const template = this.templates[(x + y) % this.templates.length]!;
-    const tileY = y;
+    const tileY = this.scheme === 'tms' ? 2 ** zoom - y - 1 : y;
+    let quadkey = '';
+    for (let bit = zoom - 1; bit >= 0; bit--)
+      quadkey += String(((x >> bit) & 1) + 2 * ((y >> bit) & 1));
+    const extent = WORLD_METERS / 2 ** zoom;
+    const west = x * extent - WORLD_METERS / 2;
+    const south = WORLD_METERS / 2 - (y + 1) * extent;
+    const bbox = `${west},${south},${west + extent},${south + extent}`;
     const url = template
-      .replaceAll('{z}', String(this.zoom))
+      .replaceAll('{z}', String(zoom))
       .replaceAll('{x}', String(x))
       .replaceAll('{y}', String(tileY))
-      .replaceAll('{ratio}', '');
+      .replaceAll('{ratio}', this.pixelRatio > 1 ? '@2x' : '')
+      .replaceAll('{prefix}', (x % 16).toString(16) + (y % 16).toString(16))
+      .replaceAll('{quadkey}', quadkey)
+      .replaceAll('{bbox-epsg-3857}', bbox);
     const response = await fetch(url, { signal: this.controller.signal });
     if (!response.ok) throw new Error(`Elevation tile: HTTP ${response.status}`);
     const bitmap = await createImageBitmap(await response.blob());
@@ -244,7 +298,7 @@ export class RasterElevationSampler {
                 data[i * 4]!,
                 data[i * 4 + 1]!,
                 data[i * 4 + 2]!,
-                this.provider.encoding,
+                this.encoding,
                 this.provider,
               );
       return { size: bitmap.width, values, bounds: new ElevationBounds(values, bitmap.width) };
