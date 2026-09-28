@@ -500,7 +500,7 @@ export function attachDrawing<P extends Properties>(
     { signal: abort.signal },
   );
   const off = session.onChange(render);
-  const offPrepared = drawingInternals.onPrepared(prepare);
+  let offPrepared = () => {};
   const offPreview = session.onPreview(renderGeometry);
   let offDestroy = () => {};
   function destroy() {
@@ -524,6 +524,8 @@ export function attachDrawing<P extends Properties>(
     if (map.getSource(SOURCE)) map.removeSource(SOURCE);
   }
   offDestroy = viewport.on("destroy", destroy);
+  offPrepared = drawingInternals.onPrepared(prepare);
+  if (disposed) offPrepared();
   return {
     ...session,
     destroy,

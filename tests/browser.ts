@@ -2059,6 +2059,26 @@ async function suite() {
     check(Math.abs(center.x-origin.x-30)<0.5&&Math.abs(center.y-origin.y-30)<0.5,'Whole drawing jumped to its own moving vertex');
     editor.destroy();draw.destroy();
   });
+  await run('Drawing attachment cleans up when its preparation diagnostic destroys the viewport', async () => {
+    const diagnostics: RidgelineError[] = [];
+    const draw = createViewport({ container, basemap: style(), logger: () => {}, onError: error => {
+      diagnostics.push(error);
+      if (error.code === 'CALLBACK_FAILED') draw.destroy();
+    } });
+    current = draw; await draw.ready;
+    const addSource = draw.map.addSource.bind(draw.map);
+    draw.map.addSource = (id, source) => {
+      if (id === 'rl:draft') throw new Error('Draft source preparation failed');
+      return addSource(id, source);
+    };
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'never-started', properties: {} }), submit: () => ({ accepted: true }) });
+    check(diagnostics.some(error => error.code === 'CALLBACK_FAILED'), 'Preparation failure was not diagnosed');
+    check(!container.querySelector('canvas,.rl-drawing-handle'), 'Destroyed viewport retained drawing DOM');
+    let disposed = false;
+    try { editor.start('line'); } catch (error) { disposed = error instanceof Error && error.message.includes('destroyed'); }
+    check(disposed, 'Attachment survived synchronous viewport destruction');
+    editor.destroy(); draw.destroy();
+  });
   await run('Forwarding viewport wrappers share drawing ownership and allow reattachment', async () => {
     const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
     current = draw; await draw.ready;

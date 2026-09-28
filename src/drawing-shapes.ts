@@ -9,7 +9,7 @@ type Kind = DrawingShape["kind"];
 type VertexKind = "line" | "polygon" | "arrow";
 type VertexShape<K extends VertexKind = VertexKind> = { kind: K; vertices: DrawingPosition[] };
 type ShapeFor<K extends Kind> = K extends VertexKind
-  ? VertexShape<K>
+  ? VertexShape
   : Extract<DrawingShape, { kind: K }>;
 
 export type ShapeHandle = {
@@ -57,10 +57,10 @@ function handle(
   return { position, label, move, carriesShape, removable };
 }
 
-function vertexDefinition<K extends VertexKind>(
-  kind: K,
+function vertexDefinition(
+  kind: VertexKind,
   closed: boolean,
-): ShapeDefinition<VertexShape<K>> {
+): ShapeDefinition<VertexShape> {
   return {
     closed,
     minimum: closed ? 3 : 2,
@@ -97,7 +97,7 @@ function vertexDefinition<K extends VertexKind>(
       vertices.splice(index, 1);
       return { ...shape, vertices };
     },
-    ...(kind === "arrow" ? { reverse: (shape: VertexShape<K>) => ({ ...shape, vertices: [...shape.vertices].reverse() }) } : {}),
+    ...(kind === "arrow" ? { reverse: (shape: VertexShape) => ({ ...shape, vertices: [...shape.vertices].reverse() }) } : {}),
   };
 }
 
@@ -187,9 +187,17 @@ const definitions: { [K in Kind]: ShapeDefinition<ShapeFor<K>> } = {
   },
 };
 
-// The kind key selects the matching definition; this cast keeps that relationship at one boundary.
-function definitionFor(shape: DrawingShape): ShapeDefinition<DrawingShape> {
-  return definitions[shape.kind] as unknown as ShapeDefinition<DrawingShape>;
+/** Narrow the shape and its rules together before invoking a typed operation. */
+function withShapeDefinition<T>(
+  shape: DrawingShape,
+  operation: <S extends DrawingShape>(shape: S, definition: ShapeDefinition<S>) => T,
+): T {
+  switch (shape.kind) {
+    case "point": return operation(shape, definitions.point);
+    case "circle": return operation(shape, definitions.circle);
+    case "rectangle": return operation(shape, definitions.rectangle);
+    default: return operation(shape, definitions[shape.kind]);
+  }
 }
 
 export function emptyShape(tool: DrawingTool): DrawingShape {
@@ -197,15 +205,15 @@ export function emptyShape(tool: DrawingTool): DrawingShape {
 }
 
 export function placePoint(shape: DrawingShape, placed: number, point: DrawingPosition): Placement | undefined {
-  return definitionFor(shape).place(shape, placed, point);
+  return withShapeDefinition(shape, (shape, rules) => rules.place(shape, placed, point));
 }
 
 export function shapeHandles(shape: DrawingShape): ShapeHandle[] {
-  return definitionFor(shape).handles(shape);
+  return withShapeDefinition(shape, (shape, rules) => rules.handles(shape));
 }
 
 export function shapeMoveHandle(shape: DrawingShape): { position: DrawingPosition; label: "Move drawing" } | undefined {
-  const points = definitionFor(shape).editableVertices?.(shape);
+  const points = withShapeDefinition(shape, (shape, rules) => rules.editableVertices?.(shape));
   if (!points?.length) return;
   const unrolled = unroll(points);
   return {
@@ -218,10 +226,10 @@ export function shapeMoveHandle(shape: DrawingShape): { position: DrawingPositio
 }
 
 export function shapeInsertHandles(shape: DrawingShape): { after: number; position: DrawingPosition; label: string }[] {
-  const points = definitionFor(shape).editableVertices?.(shape);
+  const points = withShapeDefinition(shape, (shape, rules) => rules.editableVertices?.(shape));
   if (!points) return [];
   const unrolled = unroll(points);
-  const edges = definitionFor(shape).closed ? unrolled.length : unrolled.length - 1;
+  const edges = definitions[shape.kind].closed ? unrolled.length : unrolled.length - 1;
   return Array.from({ length: Math.max(0, edges) }, (_, after) => {
     const a = unrolled[after]!, b = unrolled[(after + 1) % unrolled.length]!;
     return {
@@ -233,19 +241,19 @@ export function shapeInsertHandles(shape: DrawingShape): { after: number; positi
 }
 
 export function insertVertex(shape: DrawingShape, after: number, point: DrawingPosition): DrawingShape {
-  return definitionFor(shape).insert?.(shape, after, point) ?? shape;
+  return withShapeDefinition(shape, (shape, rules) => rules.insert?.(shape, after, point) ?? shape);
 }
 
 export function removeVertex(shape: DrawingShape, index: number): DrawingShape {
-  return definitionFor(shape).remove?.(shape, index) ?? shape;
+  return withShapeDefinition(shape, (shape, rules) => rules.remove?.(shape, index) ?? shape);
 }
 
 export function reverseShape(shape: DrawingShape): DrawingShape {
-  return definitionFor(shape).reverse?.(shape) ?? shape;
+  return withShapeDefinition(shape, (shape, rules) => rules.reverse?.(shape) ?? shape);
 }
 
 export function shapeParameters(shape: DrawingShape): ShapeParameter[] {
-  return definitionFor(shape).parameters(shape);
+  return withShapeDefinition(shape, (shape, rules) => rules.parameters(shape));
 }
 
 export function shapeFromGeometry(geometry: Point | LineString | Polygon): DrawingShape {
@@ -255,13 +263,13 @@ export function shapeFromGeometry(geometry: Point | LineString | Polygon): Drawi
 }
 
 export function shapeVertices(shape: DrawingShape): DrawingPosition[] {
-  return definitionFor(shape).vertices(shape);
+  return withShapeDefinition(shape, (shape, rules) => rules.vertices(shape));
 }
 export function shapeGeometry(
   shape: DrawingShape,
   render = false,
 ): Point | LineString | Polygon {
-  const definition = definitionFor(shape);
+  const definition = definitions[shape.kind];
   const points = shapeVertices(shape);
   if (definition.geometry === "Point")
     return { type: "Point", coordinates: [...points[0]!] };
@@ -284,7 +292,7 @@ function signedArea(points: readonly DrawingPosition[]) {
 }
 export function measurements(shape: DrawingShape) {
   const points = shapeVertices(shape),
-    closed = definitionFor(shape).closed;
+    closed = definitions[shape.kind].closed;
   const length =
     points.reduce(
       (sum, p, i) => sum + (i ? distance(points[i - 1]!, p) : 0),
@@ -294,7 +302,7 @@ export function measurements(shape: DrawingShape) {
     length,
     ...(closed
       ? {
-          area: definitionFor(shape).area?.(shape, points) ?? Math.abs(signedArea(unroll(points))),
+          area: withShapeDefinition(shape, (shape, rules) => rules.area?.(shape, points)) ?? Math.abs(signedArea(unroll(points))),
         }
       : {}),
   };
@@ -330,9 +338,9 @@ export function validateShape(shape: DrawingShape): string | undefined {
     !Object.hasOwn(definitions, shape.kind)
   )
     return "Unknown drawing shape.";
-  const dimensionError = definitionFor(shape).validateDimensions?.(shape);
+  const dimensionError = withShapeDefinition(shape, (shape, rules) => rules.validateDimensions?.(shape));
   if (dimensionError) return dimensionError;
-  const definingPoints = definitionFor(shape).definingPoints(shape);
+  const definingPoints = withShapeDefinition(shape, (shape, rules) => rules.definingPoints(shape));
   if (
     definingPoints.some(
       (p) =>
@@ -346,7 +354,7 @@ export function validateShape(shape: DrawingShape): string | undefined {
   const raw = shapeVertices(shape);
   if (raw.some((p) => Math.abs(p[1]) >= 90))
     return "Use finite ground coordinates away from the poles.";
-  const { closed, minimum } = definitionFor(shape);
+  const { closed, minimum } = definitions[shape.kind];
   if (raw.length < minimum)
     return closed
       ? "Add at least three vertices."
@@ -401,5 +409,5 @@ export function translateShape(
   const meters = distance(from, to),
     degrees = bearing(from, to);
   const shift = (p: DrawingPosition) => destination(p, meters, degrees);
-  return definitionFor(shape).translate(shape, shift);
+  return withShapeDefinition(shape, (shape, rules) => rules.translate(shape, shift));
 }
