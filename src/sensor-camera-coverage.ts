@@ -9,6 +9,7 @@ import type { Primitive } from './entity-layer';
 import { GpuCameras, sameCamera, sameCameraAppearance } from './gpu-cameras';
 import type { GpuCamera } from './gpu-cameras';
 import { parseColor } from './color';
+import { wrapLongitude } from './longitude';
 
 type Color = Primitive['color'];
 
@@ -425,9 +426,8 @@ export class SensorCameraCoverage {
     const origin: [number, number] = [input.origin[0], input.origin[1]];
     const positions: [number, number][] = [origin];
     const [west, south, east, north] = cameraTerrainPreparationBounds(origin[0], origin[1], range);
-    const bounded = (lng: number) => ((lng + 180) % 360 + 360) % 360 - 180;
     for (const lng of [west, origin[0], east]) for (const lat of [south, origin[1], north])
-      positions.push([bounded(lng), lat]);
+      positions.push([wrapLongitude(lng), lat]);
     // A range may serve several cameras. Cancel its work only when no active
     // camera needs it, without aborting another entity or range's preparation.
     const controller = new AbortController();

@@ -25,7 +25,6 @@ type PublicationOptions<P extends Properties> = {
   render: (feature: MapFeature<P>) => MapFeature;
   sourceId?: (id: string) => string;
   diagnostic: (error: RidgelineError) => void;
-  beforeSubmit: () => void;
   published: (id: string, feature: MapFeature<P> | null) => void;
   restored?: (features: MapFeature<P>[]) => void;
   frames?: { request: (callback: () => void) => number; cancel: (id: number) => void };
@@ -98,8 +97,6 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
         if (!current() || !active) return;
       }
       if (!submitted.length && !resetting) return;
-      options.beforeSubmit();
-      if (!current() || !active) return;
       source.on('error', onSourceError);
       // Replacements and removals can safely repeat after a partial renderer failure.
       if (resetting) await source.setData({ type: 'FeatureCollection', features: add });

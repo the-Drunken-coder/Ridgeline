@@ -95,7 +95,6 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     },
   });
   const publication = createFeaturePublication({ store, target: mapLibreFeaturePublication(map), render: rendered, sourceId: sourceFeatureId, diagnostic,
-    beforeSubmit: () => {},
     published: (id, feature) => {
       const wasArrow = publishedArrows.has(id);
       if (feature?.drawing?.shape.kind === 'arrow') publishedArrows.set(id, feature);

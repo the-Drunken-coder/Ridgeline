@@ -49,7 +49,6 @@ function fixture(render: (feature: MapFeature) => MapFeature = feature => featur
   const published: string[] = [];
   const frames = new Map<number, () => void>();
   let frameId = 0;
-  let beforeSubmissions = 0;
   let source: ControlledSource | undefined;
   let initialFailure: ((cause: unknown) => void) | undefined;
   const publication = createFeaturePublication({
@@ -59,7 +58,7 @@ function fixture(render: (feature: MapFeature) => MapFeature = feature => featur
       create: features => { source = new ControlledSource(features); },
       watchInitial: failed => { initialFailure = failed; return () => { if (initialFailure === failed) initialFailure = undefined; }; },
     },
-    beforeSubmit: () => { beforeSubmissions++; }, published: id => published.push(id),
+    published: id => published.push(id),
     frames: {
       request(callback) { const id = ++frameId; frames.set(id, callback); return id; },
       cancel(id) { frames.delete(id); },
@@ -68,7 +67,6 @@ function fixture(render: (feature: MapFeature) => MapFeature = feature => featur
   return {
     publication, store, diagnostics, published, frames,
     source() { assert.ok(source); return source; },
-    get beforeSubmissions() { return beforeSubmissions; },
     upsert(...features: MapFeature[]) { publication.update(store.upsert(features)); },
     remove(...ids: string[]) { publication.update([], store.remove(ids)); },
     frame() { const callbacks = [...frames.values()]; frames.clear(); for (const callback of callbacks) callback(); },
@@ -119,7 +117,6 @@ test('coalesces each frame and waits for the current submission before sending n
   f.source().succeed(1);
   await Promise.resolve();
   assert.deepEqual(f.source().features.get('a'), point('a', 4));
-  assert.equal(f.beforeSubmissions, 2);
   assert.deepEqual(f.published, ['a', 'b', 'a']);
   assert.equal(f.frames.size, 0);
 });
@@ -394,7 +391,7 @@ test('source creation stops restoration when an error observer destroys publicat
   let watched = 0;
   let publication: ReturnType<typeof createFeaturePublication<Properties>>;
   publication = createFeaturePublication({
-    store, render: feature => feature, diagnostic: () => {}, beforeSubmit: () => {}, published: () => {},
+    store, render: feature => feature, diagnostic: () => {}, published: () => {},
     restored: () => { restored++; },
     frames: { request: () => 1, cancel: () => {} },
     target: {

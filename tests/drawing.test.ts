@@ -28,6 +28,7 @@ function fixture(overrides: Partial<DrawingOptions<Properties>> = {}) {
     (event: { ids: string[]; removed: string[] }) => void
   >();
   let owner: string | null = null;
+  const diagnostics: RidgelineError[] = [];
   const host = {
     getFeature: (id: string) => store.get(id),
     getStyle: () => ({}),
@@ -56,6 +57,10 @@ function fixture(overrides: Partial<DrawingOptions<Properties>> = {}) {
         owner = null;
       };
     },
+    reportCallbackError: (cause: unknown, operation: string) => {
+      diagnostics.push(new RidgelineError("CALLBACK_FAILED", "A consumer callback threw.",
+        { operation, recoverable: true }, cause));
+    },
   };
   const requests: DrawingChange[] = [];
   const editor = createDrawingSession(host, {
@@ -69,7 +74,7 @@ function fixture(overrides: Partial<DrawingOptions<Properties>> = {}) {
     },
     ...overrides,
   });
-  return { host, editor, requests, owner: () => owner };
+  return { host, editor, requests, diagnostics, owner: () => owner };
 }
 function line(editor: ReturnType<typeof fixture>["editor"]) {
   editor.start("line");
@@ -388,26 +393,19 @@ test("A completed edit is submitted once and applies only after acceptance", asy
 });
 
 test("A failing drawing observer cannot block another observer or submission cleanup", async () => {
-  const { editor, host, owner } = fixture();
-  const reported: unknown[] = [];
-  const original = console.error;
-  console.error = (...args: unknown[]) => { reported.push(args.at(-1)); };
-  try {
-    editor.onChange(() => { throw new Error("observer failed"); });
-    let healthy = 0;
-    editor.onChange(() => { healthy++; });
-    line(editor);
-    assert.equal(await editor.finish(), true);
-    assert.equal(owner(), null);
-    assert.equal(host.getFeature("new")?.geometry.type, "LineString");
-    assert.ok(healthy >= 4);
-    assert.ok(reported.some(error =>
-      error instanceof RidgelineError &&
-      error.code === "CALLBACK_FAILED" &&
-      error.context.operation === "drawing.onChange"));
-  } finally {
-    console.error = original;
-  }
+  const { editor, host, owner, diagnostics } = fixture();
+  editor.onChange(() => { throw new Error("observer failed"); });
+  let healthy = 0;
+  editor.onChange(() => { healthy++; });
+  line(editor);
+  assert.equal(await editor.finish(), true);
+  assert.equal(owner(), null);
+  assert.equal(host.getFeature("new")?.geometry.type, "LineString");
+  assert.ok(healthy >= 4);
+  assert.ok(diagnostics.some(error =>
+    error.code === "CALLBACK_FAILED" &&
+    error.context.operation === "drawing.onChange" &&
+    error.cause instanceof Error && error.cause.message === "observer failed"));
 });
 
 test("A rejected submission cannot clear a newer request started in its notification", async () => {

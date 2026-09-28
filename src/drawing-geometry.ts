@@ -1,5 +1,7 @@
 import type { LineString, Point, Polygon, Position } from "geojson";
 import { Color } from "@maplibre/maplibre-gl-style-spec";
+import { wrapLongitude } from "./longitude";
+export { wrapLongitude } from "./longitude";
 import type {
   DrawingPosition,
   DrawingShape,
@@ -8,8 +10,6 @@ import type {
 
 const R = 6_371_008.8;
 const rad = Math.PI / 180;
-export const wrapLongitude = (lng: number) =>
-  ((((lng + 180) % 360) + 360) % 360) - 180;
 export function position(p: Position): DrawingPosition {
   return [wrapLongitude(p[0]!), p[1]!];
 }

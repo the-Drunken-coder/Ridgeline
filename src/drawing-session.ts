@@ -1,5 +1,4 @@
 import { validateFeature } from "./features";
-import { createReporter, RidgelineError } from "./errors";
 import type { MapFeature, Properties, Viewport, ViewportEvents } from "./types";
 import type {
   DrawingChange,
@@ -27,7 +26,7 @@ import {
 
 type DrawingHost<P extends Properties> = Pick<
   Viewport<P>,
-  "getFeature" | "getStyle" | "upsert" | "remove" | "acquireInteraction"
+  "getFeature" | "getStyle" | "upsert" | "remove" | "acquireInteraction" | "reportCallbackError"
 > & {
   on(
     event: "datachange",
@@ -64,7 +63,6 @@ export function createDrawingSession<P extends Properties>(
   let gesture: DrawingDraft<P> | undefined;
   let gestureCancelled = false;
   const listeners = new Set<() => void>();
-  const report = createReporter();
   const tools = [...(options.tools ?? DRAWING_TOOLS)];
   const styleFields =
     options.styleFields ??
@@ -127,10 +125,7 @@ export function createDrawingSession<P extends Properties>(
       try {
         listener();
       } catch (cause) {
-        report(new RidgelineError(
-          "CALLBACK_FAILED", "A drawing onChange listener threw.",
-          { operation: "drawing.onChange", recoverable: true }, cause,
-        ));
+        host.reportCallbackError(cause, "drawing.onChange");
       }
     }
   }

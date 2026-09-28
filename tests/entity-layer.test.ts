@@ -45,6 +45,10 @@ test('picks the visible part of a face whose third vertex crosses the near plane
     assert.equal(layer.project([0, 0, 1000]), null);
     assert.deepEqual(layer.pick(700, 400, 0).map(hit => [hit.entityId, hit.attachmentId]), [['aircraft', 'face']]);
 
+    layer.set([{ entityId: 'aircraft', attachmentId: 'ray', mode: 'lines',
+      vertices: [[0, 0, 1000], [0.05, 0, 0]], color: [1, 0, 0, 1] }]);
+    assert.deepEqual(layer.pick(700, 500, 2).map(hit => [hit.entityId, hit.attachmentId]), [['aircraft', 'ray']]);
+
     const changedProjection = { ...input, shaderData: { ...input.shaderData, variantName: 'changed' } };
     failProgram = true;
     layer.render(gl, changedProjection);

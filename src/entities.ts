@@ -9,6 +9,7 @@ import type { HeightAt } from './entity-geometry';
 import { RasterElevationSampler } from './elevation-sampler';
 import { SensorCameraCoverage } from './sensor-camera-coverage';
 import { RidgelineError } from './errors';
+import { wrapLongitude } from './longitude';
 import type {
   ElevationSampler,
   CameraAttachment,
@@ -24,7 +25,6 @@ export const DEFAULT_ENTITY_VISIBILITY = {
   zones: true,
   groundLines: false,
 };
-const boundedLongitude = (lng: number) => ((lng + 180) % 360 + 360) % 360 - 180;
 const combineCoverage = (a: EntityState['coverage'], b: EntityState['coverage']): EntityState['coverage'] =>
   a === 'unavailable' || b === 'unavailable' ? 'unavailable' : a === 'loading' || b === 'loading' ? 'loading' : 'ready';
 type SceneOptions<P extends Properties> = {
@@ -80,7 +80,7 @@ export class EntityScene<P extends Properties> {
       map: options.map,
       height: this.height,
       prepare: prepare
-        ? (positions, signal) => prepare(positions.map(([lng, lat]) => [boundedLongitude(lng), lat]), signal)
+        ? (positions, signal) => prepare(positions.map(([lng, lat]) => [wrapLongitude(lng), lat]), signal)
         : undefined,
       elevationUnavailable: () => this.raster.unavailable(),
       pollTerrain: !options.sampler,
@@ -192,7 +192,7 @@ export class EntityScene<P extends Properties> {
       const generation = this.customGeneration;
       const prepare = this.options.sampler.prepare.bind(this.options.sampler);
       const preparation = Promise.resolve().then(() => prepare(
-        positions.map(([lng, lat]) => [boundedLongitude(lng), lat]), generation.signal));
+        positions.map(([lng, lat]) => [wrapLongitude(lng), lat]), generation.signal));
       for (const feature of sharedPreparation)
         if (feature.entity && this.features.get(feature.id) === feature) this.preparing.set(feature.id, preparation);
       void preparation
@@ -307,7 +307,7 @@ export class EntityScene<P extends Properties> {
     if (!this.frame && !this.destroyed) this.frame = requestAnimationFrame(() => this.flush());
   }
   private height: HeightAt = (lng, lat) => {
-    const value = this.options.sampler ? this.options.sampler.sample(boundedLongitude(lng), lat) : this.raster.sample(lng, lat);
+    const value = this.options.sampler ? this.options.sampler.sample(wrapLongitude(lng), lat) : this.raster.sample(lng, lat);
     return value !== null && Number.isFinite(value) ? value : null;
   };
   private flush() {

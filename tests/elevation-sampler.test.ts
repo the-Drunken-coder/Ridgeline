@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { RasterElevationSampler } from '../src/elevation-sampler';
-import { cameraTerrainPreparationBounds } from '../src/gpu-camera-terrain';
+import { cameraTerrain, cameraTerrainPreparationBounds } from '../src/gpu-camera-terrain';
 
 const pixels = new Uint8ClampedArray([
   128, 0, 0, 255, 128, 0, 0, 255,
@@ -92,6 +92,33 @@ test('50km range uses a bounded working set that remains cached', async () => {
       assert.ok(requests.some(url => url.includes('/11/')));
       assert.equal(requests.length, firstPass, 'Loaded camera tiles should stay cached');
       assert.ok(firstPass < 256, `Unexpected ${firstPass} tile requests`);
+    } finally { sampler.destroy(); }
+  });
+});
+
+test('a zoom-12-only provider converges for a 50km camera patch without redownloading tiles', async () => {
+  await withTiles(async requests => {
+    const sampler = new RasterElevationSampler({
+      tiles: ['https://tiles.test/{z}/{x}/{y}.png'], encoding: 'terrarium', tileSize: 256,
+      minzoom: 12, maxzoom: 12,
+    }, () => {}, cause => assert.fail(String(cause)));
+    try {
+      const height = sampler.forRange(50_000, 46);
+      const [west, south, east, north] = cameraTerrainPreparationBounds(6, 46, 50_000);
+      const samplePatch = () => {
+        let ready = true;
+        for (let x = 0; x <= 32; x++) for (let y = 0; y <= 32; y++)
+          ready = height(west + (east - west) * x / 32, south + (north - south) * y / 32) !== null && ready;
+        return ready;
+      };
+      for (let attempt = 0; attempt < 500 && !samplePatch(); attempt++)
+        await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(samplePatch(), true);
+      assert.equal(cameraTerrain(6, 46, 50_000, height).ready, true);
+      const loaded = requests.length;
+      assert.ok(loaded > 256 && loaded <= 512, `Expected one bounded zoom-12 working set, got ${loaded} requests`);
+      assert.equal(cameraTerrain(6, 46, 50_000, height).ready, true);
+      assert.equal(requests.length, loaded, 'Repeated coverage should reuse cached tiles');
     } finally { sampler.destroy(); }
   });
 });

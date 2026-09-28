@@ -4,6 +4,9 @@ import { ElevationBounds } from './elevation-bounds';
 type Tile = { size: number; values: Float32Array; bounds: ElevationBounds };
 const MAX_LAT = 85.05112878;
 const WORLD_METERS = 2 * Math.PI * 6_378_137;
+// A 50 km camera patch at zoom 12 and latitude 46 spans about 400 source tiles.
+// Keep one such working set resident so readiness can converge without refetching.
+const TILE_CACHE_LIMIT = 512;
 export function tilePosition(lng: number, lat: number, zoom: number) {
   const n = 2 ** zoom,
     latitude = (Math.max(-MAX_LAT, Math.min(MAX_LAT, lat)) * Math.PI) / 180;
@@ -245,7 +248,7 @@ export class RasterElevationSampler {
         .then((tile) => {
           if (this.controller.signal.aborted) return;
           this.tiles.set(key, tile);
-          while (this.tiles.size > 256) this.tiles.delete(this.tiles.keys().next().value!);
+          while (this.tiles.size > TILE_CACHE_LIMIT) this.tiles.delete(this.tiles.keys().next().value!);
         })
         .catch((cause) => {
           if (!this.controller.signal.aborted) {

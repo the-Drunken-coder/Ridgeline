@@ -1,5 +1,6 @@
 import { MercatorCoordinate } from 'maplibre-gl';
 import type { GeoPoint, HeightAt } from './entity-geometry';
+import { wrapLongitude } from './longitude';
 
 export const TERRAIN_CELLS = 256;
 export type CameraTerrain = {
@@ -40,7 +41,7 @@ export function cameraTerrain(lng: number, lat: number, range: number, height: H
     const east = (x / TERRAIN_CELLS * 2 - 1) * half;
     const north = (y / TERRAIN_CELLS * 2 - 1) * half;
     const p = new MercatorCoordinate(centre.x + east * scale, centre.y - north * scale).toLngLat();
-    const boundedLng = ((p.lng + 180) % 360 + 360) % 360 - 180;
+    const boundedLng = wrapLongitude(p.lng);
     const z = sample(boundedLng, p.lat);
     if (z === null) {
       ready = false;

@@ -303,6 +303,22 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
     }
     return points.filter(point => point[3]! > 0).map(point => this.screen(point));
   }
+  private clippedSegment(a: GeoPoint, b: GeoPoint): [ScreenPoint, ScreenPoint] | null {
+    const clippedStart = this.clip(a), clippedEnd = this.clip(b);
+    if (!clippedStart || !clippedEnd) return null;
+    let start = clippedStart, end = clippedEnd;
+    for (const distance of [(p: number[]) => p[2]! + p[3]!, (p: number[]) => p[3]! - p[2]!]) {
+      const first = distance(start), last = distance(end);
+      if (first < 0 && last < 0) return null;
+      if (first < 0 || last < 0) {
+        const t = first / (first - last);
+        const intersection = start.map((value, index) => value + t * (end[index]! - value));
+        if (first < 0) start = intersection;
+        else end = intersection;
+      }
+    }
+    return start[3]! > 0 && end[3]! > 0 ? [this.screen(start), this.screen(end)] : null;
+  }
   pick(x: number, y: number, tolerance: number) {
     const hits: { entityId: string; attachmentId?: string; depth: number }[] = [];
     let terrainDepth: number | undefined;
@@ -314,11 +330,11 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
     const visible = (depth: number) => terrainDepth === undefined || depth <= terrainDepth + 1e-6;
     for (const draw of this.draws) {
       if (draw.mode === 'lines' && !draw.attachmentId) continue;
-      const points = draw.vertices.map((p) => this.project(p));
       if (draw.mode === 'lines') {
-        for (let i = 0; i < points.length; i += 2) {
-          const a = points[i], b = points[i + 1];
-          if (!a || !b) continue;
+        for (let i = 0; i < draw.vertices.length; i += 2) {
+          const segment = this.clippedSegment(draw.vertices[i]!, draw.vertices[i + 1]!);
+          if (!segment) continue;
+          const [a, b] = segment;
           const dx = b.x - a.x, dy = b.y - a.y;
           const lengthSquared = dx * dx + dy * dy;
           const t = lengthSquared === 0 ? 0 : Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / lengthSquared));
@@ -331,7 +347,7 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
         continue;
       }
       if (draw.mode === 'points') {
-        const p = points[0];
+        const p = this.project(draw.vertices[0]!);
         if (
           p &&
           visible(p.depth) &&
@@ -340,7 +356,7 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
           hits.push({ entityId: draw.entityId, depth: p.depth });
         continue;
       }
-      triangles: for (let i = 0; i < points.length; i += 3) {
+      triangles: for (let i = 0; i < draw.vertices.length; i += 3) {
         const clipped = this.clippedTriangle(draw.vertices.slice(i, i + 3));
         for (let vertex = 1; vertex + 1 < clipped.length; vertex++) {
           const a = clipped[0], b = clipped[vertex], c = clipped[vertex + 1];
