@@ -1,4 +1,4 @@
-import type { Map as GLMap } from 'maplibre-gl';
+import { MercatorCoordinate, type Map as GLMap } from 'maplibre-gl';
 import type { CameraAttachment, EntityState, MapConfiguration } from './types';
 import type { GeoPoint } from './entity-geometry';
 import { cameraFootprint, cameraRay, localFrame } from './entity-geometry';
@@ -170,7 +170,7 @@ function cameraVolumePrimitives(
 export class SensorCameraCoverage {
   private readonly adapter: SensorCameraAdapter;
   private readonly entities = new Map<string, EntityCoverage>();
-  private readonly requestedRanges = new Map<string, Set<number>>();
+  private readonly requestedRanges = new Map<string, Map<number, readonly [number, number]>>();
   private lifecycleSequence = 0;
   private adapterDirty = false;
   private failed = false;
@@ -194,12 +194,31 @@ export class SensorCameraCoverage {
   requestAreas(entityId: string, center: readonly [number, number], cameras: readonly CameraAttachment[], visible: boolean) {
     const ranges = new Set(visible ? cameras.filter(camera => camera.terrainVisibility).map(camera => camera.range) : []);
     const previous = this.requestedRanges.get(entityId);
-    for (const range of previous ?? []) if (!ranges.has(range)) this.options.elevation.release(this.terrainKey(entityId, range));
-    for (const range of ranges) this.options.elevation.request(this.terrainKey(entityId, range), center, range * 1.3);
-    if (ranges.size) this.requestedRanges.set(entityId, ranges);
-    else this.requestedRanges.delete(entityId);
+    for (const range of previous?.keys() ?? []) if (!ranges.has(range)) this.options.elevation.release(this.terrainKey(entityId, range));
+    const next = new Map<number, readonly [number, number]>();
     const entity = this.entities.get(entityId);
+    for (const range of ranges) {
+      const requestedCenter = previous?.get(range);
+      const patch = entity?.terrain.get(range)?.patch;
+      if (requestedCenter && (requestedCenter[0] === center[0] && requestedCenter[1] === center[1] ||
+        patch?.ready && this.patchCovers(patch, center, range))) {
+        next.set(range, requestedCenter);
+        continue;
+      }
+      this.options.elevation.request(this.terrainKey(entityId, range), center, range * 1.3);
+      next.set(range, [center[0], center[1]]);
+    }
+    if (ranges.size) this.requestedRanges.set(entityId, next);
+    else this.requestedRanges.delete(entityId);
     if (entity) this.pruneTerrainWork(entity, ranges);
+  }
+
+  private patchCovers(patch: CameraTerrain, center: readonly [number, number], range: number) {
+    const point = MercatorCoordinate.fromLngLat([center[0], center[1]]);
+    let dx = point.x - patch.centre.x;
+    dx -= Math.round(dx);
+    const distance = Math.max(Math.abs(dx), Math.abs(point.y - patch.centre.y)) / patch.scale;
+    return distance + range <= patch.half && patch.half <= range * 2;
   }
 
   private terrainKey(entityId: string, range: number) {

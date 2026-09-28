@@ -459,6 +459,23 @@ test('a batch submits the full camera collection once and still publishes camera
   coverage.destroy();
 });
 
+test('small movements reuse a completed terrain patch without resampling its elevation area', async () => {
+  let samples = 0;
+  const { coverage } = owner(controlledAdapter(), {
+    height: () => { samples++; return 0; },
+  });
+  update(coverage, input());
+  await new Promise<void>(resolve => setImmediate(resolve));
+  samples = 0;
+
+  for (let step = 1; step <= 24; step++) {
+    update(coverage, input({ origin: [step * .00001, 0, 100] }));
+    await new Promise<void>(resolve => setImmediate(resolve));
+  }
+  assert.ok(samples <= 30, `Movement resampled cached terrain: ${samples} elevation samples`);
+  coverage.destroy();
+});
+
 for (const available of [true, false]) test(`cached terrain waits for placement preparation that ${available ? 'resolves' : 'remains missing'}`, async () => {
   let missing = false;
   const preparation = deferred();
