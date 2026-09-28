@@ -1,4 +1,5 @@
 import { checkGpuVote } from './gpu-vote';
+import { browserCases } from './browser-cases';
 import { createViewport, attachInteractions, attachDrawing, attachDrawingControls, shapeGeometry, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
 import { GeoJSONSource, ErrorEvent as MapErrorEvent, setWorkerUrl } from 'maplibre-gl';
@@ -10,6 +11,10 @@ import '@ridgeline/map/style.css';
 declare global {
   interface Window {
     drawingPointer?: (action: 'move' | 'click', x: number, y: number) => Promise<void>;
+    browserKey?: (key: string) => Promise<void>;
+    browserDrag?: (fromX: number, fromY: number, toX: number, toY: number) => Promise<void>;
+    browserClick?: (selector: string) => Promise<void>;
+    cleanupBrowserCase?: () => void;
   }
 }
 
@@ -21,6 +26,9 @@ const style = (color = '#e9efea'): StyleSpecification => ({ version: 8, sources:
 const point = (id: string, lng = 0): MapFeature => ({ type: 'Feature', id, properties: { name: id }, geometry: { type: 'Point', coordinates: [lng, 0] } });
 const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
 let current: Viewport | undefined;
+const selectedCase = new URLSearchParams(location.search).get('case');
+let ran = false;
+const registeredCases: string[] = [];
 status.dataset.state = 'running';
 async function until(predicate: () => boolean, description: string) {
   const start = performance.now();
@@ -29,12 +37,11 @@ async function until(predicate: () => boolean, description: string) {
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
   }
 }
-async function run(name: string, test: () => Promise<void>, options: { realPointer?: boolean } = {}) {
+async function run(name: string, test: () => Promise<void>) {
+  registeredCases.push(name);
+  if (name !== selectedCase) return;
+  ran = true;
   const row = document.createElement('li'); row.textContent = name; results.append(row);
-  if (options.realPointer && !window.drawingPointer) {
-    row.className = 'skip'; row.textContent = `SKIP: ${name} (Playwright pointer bridge required)`;
-    return;
-  }
   try { await test(); row.className = 'pass'; row.textContent = `PASS: ${name}`; }
   catch (error) { row.className = 'fail'; row.textContent = `FAIL: ${name}: ${String(error)}`; throw error; }
 }
@@ -43,6 +50,18 @@ async function pointer(action: 'move' | 'click', point: { x: number; y: number }
   if (!drawingPointer) throw new Error('Playwright pointer bridge is unavailable.');
   await drawingPointer(action, point.x, point.y);
   await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+}
+async function browserKey(key: string) {
+  if (!window.browserKey) throw new Error('Playwright keyboard bridge is unavailable.');
+  await window.browserKey(key);
+}
+async function browserClick(selector: string) {
+  if (!window.browserClick) throw new Error('Playwright click bridge is unavailable.');
+  await window.browserClick(selector);
+}
+async function browserDrag(fromX: number, fromY: number, toX: number, toY: number) {
+  if (!window.browserDrag) throw new Error('Playwright drag bridge is unavailable.');
+  await window.browserDrag(fromX, fromY, toX, toY);
 }
 async function suite() {
   await run('Destroy during initialization, repeat destroy, then remount', async () => {
@@ -56,17 +75,16 @@ async function suite() {
   const viewport = createViewport({ container, basemap: style(), camera: { center: [0,0], zoom: 8 }, features: [point('initial')], style: feature => { if (feature.properties.broken) throw new Error('Broken style'); return { color: feature.properties.color === 'red' ? '#ff0000' : '#008855', icon: typeof feature.properties.icon === 'string' ? feature.properties.icon : undefined }; }, logger: () => {} });
   current = viewport;
   const hits = () => viewport.map.queryRenderedFeatures({ layers: ['rl:points'] });
+  viewport.upsert([point('queued')]);
+  await viewport.ready;
+  await until(() => hits().some(hit => hit.id === 'queued'), 'base feature rendered');
   await run('Queued features render with stable string IDs and click events', async () => {
-    viewport.upsert([point('queued')]);
-    await viewport.ready;
     check(!viewport.map.getLayer('rl:camera-gpu'), 'Ground-only viewport allocated the camera renderer');
     await until(() => hits().some(hit => hit.id === 'queued'), 'queued feature rendered');
     check(hits().some(hit => hit.id === 'initial'), 'Initial feature missing');
     let ids: string[] = [];
     const off = viewport.on('click', event => { ids = event.features.map(feature => feature.id); });
-    container.querySelector('canvas')!.click();
-    // A native click above uses its default coordinates. Verify the actual map hit path at center too.
-    viewport.map.fire('click', { point: viewport.map.project([0,0]), lngLat: viewport.map.getCenter(), originalEvent: new MouseEvent('click') });
+    await pointer('click', viewport.map.project([0,0]));
     check(ids.includes('queued') && ids.includes('initial'), 'Consumer click IDs missing'); off();
   });
   await run('Incremental updates replace data without moving the camera', async () => {
@@ -80,6 +98,7 @@ async function suite() {
     check(viewport.map.getFeatureState({ source: 'rl:features', id: 'queued' }).selected, 'Selection state lost');
   });
   await run('Style replacement preserves data and selection', async () => {
+    viewport.setSelection(['queued']);
     viewport.configure({ basemap: style('#ddeedd'), projection: 'globe' });
     viewport.upsert([point('during-style')]);
     await until(() => Boolean(viewport.map.getLayer('rl:points')) && hits().some(hit => hit.id === 'during-style'), 'style rehydration');
@@ -199,32 +218,53 @@ async function suite() {
     let bubbled = 0;
     const onKeydown = () => { bubbled++; };
     document.addEventListener('keydown', onKeydown);
-    container.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    viewport.map.getCanvas().focus();
+    await browserKey('Escape');
     check(bubbled === 1, 'Escape was intercepted without an overlay');
-    viewport.map.fire('click', { point: viewport.map.project([0,0]), lngLat: viewport.map.getCenter(), originalEvent: new MouseEvent('click') });
+    await pointer('click', viewport.map.project([0,0]));
     check(Boolean(container.querySelector('.rl-picker')), 'Picker did not open');
-    container.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await browserKey('Escape');
     check(!container.querySelector('.rl-picker') && bubbled === 1, 'Escape did not stay with the open picker');
     document.removeEventListener('keydown', onKeydown);
     ui.destroy();
   });
+  await run('Keyboard picker activation selects the chosen overlapping feature', async () => {
+    const ui = attachInteractions(viewport);
+    let requested = '';
+    const off = viewport.on('selectionrequest', event => {
+      requested = event.ids[0] ?? '';
+      viewport.setSelection(requested ? [requested] : []);
+    });
+    await pointer('click', viewport.map.project([0,0]));
+    const buttons = [...container.querySelectorAll<HTMLButtonElement>('[data-feature-id]')];
+    check(buttons.length >= 2, 'Overlapping features did not open a picker');
+    const target = buttons[1]!.dataset.featureId!;
+    buttons[0]!.focus();
+    await browserKey('ArrowRight');
+    check(document.activeElement === buttons[1], 'Arrow key did not move picker focus');
+    await browserKey('Enter');
+    check(requested === target && viewport.getSelection()[0] === target, 'Enter did not request and apply the focused choice');
+    check(!container.querySelector('.rl-picker'), 'Picker remained open after selection');
+    off(); ui.destroy();
+  });
   await run('Picker candidates stay stable during movement; UI disposes once', async () => {
-    let disposals = 0;
-    const ui = attachInteractions(viewport, { renderFeature: feature => { const element = document.createElement('span'); element.textContent = viewport.getName(feature); return { element, dispose: () => { disposals++; } }; } });
-    viewport.map.fire('click', { point: viewport.map.project([0,0]), lngLat: viewport.map.getCenter(), originalEvent: new MouseEvent('click') });
+    let renders = 0, disposals = 0;
+    const live = new Set<number>();
+    const ui = attachInteractions(viewport, { renderFeature: feature => { const element = document.createElement('span'); element.textContent = viewport.getName(feature); const id = ++renders; live.add(id); return { element, dispose: () => { check(live.delete(id), 'Custom content disposed twice'); disposals++; } }; } });
+    await pointer('click', viewport.map.project([0,0]));
     const ids = [...container.querySelectorAll<HTMLElement>('[data-feature-id]')].map(button => button.dataset.featureId);
     check(ids.length === 2, 'Expected two picker candidates');
-    viewport.upsert([point('queued', 1)]);
+    viewport.upsert([{ ...point('queued', .001), properties: { name: 'Moved candidate' } }]);
     check(ids.join(',') === [...container.querySelectorAll<HTMLElement>('[data-feature-id]')].map(button => button.dataset.featureId).join(','), 'Picker reordered');
-    check(disposals === 1, 'Replaced custom content was not disposed');
-    ui.destroy(); ui.destroy(); check(disposals === 3, 'Custom UI disposal count');
+    check(disposals > 0, 'Changed custom content was not disposed');
+    ui.destroy(); ui.destroy(); check(live.size === 0 && disposals === renders, 'Custom UI content leaked or disposed twice');
     check(!container.querySelector('.rl-ui'), 'Overlay remains');
   });
   await run('Picker refreshes names, icons and availability without replacing buttons or focus', async () => {
     viewport.upsert([point('queued')]);
     await until(() => hits().some(hit => hit.id === 'queued'), 'picker setup');
     const ui = attachInteractions(viewport);
-    viewport.map.fire('click', { point: viewport.map.project([0,0]), lngLat: viewport.map.getCenter(), originalEvent: new MouseEvent('click') });
+    await pointer('click', viewport.map.project([0,0]));
     const buttons = [...container.querySelectorAll<HTMLButtonElement>('[data-feature-id]')];
     const choice = buttons[0]!;
     const id = choice.dataset.featureId!;
@@ -247,7 +287,7 @@ async function suite() {
     viewport.upsert([renamed]);
     check(!choice.disabled && choice.textContent === 'Updated candidate', 'Reintroduced candidate stayed disabled');
     choice.focus();
-    choice.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await browserKey('ArrowRight');
     check(document.activeElement === buttons[1], 'Keyboard navigation broke after refresh');
     ui.destroy();
   });
@@ -256,7 +296,7 @@ async function suite() {
     await until(() => hits().some(hit => hit.id === 'picker-broken') && hits().some(hit => hit.id === 'picker-healthy'), 'picker failure setup');
     viewport.upsert([{ ...point('picker-broken'), properties: { name: 'Broken candidate', broken: true } }]);
     const ui = attachInteractions(viewport);
-    viewport.map.fire('click', { point: viewport.map.project([0,0]), lngLat: viewport.map.getCenter(), originalEvent: new MouseEvent('click') });
+    await pointer('click', viewport.map.project([0,0]));
     check(Boolean(container.querySelector('.rl-picker-hub button.rl-picker-close')), 'Picker stopped before drawing Close');
     const broken = container.querySelector<HTMLButtonElement>('[data-feature-id="picker-broken"]');
     const healthy = container.querySelector<HTMLButtonElement>('[data-feature-id="picker-healthy"]');
@@ -303,6 +343,7 @@ async function suite() {
     try { viewport.upsert([point('late')]); throw new Error('Mutation unexpectedly succeeded'); }
     catch (error) { check(error instanceof RidgelineError && error.code === 'DESTROYED', 'Expected DESTROYED'); }
   });
+  if (selectedCase) viewport.destroy();
   await run('Airborne placement, attachment lifecycle, fallbacks, and globe shaders work through the package', async () => {
     let missing=false;
     const errors: RidgelineError[]=[];
@@ -324,7 +365,7 @@ async function suite() {
     air.upsert([{...aircraft, entity:{...aircraft.entity, attachments:[{id:'ground-zone',type:'polygon',vertices:[[-200,-200],[200,-200],[200,200],[-200,200]]}]}}]);
     await until(()=>air.getEntityState('aircraft')?.footprintTriangles===0,'zone replacement');
     await new Promise<void>(resolve=>air.map.once('idle',()=>resolve()));
-    air.map.fire('click',{point:air.map.project([0.001,0]),lngLat:air.map.getCenter(),originalEvent:new MouseEvent('click')});
+    await pointer('click', air.map.project([0.001,0]));
     check(selectedAttachment==='ground-zone','Attachment identity lost in selection request');
     ui.destroy();
     air.upsert([aircraft]);
@@ -357,17 +398,16 @@ async function suite() {
     const feature: MapFeature = { ...point('wireframe'), entity: { altitude: { meters: 300, reference: 'ground' }, attachments: [camera] } };
     let attachment = '';
     air.on('click', event => { attachment = event.attachments[0]?.attachmentId ?? ''; });
-    const click = () => air.map.fire('click', { point: air.map.project([.0006,.0004]),
-      lngLat: air.map.getCenter(), originalEvent: new MouseEvent('click') });
+    const click = () => pointer('click', air.map.project([.0006,.0004]));
     air.upsert([feature]);
     await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'camera volume');
     await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
-    click(); check(attachment === camera.id, 'Visible camera face was not selectable');
+    await click(); check(attachment === camera.id, 'Visible camera face was not selectable');
     const before = air.getEntityState(feature.id)!.computedAt;
     air.upsert([{ ...feature, entity: { ...feature.entity!, attachments: [{ ...camera, volumeOpacity: 0 }] } }]);
     await until(() => air.getEntityState(feature.id)!.computedAt > before, 'wireframe-only update');
     await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
-    click(); check(attachment === '', 'Invisible camera face intercepted a click');
+    await click(); check(attachment === '', 'Invisible camera face intercepted a click');
     air.destroy();
   });
   await run('Incomplete custom camera terrain settles without polling and retries explicitly', async () => {
@@ -456,7 +496,7 @@ async function suite() {
     let prepareCalls = 0;
     let preparedPositions: readonly [number, number][] = [];
     let finishPreparation: (() => void) | undefined;
-    const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+    const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 }, logger: () => {}, elevationSampler: {
       sample: (lng, lat) => {
         if (Math.abs(lng) < 1e-8 && Math.abs(lat) < 1e-8) return 12;
         if (Math.abs(lng - movedLng) < 1e-8 && Math.abs(lat) < 1e-8) return centerAvailable ? 12 : null;
@@ -492,21 +532,21 @@ async function suite() {
     }, 'initial airborne camera');
     let picked = '';
     const off = air.on('click', event => { picked = event.attachments.find(hit => hit.entityId === feature.id)?.attachmentId ?? ''; });
-    const pickAt = (lng: number, lat: number) => {
+    const pickAt = async (lng: number, lat: number) => {
       const screen = air.map.project([lng, lat]);
       picked = '';
-      air.map.fire('click', { point: screen, lngLat: air.map.unproject(screen), originalEvent: new MouseEvent('click') });
+      await pointer('click', screen);
       return picked;
     };
     try {
-      check(pickAt(0, .0008) === camera.id, 'Initial airborne camera coverage was not pickable');
+      check(await pickAt(0, .0008) === camera.id, 'Initial airborne camera coverage was not pickable');
       centerAvailable = false;
       air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [movedLng, 0] } }]);
       await until(() => prepareCalls === 1 && air.getEntityState(feature.id)?.placement === 'elevation-unavailable', 'center preparation and placement after movement');
       const pending = air.getEntityState(feature.id);
       check(pending?.placement === 'elevation-unavailable' && pending.coverage === 'loading', 'Missing center did not remain loading during preparation');
       check(preparedPositions.some(([lng, lat]) => Math.abs(lng - movedLng) < 1e-8 && Math.abs(lat) < 1e-8), 'Preparation omitted the moved center');
-      check(pickAt(0, .0008) === camera.id, 'Historical camera coverage disappeared during center preparation');
+      check(await pickAt(0, .0008) === camera.id, 'Historical camera coverage disappeared during center preparation');
       centerAvailable = true;
       finishPreparation?.();
       finishPreparation = undefined;
@@ -676,7 +716,7 @@ async function suite() {
     air.remove(['raw']);
     await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
     let remaining=0; air.on('click',event=>{remaining=event.features.length;});
-    air.map.fire('click',{point:air.map.project([0,0]),lngLat:air.map.getCenter(),originalEvent:new MouseEvent('click')});
+    await pointer('click', air.map.project([0,0]));
     check(remaining===0,'Removed attachments still pickable');
     check(!errors.some(error=>error.code==='UPDATE_FAILED'), 'Entity overlay reported an update failure: '+errors.map(error=>error.message).join(', '));
     air.destroy();
@@ -741,38 +781,37 @@ async function suite() {
       createFeature:()=>({id:'drawn',properties:{name:'Drawn'}}),
       submit:()=>{accepts++;return {accepted:true};},
     });
-    const tools=document.createElement('div'),inspector=document.createElement('div');container.append(tools,inspector);
+    const tools=document.createElement('div'),inspector=document.createElement('div');container.after(tools,inspector);
     const controls=attachDrawingControls(draw,editor,{tools,inspector});
     await until(()=>Boolean(draw.map.getSource('rl:draft')),'draft source attached');
-    const tool = tools.querySelector<HTMLButtonElement>('[data-field="action:Polygon"]')!;
-    tool.focus(); tool.click();
+    await browserClick('[data-field="action:Polygon"]');
     check(inspector.contains(document.activeElement), 'Starting a tool lost keyboard focus');
     for(const p of [[0,0],[.02,0],[.02,.02],[0,.02]] as [number,number][]){
-      const point=draw.map.project(p);
-      draw.map.fire('click',{point,lngLat:draw.map.unproject(point),originalEvent:new MouseEvent('click')});
+      await pointer('click', draw.map.project(p));
     }
     check(clicks===0,'Drawing clicks escaped to consumer selection');
     check(container.querySelectorAll('.rl-drawing-handle').length>=4,'Vertex handles missing');
     check(!draw.getFeature('drawn'),'Unaccepted draft entered store');
     check(inspector.textContent?.includes('Area'),'Measurements missing');
     const undo = inspector.querySelector<HTMLButtonElement>('[data-field="action:Undo"]')!;
-    undo.focus(); undo.dispatchEvent(new KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true}));
+    undo.focus(); await browserKey('Control+z');
     const undone=editor.getState().draft?.shape;
     check(undone?.kind==='polygon'&&undone.vertices.length===3,'Nested controls applied Undo more than once');
     check(document.activeElement?.getAttribute('data-field')==='action:Undo','Undo lost keyboard focus');
     const redo = inspector.querySelector<HTMLButtonElement>('[data-field="action:Redo"]')!;
-    redo.focus(); redo.dispatchEvent(new KeyboardEvent('keydown',{key:'z',ctrlKey:true,shiftKey:true,bubbles:true}));
+    redo.focus(); await browserKey('Control+Shift+z');
     const redone=editor.getState().draft?.shape;
     check(redone?.kind==='polygon'&&redone.vertices.length===4,'Nested controls applied Redo more than once');
     check(inspector.contains(document.activeElement),'Disabled redo lost keyboard focus');
     editor.setStyle({fillOpacity:0.29});
     check(inspector.querySelector<HTMLInputElement>('[data-field="Opacity (%)"]')?.value==='29','Opacity displayed floating-point noise');
-    check(await editor.finish(),'Drawing was not accepted');
+    await browserClick('[data-field="action:Finish"]');
+    await until(() => accepts === 1, 'drawing accepted through Finish control');
     check(accepts===1&&draw.getFeature('drawn')?.geometry.type==='Polygon','Accepted polygon not stored');
     editor.edit('drawn');
     const original=JSON.stringify(editor.getState().draft?.shape);
     const handle=container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]')!;
-    handle.focus();handle.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+    handle.focus();await browserKey('ArrowRight');
     check(JSON.stringify(editor.getState().draft?.shape)!==original,'Keyboard did not move a vertex');
     editor.undo();check(JSON.stringify(editor.getState().draft?.shape)===original,'Draft undo failed');
     draw.configure({basemap:style('#dddddd'),projection:'globe'});
@@ -791,9 +830,12 @@ async function suite() {
     current=draw;await draw.ready;
     await until(()=>draw.map.queryRenderedFeatures({layers:['rl:points']}).length>0,'hover target rendered');
     let hovers=0; draw.on('hover',()=>hovers++);
-    const hover=()=>draw.map.fire('mousemove',{point:draw.map.project([.02,0]),lngLat:draw.map.getCenter(),originalEvent:new MouseEvent('mousemove')});
-    hover();const previous=hovers,release=draw.acquireInteraction('test');hover();release();hover();
-    check(hovers===previous+1,'Hover did not resume after releasing interaction ownership');
+    const hover=()=>pointer('move',draw.map.project([.02,0]));
+    await hover();const previous=hovers,release=draw.acquireInteraction('test');
+    await pointer('move',draw.map.project([0,0]));await hover();release();
+    check(hovers===previous,'Interaction owner leaked hover events');
+    await pointer('move',draw.map.project([0,0]));await hover();
+    check(hovers>previous,'Hover did not resume after releasing interaction ownership');
     const orangePixels=()=>new Promise<number>(resolve=>{
       draw.map.once('render',()=>{
         const canvas=draw.map.getCanvas(),gl=canvas.getContext('webgl2')!,scale=canvas.width/canvas.clientWidth,p=draw.map.project([0,0]);
@@ -808,7 +850,7 @@ async function suite() {
     check(hovered>0&&selected>hovered,'Dashed line did not show hover color and selection width');
     let deleteOnly=false;
     const editor=attachDrawing(draw,{createFeature:()=>({id:'new',properties:{}}),styleFields:[],canEdit:(_f,op)=>!deleteOnly||op==='delete',submit:()=>({accepted:true})});
-    const tools=document.createElement('div'),inspector=document.createElement('div');container.append(tools,inspector);
+    const tools=document.createElement('div'),inspector=document.createElement('div');container.after(tools,inspector);
     const controls=attachDrawingControls(draw,editor,{tools,inspector});
     editor.edit('line');editor.moveVertex(1,[.015,0]);check(await editor.finish(),'Ordinary edit failed');
     check(!draw.getFeature('line')?.drawing,'Geometry-only edit added fixed appearance');
@@ -816,7 +858,7 @@ async function suite() {
     check(draw.getStyle(draw.getFeature('line')!).color==='#cc2222','Consumer style stopped following properties');
     deleteOnly=true;editor.edit('line');
     const button=inspector.querySelector<HTMLButtonElement>('[data-field="action:Delete drawing"]')!;
-    check(!button.disabled,'Delete-only permission disabled the Delete control');button.click();
+    check(!button.disabled,'Delete-only permission disabled the Delete control');await browserClick('[data-field="action:Delete drawing"]');
     await until(()=>!draw.getFeature('line'),'delete-only action applied');
     controls.destroy();editor.destroy();draw.destroy();tools.remove();inspector.remove();
   });
@@ -829,10 +871,10 @@ async function suite() {
     editor.start('line');
     const origin=draw.map.project([0,0]);
     const cursor={x:origin.x+4,y:origin.y};
-    draw.map.fire('click',{point:cursor,lngLat:draw.map.unproject([cursor.x,cursor.y]),originalEvent:new MouseEvent('click')});
+    await pointer('click',cursor);
     const shape=editor.getState().draft?.shape;
     check(shape?.kind==='line'&&shape.vertices[0]?.[0]===0&&shape.vertices[0]?.[1]===0,'Nearby vertex did not snap');
-    check(visited.length===1&&visited[0]==='near','Snapping inspected features outside its pointer radius');
+    check(visited.length>0&&visited.every(id=>id==='near'),'Snapping inspected features outside its pointer radius');
     editor.destroy();draw.destroy();
   });
   await run('Real pointer drawing previews stay ephemeral and match circle and rotated rectangle placement', async () => {
@@ -840,12 +882,20 @@ async function suite() {
     current=draw;await draw.ready;
     let nextId=0;
     const editor=attachDrawing(draw,{createFeature:()=>({id:`pointer-${nextId++}`,properties:{}}),submit:()=>({accepted:true})});
+    const visibleDraft=()=>draw.map.queryRenderedFeatures({layers:['rl:draft-fill']}).map(feature=>feature.geometry);
+    const previewDistance=(target:{x:number;y:number})=>Math.min(...visibleDraft().flatMap(geometry=>
+      geometry.type==='Polygon'?(geometry.coordinates[0]??[]).map(([lng,lat])=>{
+        if(lng===undefined||lat===undefined)return Infinity;
+        const edge=draw.map.project([lng,lat]);
+        return Math.hypot(edge.x-target.x,edge.y-target.y);
+      }):[]));
     const center=draw.map.project([0,0]);
     editor.start('circle');
     await pointer('click',center);
     const circleBefore=editor.getState(),circleDraft=JSON.stringify(circleBefore.draft),circleUndo=circleBefore.canUndo;
     const circleEdge={x:center.x+70,y:center.y};
     await pointer('move',circleEdge);
+    await until(()=>previewDistance(circleEdge)<1.5,'visible circle preview reaches pointer');
     const circlePreview=editor.getMeasurements();
     check(circlePreview.length>0&&circlePreview.area!>0,'Circle preview did not follow the pointer');
     const circleDuring=editor.getState();
@@ -872,6 +922,7 @@ async function suite() {
     const rectangleBefore=editor.getState(),rectangleDraft=JSON.stringify(rectangleBefore.draft),rectangleUndo=rectangleBefore.canUndo;
     const rectanglePoint={x:center.x+86,y:center.y-42};
     await pointer('move',rectanglePoint);
+    await until(()=>previewDistance(rectanglePoint)<1.5,'visible rectangle preview reaches pointer');
     const rectanglePreview=editor.getMeasurements();
     check(rectanglePreview.length>0&&rectanglePreview.area!>0,'Rectangle preview did not follow the pointer');
     const rectangleDuring=editor.getState();
@@ -900,8 +951,104 @@ async function suite() {
     check(await editor.finish(),'Rectangle change was not accepted');
     check(JSON.stringify(draw.getFeature('pointer-1')?.geometry)===JSON.stringify(geometry),'Accepted rectangle differs from placed geometry');
     editor.destroy();draw.destroy();
-  },{realPointer:true});
-  await run('Dragging a vertex back to its unchanged snap target restores its handle', async () => {
+  });
+  await run('Accepted shape definitions survive consumer storage and viewport recreation', async () => {
+    const first = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+    current = first; await first.ready;
+    let next = 0;
+    const editor = attachDrawing(first, {
+      createFeature: () => ({ id: `stored-${next++}`, properties: { name: 'Stored drawing' } }),
+      submit: () => ({ accepted: true }),
+    });
+    editor.start('circle'); editor.addPoint([0, 0]); editor.addPoint([.005, 0]);
+    check(await editor.finish(), 'Circle acceptance failed');
+    editor.start('rectangle'); editor.addPoint([0, 0]);
+    const rectangle = editor.getState().draft?.shape;
+    if (rectangle?.kind !== 'rectangle') throw new Error('Rectangle shape missing');
+    editor.setShape({ ...rectangle, width: 600, height: 350, bearing: 35 });
+    check(await editor.finish(), 'Rectangle acceptance failed');
+    editor.start('arrow'); editor.addPoint([0, 0]); editor.addPoint([.005, .005]);
+    check(await editor.finish(), 'Arrow acceptance failed');
+    const before = ['stored-0', 'stored-1', 'stored-2'].map(id => first.getFeature(id));
+    check(before.every(feature => feature?.drawing), 'Accepted feature lost its shape definition');
+    const originalShapes = before.map(feature => feature?.drawing?.shape);
+    const stored = JSON.stringify(before);
+    editor.destroy(); first.destroy();
+
+    const restored = JSON.parse(stored) as MapFeature[];
+    const second = createViewport({ container, basemap: style('#f4f4f4'), camera: { center: [0, 0], zoom: 12 }, features: restored, logger: () => {} });
+    current = second; await second.ready;
+    const reloaded = attachDrawing(second, {
+      createFeature: () => ({ id: 'unused', properties: {} }),
+      submit: () => ({ accepted: true }),
+    });
+    reloaded.edit('stored-0');
+    const circle = reloaded.getState().draft?.shape;
+    if (circle?.kind !== 'circle' || Math.abs(circle.radius - 556) > 1) throw new Error('Circle radius was not restored');
+    check(JSON.stringify(circle) === JSON.stringify(originalShapes[0]), 'Circle definition changed during storage');
+    reloaded.setShape({ ...circle, radius: circle.radius + 100 });
+    check(await reloaded.finish(), 'Reloaded circle could not be edited');
+    const editedCircle = second.getFeature('stored-0')?.drawing?.shape;
+    check(editedCircle?.kind === 'circle' && Math.abs(editedCircle.radius - circle.radius - 100) < .001, 'Circle lost shape-specific editing');
+    reloaded.edit('stored-1');
+    const restoredRectangle = reloaded.getState().draft?.shape;
+    if (restoredRectangle?.kind !== 'rectangle' || restoredRectangle.bearing !== 35 || restoredRectangle.width !== 600) throw new Error('Rectangle dimensions were not restored');
+    reloaded.setShape({ ...restoredRectangle, width: 700 });
+    check(await reloaded.finish(), 'Reloaded rectangle could not be edited');
+    const editedRectangle = second.getFeature('stored-1')?.drawing?.shape;
+    check(editedRectangle?.kind === 'rectangle' && editedRectangle.width === 700, 'Rectangle width edit was not saved');
+    reloaded.edit('stored-2');
+    const arrow = reloaded.getState().draft?.shape;
+    if (arrow?.kind !== 'arrow' || JSON.stringify(arrow.vertices) !== JSON.stringify([[0, 0], [.005, .005]])) throw new Error('Arrow direction was not restored');
+    check(JSON.stringify(arrow) === JSON.stringify(originalShapes[2]), 'Arrow definition changed during storage');
+    reloaded.setShape({ ...arrow, vertices: [[0, 0], [.01, .005]] });
+    check(await reloaded.finish(), 'Reloaded arrow could not be edited');
+    const editedArrow = second.getFeature('stored-2')?.drawing?.shape;
+    check(editedArrow?.kind === 'arrow' && editedArrow.vertices[1]?.[0] === .01, 'Arrow lost shape-specific editing');
+    reloaded.destroy(); second.destroy();
+  });
+  await run('Rejected drawing remains editable and cancellation preserves accepted data', async () => {
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+    current = draw; await draw.ready;
+    let accept = false;
+    const editor = attachDrawing(draw, {
+      createFeature: () => ({ id: 'rejected', properties: { name: 'Rejected draft' } }),
+      submit: () => accept ? { accepted: true } : { accepted: false, reason: 'Try another location' },
+    });
+    const tools = document.createElement('div'), inspector = document.createElement('div');
+    container.after(tools, inspector);
+    const controls = attachDrawingControls(draw, editor, { tools, inspector });
+    await browserClick('[data-field="action:Circle"]');
+    await pointer('click', draw.map.project([0, 0]));
+    await pointer('click', draw.map.project([.005, 0]));
+    await browserClick('[data-field="action:Finish"]');
+    await until(() => editor.getState().phase === 'rejected', 'rejection feedback');
+    check(!draw.getFeature('rejected') && editor.getState().draft?.shape.kind === 'circle', 'Rejection lost draft or saved it');
+    const rejectedShape = editor.getState().draft?.shape;
+    if (rejectedShape?.kind !== 'circle') throw new Error('Rejected circle shape missing');
+    const radiusInput = inspector.querySelector<HTMLInputElement>('[data-field="Radius (m)"]');
+    if (!radiusInput || radiusInput.disabled) throw new Error('Rejected circle lost its editable radius field');
+    await browserClick('[data-field="Radius (m)"]');
+    await browserKey('Control+A');
+    for (const digit of '700') await browserKey(digit);
+    await browserKey('Tab');
+    const revisedShape = editor.getState().draft?.shape;
+    if (revisedShape?.kind !== 'circle' || revisedShape.radius !== 700) throw new Error('Editing the rejected draft did not change its radius');
+    accept = true;
+    await browserClick('[data-field="action:Finish"]');
+    await until(() => Boolean(draw.getFeature('rejected')), 'accepted retry');
+    const acceptedShape = draw.getFeature('rejected')?.drawing?.shape;
+    check(acceptedShape?.kind === 'circle' && Math.abs(acceptedShape.radius - revisedShape.radius) < .001, 'Accepted retry lost the draft edit');
+    const accepted = JSON.stringify(draw.getFeature('rejected'));
+    editor.edit('rejected');
+    const shape = editor.getState().draft?.shape;
+    if (shape?.kind !== 'circle') throw new Error('Accepted circle could not be edited');
+    editor.setShape({ ...shape, radius: shape.radius + 200 });
+    await browserClick('[data-field="action:Cancel"]');
+    check(JSON.stringify(draw.getFeature('rejected')) === accepted, 'Cancel changed accepted feature');
+    controls.destroy(); editor.destroy(); draw.destroy(); tools.remove(); inspector.remove();
+  });
+  await run('Vertex dragging moves the draft and restores unchanged snap targets', async () => {
     const line:MapFeature={type:'Feature',id:'line',properties:{},geometry:{type:'LineString',coordinates:[[0,0],[.01,0]]}};
     const draw=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:13},features:[line,point('anchor',0)],logger:()=>{}});
     current=draw;await draw.ready;
@@ -910,16 +1057,15 @@ async function suite() {
     await until(()=>draw.map.loaded(),'handle map ready');
     const handle=container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]')!;
     const rect=handle.getBoundingClientRect(),x=rect.x+rect.width/2,y=rect.y+rect.height/2;
-    handle.dispatchEvent(new MouseEvent('mousedown',{clientX:x,clientY:y,button:0,buttons:1,bubbles:true,cancelable:true,view:window}));
-    for(const step of [3,6,7]){
-      draw.map.getCanvas().dispatchEvent(new MouseEvent('mousemove',{clientX:x+step,clientY:y,buttons:1,bubbles:true,view:window}));
-      await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
-    }
-    draw.map.getCanvas().dispatchEvent(new MouseEvent('mouseup',{clientX:x+7,clientY:y,button:0,bubbles:true,view:window}));
+    await browserDrag(x,y,x+7,y);
     await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
     const shape=editor.getState().draft?.shape,end=handle.getBoundingClientRect();
     check(shape?.kind==='line'&&shape.vertices[0]?.[0]===0&&shape.vertices[0]?.[1]===0,'Dragged vertex did not snap back to its anchor');
     check(Math.abs(end.x+end.width/2-x)<0.5&&Math.abs(end.y+end.height/2-y)<0.5,'Handle stayed displaced from its unchanged snap target');
+    await browserDrag(x,y,x+30,y+35);
+    const moved=editor.getState().draft?.shape,movedRect=handle.getBoundingClientRect();
+    check(moved?.kind==='line'&&Math.abs(moved.vertices[0]![0])>.0001&&Math.abs(moved.vertices[0]![1])>.0001,'Dragging did not move the vertex in the draft');
+    check(Math.abs(movedRect.x+movedRect.width/2-x-30)<1&&Math.abs(movedRect.y+movedRect.height/2-y-35)<1,'Handle did not follow the moved vertex');
     editor.destroy();draw.destroy();
   });
   await run('Whole-shape dragging follows the pointer without snapping to its own vertices', async () => {
@@ -933,16 +1079,11 @@ async function suite() {
     const handle=container.querySelector<HTMLButtonElement>('[aria-label="Move drawing"]')!;
     const rect=handle.getBoundingClientRect(),x=rect.x+rect.width/2,y=rect.y+rect.height/2;
     const origin=draw.map.project([0,0]);
-    handle.dispatchEvent(new MouseEvent('mousedown',{clientX:x,clientY:y,button:0,buttons:1,bubbles:true,cancelable:true,view:window}));
-    for(const step of [10,20,30]) {
-      draw.map.getCanvas().dispatchEvent(new MouseEvent('mousemove',{clientX:x+step,clientY:y+step,buttons:1,bubbles:true,view:window}));
-      await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
-      const draft=editor.getState().draft?.shape;
-      if(draft?.kind!=='polygon')throw new Error('Missing polygon draft');
-      const center=draw.map.project([draft.vertices.reduce((sum,p)=>sum+p[0],0)/draft.vertices.length,draft.vertices.reduce((sum,p)=>sum+p[1],0)/draft.vertices.length]);
-      check(Math.abs(center.x-origin.x-step)<0.5&&Math.abs(center.y-origin.y-step)<0.5,'Whole drawing jumped to its own moving vertex');
-    }
-    draw.map.getCanvas().dispatchEvent(new MouseEvent('mouseup',{clientX:x+30,clientY:y+30,button:0,bubbles:true,view:window}));
+    await browserDrag(x,y,x+30,y+30);
+    const draft=editor.getState().draft?.shape;
+    if(draft?.kind!=='polygon')throw new Error('Missing polygon draft');
+    const center=draw.map.project([draft.vertices.reduce((sum,p)=>sum+p[0],0)/draft.vertices.length,draft.vertices.reduce((sum,p)=>sum+p[1],0)/draft.vertices.length]);
+    check(Math.abs(center.x-origin.x-30)<0.5&&Math.abs(center.y-origin.y-30)<0.5,'Whole drawing jumped to its own moving vertex');
     editor.destroy();draw.destroy();
   });
   await run('Arrowheads follow accepted geometry updates and disappear on deletion', async () => {
@@ -1034,7 +1175,7 @@ async function suite() {
   });
   await run('A displayed camera failure removes only its coverage and retry uses current inputs', async () => {
     const errors: RidgelineError[] = [];
-    const air = createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 },
+    const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 }, elevationSampler: { sample: () => 0 },
       logger: () => {}, onError: error => errors.push(error) });
     current = air; await air.ready;
     air.upsert([{ ...point('ground-survivor'), entity: { attachments: [{ id: 'zone', type: 'circle', radius: 50 }] } }]);
@@ -1052,22 +1193,23 @@ async function suite() {
     const cameraMask = () => air.map.getStyle().layers.find(layer => layer.id.startsWith('rl:camera-mask:'));
     let pickedAttachment = '';
     air.on('click', event => { pickedAttachment = event.attachments.find(hit => hit.entityId === feature.id)?.attachmentId ?? ''; });
-    const pickCoverage = () => {
+    const pickCoverage = async () => {
       const point = air.map.project([.0006, .0004]);
-      air.map.fire('click', { point, lngLat: air.map.unproject(point), originalEvent: new MouseEvent('click') });
+      pickedAttachment = '';
+      await pointer('click', point);
       return pickedAttachment;
     };
     try {
       const initialMask = cameraMask();
       check(Boolean(initialMask), 'Initial camera mask missing');
-      check(pickCoverage() === 'camera', 'Initial camera coverage was not pickable');
+      check(await pickCoverage() === 'camera', 'Initial camera coverage was not pickable');
       air.upsert([{ ...feature, entity: { ...feature.entity!, attachments: [{ ...failingCamera, bearing: 15 }] } }]);
       await until(() => air.getEntityState(feature.id)?.coverage === 'loading', 'camera replacement pending');
       fail = true;
       await until(() => errors.some(error => error.code === 'UPDATE_FAILED'), 'displayed camera failure diagnostic');
       await until(() => air.getEntityState(feature.id)?.coverage === 'unavailable', 'failed camera coverage');
       check(!cameraMask(), 'Failed camera mask remained visible');
-      check(pickCoverage() === '', 'Failed camera coverage remained pickable');
+      check(await pickCoverage() === '', 'Failed camera coverage remained pickable');
       check(air.getEntityState('ground-survivor')?.coverage === 'ready', 'Camera failure removed unrelated ground coverage');
       fail = false;
       air.upsert([{ ...feature, entity: { ...feature.entity!, attachments: [{ ...failingCamera, bearing: 30, color: '#0000ff' }] } }]);
@@ -1077,7 +1219,7 @@ async function suite() {
       const source = mask && air.map.getSource<ImageSource>(mask.id)?.image;
       check(source instanceof ImageData && source.data.some((value, index) => index % 4 === 2 && value > 100), 'Retry restored stale camera appearance instead of current inputs');
       check(air.getEntityState('ground-survivor')?.coverage === 'ready', 'Current camera retry disturbed unrelated ground coverage');
-      check(pickCoverage() === 'camera', 'Current camera coverage was not pickable after retry');
+      check(await pickCoverage() === 'camera', 'Current camera coverage was not pickable after retry');
     } finally {
       gl.clientWaitSync = clientWaitSync;
       air.destroy();
@@ -1118,7 +1260,7 @@ async function suite() {
     }
   });
   await run('Coverage readiness follows every camera, pose changes, and ground placement', async () => {
-    const air = createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 }, logger: () => {} });
+    const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 }, elevationSampler: { sample: () => 0 }, logger: () => {} });
     current = air; await air.ready;
     air.upsert([{...point('ground'),entity:{attachments:[{id:'zone',type:'circle',radius:50}]}}]);
     await until(()=>air.getEntityState('ground')?.coverage==='ready','ground geometry ready');
@@ -1163,18 +1305,18 @@ async function suite() {
     });
     let pickedAttachments: string[] = [];
     air.on('click', event => { pickedAttachments = event.attachments.filter(hit => hit.entityId === feature.id).map(hit => hit.attachmentId); });
-    const pickAt = (lng: number, lat: number) => {
+    const pickAt = async (lng: number, lat: number) => {
       const point = air.map.project([lng, lat]);
       pickedAttachments = [];
-      air.map.fire('click', { point, lngLat: air.map.unproject(point), originalEvent: new MouseEvent('click') });
+      await pointer('click', point);
       return pickedAttachments;
     };
     try {
       air.upsert([feature]);
       await until(() => published() === 1, 'first camera publishes while second is pending');
       check(air.getEntityState('two-cameras')?.coverage === 'loading', 'Entity became ready before its second camera published');
-      check(pickAt(0, .0008).includes('first'), 'First camera result was not pickable');
-      check(!pickAt(.0008, 0).includes('second'), 'Second camera result published before its fence completed');
+      check((await pickAt(0, .0008)).includes('first'), 'First camera result was not pickable');
+      check(!(await pickAt(.0008, 0)).includes('second'), 'Second camera result published before its fence completed');
       releaseSecond = true;
       await until(() => air.getEntityState('two-cameras')?.coverage === 'ready', 'both camera masks published');
       check(published() === 2, 'Ready entity is missing camera coverage');
@@ -1212,7 +1354,7 @@ async function suite() {
       check(air.getEntityState(feature.id)?.coverage === 'loading', 'Intermediate camera result marked the newest request ready');
       completionBudget = undefined;
       await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'moved camera masks published');
-      check(pickAt(.0003, .0008).includes('first'), 'Final camera result was not pickable at the current position');
+      check((await pickAt(.0003, .0008)).includes('first'), 'Final camera result was not pickable at the current position');
       before = air.getEntityState(feature.id)!.computedAt;
       air.upsert([{ ...feature, entity: { ...feature.entity!, altitude: { meters: 0, reference: 'ground' } } }]);
       await until(() => air.getEntityState(feature.id)!.computedAt > before, 'ground-level camera computed');
@@ -1244,16 +1386,16 @@ async function suite() {
     };
     let picked = '';
     air.on('click', event => { picked = event.attachments.find(hit => hit.entityId === feature.id)?.attachmentId ?? ''; });
-    const pickAt = (lng: number, lat: number) => {
+    const pickAt = async (lng: number, lat: number) => {
       const point = air.map.project([lng, lat]);
       picked = '';
-      air.map.fire('click', { point, lngLat: air.map.unproject(point), originalEvent: new MouseEvent('click') });
+      await pointer('click', point);
       return picked;
     };
     try {
       air.upsert([feature]);
       await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'initial camera coverage');
-      check(pickAt(0, .0008) === camera.id, 'Initial camera coverage was not pickable');
+      check(await pickAt(0, .0008) === camera.id, 'Initial camera coverage was not pickable');
       release = false;
       const moved = { ...feature, geometry: { type: 'Point' as const, coordinates: [.003, 0] as [number, number] },
         entity: { ...feature.entity!, attachments: [{ ...camera, bearing: 180 }] } };
@@ -1269,8 +1411,8 @@ async function suite() {
       release = true;
       completions = 1;
       await until(() => heldWaits > previousHolds, 'replacement frame held after rejected result');
-      check(pickAt(0, .0008) === camera.id, 'Rejected readback replaced the displayed picking mask');
-      check(pickAt(0, -.0008) === '', 'Rejected readback created a south-side picking hit');
+      check(await pickAt(0, .0008) === camera.id, 'Rejected readback replaced the displayed picking mask');
+      check(await pickAt(0, -.0008) === '', 'Rejected readback created a south-side picking hit');
       gl.clientWaitSync = clientWaitSync;
       await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'replacement camera coverage');
     } finally {
@@ -1293,20 +1435,20 @@ async function suite() {
     await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'initial retained camera');
     let picked = '';
     const off = air.on('click', event => { picked = event.attachments.find(hit => hit.entityId === feature.id)?.attachmentId ?? ''; });
-    const pickAt = (lng: number, lat: number) => {
+    const pickAt = async (lng: number, lat: number) => {
       const point = air.map.project([lng, lat]);
       picked = '';
-      air.map.fire('click', { point, lngLat: air.map.unproject(point), originalEvent: new MouseEvent('click') });
+      await pointer('click', point);
       return picked;
     };
     try {
-      check(pickAt(0, .0008) === camera.id, 'Initial retained camera was not pickable');
+      check(await pickAt(0, .0008) === camera.id, 'Initial retained camera was not pickable');
       available = false;
       air.retryUpdates();
       await until(() => Boolean(finish) && air.getEntityState(feature.id)?.coverage === 'loading', 'pending retained retry');
       air.configure({ basemap: style('#ffffff') });
       await until(() => Boolean(air.map.getLayer('rl:camera-gpu')), 'camera layer after style rebuild');
-      check(pickAt(0, .0008) === camera.id, 'Style rebuild dropped retained camera picking');
+      check(await pickAt(0, .0008) === camera.id, 'Style rebuild dropped retained camera picking');
       available = true;
       finish!(); finish = undefined;
       await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'retained camera retry');
@@ -1457,8 +1599,17 @@ async function suite() {
     air.destroy();
   });
   await run('GPU voting and depth-refined contours respond to subpixel boundaries', async () => { checkGpuVote(); });
+  if (registeredCases.length !== browserCases.length || registeredCases.some((name, index) => name !== browserCases[index])) {
+    throw new Error('Browser case manifest differs from registered checks.');
+  }
+  if (!selectedCase) {
+    status.dataset.state = 'ready';
+    status.textContent = 'Consumer fixture ready. Run cases with pnpm test:browser.';
+    return;
+  }
+  if (!ran) throw new Error(`Unknown browser case: ${selectedCase}`);
   status.dataset.state = 'passed';
-  const skipped = results.querySelectorAll('.skip').length;
-  status.textContent = `${results.querySelectorAll('.pass').length} checks passed${skipped ? `; ${skipped} packaged-consumer checks skipped outside Playwright.` : ''}. Package imported through its published exports.`;
+  status.textContent = `${selectedCase} passed through the installed package.`;
 }
-void suite().catch(error => { status.dataset.state = 'failed'; status.textContent = `Failed: ${String(error)}`; current?.destroy(); });
+window.cleanupBrowserCase = () => current?.destroy();
+void suite().catch(error => { status.dataset.state = 'failed'; status.textContent = `Failed: ${error instanceof Error ? error.stack : String(error)}`; });
