@@ -98,7 +98,6 @@ export class RasterElevationSampler {
         tile.values[i + 1]! * fx * (1 - fy) +
         tile.values[i + tile.size]! * (1 - fx) * fy +
         tile.values[i + tile.size + 1]! * fx * fy;
-      if (!Number.isFinite(result)) this.failed.add(`${zoom}/${x}/${y}`);
       return Number.isFinite(result) ? result : null;
     }
     const value = (xx: number, yy: number) => {
@@ -108,7 +107,6 @@ export class RasterElevationSampler {
       if (!neighbour || neighbour.size !== tile.size) return NaN;
       const result =
         neighbour.values[((yy + tile.size) % tile.size) * tile.size + ((xx + tile.size) % tile.size)]!;
-      if (!Number.isFinite(result)) this.failed.add(`${zoom}/${((x + dx) % 2 ** zoom + 2 ** zoom) % 2 ** zoom}/${y + dy}`);
       return result;
     };
     const result =
@@ -169,6 +167,8 @@ export class RasterElevationSampler {
       const x = ((Math.floor(px / size) % n) + n) % n;
       const y = Math.floor(py / size);
       if (this.failed.has(`${zoom}/${x}/${y}`)) return true;
+      const tile = this.tiles.get(`${zoom}/${x}/${y}`);
+      if (tile && !Number.isFinite(tile.values[((py % size + size) % size) * size + ((px % size + size) % size)])) return true;
     }
     return false;
   }

@@ -34,10 +34,16 @@ export function cameraTerrain(lng: number, lat: number, range: number, height: H
     if (distance + range <= previous.half && previous.half <= range * 2 && previous.ready) return previous;
   }
   const scale = centre.meterInMercatorCoordinateUnits(), half = range * 1.3;
-  const vertices = new Float32Array((TERRAIN_CELLS + 1) ** 2 * 3);
+  // Preserve completed samples while tiles for the remaining samples load.
+  // Other cameras may evict those source tiles before this patch completes.
+  const continuing = previous && !previous.ready && previous.centre.x === centre.x &&
+    previous.centre.y === centre.y && previous.half === half;
+  const vertices = continuing ? previous.vertices.slice() : new Float32Array((TERRAIN_CELLS + 1) ** 2 * 3);
   let ready = true, failed = false;
   const sample = height.forRange?.(range, lat) ?? height;
   for (let y = 0; y <= TERRAIN_CELLS; y++) for (let x = 0; x <= TERRAIN_CELLS; x++) {
+    const index = (y * (TERRAIN_CELLS + 1) + x) * 3;
+    if (continuing && Number.isFinite(vertices[index + 2])) continue;
     const east = (x / TERRAIN_CELLS * 2 - 1) * half;
     const north = (y / TERRAIN_CELLS * 2 - 1) * half;
     const p = new MercatorCoordinate(centre.x + east * scale, centre.y - north * scale).toLngLat();
@@ -47,7 +53,7 @@ export function cameraTerrain(lng: number, lat: number, range: number, height: H
       ready = false;
       failed ||= sample.failedAt?.(boundedLng, p.lat) ?? false;
     }
-    vertices.set([east, north, z ?? 0], (y * (TERRAIN_CELLS + 1) + x) * 3);
+    vertices.set([east, north, z ?? NaN], index);
   }
   return { centre, scale, half, vertices, ready, failed };
 }

@@ -8,7 +8,7 @@ const pixels = new Uint8ClampedArray([
   128, 0, 0, 255, 128, 0, 0, 255,
 ]);
 
-async function withTiles(run: (requests: string[]) => Promise<void>, tileJSON?: object) {
+async function withTiles(run: (requests: string[]) => Promise<void>, tileJSON?: object, imagePixels = pixels) {
   const requests: string[] = [];
   const originalFetch = globalThis.fetch;
   const originalBitmap = globalThis.createImageBitmap;
@@ -20,11 +20,11 @@ async function withTiles(run: (requests: string[]) => Promise<void>, tileJSON?: 
       ? { ok: true, json: async () => tileJSON }
       : { ok: true, blob: async () => new Blob() }) as unknown as Response;
   };
-  globalThis.createImageBitmap = async () => ({ width: 2, height: 2, close() {} }) as ImageBitmap;
+  globalThis.createImageBitmap = async () => ({ width: Math.sqrt(imagePixels.length / 4), height: Math.sqrt(imagePixels.length / 4), close() {} }) as ImageBitmap;
   Object.defineProperty(globalThis, 'OffscreenCanvas', {
     configurable: true,
     value: class {
-      getContext() { return { drawImage() {}, getImageData() { return { data: pixels }; } }; }
+      getContext() { return { drawImage() {}, getImageData() { return { data: imagePixels }; } }; }
     },
   });
   try { await run(requests); }
@@ -119,6 +119,58 @@ test('a zoom-12-only provider converges for a 50km camera patch without redownlo
       assert.ok(loaded > 256 && loaded <= 512, `Expected one bounded zoom-12 working set, got ${loaded} requests`);
       assert.equal(cameraTerrain(6, 46, 50_000, height).ready, true);
       assert.equal(requests.length, loaded, 'Repeated coverage should reuse cached tiles');
+    } finally { sampler.destroy(); }
+  });
+});
+
+
+test('missing pixels do not prevent valid terrain reloading after tile eviction', async () => {
+  const mixed = new Uint8ClampedArray(4 * 4 * 4);
+  for (let i = 0; i < 16; i++) mixed.set([128, 0, 0, i === 0 ? 0 : 255], i * 4);
+  await withTiles(async requests => {
+    const sampler = new RasterElevationSampler({
+      tiles: ['https://tiles.test/{z}/{x}/{y}.png'], encoding: 'terrarium', minzoom: 12, maxzoom: 12,
+    }, () => {}, cause => assert.fail(String(cause)));
+    const position = (x: number, y: number): [number, number] => [
+      x / 4096 * 360 - 180, Math.atan(Math.sinh(Math.PI * (1 - 2 * y / 4096))) * 180 / Math.PI,
+    ];
+    try {
+      const valid = position(100.75, 2000.75), missing = position(100.2, 2000.2);
+      assert.equal(await settle(sampler, ...valid), 0);
+      assert.equal(sampler.sample(...missing), null);
+      assert.equal(sampler.unavailableAt(...missing), true);
+      assert.equal(sampler.unavailableAt(...valid), false);
+      for (let x = 101; x < 701; x++) await settle(sampler, ...position(x + .75, 2000.75));
+      const count = requests.filter(url => url.endsWith('/100/2000.png')).length;
+      assert.equal(await settle(sampler, ...valid), 0);
+      assert.equal(requests.filter(url => url.endsWith('/100/2000.png')).length, count + 1);
+    } finally { sampler.destroy(); }
+  }, undefined, mixed);
+});
+
+for (const fixedZoom of [true, false]) test(`concurrent camera patches converge with bounded downloads (${fixedZoom ? 'zoom 12' : 'adaptive'})`, async () => {
+  await withTiles(async requests => {
+    const sampler = new RasterElevationSampler({
+      tiles: ['https://tiles.test/{z}/{x}/{y}.png'], encoding: 'terrarium',
+      ...(fixedZoom ? { minzoom: 12, maxzoom: 12 } : {}),
+    }, () => {}, cause => assert.fail(String(cause)));
+    const centers = fixedZoom ? [6, 16] : [6, 16, 26, 36, 46, 56];
+    const height = Object.assign((lng: number, lat: number) => sampler.sample(lng, lat), {
+      forRange: (range: number, lat: number) => sampler.forRange(range, lat),
+    });
+    let patches = centers.map(lng => cameraTerrain(lng, 46, 50_000, height));
+    try {
+      for (let attempt = 0; attempt < 20 && patches.some(patch => !patch.ready); attempt++) {
+        await new Promise<void>(resolve => setImmediate(resolve));
+        patches = centers.map((lng, i) => cameraTerrain(lng, 46, 50_000, height, patches[i]));
+      }
+      assert.ok(patches.every(patch => patch.ready), 'Every concurrent patch must finish');
+      const distinct = new Set(requests).size;
+      assert.ok(requests.length <= distinct * 3, `${requests.length} requests for ${distinct} distinct tiles`);
+      const completed = requests.length;
+      patches = centers.map((lng, i) => cameraTerrain(lng, 46, 50_000, height, patches[i]));
+      assert.ok(patches.every(patch => patch.ready));
+      assert.equal(requests.length, completed, 'Completed patches survive source tile eviction');
     } finally { sampler.destroy(); }
   });
 });

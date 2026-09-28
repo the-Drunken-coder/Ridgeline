@@ -312,7 +312,7 @@ export class SensorCameraCoverage {
       if (!entity.terrain.size) continue;
       for (const work of entity.terrain.values()) {
         if (work.patch && !work.patch.terrain.ready) {
-          work.patch = undefined;
+          work.patch.time = 0;
           work.settled = undefined;
         }
       }
