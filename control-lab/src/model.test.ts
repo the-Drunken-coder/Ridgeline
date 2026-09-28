@@ -32,6 +32,13 @@ describe('everyday map', () => {
     expect(scene.armed).toBe(false);
     expect(scene.units).toEqual(createScene().units);
   });
+
+  it('leaves targeting mode when the last selected unit is deselected', () => {
+    const armed = reducer(createScene(), { type: 'arm' });
+    const scene = reducer(armed, { type: 'select', id: 'alpha', additive: true });
+    expect(scene.selected).toEqual([]);
+    expect(scene.armed).toBe(false);
+  });
 });
 
 describe('camera', () => {

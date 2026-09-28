@@ -73,7 +73,8 @@ export function reducer(scene: Scene, action: Action): Scene {
     case 'select': {
       const selected = !action.additive ? [action.id] : scene.selected.includes(action.id)
         ? scene.selected.filter(id => id !== action.id) : [...scene.selected, action.id];
-      return { ...scene, selected, message: selected.length ? `${selected.join(', ')} selected.` : 'Selection cleared.' };
+      return { ...scene, selected, armed: scene.armed && selected.length > 0,
+        message: selected.length ? `${selected.join(', ')} selected.` : 'Selection cleared.' };
     }
     case 'camera': return { ...scene, camera: action.camera };
     case 'arm': return { ...scene, armed: scene.selected.length > 0, message: scene.selected.length ? 'Click a destination.' : 'Select at least one unit.' };
