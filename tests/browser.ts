@@ -361,12 +361,12 @@ async function suite() {
       lngLat: air.map.getCenter(), originalEvent: new MouseEvent('click') });
     air.upsert([feature]);
     await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'camera volume');
-    await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+    await new Promise<void>(resolve => { air.map.once('render', () => resolve()); air.map.triggerRepaint(); });
     click(); check(attachment === camera.id, 'Visible camera face was not selectable');
     const before = air.getEntityState(feature.id)!.computedAt;
     air.upsert([{ ...feature, entity: { ...feature.entity!, attachments: [{ ...camera, volumeOpacity: 0 }] } }]);
     await until(() => air.getEntityState(feature.id)!.computedAt > before, 'wireframe-only update');
-    await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+    await new Promise<void>(resolve => { air.map.once('render', () => resolve()); air.map.triggerRepaint(); });
     click(); check(attachment === '', 'Invisible camera face intercepted a click');
     air.destroy();
   });
@@ -592,14 +592,16 @@ async function suite() {
     check(!air.map.getLayer('rl:camera-gpu'), 'Hidden camera allocated GPU coverage');
     air.destroy();
   });
-  await run('Hiding coverage replaces aborted camera preparation for entity placement', async () => {
+  await run('Hiding coverage keeps shared placement preparation active', async () => {
     class PendingSampler {
       #ready = false;
       calls = 0;
+      signal?: AbortSignal;
       finish?: () => void;
       sample() { return this.#ready ? 0 : null; }
       prepare(_positions: readonly [number, number][], signal: AbortSignal) {
         this.calls++;
+        this.signal = signal;
         return new Promise<void>((resolve, reject) => {
           const abort = () => {
             signal.removeEventListener('abort', abort);
@@ -624,7 +626,7 @@ async function suite() {
     air.upsert([feature]);
     await until(() => sampler.calls === 1 && air.getEntityState(feature.id)?.coverage === 'loading', 'initial camera preparation');
     air.configure({ entityVisibility: { footprints: false, zones: false, groundLines: false } });
-    await until(() => sampler.calls >= 2, 'placement preparation after hiding coverage');
+    check(sampler.calls === 1 && !sampler.signal?.aborted, 'Hiding coverage cancelled shared placement preparation');
     sampler.finish?.();
     await until(() => air.getEntityState(feature.id)?.placement === 'airborne', 'placement recovery after hiding coverage');
     check(air.getEntityState(feature.id)?.coverage === 'ready', 'Hidden placement remained loading');

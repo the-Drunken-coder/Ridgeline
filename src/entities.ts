@@ -140,7 +140,7 @@ export class EntityScene<P extends Properties> {
         footprintsVisible && Boolean(feature.entity.altitude));
       areas.push({ key: `placement:${feature.id}`, center, radiusMeters });
     }
-    this.elevation.requestBatch(areas);
+    this.elevation.requestBatch(areas, { deferProbe: true });
     this.schedule();
   }
   configure(elevationChanged = false) {
