@@ -697,17 +697,18 @@ async function suite() {
     current = air; await air.ready;
     const sphere: MapFeature = { ...point('pick-sphere', -.004), entity: { altitude: { meters: 200, reference: 'ground' },
       attachments: [{ id: 'sphere', type: 'sphere', radius: 35 }] } };
+    const cameraAttachment: CameraAttachment = { id: 'camera', type: 'camera', bearing: 0, elevation: -45,
+      fovX: 60, fovY: 40, range: 180, volumeOpacity: .3, fillOpacity: 0, outline: false };
     const camera: MapFeature = { ...point('pick-camera', .004), entity: { altitude: { meters: 200, reference: 'ground' },
-      attachments: [{ id: 'camera', type: 'camera', bearing: 0, elevation: 90, fovX: 60, fovY: 60,
-        range: 180, volumeOpacity: .3, fillOpacity: 0, outline: false }] } };
+      attachments: [cameraAttachment] } };
     let projection: number[] | undefined;
     const projectionLayer: CustomLayerInterface = { id: 'test:height-projection', type: 'custom', renderingMode: '3d',
       render(_gl, input) { projection = Array.from(input.defaultProjectionData.mainMatrix); } };
     air.map.addLayer(projectionLayer);
-    const projectHeight = (lng: number, height: number) => {
+    const projectHeight = (lng: number, lat: number, height: number) => {
       const matrix = projection;
       if (!matrix) throw new Error('Map projection is unavailable');
-      const coordinate = MercatorCoordinate.fromLngLat([lng, 0], height);
+      const coordinate = MercatorCoordinate.fromLngLat([lng, lat], height);
       const point = [coordinate.x, coordinate.y, coordinate.z, 1];
       const clip = [0, 1, 2, 3].map(row => matrix[row]! * point[0]! + matrix[row + 4]! * point[1]!
         + matrix[row + 8]! * point[2]! + matrix[row + 12]!);
@@ -728,19 +729,31 @@ async function suite() {
     air.upsert([sphere, camera]);
     await until(() => air.getEntityState(sphere.id)?.coverage === 'ready'
       && air.getEntityState(camera.id)?.coverage === 'ready' && Boolean(projection), 'exaggerated picking geometry');
+    check((air.getEntityState(camera.id)?.footprintTriangles ?? 0) > 0, 'Plain camera has no ground footprint');
+    // Centroid of the face between the sensor origin and its two lower corner rays.
+    const radians = Math.PI / 180;
+    const elevation = cameraAttachment.elevation * radians;
+    const halfX = Math.tan(cameraAttachment.fovX * radians / 2);
+    const halfY = Math.tan(cameraAttachment.fovY * radians / 2);
+    const north = Math.cos(elevation) + halfY * Math.sin(elevation);
+    const up = Math.sin(elevation) - halfY * Math.cos(elevation);
+    const distance = cameraAttachment.range * 2 / (3 * Math.hypot(halfX, north, up));
+    const radius = 6371008.8 + 300 + up * distance;
+    const face = { lat: Math.atan2(north * distance, radius) / radians,
+      rawHeight: Math.hypot(radius, north * distance) - 6371008.8 };
     for (const exaggeration of [1, 2]) {
       const before = air.getEntityState(sphere.id)!.computedAt;
       air.configure({ exaggeration });
       if (exaggeration !== 1) await until(() => air.getEntityState(sphere.id)!.computedAt > before
         && air.getEntityState(camera.id)?.coverage === 'ready', 'exaggerated picking update');
       await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-      check((await pick(projectHeight(-.004, 300 * exaggeration))).includes('sphere'),
+      check((await pick(projectHeight(-.004, 0, 300 * exaggeration))).includes('sphere'),
         `Sphere was not pickable at exaggeration ${exaggeration}`);
-      check((await pick(projectHeight(.004, 370 * exaggeration))).includes('camera'),
+      check((await pick(projectHeight(.004, face.lat, face.rawHeight * exaggeration))).includes('camera'),
         `Plain camera face was not pickable at exaggeration ${exaggeration}`);
       if (exaggeration === 2) {
-        check(!(await pick(projectHeight(-.004, 300))).includes('sphere'), 'Sphere remained pickable at its raw-height position');
-        check(!(await pick(projectHeight(.004, 370))).includes('camera'), 'Camera face remained pickable at its raw-height position');
+        check(!(await pick(projectHeight(-.004, 0, 300))).includes('sphere'), 'Sphere remained pickable at its raw-height position');
+        check(!(await pick(projectHeight(.004, face.lat, face.rawHeight))).includes('camera'), 'Camera face remained pickable at its raw-height position');
       }
     }
     air.destroy();
