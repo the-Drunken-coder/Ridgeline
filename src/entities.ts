@@ -150,7 +150,7 @@ export class EntityScene<P extends Properties> {
   configure(elevationChanged = false) {
     if (elevationChanged) {
       this.elevation.reset(this.options.configuration().elevation);
-      this.coverage.retry();
+      this.coverage.resetElevation();
     } else this.coverage.invalidate();
     this.invalidate();
   }

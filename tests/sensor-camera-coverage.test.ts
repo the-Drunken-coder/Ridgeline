@@ -317,6 +317,8 @@ test('failure clears displayed camera output, retry uses current input, and stal
   assert.equal(coverage.status('entity'), 'unavailable');
   assert.deepEqual(coverage.output('entity'), []);
   assert.equal(diagnostics.length, 1);
+  coverage.resetElevation();
+  assert.equal(coverage.status('entity'), 'unavailable', 'An elevation reset cannot recover a failed renderer');
 
   coverage.retry();
   coverage.flush();
@@ -798,5 +800,91 @@ for (const center of [6, 179.999]) test(`camera completes from exactly prepared 
     update(coverage, value);
     assert.equal(adapter.complete(latestRequest(adapter)), true);
     assert.equal(coverage.status('entity'), 'ready');
+  } finally { coverage.destroy(); elevation.destroy(); }
+});
+
+test('switching to a plain camera during unresolved placement discards terrain work', () => {
+  const adapter = controlledAdapter();
+  const { coverage } = owner(adapter);
+  update(coverage, input());
+  const displayed = latestRequest(adapter);
+  assert.equal(adapter.complete(displayed), true);
+
+  const moved = input({ origin: [.001, 0, 100] });
+  assert.equal(update(coverage, moved).coverage, 'loading');
+  const inFlight = latestRequest(adapter);
+  const plain = input({
+    origin: [.001, 0, 0],
+    placement: 'elevation-unavailable',
+    cameras: [{ ...camera(), terrainVisibility: false }],
+  });
+  update(coverage, plain);
+
+  assert.deepEqual(adapter.values(), [], 'A plain camera must not submit the old terrain request');
+  assert.deepEqual(coverage.output('entity'), [], 'Terrain output must not remain on the plain camera');
+  assert.equal(adapter.complete(inFlight), false, 'Late terrain completion must be rejected');
+  assert.deepEqual(coverage.output('entity'), []);
+  coverage.destroy();
+});
+
+test('invalidation restamps an in-flight request while placement is unresolved', () => {
+  const adapter = controlledAdapter();
+  const preparation = deferred();
+  const { coverage } = owner(adapter, {
+    height: lng => lng > .01 ? null : 0,
+    prepare: () => preparation.promise,
+  });
+  update(coverage, input());
+  const displayed = latestRequest(adapter);
+  assert.equal(adapter.complete(displayed), true);
+  const previous = coverage.output('entity');
+
+  const moved = input({ origin: [.001, 0, 100] });
+  assert.equal(update(coverage, moved).coverage, 'loading');
+  const inFlight = latestRequest(adapter);
+  const waiting = input({
+    origin: [.02, 0, 0],
+    placement: 'elevation-unavailable',
+  });
+  assert.equal(update(coverage, waiting).coverage, 'loading');
+  coverage.invalidate('entity');
+  update(coverage, waiting);
+
+  const restamped = latestRequest(adapter);
+  assert.notEqual(restamped.lifecycle, inFlight.lifecycle);
+  assert.deepEqual(coverage.output('entity'), previous, 'Invalidation retains completed output while waiting');
+  assert.equal(adapter.complete(inFlight), false, 'The old token must not publish');
+  assert.deepEqual(coverage.output('entity'), previous);
+  assert.equal(adapter.complete(restamped), true, 'The restamped in-flight request may publish');
+  assert.deepEqual(coverage.output('entity'), restamped.geometry);
+  assert.equal(coverage.status('entity'), 'loading', 'Placement is still unresolved');
+  coverage.destroy();
+});
+
+test('moving and changing camera kind while preparation is pending rejects obsolete completion', async () => {
+  const preparation = deferred();
+  let prepared = false;
+  const adapter = controlledAdapter();
+  const { coverage, elevation } = owner(adapter, {
+    height: lng => prepared || lng < .01 ? 0 : null,
+    prepare: async () => { await preparation.promise; prepared = true; },
+  });
+  try {
+    update(coverage, input());
+    const original = latestRequest(adapter);
+    adapter.complete(original);
+    const moved = input({ origin: [.02, 0, 100], cameras: [{ ...camera(), color: '#ff0000' }] });
+    assert.equal(update(coverage, moved).coverage, 'loading');
+    await Promise.resolve();
+    assert.equal(adapter.complete(original), false, 'The old appearance must not publish');
+    const plain = { ...moved, cameras: moved.cameras.map(camera => ({ ...camera, terrainVisibility: false })) };
+    update(coverage, plain);
+    assert.equal(adapter.complete(original), false);
+    preparation.resolve();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    update(coverage, plain);
+    assert.equal(adapter.values().length, 0, 'Late preparation must not submit the old terrain camera');
+    assert.ok(coverage.output('entity').length > 0, 'The current plain camera should render');
+    assert.equal(adapter.complete(original), false);
   } finally { coverage.destroy(); elevation.destroy(); }
 });
