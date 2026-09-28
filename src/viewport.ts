@@ -5,7 +5,7 @@ import type { LayerSpecification, MapMouseEvent, ErrorEvent as GLErrorEvent } fr
 import { createReporter, RidgelineError } from './errors';
 import { FeatureStore } from './features';
 import { createFeaturePublication } from './feature-publication';
-import { FEATURE_SOURCE as SOURCE, mapLibreFeaturePublication } from './maplibre-feature-publication';
+import { FEATURE_SOURCE as SOURCE, mapLibreFeaturePublication, sourceFeatureId } from './maplibre-feature-publication';
 import { hillshadePaint, resolveHillshade } from './hillshade';
 import { EntityScene, DEFAULT_ENTITY_VISIBILITY } from './entities';
 import type { FeatureStyle, IconDefinition, Interaction, MapConfiguration, MapFeature, Properties, Viewport, ViewportEvents, ViewportOptions } from './types';
@@ -24,8 +24,7 @@ export const DEFAULT_ELEVATION = {
 /** Creates one viewport. Data may be supplied before ready; destroy is always safe. */
 export function createViewport<P extends Properties = Properties>(options: ViewportOptions<P>): Viewport<P> {
   const store = new FeatureStore<P>();
-  const arrowIds = new Set<string>();
-  let arrowsDirty = false;
+  const publishedArrows = new Map<string, MapFeature<P>>();
   const report = createReporter(options.logger);
   const icons = new Map<string, IconDefinition>();
   let selected = new Set<string>();
@@ -36,7 +35,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   let readySettled = false;
   let hovered = '';
   let configuration: MapConfiguration = {
-    basemap: options.basemap ?? DEFAULT_BASEMAP,
+    basemap: structuredClone(options.basemap ?? DEFAULT_BASEMAP),
     projection: options.projection ?? 'flat',
     terrain: options.terrain ?? false,
     hillshade: options.hillshade ?? false,
@@ -75,7 +74,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   try {
     if (!Number.isFinite(configuration.exaggeration) || configuration.exaggeration < 0) throw new RidgelineError('INVALID_CONFIGURATION', 'Terrain exaggeration must be a finite nonnegative number.', { operation: 'create', recoverable: false });
     configuration.hillshadeOptions = resolveHillshade(options.hillshadeOptions);
-    if (options.features) { store.upsert(options.features); for (const feature of store.all()) if (feature.drawing?.shape.kind === 'arrow') arrowIds.add(feature.id); }
+    if (options.features) store.upsert(options.features);
     map = new GLMap({
       container: options.container,
       style: configuration.basemap,
@@ -95,9 +94,19 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       emit('entitychange', { ids });
     },
   });
-  const publication = createFeaturePublication({ store, target: mapLibreFeaturePublication(map), render: rendered, diagnostic,
-    beforeSubmit: () => { if (arrowsDirty) { syncArrows(); arrowsDirty = false; } },
-    published: synchronizeState,
+  const publication = createFeaturePublication({ store, target: mapLibreFeaturePublication(map), render: rendered, sourceId: sourceFeatureId, diagnostic,
+    beforeSubmit: () => {},
+    published: (id, feature) => {
+      const wasArrow = publishedArrows.has(id);
+      if (feature?.drawing?.shape.kind === 'arrow') publishedArrows.set(id, feature);
+      else publishedArrows.delete(id);
+      if (wasArrow || publishedArrows.has(id)) syncArrows();
+      synchronizeState(id);
+    },
+    restored: features => {
+      publishedArrows.clear();
+      for (const feature of features) if (feature.drawing?.shape.kind === 'arrow') publishedArrows.set(feature.id, feature);
+    },
   });
   entities.set(store.all());
   const timer = setTimeout(() => {
@@ -108,10 +117,10 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     diagnostic(error);
   }
   function getName(feature: MapFeature<P>) {
-    const name = options.name?.(feature) ?? feature.properties.name;
+    const name = options.name?.(structuredClone(feature)) ?? feature.properties.name;
     return typeof name === 'string' && name.trim() ? name : feature.id;
   }
-  function getStyle(feature: MapFeature<P>): FeatureStyle { return { ...options.style?.(feature), ...feature.drawing?.style }; }
+  function getStyle(feature: MapFeature<P>): FeatureStyle { return { ...options.style?.(structuredClone(feature)), ...feature.drawing?.style }; }
   function rendered(feature: MapFeature<P>): MapFeature {
     const style = getStyle(feature);
     const marker = entities.marker(feature);
@@ -120,7 +129,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       geometry: feature.drawing ? shapeGeometry(feature.drawing.shape, true)
         : marker.position ? { type: 'Point', coordinates: marker.position } : feature.geometry,
       properties: {
-        _rl_id: feature.id,
+        _rl_id: sourceFeatureId(feature.id), _rl_feature_id: feature.id,
         _rl_color: style.color ?? '#216e5b', _rl_fill: style.fillColor ?? style.color ?? '#216e5b', _rl_dashed: style.dashed ?? false, _rl_radius: style.radius ?? 6,
         _rl_width: style.lineWidth ?? 3, _rl_opacity: style.fillOpacity ?? 0.2,
         _rl_icon: style.icon && icons.has(style.icon) ? `rl:icon:${style.icon}` : '',
@@ -130,7 +139,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     };
   }
   function synchronizeState(id: string) {
-    if (prepared && map.getSource(SOURCE) && store.has(id)) map.setFeatureState({ source: SOURCE, id }, { selected: selected.has(id), hover: previewId === id });
+    if (prepared && map.getSource(SOURCE) && store.has(id)) map.setFeatureState({ source: SOURCE, id: sourceFeatureId(id) }, { selected: selected.has(id), hover: previewId === id });
   }
   function applyElevation(replace = false) {
     if (!prepared) return;
@@ -160,7 +169,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   function syncArrows() {
     if (!prepared) return;
     addArrowImage(map);
-    const arrows = arrowFeatures([...arrowIds].flatMap(id => { const feature = store.get(id); return feature ? [feature] : []; }));
+    const arrows = arrowFeatures([...publishedArrows.values()]);
     const source = map.getSource('rl:arrows');
     if (source instanceof GeoJSONSource) source.setData(arrows);
     else map.addSource('rl:arrows', { type: 'geojson', promoteId: '_rl_id', data: arrows });
@@ -174,6 +183,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       map.setProjection({ type: configuration.projection === 'flat' ? 'mercator' : 'globe' });
       for (const [id, icon] of icons) if (!map.hasImage(`rl:icon:${id}`)) map.addImage(`rl:icon:${id}`, icon.image, { pixelRatio: icon.pixelRatio ?? 1 });
       publication.restore();
+      if (destroyed) return;
       const layers: LayerSpecification[] = [
         { id: 'rl:fill', type: 'fill', source: SOURCE, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': ['get', '_rl_fill'], 'fill-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, ['boolean', ['feature-state', 'selected'], false], 0.45, ['get', '_rl_opacity']] } },
         { id: 'rl:line', type: 'line', source: SOURCE, filter: ['all', ['in', '$type', 'LineString', 'Polygon'], ['!=', '_rl_dashed', true]], paint: { 'line-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', ['get', '_rl_color']], 'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 5, ['get', '_rl_width']] } },
@@ -182,10 +192,13 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         { id: 'rl:icons', type: 'symbol', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_icon', ''], ['!=', '_rl_hidden', true]], layout: { 'icon-image': ['get', '_rl_icon'], 'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-height-offset': ['get', '_rl_height'] }, paint: { 'icon-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1] } },
         { id: 'rl:labels', type: 'symbol', source: SOURCE, filter: ['!=', '_rl_hidden', true], layout: { 'text-field': ['get', '_rl_label'], 'text-font': ['Noto Sans Regular'], 'text-size': 12, 'text-offset': [0, 1.8], 'text-anchor': 'top', 'symbol-height-offset': ['get', '_rl_height'] }, paint: { 'text-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'text-color': '#203b32', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } },
       ];
-      for (const layer of layers) if (!map.getLayer(layer.id)) map.addLayer(layer);
+      for (const layer of layers) { if (destroyed) return; if (!map.getLayer(layer.id)) map.addLayer(layer); }
       syncArrows();
+      if (destroyed) return;
       applyElevation();
+      if (destroyed) return;
       entities.attach();
+      if (destroyed) return;
       for (const id of selected) synchronizeState(id);
       if (previewId) synchronizeState(previewId);
       if (!readySettled) { readySettled = true; clearTimeout(timer); resolveReady(); }
@@ -203,7 +216,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       const hits = map.queryRenderedFeatures([[x - tolerance, y - tolerance], [x + tolerance, y + tolerance]], { layers: layerIds.filter(id => map.getLayer(id)) });
       const seen = new Set<string>();
       const seenAttachments = new Set<string>();
-      for (const hit of entities.pick(x, y, tolerance)) {
+      const addEntityHits = (hits: ReturnType<typeof entities.pickAbove>) => { for (const hit of hits) {
         const feature = store.get(hit.entityId);
         if (!feature) continue;
         if (!seen.has(feature.id)) { seen.add(feature.id); features.push(feature); }
@@ -211,12 +224,15 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
           const key = JSON.stringify([feature.id, hit.attachmentId]);
           if (!seenAttachments.has(key)) { seenAttachments.add(key); attachments.push({ entityId: feature.id, attachmentId: hit.attachmentId }); }
         }
-      }
+      } };
+      addEntityHits(entities.pickAbove(x, y, tolerance));
       for (const hit of hits) {
-        if (typeof hit.id !== 'string' || seen.has(hit.id)) continue;
-        const feature = store.get(hit.id);
-        if (feature) { seen.add(hit.id); features.push(feature); }
+        const id = hit.properties?._rl_feature_id;
+        if (typeof id !== 'string' || seen.has(id)) continue;
+        const feature = store.get(id);
+        if (feature) { seen.add(id); features.push(feature); }
       }
+      addEntityHits(entities.pickGround(x, y, tolerance));
     }
     return { features, attachments, point: { x: event.point.x, y: event.point.y }, lngLat: { lng: event.lngLat.lng, lat: event.lngLat.lat }, originalEvent: event.originalEvent };
   }
@@ -246,6 +262,10 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
 
   const viewport: Viewport<P> = {
     ready, container: options.container, map,
+    reportCallbackError(cause: unknown, operation: string, featureId?: string) {
+      diagnostic(new RidgelineError('CALLBACK_FAILED', 'A consumer callback threw.',
+        { operation, recoverable: true, featureId }, cause));
+    },
     getInteractionOwner: () => interactionOwner,
     acquireInteraction(owner) {
       assertActive();
@@ -259,10 +279,6 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       assertActive();
       try {
         const changed = store.upsert(features);
-        for (const feature of changed) {
-          if (arrowIds.delete(feature.id)) arrowsDirty = true;
-          if (feature.drawing?.shape.kind === 'arrow') { arrowIds.add(feature.id); arrowsDirty = true; }
-        }
         entities.set(changed);
         publication.update(changed);
         emit('datachange', { ids: changed.map(feature => feature.id), removed: [] });
@@ -275,7 +291,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       assertActive(); const removed = store.remove(ids);
       entities.set([], removed);
       publication.update([], removed);
-      for (const id of removed) { if (arrowIds.delete(id)) arrowsDirty = true; selected.delete(id); if (previewId === id) previewId = null; if (prepared) map.removeFeatureState({ source: SOURCE, id }); }
+      for (const id of removed) { selected.delete(id); if (previewId === id) previewId = null; if (prepared) map.removeFeatureState({ source: SOURCE, id: sourceFeatureId(id) }); }
+      if (removed.length) entities.selection([...selected]);
       emit('datachange', { ids: [], removed });
     },
     clear() { viewport.remove(store.ids()); },
@@ -295,7 +312,13 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         map.addImage(key, definition.image, { pixelRatio: definition.pixelRatio ?? 1 });
       }
       icons.set(id, definition);
-      publication.update(store.all().filter(feature => getStyle(feature).icon === id));
+      const affected: MapFeature<P>[] = [];
+      for (const feature of store.all()) {
+        try { if (getStyle(feature).icon === id) affected.push(feature); }
+        catch { affected.push(feature); } // Publication reports and retains failed work for retry.
+      }
+      publication.update(affected);
+      if (affected.length) emit('datachange', { ids: affected.map(feature => feature.id), removed: [] });
     },
     setSelection(ids) {
       assertActive(); const previous = selected; selected = new Set(ids.filter(id => store.has(id)));
@@ -325,7 +348,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       catch (cause) { if (cause instanceof RidgelineError) diagnostic(cause); throw cause; }
       const styleChanged = next.basemap !== undefined && next.basemap !== configuration.basemap;
       configuration = {
-        basemap: next.basemap ?? configuration.basemap,
+        basemap: structuredClone(next.basemap ?? configuration.basemap),
         projection: next.projection ?? configuration.projection,
         terrain: next.terrain ?? configuration.terrain,
         hillshade: next.hillshade ?? configuration.hillshade,

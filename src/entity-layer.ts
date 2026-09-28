@@ -71,6 +71,11 @@ export class EntityLayer implements CustomLayerInterface {
     this.projection = undefined;
     this.map = undefined;
   }
+  retry() {
+    this.failed = false;
+    this.dirty = true;
+    this.map?.triggerRepaint();
+  }
   render(gl: WebGL2RenderingContext, input: CustomRenderMethodInput) {
     if (!this.buffer || !this.map || this.failed || !this.draws.length) return;
     this.projection = input;
@@ -158,6 +163,7 @@ export class EntityLayer implements CustomLayerInterface {
       gl.depthMask(true);
     } catch (cause) {
       this.failed = true;
+      try { gl.depthMask(true); } catch { /* Preserve the original rendering failure. */ }
       this.report(cause);
     }
   }
@@ -234,7 +240,7 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
       for (const shader of shaders) gl.deleteShader(shader);
     }
   }
-  project(p: GeoPoint): ScreenPoint | null {
+  private clip(p: GeoPoint): number[] | null {
     const data = this.projection;
     if (!data || !this.map) return null;
     const m = MercatorCoordinate.fromLngLat([p[0], p[1]], p[2]),
@@ -260,12 +266,42 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
         f = multiply(d.fallbackMatrix, [x, m.y, m.z, 1]);
       clip = g.map((v, i) => v * d.projectionTransition + f[i]! * (1 - d.projectionTransition));
     }
-    if (clip[3]! <= 0 || Math.abs(clip[2]! / clip[3]!) > 1) return null;
+    return clip;
+  }
+  private screen(clip: number[]): ScreenPoint {
+    const map = this.map;
+    if (!map) throw new Error('Entity layer is not attached.');
     return {
-      x: ((clip[0]! / clip[3]! + 1) / 2) * this.map.getCanvas().clientWidth,
-      y: ((1 - clip[1]! / clip[3]!) / 2) * this.map.getCanvas().clientHeight,
+      x: ((clip[0]! / clip[3]! + 1) / 2) * map.getCanvas().clientWidth,
+      y: ((1 - clip[1]! / clip[3]!) / 2) * map.getCanvas().clientHeight,
       depth: clip[2]! / clip[3]!,
     };
+  }
+  project(p: GeoPoint): ScreenPoint | null {
+    const clip = this.clip(p);
+    if (!clip || clip[3]! <= 0 || Math.abs(clip[2]! / clip[3]!) > 1) return null;
+    return this.screen(clip);
+  }
+  private clippedTriangle(vertices: GeoPoint[]): ScreenPoint[] {
+    const polygon = vertices.map(point => this.clip(point));
+    if (polygon.some(point => !point)) return [];
+    let points = polygon.filter((point): point is number[] => point !== null);
+    // The GPU clips faces against both depth planes before rasterization.
+    for (const distance of [(p: number[]) => p[2]! + p[3]!, (p: number[]) => p[3]! - p[2]!]) {
+      const next: number[][] = [];
+      for (let i = 0; i < points.length; i++) {
+        const a = points[i]!, b = points[(i + 1) % points.length]!;
+        const da = distance(a), db = distance(b);
+        if (da >= 0) next.push(a);
+        if ((da < 0 && db > 0) || (da > 0 && db < 0)) {
+          const t = da / (da - db);
+          next.push(a.map((value, index) => value + t * (b[index]! - value)));
+        }
+      }
+      points = next;
+      if (points.length < 3) return [];
+    }
+    return points.filter(point => point[3]! > 0).map(point => this.screen(point));
   }
   pick(x: number, y: number, tolerance: number) {
     const hits: { entityId: string; attachmentId?: string; depth: number }[] = [];
@@ -304,26 +340,23 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
           hits.push({ entityId: draw.entityId, depth: p.depth });
         continue;
       }
-      for (let i = 0; i < points.length; i += 3) {
-        const a = points[i],
-          b = points[i + 1],
-          c = points[i + 2];
-        if (!a || !b || !c) continue;
-        const cross = (u: ScreenPoint, v: ScreenPoint) => (x - v.x) * (u.y - v.y) - (u.x - v.x) * (y - v.y);
-        const signs = [cross(a, b), cross(b, c), cross(c, a)];
-        if (signs.every((v) => v >= 0) || signs.every((v) => v <= 0)) {
-          const denominator = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
-          if (Math.abs(denominator) < 1e-8) continue;
-          const u = ((b.y - c.y) * (x - c.x) + (c.x - b.x) * (y - c.y)) / denominator;
-          const v = ((c.y - a.y) * (x - c.x) + (a.x - c.x) * (y - c.y)) / denominator;
-          const depth = u * a.depth + v * b.depth + (1 - u - v) * c.depth;
-          if (visible(depth)) {
-            hits.push({
-              entityId: draw.entityId,
-              attachmentId: draw.attachmentId,
-              depth,
-            });
-            break;
+      triangles: for (let i = 0; i < points.length; i += 3) {
+        const clipped = this.clippedTriangle(draw.vertices.slice(i, i + 3));
+        for (let vertex = 1; vertex + 1 < clipped.length; vertex++) {
+          const a = clipped[0], b = clipped[vertex], c = clipped[vertex + 1];
+          if (!a || !b || !c) continue;
+          const cross = (u: ScreenPoint, v: ScreenPoint) => (x - v.x) * (u.y - v.y) - (u.x - v.x) * (y - v.y);
+          const signs = [cross(a, b), cross(b, c), cross(c, a)];
+          if (signs.every((v) => v >= 0) || signs.every((v) => v <= 0)) {
+            const denominator = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
+            if (Math.abs(denominator) < 1e-8) continue;
+            const u = ((b.y - c.y) * (x - c.x) + (c.x - b.x) * (y - c.y)) / denominator;
+            const v = ((c.y - a.y) * (x - c.x) + (a.x - c.x) * (y - c.y)) / denominator;
+            const depth = u * a.depth + v * b.depth + (1 - u - v) * c.depth;
+            if (visible(depth)) {
+              hits.push({ entityId: draw.entityId, attachmentId: draw.attachmentId, depth });
+              break triangles;
+            }
           }
         }
       }
