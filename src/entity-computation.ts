@@ -1,7 +1,7 @@
 import type { EntityAttachment, EntityState, FeatureStyle, MapConfiguration, MapFeature } from './types';
 import type { Primitive } from './entity-layer';
 import { groundZone, localFrame } from './entity-geometry';
-import type { GeoPoint, HeightAt } from './entity-geometry';
+import type { GeoPoint, HeightAt, MaximumHeight } from './entity-geometry';
 import { parseColor } from './color';
 
 export type EntityComputationInput = {
@@ -16,7 +16,12 @@ export type EntityComputationResult = {
   state: EntityState;
   diagnostic?: 'ALTITUDE_MISSING' | 'BELOW_TERRAIN';
 };
-export function computeEntity(input: EntityComputationInput, height: HeightAt, unavailable: () => boolean): EntityComputationResult {
+export function computeEntity(
+  input: EntityComputationInput,
+  height: HeightAt,
+  readiness: 'loading' | 'unavailable',
+  maximum: MaximumHeight,
+): EntityComputationResult {
   const { feature, configuration: config, style, selected } = input;
   if (feature.geometry.type !== 'Point' || !feature.entity) throw new Error('Expected a point entity.');
   const started = performance.now(),
@@ -104,7 +109,7 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
                   Math.sin((i * Math.PI) / 24) * attachment.radius,
                   Math.cos((i * Math.PI) / 24) * attachment.radius,
                 ]);
-          const zone = groundZone(origin, boundary, height, true);
+          const zone = groundZone(origin, boundary, height, true, maximum);
           missing ||= zone.missing;
           add(zone.triangles, 'triangles', rgba, attachment.id, true);
           add(zone.lines, 'lines', [rgba[0], rgba[1], rgba[2], 0.9], attachment.id, true);
@@ -119,7 +124,7 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
     placement,
     altitude,
     ground: ground ?? undefined,
-    coverage: missing ? (unavailable() ? 'unavailable' : 'loading') : 'ready',
+    coverage: missing ? readiness : 'ready',
     footprintTriangles: 0,
     computedAt: performance.timeOrigin + performance.now(),
     computationMs: performance.now() - started,

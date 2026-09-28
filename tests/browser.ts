@@ -1029,6 +1029,7 @@ async function suite() {
     air.upsert([{...location,id:'border-camera',entity:{altitude:{meters:100,reference:'ground'},attachments:[{
       id:'camera',type:'camera',terrainVisibility:true,bearing:0,elevation:-45,fovX:60,fovY:40,range:2000,
     }]}}]);
+    await until(()=>air.getEntityState('border-camera')?.coverage==='loading','neighboring terrain remains loading after unrelated failure');
     await until(()=>air.getEntityState('border-camera')?.coverage==='ready','neighboring terrain patch recovers without retry');
     air.destroy();
   });

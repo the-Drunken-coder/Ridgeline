@@ -2,9 +2,8 @@ import type { CameraAttachment, Entity } from './types';
 
 export type Vec3 = [number, number, number];
 export type GeoPoint = [number, number, number];
-export type HeightAt = ((lng: number, lat: number) => number | null) & {
-  maximum?: (west: number, south: number, east: number, north: number) => number | null;
-};
+export type HeightAt = (lng: number, lat: number) => number | null;
+export type MaximumHeight = (west: number, south: number, east: number, north: number) => number | null;
 const R = 6_371_008.8;
 const rad = Math.PI / 180;
 export const normalize = (v: Vec3): Vec3 => {
@@ -116,7 +115,7 @@ export function cameraFootprint(origin: GeoPoint, camera: CameraAttachment, grou
   return corners;
 }
 
-export function groundZone(origin: GeoPoint, boundary: readonly [number, number][], height: HeightAt, draped = false) {
+export function groundZone(origin: GeoPoint, boundary: readonly [number, number][], height: HeightAt, draped = false, maximum?: MaximumHeight) {
   const local = localFrame(origin),
     triangles: GeoPoint[] = [],
     lines: GeoPoint[] = [];
@@ -126,7 +125,7 @@ export function groundZone(origin: GeoPoint, boundary: readonly [number, number]
   const corners = boundary.map(p => local(p[0], p[1], 0));
   const reference = origin[0];
   const longitudes = corners.map(p => p[0] + Math.round((reference - p[0]) / 360) * 360);
-  const complete = draped && height.maximum && height.maximum(Math.min(...longitudes), Math.min(...corners.map(p => p[1])),
+  const complete = draped && maximum && maximum(Math.min(...longitudes), Math.min(...corners.map(p => p[1])),
     Math.max(...longitudes), Math.max(...corners.map(p => p[1]))) !== null;
   const sample = (p: [number, number]): GeoPoint => {
     const world = local(p[0], p[1], 0),
