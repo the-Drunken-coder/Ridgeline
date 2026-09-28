@@ -15,6 +15,7 @@ type Work = {
   areas: ElevationArea[];
   controller: AbortController;
   state: 'scheduled' | 'pending' | 'settled';
+  deferred: boolean;
   required: boolean;
   prepared: boolean;
 };
@@ -80,13 +81,16 @@ export class Elevation {
   }
 
   /** New areas in one call share a consumer preparation and its signal. */
-  requestBatch(requests: readonly ElevationArea[]): void {
+  requestBatch(requests: readonly ElevationArea[], options: { deferProbe?: boolean } = {}): void {
     if (this.destroyed) return;
     const fresh: Area[] = [];
     for (const request of requests) {
       const previous = this.areas.get(request.key);
       if (previous && previous.center[0] === request.center[0] &&
-          previous.center[1] === request.center[1] && previous.radiusMeters === request.radiusMeters) continue;
+          previous.center[1] === request.center[1] && previous.radiusMeters === request.radiusMeters) {
+        if (!options.deferProbe) this.startDeferred(previous.work);
+        continue;
+      }
       if (previous) this.release(request.key);
       const area: Area = {
         key: request.key,
@@ -106,6 +110,7 @@ export class Elevation {
       if (covering) {
         area.work = covering;
         covering.keys.add(area.key);
+        if (!options.deferProbe) this.startDeferred(covering);
       } else unclaimed.push(area);
     }
     if (!unclaimed.length) return;
@@ -131,12 +136,13 @@ export class Elevation {
       areas: unclaimed,
       controller: new AbortController(),
       state: 'scheduled',
+      deferred: options.deferProbe ?? false,
       required: false,
       prepared: false,
     };
     for (const area of unclaimed) area.work = work;
     this.works.add(work);
-    queueMicrotask(() => this.start(work));
+    if (!work.deferred) queueMicrotask(() => this.start(work));
   }
 
   release(key: string): void {
@@ -157,7 +163,8 @@ export class Elevation {
     const work = this.areas.get(key)?.work;
     if (!work || work.prepared || this.destroyed) return;
     work.required = true;
-    if (work.state === 'settled') {
+    if (work.state === 'scheduled') this.startDeferred(work);
+    else if (work.state === 'settled') {
       work.state = 'scheduled';
       queueMicrotask(() => this.start(work));
     }
@@ -207,7 +214,8 @@ export class Elevation {
   }
 
   private start(work: Work) {
-    if (this.destroyed || !this.works.has(work) || work.controller.signal.aborted) return;
+    if (this.destroyed || !this.works.has(work) || work.controller.signal.aborted ||
+        work.deferred || work.state !== 'scheduled') return;
     const sampler = this.options.sampler;
     if (!sampler?.prepare) return;
     const samples = work.areas.filter(area => work.keys.has(area.key)).flatMap(positions);
@@ -230,6 +238,12 @@ export class Elevation {
           this.settle(work);
         },
       );
+  }
+
+  private startDeferred(work?: Work) {
+    if (!work || !work.deferred || work.state !== 'scheduled') return;
+    work.deferred = false;
+    queueMicrotask(() => this.start(work));
   }
 
   private settle(work: Work) {

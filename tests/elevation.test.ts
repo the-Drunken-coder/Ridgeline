@@ -208,3 +208,37 @@ test('consumer without prepare is settled until explicit retry notification', ()
   assert.deepEqual(changes, [['entity']]);
   elevation.destroy();
 });
+
+test('deferred placement batches avoid probes until missing geometry requires one shared preparation', async () => {
+  const completion = deferred();
+  let samples = 0;
+  let preparations = 0;
+  const sampler: ElevationSampler = {
+    sample() { samples++; return 12; },
+    prepare(positions) {
+      preparations++;
+      assert.deepEqual(positions, [[0, 0], [1, 0]]);
+      return completion.promise;
+    },
+  };
+  const { elevation } = fixture(sampler);
+  elevation.requestBatch([
+    { key: 'first', center: [0, 0], radiusMeters: 0 },
+    { key: 'second', center: [1, 0], radiusMeters: 0 },
+  ], { deferProbe: true });
+  await flush();
+  assert.equal(samples, 0);
+  assert.equal(preparations, 0);
+  elevation.requirePreparation('first');
+  elevation.requirePreparation('second');
+  await flush();
+  assert.equal(preparations, 1);
+  assert.equal(samples, 0);
+  completion.resolve();
+  await flush();
+  assert.equal(elevation.readiness('first'), 'unavailable');
+  elevation.requirePreparation('first');
+  await flush();
+  assert.equal(preparations, 1);
+  elevation.destroy();
+});
