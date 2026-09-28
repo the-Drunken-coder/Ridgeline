@@ -1,6 +1,7 @@
 import type { Properties, Viewport } from "./types";
 import type { DrawingEditor } from "./drawing";
 import type { DrawingStyle } from "./drawing-types";
+import { shapeHandles, shapeParameters } from "./drawing-shapes";
 
 export type DrawingControlsOptions = {
   tools: HTMLElement;
@@ -236,47 +237,32 @@ export function attachDrawingControls<P extends Properties>(
       );
       const scale = units === "metric" ? 1 : 0.3048,
         suffix = units === "metric" ? "m" : "ft";
-      if (shape.kind === "circle")
-        panel.append(
-          text(
-            `Radius (${suffix})`,
-            String(Number((shape.radius / scale).toFixed(2))),
-            (value) =>
-              editor.setShape({ ...shape, radius: Number(value) * scale }),
-            locked,
-            "number",
-          ),
-        );
-      if (shape.kind === "rectangle") {
-        panel.append(
-          row(
-            text(
-              `Width (${suffix})`,
-              String(Number((shape.width / scale).toFixed(2))),
-              (value) =>
-                editor.setShape({ ...shape, width: Number(value) * scale }),
-              locked,
-              "number",
-            ),
-            text(
-              `Height (${suffix})`,
-              String(Number((shape.height / scale).toFixed(2))),
-              (value) =>
-                editor.setShape({ ...shape, height: Number(value) * scale }),
-              locked,
-              "number",
+      const parameters = shapeParameters(shape);
+      const parameterField = (parameter: (typeof parameters)[number]) =>
+        text(
+          parameter.unit === "length"
+            ? `${parameter.label} (${suffix})`
+            : `${parameter.label} (°)`,
+          String(
+            Number(
+              (parameter.value / (parameter.unit === "length" ? scale : 1)).toFixed(2),
             ),
           ),
+          (value) =>
+            editor.setShape(
+              parameter.set(Number(value) * (parameter.unit === "length" ? scale : 1)),
+            ),
+          locked,
+          "number",
         );
-        panel.append(
-          text(
-            "Bearing (°)",
-            String(Number(shape.bearing.toFixed(2))),
-            (value) => editor.setShape({ ...shape, bearing: Number(value) }),
-            locked,
-            "number",
-          ),
-        );
+      const dimensions = parameters.filter(
+        (parameter) =>
+          parameter.label === "Width" || parameter.label === "Height",
+      );
+      for (const parameter of parameters) {
+        if (parameter.label === "Width")
+          panel.append(row(...dimensions.map(parameterField)));
+        else if (parameter.label !== "Height") panel.append(parameterField(parameter));
       }
       if (shape.kind === "arrow")
         panel.append(
@@ -385,7 +371,7 @@ export function attachDrawingControls<P extends Properties>(
       help.className = "rl-drawing-help";
       help.textContent = draft.placing
         ? "Click to add points. Drag empty map to pan."
-        : "vertices" in draft.shape
+        : shapeHandles(draft.shape).some((handle) => handle.removable)
           ? "Drag handles to reshape. Use + to insert a vertex."
           : "Drag handles to move or reshape.";
       panel.append(help);

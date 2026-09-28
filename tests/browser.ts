@@ -945,6 +945,38 @@ async function suite() {
     draw.map.getCanvas().dispatchEvent(new MouseEvent('mouseup',{clientX:x+30,clientY:y+30,button:0,bubbles:true,view:window}));
     editor.destroy();draw.destroy();
   });
+  await run('Centered drawing handles keep independent keyboard and drag behavior', async () => {
+    const draw=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:13},logger:()=>{}});
+    current=draw;await draw.ready;
+    const editor=attachDrawing(draw,{createFeature:()=>({id:'centered',properties:{}}),submit:()=>({accepted:true})});
+    editor.start('rectangle');editor.addPoint([0,0]);editor.addPoint([.004,.004]);
+    const rectangle=editor.getState().draft!.shape;
+    if(rectangle.kind!=='rectangle')throw new Error('Missing rectangle draft');
+    editor.setShape({...rectangle,width:600,height:350,bearing:35});
+    const before=editor.getState().draft!.shape;
+    if(before.kind!=='rectangle')throw new Error('Missing rotated rectangle');
+    const width=container.querySelector<HTMLButtonElement>('[aria-label="Width"]')!;
+    width.focus();width.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+    const after=editor.getState().draft!.shape;
+    check(after.kind==='rectangle'&&after.width!==before.width&&after.height===before.height&&after.bearing===before.bearing&&JSON.stringify(after.center)===JSON.stringify(before.center),'Width keyboard step changed another rectangle parameter');
+    editor.undo();
+    check(JSON.stringify(editor.getState().draft!.shape)===JSON.stringify(before),'One undo did not restore the rectangle width');
+    editor.cancel();
+
+    const origin=draw.map.project([0,0]),edge=draw.map.unproject([origin.x+80,origin.y]);
+    editor.start('circle');editor.addPoint([0,0]);editor.addPoint([edge.lng,edge.lat]);
+    await until(()=>draw.map.loaded(),'circle handle map ready');
+    const center=container.querySelector<HTMLButtonElement>('[aria-label="Center"]')!;
+    const rect=center.getBoundingClientRect(),x=rect.x+rect.width/2,y=rect.y+rect.height/2;
+    center.dispatchEvent(new MouseEvent('mousedown',{clientX:x,clientY:y,button:0,buttons:1,bubbles:true,cancelable:true,view:window}));
+    draw.map.getCanvas().dispatchEvent(new MouseEvent('mousemove',{clientX:x+72,clientY:y,buttons:1,bubbles:true,view:window}));
+    await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
+    draw.map.getCanvas().dispatchEvent(new MouseEvent('mouseup',{clientX:x+72,clientY:y,button:0,bubbles:true,view:window}));
+    const circle=editor.getState().draft!.shape;
+    if(circle.kind!=='circle')throw new Error('Missing circle draft');
+    check(Math.abs(draw.map.project(circle.center).x-origin.x-72)<1,'Circle Center snapped to its own Radius handle');
+    editor.destroy();draw.destroy();
+  });
   await run('Arrowheads follow accepted geometry updates and disappear on deletion', async () => {
     const arrowShape = { kind:'arrow' as const, vertices:[[-.01,0],[.01,0]] as [number,number][] };
     const arrow:MapFeature = { type:'Feature', id:'arrow', geometry:shapeGeometry(arrowShape), properties:{}, drawing:{version:1,shape:arrowShape,style:{color:'#ff0000',fillColor:'#ff0000',lineWidth:3,fillOpacity:0,dashed:false,label:''}} };
