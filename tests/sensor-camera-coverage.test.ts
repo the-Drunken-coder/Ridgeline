@@ -410,6 +410,27 @@ test('confirmed unavailability takes precedence over a pending camera in either 
   }
 });
 
+test('a newly pending camera can recover a center whose earlier placement request settled missing', async () => {
+  const pending: ReturnType<typeof deferred>[] = [];
+  const { coverage, elevation } = owner(controlledAdapter(), {
+    height: () => null,
+    prepare: () => { const work = deferred(); pending.push(work); return work.promise; },
+  });
+  elevation.request('placement:entity', [0, 0], 0);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  pending[0]!.resolve();
+  await new Promise<void>(resolve => setImmediate(resolve));
+
+  const unresolved = input({ placement: 'elevation-unavailable' });
+  assert.equal(update(coverage, unresolved).coverage, 'loading');
+  await new Promise<void>(resolve => setImmediate(resolve));
+  pending[1]!.resolve();
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(update(coverage, unresolved).coverage, 'unavailable');
+  coverage.destroy();
+  elevation.destroy();
+});
+
 test('a batch submits the full camera collection once and still publishes cameras independently', () => {
   const adapter = controlledAdapter();
   const { coverage } = owner(adapter);

@@ -407,7 +407,6 @@ export class SensorCameraCoverage {
     const placementReadiness = placementUnavailable
       ? this.options.elevation.readiness(`placement:${input.entityId}`) : undefined;
     if (!entity.cameras.size) return placementUnavailable && placementReadiness === 'unavailable' ? 'unavailable' : 'ready';
-    if (placementUnavailable && placementReadiness === 'unavailable') return 'unavailable';
     let coverage: EntityState['coverage'] = 'ready';
     if (placementUnavailable && placementReadiness === 'loading') coverage = 'loading';
     for (const camera of input.cameras) {
@@ -423,14 +422,18 @@ export class SensorCameraCoverage {
         coverage = 'loading';
       }
     }
-    return coverage;
+    return coverage === 'ready' && placementUnavailable && placementReadiness === 'unavailable'
+      ? 'unavailable' : coverage;
   }
 
   private terrainUnavailable(entity: EntityCoverage, range: number, terrainReady: boolean) {
-    // A cached patch says nothing about a new center whose placement is unknown.
+    const cameraReadiness = this.options.elevation.readiness(this.terrainKey(entity.input.entityId, range));
+    // A pending camera area can still supply an unknown center even when an
+    // earlier placement request has settled without data.
+    if (cameraReadiness === 'loading') return false;
     if (entity.input.placement === 'elevation-unavailable' &&
       this.options.elevation.readiness(`placement:${entity.input.entityId}`) === 'unavailable') return true;
-    return !terrainReady && this.options.elevation.readiness(this.terrainKey(entity.input.entityId, range)) === 'unavailable';
+    return !terrainReady;
   }
 
   private pruneTerrainWork(entity: EntityCoverage, ranges: ReadonlySet<number>) {
