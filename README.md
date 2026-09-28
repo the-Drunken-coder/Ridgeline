@@ -223,6 +223,8 @@ pnpm test:controls:browser
 
 Add `--headed` to the targeted browser command to watch the case run. See [measured results](docs/performance.md) for bundle size, workload observations, and validation limits.
 
+The [reliability regression inventory](docs/reliability-validation.md) maps the consumer audit to tests retained across the terrain and drawing integrations.
+
 ## Drawing and editing
 
 `attachDrawing` adds ground drawing gestures and a temporary draft layer. `attachDrawingControls` optionally mounts the labeled tool rail and fixed inspector into containers supplied by the application. The playground's **Drawing & editing** scenario demonstrates both and consumer-owned undo/redo.
