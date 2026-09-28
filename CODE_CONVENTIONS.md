@@ -2,6 +2,17 @@
 
 These are Ridgeline's implementation and review standards. Apply them to the work being changed; keep unrelated cleanup out of the patch. Compiler and build settings remain authoritative in their configuration files.
 
+## Core qualities and priorities
+
+- **Easy to use.** Make common mapping tasks straightforward through a clear public API, useful defaults, and practical examples. Keep integration and ongoing maintenance simple for consumers.
+- **Feature-rich within a clear scope.** Provide complete, reusable mapping capabilities. Keep surrounding application workflows with consumers, as defined in [ADR-0001](docs/adr/0001-consumer-owned-workflows.md).
+- **Dynamic.** Support changing geographic data, live updates, and interactive exploration without requiring consumers to rebuild the viewport or lose interaction state unnecessarily.
+- **Customizable.** Let consumers adapt appearance and behavior through supported APIs. Common customization should not require a fork or knowledge of rendering internals.
+- **High quality.** Treat correctness, reliable lifecycle behavior, accessible interactions, visual polish, and clear documentation as part of a finished capability.
+- **Responsive and performant.** Keep interactions responsive as data and views change. Evaluate rendering cost, update latency, memory use, and idle work against representative consumer workloads.
+
+Prioritize these qualities over being lightweight for its own sake. Bundle size, dependencies, and implementation complexity still have costs, but judge those costs against the capabilities and consumer experience they enable. When qualities compete, make the tradeoff explicit and use concrete consumer needs and measurements to guide the decision.
+
 ## Module and package boundaries
 
 - Prefer deep modules that hide complex behavior behind a small interface. Test each module's behavior through that interface. This deliberately repeats the general engineering preference in the global `AGENTS.md` so repository implementers and reviewers have it here too.
