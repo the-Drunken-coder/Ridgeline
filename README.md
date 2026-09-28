@@ -102,9 +102,10 @@ Give the container an explicit height and `position: relative`. This is a browse
 | `fitBounds(bounds, { duration, padding })` | Frame coordinates, with 48 px padding by default. |
 | `configure(settings)` | Independently change basemap, projection, terrain, hillshade, exaggeration, or elevation provider. |
 | `on(event, callback)` | Subscribe; the returned function unsubscribes. |
+| `reportCallbackError(cause, operation, featureId?)` | Send an attached UI callback failure through the viewport's diagnostic and logger channels. |
 | `destroy()` | Release the map, workers owned by that map, listeners, animation frame, observer, and attached UI. Safe before readiness or repeatedly. |
 
-Updates are accumulated by ID and submitted once per animation frame using MapLibre's incremental GeoJSON API. Moving a feature never moves the camera. The library snapshots data, so properties must be structured-cloneable. Replacing an ID also replaces its name and styling inputs. Use immutable IDs separate from display names.
+Updates are accumulated by ID and submitted once per animation frame using MapLibre's incremental GeoJSON API. Moving a feature never moves the camera. The library snapshots data, so properties must be structured-cloneable. Name and style callbacks receive detached snapshots; mutating their arguments cannot alter accepted data. Replacing an ID also replaces its name and styling inputs. Use immutable IDs separate from display names.
 
 Only one renderer submission runs at a time; updates arriving during it are coalesced for the next frame. A throwing style callback leaves that feature's last rendered version visible and reports `UPDATE_FAILED` with its `featureId`. Other features and removals in the batch still proceed. Renderer rejections and source error events retain the submitted IDs for recovery. No failed update retries automatically. Fix the callback or renderer problem, then call `retryUpdates()`, or replace the affected feature with `upsert()`. Retries use current data and cannot overwrite a newer queued change. A basemap rebuild restores features whose styling succeeds and retains failed IDs for retry. Store reads reflect accepted data immediately, so failed features may differ from the display until recovery succeeds.
 
@@ -157,9 +158,9 @@ Core events are `click`, `hover`, `contextmenu`, `selectionrequest`, `datachange
 
 `attachInteractions(viewport, options)` is optional. It adds name/icon hover UI and an eight-per-page radial picker. Arrow keys move between candidates; Enter selects; Escape closes. Hovering previews without selecting. Candidate slots stay fixed while features move; removed choices become disabled. Closing the picker, clicking outside it, or moving the map preserves selection. Set `hover: false` or `picker: false` to disable either behavior; without the picker, a click requests the top candidate.
 
-Open picker choices refresh their names, icons, and availability when their feature changes. Reintroducing an ID enables its existing button. Default content stays intact on position-only updates. Custom `renderFeature` content is recreated for affected visible candidates and its previous `dispose` hook runs once; the button, candidate order, and button focus remain intact.
+Open picker choices refresh their names, icons, and availability when their feature changes or a registered icon is replaced. Hover content also refreshes when its feature changes. Reintroducing an ID enables its existing button. Default content stays intact on position-only updates. Custom `renderFeature` content is recreated for affected visible candidates and its previous `dispose` hook runs once; the button, candidate order, and button focus remain intact.
 
-If a feature's style callback throws while its picker is open, the choice remains available by name without an icon. Other candidates still refresh.
+If a feature's style callback throws while its picker is open, the choice remains available by name without an icon. If custom content throws, the choice uses default content. Other candidates still refresh. Custom content and name callback failures produce `CALLBACK_FAILED` diagnostics with the affected feature ID.
 
 Use `renderFeature(feature)` to supply custom name/icon markup. Use `contextMenu(interaction, close)` to supply application actions. Either hook can return an element or `{ element, dispose }`, for framework mounting and cleanup. The context hook may return `null`. Display names use text content by default. The playground demonstrates a consumer-owned right-click menu.
 

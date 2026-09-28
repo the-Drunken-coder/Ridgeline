@@ -560,6 +560,21 @@ async function suite() {
     check(preparationExtents.some(extent => extent > 90), `Shared preparation omitted the non-camera terrain extent: ${preparationExtents}`);
     air.destroy();
   });
+  await run('A ready camera does not hide unavailable ground attachment terrain', async () => {
+    const known = (lng: number, lat: number) => Math.abs(lng) < .00055 && Math.abs(lat) < .00055;
+    const air = createViewport({ container, basemap: style(), elevationSampler: { sample: (lng, lat) => known(lng, lat) ? 0 : null }, logger: () => {} });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'near-camera', type: 'camera', terrainVisibility: true,
+      bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 10 };
+    const near: MapFeature = { ...point('near-only'), entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [camera] } };
+    const mixed: MapFeature = { ...point('near-plus-zone'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [camera, { id: 'wide-zone', type: 'circle', radius: 300 }] } };
+    air.upsert([near, mixed]);
+    await until(() => air.getEntityState(near.id)?.coverage === 'ready', 'near camera ready');
+    await until(() => air.getEntityState(mixed.id)?.coverage === 'unavailable', 'wide ground area unavailable');
+    check(air.getEntityState(mixed.id)?.coverage === 'unavailable', 'Ready camera hid unknown ground terrain');
+    air.destroy();
+  });
   await run('Custom elevation preparation also covers entities with only plain cameras', async () => {
     let prepared = false, prepareCalls = 0;
     const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
@@ -1321,6 +1336,32 @@ async function suite() {
       gl.createFramebuffer = createFramebuffer; gl.deleteFramebuffer = deleteFramebuffer;
       gl.createTexture = createTexture; gl.deleteTexture = deleteTexture;
     }
+  });
+  await run('A null GPU synchronization result reports failure and recovers on retry', async () => {
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 },
+      logger: () => {}, onError: error => errors.push(error) });
+    current = air; await air.ready;
+    const gl = air.map.getCanvas().getContext('webgl2')!;
+    const fenceSync = gl.fenceSync.bind(gl);
+    let failOnce = true;
+    gl.fenceSync = (condition, flags) => {
+      if (failOnce) { failOnce = false; return null; }
+      return fenceSync(condition, flags);
+    };
+    const feature: MapFeature = { ...point('null-fence'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45,
+        fovX: 60, fovY: 40, range: 300 }] } };
+    try {
+      air.upsert([feature]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'unavailable', 'null GPU sync failure');
+      check(errors.some(error => error.code === 'UPDATE_FAILED'), 'Null GPU sync did not report a diagnostic');
+      check(!air.map.getStyle().layers.some(layer => layer.id.startsWith('rl:camera-mask:')), 'Failed sync published camera coverage');
+      gl.fenceSync = fenceSync;
+      air.retryUpdates();
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'GPU sync retry');
+      check(air.map.getStyle().layers.some(layer => layer.id.startsWith('rl:camera-mask:')), 'Retry did not publish camera coverage');
+    } finally { gl.fenceSync = fenceSync; air.destroy(); }
   });
   await run('Coverage readiness follows every camera, pose changes, and ground placement', async () => {
     const air = createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 }, logger: () => {} });
