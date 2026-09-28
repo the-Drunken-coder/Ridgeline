@@ -40,10 +40,27 @@ export function attachDrawingControls<P extends Properties>(
   let units = options.units ?? "metric",
     error: string | undefined,
     disposed = false,
+    rendering = false,
     changingField = false,
     pointerPressed = false,
     renderTimer: ReturnType<typeof setTimeout> | undefined;
   const abort = new AbortController();
+  function refreshDraftActions() {
+    const state = editor.getState();
+    if (!state.draft) return;
+    const disabled: Record<string, boolean> = {
+      Undo: !state.canUndo,
+      Redo: !state.canRedo,
+      Finish: !["editing", "rejected"].includes(state.phase) || Boolean(state.validation),
+      Cancel: state.phase === "pending",
+      "Delete drawing": !editor.canDelete(),
+    };
+    for (const button of panel.querySelectorAll<HTMLButtonElement>("button[data-field]")) {
+      const label = button.dataset.field?.slice("action:".length);
+      const value = label === undefined ? undefined : disabled[label];
+      if (value !== undefined) button.disabled = value;
+    }
+  }
   function scheduleRender() {
     if (renderTimer !== undefined || pointerPressed) return;
     renderTimer = setTimeout(() => {
@@ -159,8 +176,13 @@ export function attachDrawingControls<P extends Properties>(
       (panel.contains(document.activeElement) || rail.contains(document.activeElement))
         ? document.activeElement.dataset.field
         : undefined;
-    rail.replaceChildren();
-    panel.replaceChildren();
+    rendering = true;
+    try {
+      rail.replaceChildren();
+      panel.replaceChildren();
+    } finally {
+      rendering = false;
+    }
     for (const tool of editor.tools) {
       const button = action(
         names[tool],
@@ -439,7 +461,10 @@ export function attachDrawingControls<P extends Properties>(
   });
   const off = editor.onChange(() => {
       error = undefined;
-      if (changingField || pointerPressed) scheduleRender();
+      if (changingField || pointerPressed) {
+        refreshDraftActions();
+        scheduleRender();
+      }
       else render();
     }),
     offSelection = viewport.on("selectionchange", render),
@@ -498,7 +523,7 @@ export function attachDrawingControls<P extends Properties>(
   }
   const offDestroy = viewport.on("destroy", destroy);
   panel.addEventListener("focusout", () => {
-    if (!pointerPressed) scheduleRender();
+    if (!rendering && !pointerPressed) scheduleRender();
   }, { signal: abort.signal });
   panel.addEventListener("pointerdown", () => {
     pointerPressed = true;
