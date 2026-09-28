@@ -247,6 +247,59 @@ async function suite() {
     await until(() => !hits().some(hit => hit.properties._rl_feature_id === 'worker-retry'), 'worker cleanup');
     off();
   });
+  await run('An initial GeoJSON worker-load rejection recovers with the latest accepted features', async () => {
+    const mount = document.createElement('div');
+    mount.style.cssText = 'width:320px;height:240px;position:absolute;left:0;top:0';
+    document.body.append(mount);
+    const onAdd = GeoJSONSource.prototype.onAdd;
+    let rejected = false, workerLoads = 0;
+    GeoJSONSource.prototype.onAdd = function(map) {
+      if (this.id === 'rl:features') {
+        this.actorPromise = this.actorPromise.then(actor => new Proxy(actor, {
+          get(target, property, receiver) {
+            if (property !== 'sendAsync') return Reflect.get(target, property, receiver);
+            const send = target.sendAsync.bind(target);
+            return new Proxy(send, { apply(fn, receiver, args) {
+              const message: unknown = args[0];
+              if (message && typeof message === 'object' && 'type' in message && message.type === 'LD') {
+                workerLoads++;
+                if (!rejected) {
+                  rejected = true;
+                  return Promise.reject(new Error('Injected GeoJSON worker load rejection'));
+                }
+              }
+              return Reflect.apply(fn, receiver, args);
+            } });
+          },
+        }));
+      }
+      onAdd.call(this, map);
+    };
+    let map: Viewport | undefined;
+    try {
+      map = createViewport({ container: mount, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+        features: [point('worker-latest'), point('worker-removed')], logger: () => {} });
+      const active = map;
+      const diagnostics: RidgelineError[] = [];
+      active.on('diagnostic', error => diagnostics.push(error));
+      await active.ready;
+      await until(() => rejected && diagnostics.some(error => error.code === 'UPDATE_FAILED' && error.context.sourceId === 'rl:features'),
+        'initial GeoJSON worker rejection reported');
+      const rendered = () => active.map.queryRenderedFeatures({ layers: ['rl:points'] });
+      check(!rendered().some(hit => hit.properties._rl_feature_id === 'worker-latest'), 'Failed initial load appeared before retry');
+      active.upsert([{ ...point('worker-latest', .03), properties: { name: 'Latest' } }]);
+      active.remove(['worker-removed']);
+      active.retryUpdates();
+      await until(() => rendered().some(hit => hit.properties._rl_feature_id === 'worker-latest' &&
+        hit.geometry.type === 'Point' && hit.geometry.coordinates[0]! > .02) &&
+        !rendered().some(hit => hit.properties._rl_feature_id === 'worker-removed'), 'worker recovery with latest snapshot');
+      check(workerLoads >= 2, 'Retry did not reach the GeoJSON worker');
+    } finally {
+      map?.destroy();
+      GeoJSONSource.prototype.onAdd = onAdd;
+      mount.remove();
+    }
+  });
   await run('A retired source cannot restore stale changes after a basemap switch', async () => {
     const source = viewport.map.getSource('rl:features');
     if (!(source instanceof GeoJSONSource)) throw new Error('Missing GeoJSON source');
