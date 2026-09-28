@@ -51,6 +51,7 @@ export const browserCases = [
   'Camera overlay remains filled across a hill without testing occlusion',
   'Drawing creates accepted features, owns clicks, edits with keyboard and survives style reload',
   'Inspector label editing preserves Tab and the first real Finish click',
+  'Inspector rectangle fields retain consecutive native edits and undo history',
   'Deleting the focused final vertex keeps keyboard undo reachable',
   'Undo during a real vertex drag leaves later edits individually undoable',
   'Ordinary edits preserve dynamic styles, delete-only controls, and hover recovery',

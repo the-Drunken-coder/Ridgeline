@@ -1375,6 +1375,45 @@ async function suite() {
       controls.destroy(); editor.destroy(); draw.destroy(); tools.remove(); inspector.remove();
     }
   });
+  await run('Inspector rectangle fields retain consecutive native edits and undo history', async () => {
+    const shape = { kind: 'rectangle' as const, center: [0, 0] as [number, number], width: 100, height: 80, bearing: 0 };
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 15 },
+      features: [{ type: 'Feature', id: 'rectangle-fields', properties: {}, geometry: shapeGeometry(shape), drawing: { version: 1, shape, style: { color: '#008855', fillColor: '#008855', lineWidth: 2, fillOpacity: .2, dashed: false, label: '' } } }], logger: () => {} });
+    current = draw; await draw.ready;
+    let accepts = 0;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused', properties: {} }), submit: () => { accepts++; return { accepted: true }; } });
+    const tools = document.createElement('div'), inspector = document.createElement('div');
+    inspector.id = 'rectangle-inspector'; container.append(tools, inspector);
+    const controls = attachDrawingControls(draw, editor, { tools, inspector });
+    const dimensions = (width: number, height: number, bearing: number) => {
+      const current = editor.getState().draft?.shape;
+      check(current?.kind === 'rectangle' && current.width === width && current.height === height && current.bearing === bearing,
+        `Expected rectangle ${width}/${height}/${bearing}, received ${JSON.stringify(current)}`);
+    };
+    try {
+      editor.edit('rectangle-fields');
+      if (!window.browserFill) throw new Error('Playwright fill bridge required');
+      await window.browserFill('#rectangle-inspector [data-field="Width (m)"]', '240');
+      await browserKey('Tab');
+      check(document.activeElement?.getAttribute('data-field') === 'Height (m)', 'Width Tab missed Height');
+      await window.browserFill('#rectangle-inspector [data-field="Height (m)"]', '160');
+      await browserKey('Tab');
+      check(document.activeElement?.getAttribute('data-field') === 'Bearing (°)', 'Height Tab missed Bearing');
+      await window.browserFill('#rectangle-inspector [data-field="Bearing (°)"]', '35');
+      await browserKey('Tab');
+      dimensions(240, 160, 35);
+      await browserClick('#rectangle-inspector [data-field="action:Undo"]'); dimensions(240, 160, 0);
+      await browserClick('#rectangle-inspector [data-field="action:Undo"]'); dimensions(240, 80, 0);
+      await browserClick('#rectangle-inspector [data-field="action:Undo"]'); dimensions(100, 80, 0);
+      for (let i = 0; i < 3; i++) await browserClick('#rectangle-inspector [data-field="action:Redo"]');
+      dimensions(240, 160, 35);
+      await browserClick('#rectangle-inspector [data-field="action:Finish"]');
+      await until(() => accepts === 1 && editor.getState().phase === 'idle', 'rectangle accepted once');
+      const accepted = draw.getFeature('rectangle-fields')?.drawing?.shape;
+      check(accepted?.kind === 'rectangle' && accepted.width === 240 && accepted.height === 160 && accepted.bearing === 35,
+        'Finish lost consecutive rectangle changes');
+    } finally { controls.destroy(); editor.destroy(); draw.destroy(); tools.remove(); inspector.remove(); }
+  });
   await run('Deleting the focused final vertex keeps keyboard undo reachable', async () => {
     const line: MapFeature = { type: 'Feature', id: 'focus-line', properties: {}, geometry: { type: 'LineString', coordinates: [[0, 0], [.01, 0]] } };
     const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 13 }, features: [line], logger: () => {} });
