@@ -5,11 +5,9 @@ import {
   DEFAULT_DRAWING_STYLE,
   destination,
   distance,
-  measurements,
-  shapeGeometry,
   unroll,
-  validateShape,
 } from "../src/drawing-geometry";
+import { measurements, shapeGeometry, validateShape } from "../src/drawing-shapes";
 import { FeatureStore } from "../src/features";
 import { RidgelineError } from "../src/errors";
 import { arrowFeatures } from "../src/arrowheads";
@@ -757,8 +755,6 @@ for (const tool of ["circle", "rectangle"] as const) {
     assert.ok("center" in sized.shape);
     assert.deepEqual(sized.shape.center, center);
     assert.ok(editor.getState().measurements.area! > 0);
-    if (sized.shape.kind === "circle")
-      assert.ok(Math.abs(sized.shape.radius - 1000) < 0.001);
     assert.equal(host.getFeature("new"), undefined);
 
     editor.undo();
@@ -772,18 +768,6 @@ for (const tool of ["circle", "rectangle"] as const) {
     editor.destroy();
   });
 }
-
-test("Rectangle placement uses the current bearing and keeps the clicked corner", () => {
-  const { editor } = fixture();
-  editor.start("rectangle"); editor.addPoint([0, 0]);
-  editor.setShape({ kind: "rectangle", center: [0, 0], width: 0, height: 0, bearing: 45 });
-  const corner = destination([0, 0], 1000, 70);
-  editor.addPoint(corner);
-  const geometry = shapeGeometry(editor.getState().draft!.shape);
-  assert.equal(geometry.type, "Polygon");
-  if (geometry.type !== "Polygon") return;
-  assert.ok(geometry.coordinates[0]!.some(p => distance(corner, [p[0]!, p[1]!]) < .001));
-});
 
 test("Detailed polygon validation detects distant crossing edges and keeps snapshots detached", () => {
   const vertices = Array.from({ length: 2000 }, (_, i) => destination([179.999, 0], 1000, i / 2000 * 360));

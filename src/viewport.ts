@@ -1,4 +1,4 @@
-import { shapeGeometry } from './drawing-geometry';
+import { shapeGeometry } from './drawing-shapes';
 import { createArrowheads } from './arrowheads';
 import { Map as GLMap } from 'maplibre-gl';
 import type { LayerSpecification, MapMouseEvent, ErrorEvent as GLErrorEvent } from 'maplibre-gl';

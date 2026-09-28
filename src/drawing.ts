@@ -7,21 +7,23 @@ import type {
   DrawingPosition,
   DrawingShape,
 } from "./drawing-types";
-import { createDrawingSession, drawingHandles } from "./drawing-session";
+import { createDrawingSession } from "./drawing-session";
 import {
-  bearing,
-  destination,
-  distance,
-  measurements,
   position,
-  shapeGeometry,
-  sizeFromPoint,
-  shapeVertices,
   unroll,
   wrapLongitude,
 } from "./drawing-geometry";
 import { createArrowheads } from "./arrowheads";
 import { getViewportDrawingInternals } from "./viewport";
+import {
+  measurements,
+  placePoint,
+  shapeGeometry,
+  shapeHandles,
+  shapeInsertHandles,
+  shapeMoveHandle,
+  shapeVertices,
+} from "./drawing-shapes";
 
 const attached = new WeakSet<object>();
 const SOURCE = "rl:draft";
@@ -106,7 +108,7 @@ export function attachDrawing<P extends Properties>(
     }
     if (state.draft && except !== "draft")
       candidates.push(
-        ...drawingHandles(state.draft.shape)
+        ...shapeHandles(state.draft.shape)
           .filter((_, i) => i !== except)
           .map((h) => h.position),
       );
@@ -135,21 +137,9 @@ export function attachDrawing<P extends Properties>(
   function previewShape(): DrawingShape | undefined {
     const draft = session.getState().draft;
     if (!draft) return;
-    const shape = structuredClone(draft.shape);
-    if (draft.placing && cursor && editable()) {
-      if ("vertices" in shape) {
-        if (
-          !shape.vertices.at(-1) ||
-          distance(shape.vertices.at(-1)!, cursor) > 0.001
-        )
-          shape.vertices.push(cursor);
-      } else if (
-        draft.placed &&
-        (shape.kind === "circle" || shape.kind === "rectangle")
-      )
-        return sizeFromPoint(shape, cursor);
-    }
-    return shape;
+    if (draft.placing && cursor && editable())
+      return placePoint(draft.shape, draft.placed, cursor)?.shape ?? draft.shape;
+    return draft.shape;
   }
   function renderGeometry() {
     if (disposed || !map.getSource(SOURCE)) return;
@@ -161,7 +151,7 @@ export function attachDrawing<P extends Properties>(
     if (
       draft &&
       shape &&
-      (draft.placed || ("vertices" in shape && shape.vertices.length))
+      (draft.placed || !draft.placing || shapeMoveHandle(shape) !== undefined)
     ) {
       const points = shapeVertices(shape),
         style = draft.style;
@@ -329,11 +319,14 @@ export function attachDrawing<P extends Properties>(
         });
         marker.on("drag", () => {
           if (!editable()) return;
+          const current = session.getState().draft,
+            currentHandle = index === undefined || !current
+              ? undefined
+              : shapeHandles(current.shape)[index];
           const next = snap(
             position(marker.getLngLat().toArray()),
             bypassSnap,
-            key === "move" || (index === 0 && draft && "center" in draft.shape)
-              ? "draft" : index,
+            key === "move" || currentHandle?.carriesShape ? "draft" : index,
           );
           if (key === "move") {
             session.translate(previous, next);
@@ -346,7 +339,12 @@ export function attachDrawing<P extends Properties>(
           (e) => {
             if (!editable()) return;
             if (e.key === "Delete" || e.key === "Backspace") {
-              if (index !== undefined && draft && "vertices" in draft.shape) {
+              const current = session.getState().draft;
+              if (
+                index !== undefined &&
+                current &&
+                shapeHandles(current.shape)[index]?.removable
+              ) {
                 e.preventDefault();
                 e.stopPropagation();
                 session.removeVertex(index);
@@ -396,7 +394,7 @@ export function attachDrawing<P extends Properties>(
       item.button.disabled = locked;
     }
     if (draft && (draft.placed || !draft.placing)) {
-      drawingHandles(draft.shape).forEach((h, i) =>
+      shapeHandles(draft.shape).forEach((h, i) =>
         handle(
           `vertex-${i}`,
           h.label,
@@ -405,31 +403,17 @@ export function attachDrawing<P extends Properties>(
           i,
         ),
       );
-      if ("vertices" in draft.shape) {
-        const points = unroll(draft.shape.vertices);
-        if (points.length) {
-          const center: DrawingPosition = [
-            wrapLongitude(points.reduce((s, p) => s + p[0], 0) / points.length),
-            points.reduce((s, p) => s + p[1], 0) / points.length,
-          ];
-          handle("move", "Move drawing", center, () => {});
-        }
-        const edgeCount =
-          draft.shape.kind === "polygon" ? points.length : points.length - 1;
-        for (let i = 0; i < edgeCount; i++) {
-          const a = points[i]!,
-            b = points[(i + 1) % points.length]!;
-          const midpoint = destination(a, distance(a, b) / 2, bearing(a, b));
-          handle(
-            `insert-${i}`,
-            `Insert vertex after ${i + 1}`,
-            midpoint,
-            () => {},
-            undefined,
-            () => session.insertVertex(i, midpoint),
-          );
-        }
-      }
+      const move = shapeMoveHandle(draft.shape);
+      if (move) handle("move", move.label, move.position, () => {});
+      for (const insert of shapeInsertHandles(draft.shape))
+        handle(
+          `insert-${insert.after}`,
+          insert.label,
+          insert.position,
+          () => {},
+          undefined,
+          () => session.insertVertex(insert.after, insert.position),
+        );
     }
     for (const [key, item] of markers)
       if (!keep.has(key)) {
