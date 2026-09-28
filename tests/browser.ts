@@ -113,6 +113,44 @@ async function suite() {
       check([...rawRequests, ...rendererRequests].every(url => !/[{}]/.test(url)), 'A terrain template token remained unresolved');
     } finally { air?.destroy(); window.fetch = fetch; }
   });
+  await run('Inspector resumes updates after window blur or lost pointer capture', async () => {
+    const draw = createViewport({ container, basemap: style(), logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'pointer-loss', properties: {} }), submit: () => ({ accepted: true }) });
+    const tools = document.createElement('div'), inspector = document.createElement('div');
+    inspector.style.cssText = 'position:fixed;left:0;top:0;width:320px;height:600px;z-index:10';
+    container.append(tools, inspector);
+    const controls = attachDrawingControls(draw, editor, { tools, inspector });
+    try {
+      editor.start('line'); editor.addPoint([0, 0]); editor.addPoint([.01, 0]);
+      if (!window.browserMouse) throw new Error('Playwright mouse bridge required');
+      for (const loss of ['blur', 'capture']) {
+        const output = inspector.querySelector('output')!;
+        output.scrollIntoView({ block: 'center' });
+        let pointerId: number | undefined;
+        if (loss === 'capture') output.addEventListener('pointerdown', event => {
+          pointerId = event.pointerId;
+          output.setPointerCapture(event.pointerId);
+        }, { once: true });
+        const rect = output.getBoundingClientRect(), x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+        await window.browserMouse('down', x, y);
+        if (loss === 'capture') await window.browserMouse('move', x + 1, y);
+        try {
+          editor.setStyle({ label: loss });
+          check(inspector.querySelector<HTMLInputElement>('[data-field="Label"]')?.value !== loss, `Control rebuilt before the ${loss} pointer press ended`);
+          if (loss === 'blur') {
+            // Browser focus loss is controlled here; the preceding pointer press is native.
+            window.dispatchEvent(new Event('blur'));
+          } else {
+            check(pointerId !== undefined, 'Native press did not reach the inspector');
+            output.releasePointerCapture(pointerId!);
+            await window.browserMouse('move', x + 2, y);
+          }
+          await until(() => inspector.querySelector<HTMLInputElement>('[data-field="Label"]')?.value === loss, `inspector update after ${loss}`);
+        } finally { await window.browserMouse('up', x, y); }
+      }
+    } finally { controls.destroy(); editor.destroy(); draw.destroy(); tools.remove(); inspector.remove(); }
+  });
   await run('Preparation failures preserve construction and update publication and release the viewport', async () => {
     for (const immediate of [true, false]) {
       const errors: RidgelineError[] = [];
@@ -307,7 +345,7 @@ async function suite() {
     } finally { map.destroy(); mount.remove(); }
   });
   await run('Removing and reinserting an airborne ID does not restore its selection', async () => {
-    const air = createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 }, logger: () => {} });
+    const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, elevationSampler: { sample: () => 0 }, logger: () => {} });
     current = air; await air.ready;
     const feature: MapFeature = { ...point('selected-air'), entity: { altitude: { meters: 100, reference: 'ground' },
       attachments: [{ id: 'zone', type: 'circle', radius: 100 }] } };
@@ -321,11 +359,10 @@ async function suite() {
       air.upsert([feature]);
       await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'reinserted airborne entity');
       check(air.getSelection().length === 0, 'Reinserted airborne entity regained selection');
-      const sourceFeature = air.map.querySourceFeatures('rl:features').find(hit => hit.properties._rl_feature_id === feature.id);
-      if (sourceFeature?.id !== undefined) {
-        const state = air.map.getFeatureState({ source: 'rl:features', id: sourceFeature.id });
-        check(state.selected !== true, 'Reinserted feature retained renderer selection state');
-      }
+      const sourceFeature = () => air.map.querySourceFeatures('rl:features').find(hit => hit.properties._rl_feature_id === feature.id);
+      await until(() => sourceFeature()?.id !== undefined, 'reinserted source feature');
+      const state = air.map.getFeatureState({ source: 'rl:features', id: sourceFeature()!.id! });
+      check(state.selected !== true, 'Reinserted feature retained renderer selection state');
     } finally { air.destroy(); }
   });
   await run('Mutating object basemaps does not change accepted configuration or style', async () => {
