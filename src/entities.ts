@@ -24,6 +24,8 @@ export const DEFAULT_ENTITY_VISIBILITY = {
 };
 const combineCoverage = (a: EntityState['coverage'], b: EntityState['coverage']): EntityState['coverage'] =>
   a === 'unavailable' || b === 'unavailable' ? 'unavailable' : a === 'loading' || b === 'loading' ? 'loading' : 'ready';
+const verticalScale = (configuration: MapConfiguration) =>
+  configuration.terrain ? configuration.exaggeration : 1;
 type SceneOptions<P extends Properties> = {
   map: GLMap;
   configuration: () => MapConfiguration;
@@ -184,7 +186,7 @@ export class EntityScene<P extends Properties> {
       visible: true,
       ground: !airborne,
       position: this.positions.get(feature.id),
-      offset: airborne ? (config.terrain ? (altitude - ground) * config.exaggeration : altitude) : 0,
+      offset: airborne ? (config.terrain ? (altitude - ground) * verticalScale(config) : altitude) : 0,
     };
   }
   pickAbove(x: number, y: number, tolerance: number) {
@@ -299,7 +301,7 @@ export class EntityScene<P extends Properties> {
   }
   private renderLayers(includeGround = true) {
     const primitives = [...this.geometry.values()].flat().concat(this.coverage.allGeometry());
-    this.layer.set(primitives.filter(p => !p.surface));
+    this.layer.set(primitives.filter(p => !p.surface), verticalScale(this.options.configuration()));
     if (includeGround) this.groundLayer.set(primitives.filter(p => p.surface));
   }
 }

@@ -46,11 +46,6 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
   zoneHeight.maximum = height.maximum;
   zoneHeight.failedAt = unavailable;
   const entityColor = parseColor(style.color ?? '#216e5b', 1, { initialCss: '#216e5b' });
-  const display = (p: GeoPoint): GeoPoint => [
-    p[0],
-    p[1],
-    config.terrain ? p[2] * config.exaggeration : p[2],
-  ];
   const add = (
     vertices: GeoPoint[],
     mode: Primitive['mode'],
@@ -64,7 +59,7 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
         entityId: feature.id,
         attachmentId,
         mode,
-        vertices: surface ? vertices : vertices.map(display),
+        vertices,
         color: rgba,
         size,
         surface,
@@ -92,12 +87,12 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
     const origin: GeoPoint = [lng, lat, placement === 'airborne' ? altitude : ground],
       local = localFrame(origin);
     for (const attachment of entity.attachments ?? []) {
+      if (attachment.type === 'camera') continue;
       const rgba = parseColor(
-        attachment.color ?? (attachment.type === 'camera' ? '#288b59' : '#8060ae'),
+        attachment.color ?? '#8060ae',
         0.22,
         { initialCss: '#216e5b' },
       );
-      if (attachment.type === 'camera') continue;
       if (visibility.zones) {
         if (attachment.type === 'circle' || attachment.type === 'polygon') {
           const boundary =

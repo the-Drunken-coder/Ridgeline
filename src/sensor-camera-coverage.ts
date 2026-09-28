@@ -1,17 +1,14 @@
 import { MercatorCoordinate, type Map as GLMap } from 'maplibre-gl';
 import type { CameraAttachment, EntityState, MapConfiguration } from './types';
 import type { GeoPoint } from './entity-geometry';
-import { cameraFootprint, cameraRay, localFrame } from './entity-geometry';
-import { cameraVolume, visibleCameraEdges } from './camera-volume';
+import { cameraVolume, plainCameraPrimitives, terrainCameraPrimitives } from './camera-volume';
 import { cameraTerrain, cameraTerrainPreparationBounds } from './gpu-camera-terrain';
 import type { CameraTerrain } from './gpu-camera-terrain';
 import type { Primitive } from './entity-layer';
 import { GpuCameras, sameCamera, sameCameraAppearance } from './gpu-cameras';
 import type { GpuCamera } from './gpu-cameras';
-import { parseColor } from './color';
 import { cameraAreaKey, placementAreaKey, type Elevation } from './elevation';
 
-type Color = Primitive['color'];
 
 /** The only rendering seam the coverage owner needs from the GPU adapter. */
 export type SensorCameraAdapter = {
@@ -119,114 +116,6 @@ function restampCamera(phase: CameraPhase, lifecycle: number): CameraPhase {
   return phase;
 }
 
-function plainCameraPrimitives(
-  entityId: string,
-  origin: GeoPoint,
-  ground: number,
-  camera: CameraAttachment,
-  configuration: MapConfiguration,
-): { geometry: Primitive[]; footprintTriangles: number } {
-  const rgba = parseColor(camera.color ?? '#288b59', 0.22);
-  const display = (point: GeoPoint): GeoPoint => [
-    point[0],
-    point[1],
-    configuration.terrain ? point[2] * configuration.exaggeration : point[2],
-  ];
-  const geometry: Primitive[] = [];
-  const add = (
-    vertices: GeoPoint[],
-    mode: Primitive['mode'],
-    value: Color,
-    surface = false,
-    size?: number,
-  ) => {
-    if (!vertices.length) return;
-    geometry.push({
-      entityId,
-      attachmentId: camera.id,
-      mode,
-      vertices: surface ? vertices : vertices.map(display),
-      color: value,
-      size,
-      surface,
-    });
-  };
-
-  const footprint = cameraFootprint(origin, camera, ground);
-  if ((camera.volumeOpacity ?? 0) > 0 || camera.wireframe) {
-    const local = localFrame(origin);
-    const corners = ([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([x, y]) => {
-      const ray = cameraRay(camera, x, y);
-      const distance = ray[2] < 0
-        ? Math.min(camera.range, (origin[2] - ground) / -ray[2])
-        : camera.range;
-      return local(ray[0] * distance, ray[1] * distance, ray[2] * distance);
-    });
-    const faces: GeoPoint[] = [];
-    const rays: GeoPoint[] = [];
-    corners.forEach((a, index) => {
-      const b = corners[(index + 1) % corners.length]!;
-      faces.push(origin, a, b);
-      rays.push(origin, a, a, b);
-    });
-    if ((camera.volumeOpacity ?? 0) > 0)
-      add(faces, 'triangles', [rgba[0], rgba[1], rgba[2], camera.volumeOpacity!]);
-    if (camera.wireframe)
-      add(rays, 'lines', parseColor('#8bab97', 1), false, camera.wireframeWidth ?? 3);
-  }
-  if (footprint.length) {
-    add(footprint, 'polygon', [rgba[0], rgba[1], rgba[2], camera.fillOpacity ?? 0.25], true);
-    if (camera.outline ?? true)
-      add(
-        footprint.flatMap((point, index) => [point, footprint[(index + 1) % footprint.length]!]),
-        'lines',
-        [rgba[0], rgba[1], rgba[2], 0.95],
-        true,
-        camera.outlineWidth ?? 3,
-      );
-  }
-  return { geometry, footprintTriangles: footprint.length ? 2 : 0 };
-}
-
-function cameraVolumePrimitives(
-  entityId: string,
-  origin: GeoPoint,
-  camera: CameraAttachment,
-  volume: ReturnType<typeof cameraVolume>,
-  configuration: MapConfiguration,
-  terrain: CameraTerrain,
-): Primitive[] {
-  const display = (point: GeoPoint): GeoPoint => [
-    point[0],
-    point[1],
-    configuration.terrain ? point[2] * configuration.exaggeration : point[2],
-  ];
-  const faces: GeoPoint[] = [];
-  volume.corners.forEach((a, index) => {
-    const b = volume.corners[(index + 1) % 4]!;
-    faces.push(origin, a, b);
-  });
-  const geometry: Primitive[] = [];
-  if ((camera.volumeOpacity ?? 0) > 0)
-    geometry.push({
-      entityId,
-      attachmentId: camera.id,
-      mode: 'triangles',
-      vertices: faces.map(display),
-      color: parseColor(camera.color ?? '#288b59', camera.volumeOpacity!),
-    });
-  if (camera.wireframe)
-    geometry.push({
-      entityId,
-      attachmentId: camera.id,
-      mode: 'lines',
-      vertices: visibleCameraEdges(origin, volume, terrain).map(display),
-      color: parseColor('#8bab97', 1),
-      size: camera.wireframeWidth ?? 3,
-    });
-  return geometry;
-}
-
 /** Coordinates all sensor-camera display lifecycles while keeping GPU details private. */
 export class SensorCameraCoverage {
   private readonly adapter: SensorCameraAdapter;
@@ -322,7 +211,7 @@ export class SensorCameraCoverage {
       for (const camera of input.cameras) {
         const state = entity.cameras.get(camera.id)!;
         if (camera.terrainVisibility) continue;
-        const plain = plainCameraPrimitives(input.entityId, input.origin, input.ground, camera, input.configuration);
+        const plain = plainCameraPrimitives(input.entityId, input.origin, input.ground, camera);
         state.phase = showPlainCamera(plain.geometry);
         footprintTriangles += plain.footprintTriangles;
       }
@@ -441,7 +330,7 @@ export class SensorCameraCoverage {
           origin: input.origin,
           terrain,
           volume,
-          geometry: cameraVolumePrimitives(input.entityId, input.origin, camera, volume, input.configuration, terrain),
+          geometry: terrainCameraPrimitives(input.entityId, input.origin, camera, volume, terrain),
         };
         state.phase = requestCamera(state.phase, request);
       } catch (cause) {

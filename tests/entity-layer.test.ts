@@ -39,14 +39,14 @@ test('picks the visible part of a face whose third vertex crosses the near plane
   try {
     layer.onAdd(map, gl);
     layer.set([{ entityId: 'aircraft', attachmentId: 'face', mode: 'triangles',
-      vertices: [[0, 0, 1000], [0.05, 0, 0], [0, -0.05, 0]], color: [1, 0, 0, 0.5] }]);
+      vertices: [[0, 0, 1000], [0.05, 0, 0], [0, -0.05, 0]], color: [1, 0, 0, 0.5] }], 1);
     layer.render(gl, input);
     assert.deepEqual(errors, []);
     assert.equal(layer.project([0, 0, 1000]), null);
     assert.deepEqual(layer.pick(700, 400, 0).map(hit => [hit.entityId, hit.attachmentId]), [['aircraft', 'face']]);
 
     layer.set([{ entityId: 'aircraft', attachmentId: 'ray', mode: 'lines',
-      vertices: [[0, 0, 1000], [0.05, 0, 0]], color: [1, 0, 0, 1] }]);
+      vertices: [[0, 0, 1000], [0.05, 0, 0]], color: [1, 0, 0, 1] }], 1);
     assert.deepEqual(layer.pick(700, 500, 2).map(hit => [hit.entityId, hit.attachmentId]), [['aircraft', 'ray']]);
 
     const changedProjection = { ...input, shaderData: { ...input.shaderData, variantName: 'changed' } };
