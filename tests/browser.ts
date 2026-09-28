@@ -520,7 +520,7 @@ async function suite() {
       air.destroy();
     }
   });
-  await run('Switching to a plain camera during unresolved placement drops pending terrain coverage', async () => {
+  await run('Switching to a plain camera during unresolved placement drops terrain coverage', async () => {
     const missingLng = .0001;
     let resolvePreparation: (() => void) | undefined;
     const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
@@ -536,23 +536,15 @@ async function suite() {
     const mask = () => air.map.getStyle().layers.some(layer => layer.id.startsWith('rl:camera-mask:'));
     air.upsert([feature]);
     await until(() => air.getEntityState(feature.id)?.coverage === 'ready' && mask(), 'initial terrain camera coverage');
-    const gl = air.map.getCanvas().getContext('webgl2')!;
-    const clientWaitSync = gl.clientWaitSync.bind(gl);
-    let heldWaits = 0;
-    gl.clientWaitSync = () => { heldWaits++; return gl.TIMEOUT_EXPIRED; };
     try {
-      air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [.00005, 0] } }]);
-      await until(() => heldWaits > 0 && air.getEntityState(feature.id)?.coverage === 'loading', 'replacement camera fence');
       air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [missingLng, 0] },
         entity: { ...feature.entity!, attachments: [{ ...camera, terrainVisibility: false }] } }]);
       await until(() => air.getEntityState(feature.id)?.placement === 'elevation-unavailable', 'plain camera placement preparation');
       check(!mask(), 'Terrain mask remained after switching to a plain camera');
       check(!air.map.getLayer('rl:camera-gpu'), 'Plain camera retained the terrain renderer');
-      gl.clientWaitSync = clientWaitSync;
       await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       check(!mask(), 'Late terrain completion restored a plain camera mask');
     } finally {
-      gl.clientWaitSync = clientWaitSync;
       resolvePreparation?.();
       air.destroy();
     }

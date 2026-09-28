@@ -70,6 +70,18 @@ type EntityCoverage = {
   timer?: ReturnType<typeof setTimeout>;
 };
 
+function startCamera(terrainVisibility: boolean): CameraPhase {
+  return terrainVisibility ? { kind: 'waiting' } : { kind: 'plain' };
+}
+
+function showPlainCamera(geometry?: Primitive[]): CameraPhase {
+  return { kind: 'plain', geometry };
+}
+
+function markUnavailable(): CameraPhase {
+  return { kind: 'unavailable' };
+}
+
 function shown(phase: CameraPhase): GpuCamera | undefined {
   return phase.kind === 'waiting' || phase.kind === 'requested' || phase.kind === 'displayed'
     ? phase.shown : undefined;
@@ -88,6 +100,10 @@ function requestCamera(phase: CameraPhase, request: GpuCamera): CameraPhase {
 
 function waitForCamera(phase: CameraPhase): CameraPhase {
   return { kind: 'waiting', shown: shown(phase), inFlight: submitted(phase) };
+}
+
+function discardCamera(phase: CameraPhase): CameraPhase {
+  return { kind: 'waiting', shown: shown(phase) };
 }
 
 function completeCamera(phase: CameraPhase, value: GpuCamera): CameraPhase {
@@ -260,11 +276,11 @@ export class SensorCameraCoverage {
       const state = entity.cameras.get(camera.id);
       if (!state) entity.cameras.set(camera.id, {
         lifecycle: ++this.lifecycleSequence,
-        phase: camera.terrainVisibility ? { kind: 'waiting' } : { kind: 'plain' },
+        phase: startCamera(Boolean(camera.terrainVisibility)),
       });
-      else if (camera.terrainVisibility === (state.phase.kind === 'plain')) {
+      else if (Boolean(camera.terrainVisibility) === (state.phase.kind === 'plain')) {
         state.lifecycle = ++this.lifecycleSequence;
-        state.phase = camera.terrainVisibility ? { kind: 'waiting' } : { kind: 'plain' };
+        state.phase = startCamera(Boolean(camera.terrainVisibility));
       }
     }
     const terrainRanges = usable || waitingForPlacement
@@ -278,7 +294,7 @@ export class SensorCameraCoverage {
         const state = entity.cameras.get(camera.id)!;
         if (camera.terrainVisibility) continue;
         const plain = plainCameraPrimitives(input.entityId, input.origin, input.ground, camera, input.configuration);
-        state.phase = { kind: 'plain', geometry: plain.geometry };
+        state.phase = showPlainCamera(plain.geometry);
         footprintTriangles += plain.footprintTriangles;
       }
       this.updateTerrain(entity);
@@ -286,7 +302,7 @@ export class SensorCameraCoverage {
       this.updateTerrain(entity);
       if (input.elevationUnavailable && !this.isPreparing(input.entityId)) {
         for (const camera of input.cameras) if (!camera.terrainVisibility)
-          entity.cameras.get(camera.id)!.phase = { kind: 'plain' };
+          entity.cameras.get(camera.id)!.phase = showPlainCamera();
       }
     }
 
@@ -375,7 +391,7 @@ export class SensorCameraCoverage {
       // newly built request before any result can publish or become ready.
       camera.lifecycle = ++this.lifecycleSequence;
       if (entity.input.cameras.some(input => input.id === id && input.terrainVisibility))
-        camera.phase = { kind: 'waiting', shown: shown(camera.phase) };
+        camera.phase = this.failed ? markUnavailable() : discardCamera(camera.phase);
     }
     this.adapterDirty = true;
   }
@@ -394,13 +410,13 @@ export class SensorCameraCoverage {
       if (!camera.terrainVisibility) continue;
       const state = entity.cameras.get(camera.id)!;
       if (this.failed) {
-        state.phase = { kind: 'unavailable' };
+        state.phase = markUnavailable();
         continue;
       }
       const readiness = this.terrainReadiness(entity, camera.range);
       if (readiness.kind !== 'ready') {
         state.phase = readiness.kind === 'unavailable'
-          ? { kind: 'unavailable' } : waitForCamera(state.phase);
+          ? markUnavailable() : waitForCamera(state.phase);
         continue;
       }
       const terrain = readiness.terrain;
@@ -508,7 +524,7 @@ export class SensorCameraCoverage {
     this.failed = true;
     for (const entity of this.entities.values()) {
       for (const camera of entity.cameras.values()) if (camera.phase.kind !== 'plain')
-        camera.phase = { kind: 'unavailable' };
+        camera.phase = markUnavailable();
     }
     (this.options.rendererDiagnostic ?? this.options.diagnostic)(cause);
     try { this.adapter.set([]); } catch { /* the adapter already reported the renderer failure */ }

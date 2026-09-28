@@ -401,6 +401,8 @@ test('failure clears displayed camera output, retry uses current input, and stal
   assert.equal(coverage.status('entity'), 'unavailable');
   assert.deepEqual(coverage.output('entity'), []);
   assert.equal(diagnostics.length, 1);
+  coverage.resetElevation();
+  assert.equal(coverage.status('entity'), 'unavailable', 'An elevation reset cannot recover a failed renderer');
 
   coverage.retry();
   coverage.flush();
