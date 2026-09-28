@@ -175,6 +175,7 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
       }
       if (destroyed) return;
       target.create(features);
+      if (destroyed) return;
       options.restored?.(preparedSnapshots);
       if (destroyed) return;
       const source = target.current();

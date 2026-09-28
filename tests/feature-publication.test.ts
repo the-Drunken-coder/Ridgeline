@@ -386,3 +386,24 @@ test('restoration stops when a preparation diagnostic destroys the publisher', (
   assert.equal(renders, 1);
   assert.equal(f.frames.size, 0);
 });
+
+test('source creation stops restoration when an error observer destroys publication', () => {
+  const store = new FeatureStore<Properties>();
+  store.upsert([point('a')]);
+  let restored = 0;
+  let watched = 0;
+  let publication: ReturnType<typeof createFeaturePublication<Properties>>;
+  publication = createFeaturePublication({
+    store, render: feature => feature, diagnostic: () => {}, beforeSubmit: () => {}, published: () => {},
+    restored: () => { restored++; },
+    frames: { request: () => 1, cancel: () => {} },
+    target: {
+      current: () => undefined,
+      create: () => publication.destroy(),
+      watchInitial: () => { watched++; return () => {}; },
+    },
+  });
+  publication.restore();
+  assert.equal(restored, 0);
+  assert.equal(watched, 0);
+});

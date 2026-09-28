@@ -142,37 +142,53 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     if (prepared && map.getSource(SOURCE) && store.has(id)) map.setFeatureState({ source: SOURCE, id: sourceFeatureId(id) }, { selected: selected.has(id), hover: previewId === id });
   }
   function applyElevation(replace = false) {
-    if (!prepared) return;
+    if (!prepared || destroyed) return;
     if (replace) {
       map.setTerrain(null);
+      if (destroyed) return;
       if (map.getLayer(SHADE)) map.removeLayer(SHADE);
+      if (destroyed) return;
       if (map.getSource(TERRAIN)) map.removeSource(TERRAIN);
+      if (destroyed) return;
       if (map.getSource(SHADE)) map.removeSource(SHADE);
+      if (destroyed) return;
     }
     for (const [id, enabled] of [[TERRAIN, configuration.terrain], [SHADE, configuration.hillshade]] as const) {
+      if (destroyed) return;
       if (enabled && !map.getSource(id)) map.addSource(id, { type: 'raster-dem', ...configuration.elevation });
     }
+    if (destroyed) return;
     map.setTerrain(configuration.terrain ? { source: TERRAIN, exaggeration: configuration.exaggeration } : null);
+    if (destroyed) return;
     if (configuration.hillshade && !map.getLayer(SHADE)) {
       const before = map.getStyle().layers?.find(layer => layer.type === 'symbol' || layer.id.startsWith('rl:'))?.id;
       map.addLayer({ id: SHADE, type: 'hillshade', source: SHADE, paint: hillshadePaint(configuration.hillshadeOptions) }, before);
     }
+    if (destroyed) return;
     if (configuration.hillshade && map.getLayer(SHADE)) {
       const paint = hillshadePaint(configuration.hillshadeOptions);
-      for (const key of Object.keys(paint) as (keyof typeof paint)[]) map.setPaintProperty(SHADE, key, paint[key]);
+      for (const key of Object.keys(paint) as (keyof typeof paint)[]) {
+        if (destroyed) return;
+        map.setPaintProperty(SHADE, key, paint[key]);
+      }
     }
+    if (destroyed) return;
     if (!configuration.hillshade && map.getLayer(SHADE)) map.removeLayer(SHADE);
+    if (destroyed) return;
     if (!configuration.terrain && map.getSource(TERRAIN)) map.removeSource(TERRAIN);
+    if (destroyed) return;
     if (!configuration.hillshade && map.getSource(SHADE)) map.removeSource(SHADE);
   }
 
   function syncArrows() {
-    if (!prepared) return;
+    if (!prepared || destroyed) return;
     addArrowImage(map);
+    if (destroyed) return;
     const arrows = arrowFeatures([...publishedArrows.values()]);
     const source = map.getSource('rl:arrows');
     if (source instanceof GeoJSONSource) source.setData(arrows);
     else map.addSource('rl:arrows', { type: 'geojson', promoteId: '_rl_id', data: arrows });
+    if (destroyed) return;
     if (!map.getLayer('rl:arrowheads')) map.addLayer({ id: 'rl:arrowheads', type: 'symbol', source: 'rl:arrows', layout: { 'icon-image': ARROW_IMAGE, 'icon-rotate': ['get', 'bearing'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true }, paint: { 'icon-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'icon-color': ['get', 'color'] } });
   }
 
@@ -181,7 +197,12 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     try {
       prepared = true;
       map.setProjection({ type: configuration.projection === 'flat' ? 'mercator' : 'globe' });
-      for (const [id, icon] of icons) if (!map.hasImage(`rl:icon:${id}`)) map.addImage(`rl:icon:${id}`, icon.image, { pixelRatio: icon.pixelRatio ?? 1 });
+      if (destroyed) return;
+      for (const [id, icon] of icons) {
+        if (destroyed) return;
+        if (!map.hasImage(`rl:icon:${id}`)) map.addImage(`rl:icon:${id}`, icon.image, { pixelRatio: icon.pixelRatio ?? 1 });
+      }
+      if (destroyed) return;
       publication.restore();
       if (destroyed) return;
       const layers: LayerSpecification[] = [
