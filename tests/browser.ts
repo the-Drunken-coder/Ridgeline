@@ -49,6 +49,45 @@ async function pointer(action: 'move' | 'click', point: { x: number; y: number }
   await drawingPointer(action, point.x, point.y);
   await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 }
+async function pixelAt(viewport: Viewport, coordinates: [number, number], timeoutMs: number, description: string): Promise<{ red: number; green: number; blue: number }> {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => { clearTimeout(timeout); viewport.map.off('render', onRender); };
+    const onRender = () => {
+      cleanup();
+      try {
+        const canvas = viewport.map.getCanvas();
+        const gl = canvas.getContext('webgl2');
+        if (!gl) throw new Error(`WebGL2 unavailable while reading pixel: ${description}`);
+        const scale = canvas.width / canvas.clientWidth;
+        const point = viewport.map.project(coordinates);
+        const pixel = new Uint8Array(4);
+        gl.readPixels(Math.round(point.x * scale), canvas.height - 1 - Math.round(point.y * scale), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+        const [red, green, blue] = pixel;
+        if (red === undefined || green === undefined || blue === undefined) throw new Error(`Incomplete pixel sample: ${description}`);
+        resolve({ red, green, blue });
+      } catch (error) { reject(error); }
+    };
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out waiting for map render: ${description}`));
+    }, timeoutMs);
+    try {
+      viewport.map.on('render', onRender);
+      viewport.map.triggerRepaint();
+    } catch (error) { cleanup(); reject(error); }
+  });
+}
+async function untilPixel(viewport: Viewport, coordinates: [number, number], visible: boolean, description: string) {
+  const start = performance.now();
+  while (true) {
+    const remaining = 8_000 - (performance.now() - start);
+    if (remaining <= 0) throw new Error(`Timed out: ${description}`);
+    const { red, green, blue } = await pixelAt(viewport, coordinates, remaining, description);
+    const isLine = Math.max(red, green, blue) - Math.min(red, green, blue) > 35;
+    if (isLine === visible) return;
+    if (performance.now() - start > 8_000) throw new Error(`Timed out: ${description} (${red}, ${green}, ${blue})`);
+  }
+}
 async function suite() {
   await run('Destroy during initialization, repeat destroy, then remount', async () => {
     const abandoned = createViewport({ container, basemap: style() });
@@ -1553,6 +1592,63 @@ async function suite() {
     draw.map.getCanvas().dispatchEvent(new MouseEvent('mouseup',{clientX:x+30,clientY:y+30,button:0,bubbles:true,view:window}));
     editor.destroy();draw.destroy();
   });
+  await run('Forwarding viewport wrappers share drawing ownership and allow reattachment', async () => {
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+    current = draw; await draw.ready;
+    const options = { createFeature: () => ({ id: 'wrapped', properties: {} }), submit: () => ({ accepted: true as const }) };
+    const wrapper: Viewport = { ...draw };
+    const editor = attachDrawing(wrapper, options);
+    try {
+      let rejected = false;
+      try { attachDrawing({ ...draw }, options); } catch (error) {
+        rejected = error instanceof Error && error.message.includes('already attached');
+      }
+      check(rejected, 'A second wrapper bypassed drawing attachment ownership');
+      editor.start('line'); editor.addPoint([0, 0]); editor.addPoint([.01, 0]);
+      check(draw.getInteractionOwner() !== null, 'Wrapped editor did not acquire interaction ownership');
+      editor.cancel(); editor.destroy();
+      check(draw.getInteractionOwner() === null, 'Destroyed wrapped editor retained interaction ownership');
+      check(!draw.map.getSource('rl:draft'), 'Destroyed wrapped editor retained its source');
+      const replacement = attachDrawing(draw, options);
+      try {
+        replacement.start('circle'); replacement.addPoint([0, 0]); replacement.addPoint([.005, 0]);
+        check(await replacement.finish(), 'Reattached editor failed to submit');
+        check(draw.getFeature('wrapped')?.drawing?.shape.kind === 'circle', 'Reattached editor did not publish');
+      } finally { replacement.destroy(); }
+    } finally { editor.destroy(); draw.destroy(); }
+  });
+  await run('Centered drawing handles keep independent keyboard and drag behavior', async () => {
+    const draw=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:13},logger:()=>{}});
+    current=draw;await draw.ready;
+    const editor=attachDrawing(draw,{createFeature:()=>({id:'centered',properties:{}}),submit:()=>({accepted:true})});
+    editor.start('rectangle');editor.addPoint([0,0]);editor.addPoint([.004,.004]);
+    const rectangle=editor.getState().draft!.shape;
+    if(rectangle.kind!=='rectangle')throw new Error('Missing rectangle draft');
+    editor.setShape({...rectangle,width:600,height:350,bearing:35});
+    const before=editor.getState().draft!.shape;
+    if(before.kind!=='rectangle')throw new Error('Missing rotated rectangle');
+    const width=container.querySelector<HTMLButtonElement>('[aria-label="Width"]')!;
+    if (!window.browserKey || !window.browserMouse) throw new Error('Playwright input bridge required');
+    width.focus();await window.browserKey('ArrowRight');
+    const after=editor.getState().draft!.shape;
+    check(after.kind==='rectangle'&&after.width!==before.width&&after.height===before.height&&after.bearing===before.bearing&&JSON.stringify(after.center)===JSON.stringify(before.center),'Width keyboard step changed another rectangle parameter');
+    editor.undo();
+    check(JSON.stringify(editor.getState().draft!.shape)===JSON.stringify(before),'One undo did not restore the rectangle width');
+    editor.cancel();
+
+    const origin=draw.map.project([0,0]),edge=draw.map.unproject([origin.x+80,origin.y]);
+    editor.start('circle');editor.addPoint([0,0]);editor.addPoint([edge.lng,edge.lat]);
+    await until(()=>draw.map.loaded(),'circle handle map ready');
+    const centerHandle = container.querySelector<HTMLButtonElement>('[aria-label="Center"]')!;
+    const box = centerHandle.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2;
+    await window.browserMouse('down', x, y);
+    for (let step = 1; step <= 9; step++) await window.browserMouse('move', x + step * 8, y);
+    await window.browserMouse('up', x + 72, y);
+    const circle=editor.getState().draft!.shape;
+    if(circle.kind!=='circle')throw new Error('Missing circle draft');
+    check(Math.abs(draw.map.project(circle.center).x-origin.x-72)<1,'Circle Center snapped to its own Radius handle');
+    editor.destroy();draw.destroy();
+  },{realPointer:true});
   await run('Arrowheads follow accepted geometry updates and disappear on deletion', async () => {
     const arrowShape = { kind:'arrow' as const, vertices:[[-.01,0],[.01,0]] as [number,number][] };
     const arrow:MapFeature = { type:'Feature', id:'arrow', geometry:shapeGeometry(arrowShape), properties:{}, drawing:{version:1,shape:arrowShape,style:{color:'#ff0000',fillColor:'#ff0000',lineWidth:3,fillOpacity:0,dashed:false,label:''}} };
@@ -1563,23 +1659,35 @@ async function suite() {
     await until(()=>heads().some(f=>Math.abs(Number(f.properties.bearing))<1),'arrowhead follows direction');
     draw.remove(['arrow']);await until(()=>heads().length===0,'arrowhead removed');draw.destroy();
   });
-  await run('A failed arrow update retains its shaft and head while healthy work advances', async () => {
+  await run('Arrow editing, basemap replacement, failure, cancellation and retry keep shaft and head coherent', async () => {
     const oldShape = { kind: 'arrow' as const, vertices: [[-.01, 0], [.01, 0]] as [number, number][] };
     const newShape = { kind: 'arrow' as const, vertices: [[-.01, .02], [.01, .02]] as [number, number][] };
     const arrow: MapFeature = { type: 'Feature', id: 'coherent-arrow', properties: {}, geometry: shapeGeometry(oldShape),
       drawing: { version: 1, shape: oldShape, style: { color: '#ff0000', fillColor: '#ff0000', lineWidth: 3,
         fillOpacity: 0, dashed: false, label: '' } } };
     const errors: RidgelineError[] = [];
+    let fail = false;
     const draw = createViewport({ container, basemap: style(), camera: { center: [0, .01], zoom: 12 },
-      features: [arrow, point('arrow-neighbor')], style: feature => {
-        if (feature.properties.fail) throw new Error('Arrow styling failed');
+      features: [arrow, point('arrow-neighbor', -.04)], style: feature => {
+        if (feature.id === arrow.id && fail) throw new Error('Arrow styling failed');
         return { color: '#008855' };
       }, logger: () => {}, onError: error => errors.push(error) });
     current = draw; await draw.ready;
     const visible = (layer: string, lng: number, lat: number) => draw.map.queryRenderedFeatures(draw.map.project([lng, lat]), { layers: [layer] })
       .some(hit => hit.properties._rl_feature_id === arrow.id);
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'new', properties: {} }), submit: () => ({ accepted: true }) });
     try {
       await until(() => visible('rl:line', 0, 0) && visible('rl:arrowheads', .01, 0), 'original arrow shaft and head');
+      editor.edit(arrow.id);
+      editor.setShape({ kind: 'arrow', vertices: [[-.01, .01], [.01, .01]] });
+      draw.configure({ basemap: style('#dddddd') });
+      await until(() => Boolean(draw.map.getLayer('rl:draft-arrow')) && Boolean(draw.map.getLayer('rl:arrowheads')), 'arrow layers restored');
+      await until(() => draw.map.queryRenderedFeatures({ layers: ['rl:draft-arrow'] }).some(hit =>
+        hit.geometry.type === 'Point' && Math.abs(hit.geometry.coordinates[1]! - .01) < .0001), 'draft arrowhead restored');
+      await until(() => !visible('rl:arrowheads', .01, 0), 'accepted head hidden');
+      await untilPixel(draw, [0, 0], false, 'accepted shaft hidden');
+      await untilPixel(draw, [0, .01], true, 'draft shaft restored');
+      fail = true;
       draw.upsert([
         { ...arrow, geometry: shapeGeometry(newShape), drawing: { ...arrow.drawing!, shape: newShape }, properties: { fail: true } },
         point('arrow-neighbor', .04),
@@ -1587,11 +1695,19 @@ async function suite() {
       await until(() => errors.some(error => error.context.featureId === arrow.id) &&
         draw.map.queryRenderedFeatures(draw.map.project([.04, 0]), { layers: ['rl:points'] })
           .some(hit => hit.properties._rl_feature_id === 'arrow-neighbor'), 'healthy feature advanced after arrow failure');
+      check(Boolean(editor.getState().draft), 'External failed update discarded the draft');
+      editor.cancel();
+      await until(() => visible('rl:line', 0, 0) && visible('rl:arrowheads', .01, 0), 'cancel restores published shaft and head');
+      await untilPixel(draw, [0, 0], true, 'cancel restores published shaft');
+      await untilPixel(draw, [0, .01], false, 'cancel removes draft shaft');
       check(visible('rl:line', 0, 0) && visible('rl:arrowheads', .01, 0), 'Failed arrow lost its previous complete shape');
       check(!visible('rl:line', 0, .02) && !visible('rl:arrowheads', .01, .02), 'Failed arrow published a split new shape');
-      draw.upsert([{ ...arrow, geometry: shapeGeometry(newShape), drawing: { ...arrow.drawing!, shape: newShape } }]);
+      fail = false;
+      draw.retryUpdates();
       await until(() => visible('rl:line', 0, .02) && visible('rl:arrowheads', .01, .02), 'corrected arrow published');
-    } finally { draw.destroy(); }
+      await untilPixel(draw, [0, .02], true, 'retry publishes new shaft');
+      await untilPixel(draw, [0, 0], false, 'retry removes historical shaft');
+    } finally { editor.destroy(); draw.destroy(); }
   });
   await run('Terrain visibility colors the approach green and the hill shadow red', async () => {
     const meters = Math.PI / 180 * 6371008.8;
