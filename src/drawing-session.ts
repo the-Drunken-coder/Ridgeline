@@ -85,6 +85,15 @@ export function createDrawingSession<P extends Properties>(
   let cursor: DrawingPosition | undefined;
   const listeners = new Set<() => void>();
   const previewListeners = new Set<() => void>();
+  function emit(callbacks: Set<() => void>) {
+    for (const callback of callbacks) {
+      try {
+        callback();
+      } catch {
+        // Consumer listeners cannot interrupt a draft transition or another listener.
+      }
+    }
+  }
   const tools = [...(options.tools ?? DRAWING_TOOLS)];
   const styleFields =
     options.styleFields ??
@@ -161,13 +170,13 @@ export function createDrawingSession<P extends Properties>(
   function setCursor(position: DrawingPosition | undefined) {
     if (disposed) return;
     cursor = position && [...position];
-    for (const listener of previewListeners) listener();
+    emit(previewListeners);
   }
   function notify() {
     cursor = undefined;
     snapshot = undefined;
-    for (const listener of listeners) listener();
-    for (const listener of previewListeners) listener();
+    emit(listeners);
+    emit(previewListeners);
   }
   function requireDraft(operation?: DrawingChange<P>["kind"]) {
     if (disposed) throw new Error("Drawing session has been destroyed.");
@@ -357,7 +366,7 @@ export function createDrawingSession<P extends Properties>(
       draft = next;
       reason = undefined;
       notify();
-    } else if (hadCursor) for (const listener of previewListeners) listener();
+    } else if (hadCursor) emit(previewListeners);
   }
   function redo() {
     requireDraft();
@@ -369,7 +378,7 @@ export function createDrawingSession<P extends Properties>(
       draft = next;
       reason = undefined;
       notify();
-    } else if (hadCursor) for (const listener of previewListeners) listener();
+    } else if (hadCursor) emit(previewListeners);
   }
   function beginGesture() {
     requireDraft();

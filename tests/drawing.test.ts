@@ -640,6 +640,34 @@ test("Cursor updates leave draft state and history untouched and notify preview 
   editor.destroy();
 });
 
+test("Throwing session listeners do not block preview updates or accepted submission cleanup", async () => {
+  let decide: (value: DrawingDecision) => void = () => {};
+  const { editor, host, owner } = fixture({
+    submit: () => new Promise(resolve => { decide = resolve; }),
+  });
+  line(editor);
+  let changes = 0, previews = 0;
+  editor.onChange(() => { throw new Error("Consumer change listener failed"); });
+  editor.onChange(() => { changes++; });
+  editor.onPreview(() => { throw new Error("Consumer preview listener failed"); });
+  editor.onPreview(() => { previews++; });
+
+  editor.setCursor([0.02, 0]);
+  assert.deepEqual(editor.getPreview(), { kind: "line", vertices: [[0, 0], [0.01, 0], [0.02, 0]] });
+  assert.equal(previews, 1);
+  const submission = editor.finish();
+  assert.equal(editor.getState().phase, "pending");
+  assert.equal(changes, 1);
+  assert.equal(previews, 2);
+  decide({ accepted: true });
+  assert.equal(await submission, true);
+  assert.equal(changes, 2);
+  assert.equal(previews, 3);
+  assert.equal(owner(), null);
+  assert.ok(host.getFeature("new"));
+  editor.destroy();
+});
+
 test("Preview deduplication follows placement across the one millimeter boundary", () => {
   const { editor } = fixture();
   editor.start("line");
