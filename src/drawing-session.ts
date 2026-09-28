@@ -41,6 +41,27 @@ export const DRAWING_TOOLS: readonly DrawingTool[] = [
   "arrow",
 ];
 
+/** Apply one placement to a draft, whether it comes from a click or a preview. */
+function placePoint<P extends Properties>(
+  current: DrawingDraft<P>,
+  point: DrawingPosition,
+) {
+  const shape = current.shape;
+  if ("vertices" in shape) {
+    const last = shape.vertices.at(-1);
+    if (last && distance(last, point) < 0.001) return false;
+    shape.vertices.push([...point]);
+  } else if (shape.kind === "circle" || shape.kind === "rectangle") {
+    if (!current.placed) shape.center = [...point];
+    else {
+      current.shape = sizeFromPoint(shape, point);
+      current.placing = false;
+    }
+  }
+  current.placed++;
+  return true;
+}
+
 /** Draft state and consumer acceptance, independent of controls and the renderer. */
 export function createDrawingSession<P extends Properties>(
   host: DrawingHost<P>,
@@ -61,7 +82,9 @@ export function createDrawingSession<P extends Properties>(
   let initialStyle: DrawingStyle | undefined;
   let snapshot: DrawingState<P> | undefined;
   let gesture: DrawingDraft<P> | undefined;
+  let cursor: DrawingPosition | undefined;
   const listeners = new Set<() => void>();
+  const previewListeners = new Set<() => void>();
   const tools = [...(options.tools ?? DRAWING_TOOLS)];
   const styleFields =
     options.styleFields ??
@@ -118,9 +141,33 @@ export function createDrawingSession<P extends Properties>(
     };
     return structuredClone(snapshot);
   }
+  function getPreview(): DrawingShape | undefined {
+    if (!draft) return;
+    const candidate = { ...draft, shape: structuredClone(draft.shape) };
+    if (
+      candidate.placing && cursor &&
+      ["editing", "rejected"].includes(snapshot?.phase ?? phase(allowed())) &&
+      ("vertices" in candidate.shape || candidate.placed)
+    )
+      placePoint(candidate, cursor);
+    if (!candidate.placed || ("vertices" in candidate.shape && !candidate.shape.vertices.length))
+      return;
+    return candidate.shape;
+  }
+  function getMeasurements() {
+    const shape = getPreview();
+    return shape ? measurements(shape) : { length: 0 };
+  }
+  function setCursor(position: DrawingPosition | undefined) {
+    if (disposed) return;
+    cursor = position && [...position];
+    for (const listener of previewListeners) listener();
+  }
   function notify() {
+    cursor = undefined;
     snapshot = undefined;
     for (const listener of listeners) listener();
+    for (const listener of previewListeners) listener();
   }
   function requireDraft(operation?: DrawingChange<P>["kind"]) {
     if (disposed) throw new Error("Drawing session has been destroyed.");
@@ -231,21 +278,7 @@ export function createDrawingSession<P extends Properties>(
   }
   function addPoint(p: DrawingPosition) {
     if (!draft?.placing) return;
-    change((current) => {
-      const s = current.shape;
-      if ("vertices" in s) {
-        const last = s.vertices.at(-1);
-        if (last && distance(last, p) < 0.001) return;
-        s.vertices.push(p);
-      } else if (s.kind === "circle" || s.kind === "rectangle") {
-        if (!current.placed) s.center = p;
-        else {
-          current.shape = sizeFromPoint(s, p);
-          current.placing = false;
-        }
-      }
-      current.placed++;
-    });
+    change((current) => { placePoint(current, p); });
   }
   function setShape(shape: DrawingShape) {
     change((current) => {
@@ -316,23 +349,27 @@ export function createDrawingSession<P extends Properties>(
   }
   function undo() {
     requireDraft();
+    const hadCursor = cursor !== undefined;
+    cursor = undefined;
     const next = past.pop();
     if (next) {
       future.push(structuredClone(draft!));
       draft = next;
       reason = undefined;
       notify();
-    }
+    } else if (hadCursor) for (const listener of previewListeners) listener();
   }
   function redo() {
     requireDraft();
+    const hadCursor = cursor !== undefined;
+    cursor = undefined;
     const next = future.pop();
     if (next) {
       past.push(structuredClone(draft!));
       draft = next;
       reason = undefined;
       notify();
-    }
+    } else if (hadCursor) for (const listener of previewListeners) listener();
   }
   function beginGesture() {
     requireDraft();
@@ -458,9 +495,13 @@ export function createDrawingSession<P extends Properties>(
     cancel();
     off();
     listeners.clear();
+    previewListeners.clear();
   }
   return {
     getState,
+    getPreview,
+    getMeasurements,
+    setCursor,
     start,
     edit,
     cancel,
@@ -487,6 +528,10 @@ export function createDrawingSession<P extends Properties>(
     onChange: (listener: () => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
+    },
+    onPreview: (listener: () => void) => {
+      previewListeners.add(listener);
+      return () => previewListeners.delete(listener);
     },
   };
 }

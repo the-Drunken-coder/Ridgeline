@@ -31,7 +31,7 @@ export function bearing(a: DrawingPosition, b: DrawingPosition) {
     ) / rad
   );
 }
-/** Size a centered shape identically for cursor previews and committed placement. */
+/** Size a centered shape from its center to the placed point. */
 export function sizeFromPoint(
   shape: Extract<DrawingShape, { kind: "circle" | "rectangle" }>,
   point: DrawingPosition,
