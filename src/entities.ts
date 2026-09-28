@@ -121,7 +121,7 @@ export class EntityScene<P extends Properties> {
       }
     }
     const areas: { key: string; center: [number, number]; radiusMeters: number }[] = [];
-    const visible = this.options.configuration().entityVisibility.footprints;
+    const footprintsVisible = this.options.configuration().entityVisibility.footprints;
     for (const feature of features) {
       if (!feature.entity || feature.geometry.type !== 'Point') continue;
       const [lng, lat] = feature.geometry.coordinates;
@@ -136,7 +136,8 @@ export class EntityScene<P extends Properties> {
         return Math.max(radius, extent);
       }, 0);
       this.coverage.requestAreas(feature.id, center,
-        attachments.filter((attachment): attachment is CameraAttachment => attachment.type === 'camera'), visible);
+        attachments.filter((attachment): attachment is CameraAttachment => attachment.type === 'camera'),
+        footprintsVisible && Boolean(feature.entity.altitude));
       areas.push({ key: `placement:${feature.id}`, center, radiusMeters });
     }
     this.elevation.requestBatch(areas);
