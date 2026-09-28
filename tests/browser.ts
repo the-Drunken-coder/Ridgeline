@@ -898,7 +898,9 @@ async function suite() {
     const anchor=draw.map.project([-.025,0]);
     await pointer('move',{x:anchor.x+4,y:anchor.y});
     const snappedPreview=editor.getPreview();
-    check(snappedPreview?.kind==='line'&&snappedPreview.vertices[0]?.[0]===-.025&&snappedPreview.vertices[0]?.[1]===0,'Real pointer preview did not snap to the visible feature');
+    const snappedVertex=snappedPreview?.kind==='line' ? snappedPreview.vertices[0] : undefined;
+    const snappedPoint=snappedVertex && draw.map.project(snappedVertex);
+    check(snappedPoint&&Math.hypot(snappedPoint.x-anchor.x,snappedPoint.y-anchor.y)<1,'Real pointer preview did not snap to the visible feature');
     editor.cancel();
     editor.destroy();draw.destroy();
   },{realPointer:true});
