@@ -12,6 +12,8 @@ declare global {
     drawingPointer?: (action: 'move' | 'click', x: number, y: number) => Promise<void>;
     browserKey?: (key: string) => Promise<void>;
     browserClick?: (x: number, y: number) => Promise<void>;
+    browserMouse?: (action: 'down' | 'move' | 'up', x: number, y: number) => Promise<void>;
+    browserFill?: (selector: string, value: string) => Promise<void>;
   }
 }
 
@@ -909,6 +911,84 @@ async function suite() {
     check(!draw.map.getSource('rl:draft'),'Draft source leaked on destroy');
     draw.destroy();tools.remove();inspector.remove();
   });
+  await run('Inspector label editing preserves Tab and the first real Finish click', async () => {
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+    current = draw; await draw.ready;
+    let accepts = 0;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'inspector-finish', properties: {} }), submit: () => { accepts++; return { accepted: true }; } });
+    const tools = document.createElement('div'), inspector = document.createElement('div');
+    inspector.id = 'case25-inspector'; container.append(tools, inspector);
+    const controls = attachDrawingControls(draw, editor, { tools, inspector });
+    try {
+      editor.start('line'); editor.addPoint([0, 0]); editor.addPoint([.01, 0]);
+      if (!window.browserFill || !window.browserKey || !window.browserClick) throw new Error('Playwright input bridge required');
+      await window.browserFill('#case25-inspector [data-field="Label"]', 'First label');
+      await window.browserKey('Tab');
+      check(document.activeElement?.getAttribute('data-field') === 'Stroke', 'Tab skipped the next inspector field');
+      await window.browserFill('#case25-inspector [data-field="Label"]', 'Final label');
+      const finish = inspector.querySelector<HTMLButtonElement>('[data-field="action:Finish"]')!;
+      const rect = finish.getBoundingClientRect();
+      await window.browserClick(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      await until(() => Boolean(draw.getFeature('inspector-finish')), 'first Finish click accepted');
+      check(accepts === 1 && draw.getFeature('inspector-finish')?.drawing?.style.label === 'Final label', 'Finish lost the label or submitted twice');
+    } finally {
+      controls.destroy(); editor.destroy(); draw.destroy(); tools.remove(); inspector.remove();
+    }
+  }, { realPointer: true });
+  await run('Deleting the focused final vertex keeps keyboard undo reachable', async () => {
+    const line: MapFeature = { type: 'Feature', id: 'focus-line', properties: {}, geometry: { type: 'LineString', coordinates: [[0, 0], [.01, 0]] } };
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 13 }, features: [line], logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'new-focus', properties: {} }), submit: () => ({ accepted: true }) });
+    try {
+      editor.edit('focus-line');
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]')!;
+      handle.focus();
+      if (!window.browserKey) throw new Error('Playwright keyboard bridge required');
+      await window.browserKey('Delete');
+      const shape = editor.getState().draft?.shape;
+      check(shape?.kind === 'line' && shape.vertices.length === 1, 'Delete did not remove the last vertex');
+      const focus = document.activeElement;
+      check(focus instanceof HTMLElement && focus.isConnected &&
+        (focus.getAttribute('aria-label') === 'Vertex 1' || focus.getAttribute('aria-label') === 'Move drawing' || focus === draw.map.getCanvas()),
+      'Deleting the focused handle lost editor focus');
+      await window.browserKey('Control+z');
+      const restored = editor.getState().draft?.shape;
+      check(restored?.kind === 'line' && restored.vertices.length === 2, 'Keyboard undo could not restore the deleted vertex');
+    } finally { editor.destroy(); draw.destroy(); }
+  }, { realPointer: true });
+  await run('Undo during a real vertex drag leaves later edits individually undoable', async () => {
+    const line: MapFeature = { type: 'Feature', id: 'gesture-line', properties: {}, geometry: { type: 'LineString', coordinates: [[0, 0], [.01, 0]] } };
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 13 }, features: [line], logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'new-gesture', properties: {} }), submit: () => ({ accepted: true }) });
+    try {
+      editor.edit('gesture-line');
+      await until(() => draw.map.loaded(), 'gesture map ready');
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]')!;
+      const rect = handle.getBoundingClientRect(), x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+      if (!window.browserMouse || !window.browserKey) throw new Error('Playwright input bridge required');
+      await window.browserMouse('down', x, y);
+      await window.browserMouse('move', x + 40, y);
+      await until(() => {
+        const shape = editor.getState().draft?.shape;
+        return shape?.kind === 'line' && shape.vertices[1]?.[0] !== .01;
+      }, 'vertex moved during drag');
+      await window.browserKey('Control+z');
+      await window.browserMouse('up', x + 40, y);
+      const afterUndo = editor.getState().draft?.shape;
+      check(afterUndo?.kind === 'line' && afterUndo.vertices[1]?.[0] === .01, 'Undo during drag left the moved vertex');
+      editor.insertVertex(0, [.005, 0]);
+      editor.moveVertex(1, [.006, 0]);
+      editor.undo();
+      const afterMoveUndo = editor.getState().draft?.shape;
+      check(afterMoveUndo?.kind === 'line' && afterMoveUndo.vertices.length === 3 && afterMoveUndo.vertices[1]?.[0] === .005,
+        'Undo skipped the later vertex move');
+      editor.undo();
+      const afterInsertUndo = editor.getState().draft?.shape;
+      check(afterInsertUndo?.kind === 'line' && afterInsertUndo.vertices.length === 2, 'Undo skipped the later insertion');
+    } finally { editor.destroy(); draw.destroy(); }
+  }, { realPointer: true });
   await run('Ordinary edits preserve dynamic styles, delete-only controls, and hover recovery', async () => {
     const line: MapFeature = {type:'Feature',id:'line',geometry:{type:'LineString',coordinates:[[-.01,0],[.01,0]]},properties:{closed:false}};
     const draw=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:12},features:[line,point('hover',.02)],

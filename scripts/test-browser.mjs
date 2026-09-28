@@ -37,6 +37,13 @@ try {
   });
   await page.exposeFunction('browserKey', async key => { await page.keyboard.press(key); });
   await page.exposeFunction('browserClick', async (x, y) => { await page.mouse.click(x, y); });
+  await page.exposeFunction('browserMouse', async (action, x, y) => {
+    await page.mouse.move(x, y);
+    if (action === 'down') await page.mouse.down();
+    else if (action === 'up') await page.mouse.up();
+    else if (action !== 'move') throw new Error(`Unknown mouse action: ${action}`);
+  });
+  await page.exposeFunction('browserFill', async (selector, value) => { await page.locator(selector).fill(value); });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(server.resolvedUrls.local[0]);
