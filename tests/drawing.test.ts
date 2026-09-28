@@ -12,7 +12,7 @@ import {
 } from "../src/drawing-geometry";
 import { FeatureStore } from "../src/features";
 import { RidgelineError } from "../src/errors";
-import { arrowFeatures } from "../src/drawing-render";
+import { arrowFeatures } from "../src/arrowheads";
 import type {
   DrawingChange,
   DrawingDecision,
