@@ -157,6 +157,7 @@ export class Elevation {
     const area = this.areas.get(key);
     if (!area) return;
     this.areas.delete(key);
+    this.raster?.trim();
     const work = area.work;
     if (!work) return;
     work.keys.delete(key);
@@ -226,6 +227,8 @@ export class Elevation {
         .filter(area => !tileKey || this.raster?.affects(area.center, area.radiusMeters, tileKey))
         .map(area => area.key)),
       cause => this.report('Raw elevation data is unavailable for entity placement or sensor coverage.', cause),
+      tileKey => [...this.areas.values()].some(area =>
+        this.raster?.noDataAffects(area.center, area.radiusMeters, tileKey)),
     );
   }
 

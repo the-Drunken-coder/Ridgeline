@@ -2,6 +2,7 @@ import type { ElevationProvider } from './types';
 import { ElevationBounds } from './elevation-bounds';
 
 type Tile = { size: number; values: Float32Array; bounds: ElevationBounds };
+type MissingPixels = { size: number; stride: number; bits: Uint32Array };
 const MAX_LAT = 85.05112878;
 const EARTH_RADIUS_METERS = 6_371_008.8;
 export function tilePosition(lng: number, lat: number, zoom: number) {
@@ -37,8 +38,8 @@ export class RasterElevationSampler {
   private queued = new Map<string, [number, number]>();
   private pending = new Set<string>();
   private failed = new Set<string>();
-  // Keep observed missing pixels after cache eviction; failures stay settled until retry.
-  private noData = new Map<string, { size: number; pixels: Set<number> }>();
+  // Missing-pixel history follows retained tiles; active failed areas pin their tiles.
+  private noData = new Map<string, MissingPixels>();
   private controller = new AbortController();
   private templates: string[] = [];
   private zoom = 12;
@@ -48,6 +49,7 @@ export class RasterElevationSampler {
     private provider: ElevationProvider,
     private changed: (tileKey?: string) => void,
     private error: (cause: unknown) => void,
+    private retainNoData: (tileKey: string) => boolean = () => false,
   ) {}
 
   sample(lng: number, lat: number): number | null {
@@ -149,10 +151,11 @@ export class RasterElevationSampler {
     const key = `${((x % n) + n) % n}/${y}`;
     let missing = this.noData.get(key);
     if (!missing) {
-      missing = { size, pixels: new Set() };
+      const stride = Math.ceil(size / 32);
+      missing = { size, stride, bits: new Uint32Array(size * stride) };
       this.noData.set(key, missing);
     }
-    missing.pixels.add(py * size + px);
+    missing.bits[py * missing.stride + (px >> 5)]! |= 1 << (px & 31);
   }
   private areaBounds(center: readonly [number, number], radiusMeters: number) {
     const [lng, lat] = center;
@@ -183,43 +186,66 @@ export class RasterElevationSampler {
     const distance = ((x - bounds.firstX) % bounds.n + bounds.n) % bounds.n;
     return bounds.lastX - bounds.firstX >= bounds.n || distance <= bounds.lastX - bounds.firstX;
   }
+  /** A sampled missing pixel in this tile affects the requested area. */
+  noDataAffects(center: readonly [number, number], radiusMeters: number, tileKey: string) {
+    const bounds = this.areaBounds(center, radiusMeters);
+    if (!bounds || !this.affects(center, radiusMeters, tileKey)) return false;
+    const missing = this.noData.get(tileKey);
+    if (!missing) return false;
+    const [canonicalX, y] = tileKey.split('/').map(Number);
+    if (canonicalX === undefined || y === undefined) return false;
+    const x = bounds.firstX + ((canonicalX - bounds.firstX) % bounds.n + bounds.n) % bounds.n;
+    return this.missingInBounds(missing, x, y, bounds);
+  }
+  private missingInBounds(missing: MissingPixels, x: number, y: number, bounds: NonNullable<ReturnType<RasterElevationSampler['areaBounds']>>) {
+    const { size, stride, bits } = missing;
+    const x0 = Math.max(0, Math.floor((bounds.westX - x) * size - 0.5));
+    const x1 = Math.min(size - 1, Math.floor((bounds.eastX - x) * size - 0.5) + 1);
+    const y0 = Math.max(0, Math.floor((bounds.northY - y) * size - 0.5));
+    const y1 = Math.min(size - 1, Math.floor((bounds.southY - y) * size - 0.5) + 1);
+    if (x1 < x0 || y1 < y0) return false;
+    const firstWord = x0 >> 5, lastWord = x1 >> 5;
+    for (let py = y0; py <= y1; py++) for (let word = firstWord; word <= lastWord; word++) {
+      const left = word === firstWord ? -1 << (x0 & 31) : -1;
+      const right = word === lastWord ? -1 >>> (31 - (x1 & 31)) : -1;
+      if ((bits[py * stride + word]! & left & right) !== 0) return true;
+    }
+    return false;
+  }
   /** Unknown samples settle only when this area needs failed data. */
   readiness(center: readonly [number, number], radiusMeters: number): 'loading' | 'unavailable' {
     if (this.failed.has('source')) return 'unavailable';
     const bounds = this.areaBounds(center, radiusMeters);
     if (!bounds) return 'unavailable';
     if (!this.ready) return 'loading';
-    const { westX, eastX, northY, southY, n, firstX, lastX, firstY, lastY } = bounds;
-    if (lastX - firstX >= n)
-      return [...this.failed].some(key => key.includes('/')) || this.noData.size > 0
-        ? 'unavailable' : 'loading';
+    const { n, firstX, lastX, firstY, lastY } = bounds;
+    if (lastX - firstX >= n) {
+      for (const key of this.failed) {
+        const y = Number(key.split('/')[1]);
+        if (Number.isInteger(y) && y >= firstY && y <= lastY) return 'unavailable';
+      }
+      for (const [key, missing] of this.noData) {
+        const [canonicalX, y] = key.split('/').map(Number);
+        if (canonicalX === undefined || y === undefined || y < firstY || y > lastY) continue;
+        const x = firstX + ((canonicalX - firstX) % n + n) % n;
+        if (this.missingInBounds(missing, x, y, bounds)) return 'unavailable';
+      }
+      return 'loading';
+    }
     // Readiness examines only tiles intersecting this request, regardless of
     // how many failures have accumulated elsewhere in the world.
     for (let y = firstY; y <= lastY; y++) for (let x = firstX; x <= lastX; x++) {
       const key = `${((x % n) + n) % n}/${y}`;
       if (this.failed.has(key)) return 'unavailable';
       const missing = this.noData.get(key);
-      if (!missing) continue;
-      const size = missing.size;
-      const x0 = Math.max(0, Math.floor((westX - x) * size - 0.5));
-      const x1 = Math.min(size - 1, Math.floor((eastX - x) * size - 0.5) + 1);
-      const y0 = Math.max(0, Math.floor((northY - y) * size - 0.5));
-      const y1 = Math.min(size - 1, Math.floor((southY - y) * size - 0.5) + 1);
-      if ((x1 - x0 + 1) * (y1 - y0 + 1) <= missing.pixels.size) {
-        for (let py = y0; py <= y1; py++) for (let px = x0; px <= x1; px++)
-          if (missing.pixels.has(py * size + px)) return 'unavailable';
-      } else {
-        for (const index of missing.pixels) {
-          const px = index % size, py = Math.floor(index / size);
-          if (px >= x0 && px <= x1 && py >= y0 && py <= y1) return 'unavailable';
-        }
-      }
+      if (missing && this.missingInBounds(missing, x, y, bounds)) return 'unavailable';
     }
     return 'loading';
   }
   retry() {
     this.failed.clear();
     this.noData.clear();
+    this.trim();
     if (!this.ready) {
       this.started = false;
     }
@@ -229,6 +255,22 @@ export class RasterElevationSampler {
     this.controller.abort();
     this.tiles.clear();
     this.queued.clear();
+    this.noData.clear();
+  }
+
+  /** Keep 256 ordinary tiles plus tiles carrying missing data for active areas. */
+  trim() {
+    const retained = new Set([...this.noData.keys()].filter(key => this.retainNoData(key)));
+    while (this.tiles.size - retained.size > 256) {
+      let candidate: string | undefined;
+      for (const key of this.tiles.keys()) if (!retained.has(key)) {
+        candidate = key;
+        break;
+      }
+      if (!candidate) return;
+      this.tiles.delete(candidate);
+      this.noData.delete(candidate);
+    }
   }
 
   private async initialize() {
@@ -283,7 +325,7 @@ export class RasterElevationSampler {
         .then((tile) => {
           if (this.controller.signal.aborted) return;
           this.tiles.set(key, tile);
-          while (this.tiles.size > 256) this.tiles.delete(this.tiles.keys().next().value!);
+          this.trim();
         })
         .catch((cause) => {
           if (!this.controller.signal.aborted) {

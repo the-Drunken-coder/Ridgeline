@@ -289,3 +289,62 @@ test('a raster tile failure notifies only area keys that use that tile', async (
     globalThis.fetch = originalFetch;
   }
 });
+
+test('an active no-data area keeps its tile through cache pressure without refetching', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalBitmap = Object.getOwnPropertyDescriptor(globalThis, 'createImageBitmap');
+  const originalCanvas = Object.getOwnPropertyDescriptor(globalThis, 'OffscreenCanvas');
+  const size = 8, zoom = 9, n = 2 ** zoom;
+  const rgba = new Uint8ClampedArray(size * size * 4);
+  for (let index = 0; index < size * size; index++) rgba[index * 4 + 3] = 255;
+  rgba[(size + 1) * 4 + 3] = 0;
+  let fetches = 0;
+  globalThis.fetch = async () => { fetches++; return new Response(new Blob()); };
+  Object.defineProperty(globalThis, 'createImageBitmap', {
+    configurable: true,
+    value: async () => ({ width: size, height: size, close() {} }),
+  });
+  Object.defineProperty(globalThis, 'OffscreenCanvas', {
+    configurable: true,
+    value: class {
+      getContext() { return { drawImage() {}, getImageData: () => ({ data: rgba }) }; }
+    },
+  });
+  const point = (tileX: number, pixel: number): [number, number] => {
+    const x = (tileX + (pixel + 0.5) / size) / n;
+    const y = (256 + (pixel + 0.5) / size) / n;
+    return [x * 360 - 180, Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180 / Math.PI];
+  };
+  const missing = point(0, 1);
+  const elevation = new Elevation({
+    provider: { tiles: ['https://example.test/{z}/{x}/{y}.png'], maxzoom: zoom, tileSize: size },
+    changed: () => {}, diagnostic: error => { throw error; },
+  });
+  try {
+    elevation.request('active', missing, 0);
+    elevation.height(...missing);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(elevation.height(...missing), null);
+    assert.equal(elevation.readiness('active'), 'unavailable');
+    for (let x = 1; x <= 257; x++) elevation.height(...point(x, 4));
+    for (let attempt = 0; attempt < 20 && fetches < 258; attempt++)
+      await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(fetches, 258);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(elevation.height(...missing), null);
+    assert.equal(fetches, 258, 'Cache pressure refetched a settled active no-data tile');
+    assert.equal(elevation.readiness('active'), 'unavailable');
+    elevation.release('active');
+    elevation.request('new', missing, 0);
+    assert.equal(elevation.readiness('new'), 'loading', 'Released history should leave the bounded cache');
+    elevation.height(...missing);
+    assert.equal(fetches, 259, 'A new area should be able to load an evicted tile');
+  } finally {
+    elevation.destroy();
+    globalThis.fetch = originalFetch;
+    if (originalBitmap) Object.defineProperty(globalThis, 'createImageBitmap', originalBitmap);
+    else Reflect.deleteProperty(globalThis, 'createImageBitmap');
+    if (originalCanvas) Object.defineProperty(globalThis, 'OffscreenCanvas', originalCanvas);
+    else Reflect.deleteProperty(globalThis, 'OffscreenCanvas');
+  }
+});
