@@ -66,6 +66,124 @@ async function browserDrag(fromX: number, fromY: number, toX: number, toY: numbe
   await window.browserDrag(fromX, fromY, toX, toY);
 }
 async function suite() {
+  await run('Preparation failures preserve construction and update publication and release the viewport', async () => {
+    for (const immediate of [true, false]) {
+      const errors: RidgelineError[] = [];
+      const feature = (id: string, lng: number): MapFeature => ({ ...point(id, lng), entity: {
+        altitude: { meters: 100, reference: 'sea-level' }, attachments: [{ id: 'body', type: 'sphere', radius: 20 }],
+      } });
+      const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 },
+        features: [feature('initial-preparation', 0)], logger: () => {}, onError: error => errors.push(error),
+        elevationSampler: { sample: () => 0, prepare: () => {
+          if (immediate) throw new Error('Immediate preparation failure');
+          return Promise.reject(new Error('Rejected preparation failure'));
+        } } });
+      current = air;
+      try {
+        await air.ready;
+        await until(() => errors.some(error => error.code === 'ELEVATION_UNAVAILABLE'), 'construction preparation diagnostic');
+        check(air.getFeature('initial-preparation') !== undefined, 'Construction lost accepted data');
+        const changes: string[] = [];
+        air.on('datachange', event => changes.push(...event.ids));
+        errors.length = 0;
+        air.upsert([feature('updated-preparation', .01), point('healthy-preparation', -.01)]);
+        await until(() => errors.some(error => error.code === 'ELEVATION_UNAVAILABLE') &&
+          air.map.queryRenderedFeatures({ layers: ['rl:points'] }).some(hit => hit.properties._rl_feature_id === 'healthy-preparation'),
+        'update diagnostic and healthy publication');
+        check(changes.includes('updated-preparation') && changes.includes('healthy-preparation'), 'Preparation failure interrupted datachange');
+        check(air.getFeature('updated-preparation') !== undefined && air.getEntityState('updated-preparation')?.placement === 'airborne', 'Accepted entity update was abandoned');
+        check(errors.some(error => error.context.operation === 'entities' && error.cause instanceof Error), 'Preparation diagnostic lost context or cause');
+      } finally { air.destroy(); }
+      check(!container.querySelector('canvas'), 'Preparation failure leaked a canvas after destroy');
+    }
+  });
+  await run('Removing an entity from preparation leaves accepted data and rendered output absent', async () => {
+    let removeDuringPreparation = false;
+    const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, logger: () => {},
+      elevationSampler: { sample: () => 0, prepare: async () => {
+        if (removeDuringPreparation) { removeDuringPreparation = false; air.remove(['removed-in-preparation']); }
+      } } });
+    current = air;
+    try {
+      await air.ready;
+      removeDuringPreparation = true;
+      air.upsert([{ ...point('removed-in-preparation'), entity: { altitude: { meters: 100, reference: 'sea-level' },
+        attachments: [{ id: 'zone', type: 'circle', radius: 100 }] } }, point('healthy-after-removal', .01)]);
+      await until(() => !air.getFeature('removed-in-preparation') &&
+        air.map.queryRenderedFeatures({ layers: ['rl:points'] }).some(hit => hit.properties._rl_feature_id === 'healthy-after-removal'),
+      'reentrant removal and healthy publication');
+      await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+      check(!air.getEntityState('removed-in-preparation'), 'Removed entity retained computation state');
+      check(!air.map.querySourceFeatures('rl:features').some(hit => hit.properties._rl_feature_id === 'removed-in-preparation'), 'Removed feature reached the source');
+      check(!air.map.queryRenderedFeatures().some(hit => hit.properties._rl_feature_id === 'removed-in-preparation' || hit.properties.entityId === 'removed-in-preparation'), 'Removed entity left rendered geometry');
+    } finally { air.destroy(); }
+  });
+  await run('Destroying from a restoration diagnostic stops callbacks and resource creation', async () => {
+    let restoring = false, destroyed = false, callbacksAfterDestroy = 0, resourcesAfterDestroy = 0;
+    const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, features: [point('broken-restore'), point('later-restore')],
+      logger: () => {}, style: feature => {
+        if (destroyed) callbacksAfterDestroy++;
+        if (restoring && feature.id === 'broken-restore') throw new Error('Restoration style failure');
+        return {};
+      }, onError: error => {
+        if (restoring && error.code === 'UPDATE_FAILED' && !destroyed) { destroyed = true; air.destroy(); }
+      } });
+    current = air;
+    try {
+      await air.ready;
+      await until(() => air.map.queryRenderedFeatures({ layers: ['rl:points'] }).length > 0, 'initial restoration features');
+      const addSource = air.map.addSource.bind(air.map), addLayer = air.map.addLayer.bind(air.map);
+      air.map.addSource = (...args) => { if (destroyed) resourcesAfterDestroy++; return addSource(...args); };
+      air.map.addLayer = (...args) => { if (destroyed) resourcesAfterDestroy++; return addLayer(...args); };
+      restoring = true;
+      air.configure({ basemap: style('#ffffff') });
+      await until(() => destroyed, 'destruction from restoration error callback');
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      check(callbacksAfterDestroy === 0, 'Restoration called styling after destruction');
+      check(resourcesAfterDestroy === 0, 'Restoration created sources or layers after destruction');
+      check(!container.querySelector('canvas'), 'Restoration destruction left a canvas');
+    } finally { air.destroy(); }
+  });
+  await run('Unrelated terrain failure preserves the displayed mask of a pending replacement', async () => {
+    let pending = false, finish: (() => void) | undefined;
+    const air = createViewport({ container, basemap: style(), camera: { center: [.02, 0], zoom: 16 }, logger: () => {},
+      elevationSampler: {
+        sample: (lng, lat) => !pending || (Math.abs(lat) < 1e-8 && (Math.abs(lng) < 1e-8 || Math.abs(lng - .04) < 1e-8)) ? 0 : null,
+        prepare: positions => {
+          if (!pending) return Promise.resolve();
+          if (Math.abs(positions[0]![0]) < .01) return Promise.reject(new Error('Unrelated region failed'));
+          return new Promise<void>(resolve => { finish = () => { pending = false; resolve(); }; });
+        },
+      } });
+    current = air;
+    const camera: CameraAttachment = { id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0,
+      elevation: -45, fovX: 60, fovY: 40, range: 300, volumeOpacity: 0, wireframe: false };
+    const sensor = (id: string, lng: number): MapFeature => ({ ...point(id, lng), entity: {
+      altitude: { meters: 100, reference: 'sea-level' }, attachments: [camera],
+    } });
+    try {
+      await air.ready;
+      air.upsert([sensor('retained-region', .02)]);
+      await until(() => air.getEntityState('retained-region')?.coverage === 'ready', 'completed retained camera');
+      const mask = air.map.getStyle().layers.find(layer => layer.id.startsWith('rl:camera-mask:'));
+      check(mask, 'Initial camera mask absent');
+      const image = mask && air.map.getSource<ImageSource>(mask.id)?.image;
+      let picked = '';
+      air.on('click', event => { picked = event.attachments[0]?.entityId ?? ''; });
+      await pointer('click', air.map.project([.02, .0008]));
+      check(picked === 'retained-region', 'Initial camera was not selectable at the retained test point');
+      pending = true;
+      air.upsert([sensor('retained-region', .04), sensor('failed-region', 0)]);
+      await until(() => air.getEntityState('failed-region')?.coverage === 'unavailable' &&
+        air.getEntityState('retained-region')?.coverage === 'loading' && Boolean(finish), 'regional failure with retained replacement');
+      check(mask && air.map.getLayer(mask.id) && air.map.getSource<ImageSource>(mask.id)?.image === image, 'Unrelated failure replaced or removed the displayed mask');
+      picked = '';
+      await pointer('click', air.map.project([.02, .0008]));
+      check(picked === 'retained-region', 'Retained camera stopped being selectable');
+      finish!();
+      await until(() => air.getEntityState('retained-region')?.coverage === 'ready', 'replacement completes after unrelated failure');
+    } finally { finish?.(); air.destroy(); }
+  });
   await run('Destroy during initialization, repeat destroy, then remount', async () => {
     const abandoned = createViewport({ container, basemap: style() });
     abandoned.on('destroy', () => abandoned.destroy());

@@ -1,5 +1,9 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Preparation failures preserve construction and update publication and release the viewport',
+  'Removing an entity from preparation leaves accepted data and rendered output absent',
+  'Destroying from a restoration diagnostic stops callbacks and resource creation',
+  'Unrelated terrain failure preserves the displayed mask of a pending replacement',
   'Destroy during initialization, repeat destroy, then remount',
   'Queued features render with stable string IDs and click events',
   'Reserved feature IDs remain selectable without inherited state',
