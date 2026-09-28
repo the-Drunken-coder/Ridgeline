@@ -46,20 +46,21 @@ export function attachDrawingControls<P extends Properties>(
     pointerPressed = false,
     renderTimer: ReturnType<typeof setTimeout> | undefined;
   const abort = new AbortController();
-  function refreshDraftActions() {
-    const state = editor.getState();
-    if (!state.draft) return;
-    const disabled: Record<string, boolean> = {
+  function draftActionAvailability(state: ReturnType<typeof editor.getState>) {
+    return {
       Undo: !state.canUndo,
       Redo: !state.canRedo,
       Finish: !["editing", "rejected"].includes(state.phase) || Boolean(state.validation),
       Cancel: state.phase === "pending",
       "Delete drawing": !editor.canDelete(),
     };
-    for (const button of panel.querySelectorAll<HTMLButtonElement>("button[data-field]")) {
-      const label = button.dataset.field?.slice("action:".length);
-      const value = label === undefined ? undefined : disabled[label];
-      if (value !== undefined) button.disabled = value;
+  }
+  function refreshDraftActions() {
+    const state = editor.getState();
+    if (!state.draft) return;
+    for (const [label, disabled] of Object.entries(draftActionAvailability(state))) {
+      const button = panel.querySelector<HTMLButtonElement>(`button[data-field="action:${label}"]`);
+      if (button) button.disabled = disabled;
     }
   }
   function scheduleRender() {
@@ -376,19 +377,20 @@ export function attachDrawingControls<P extends Properties>(
         panel.append(
           action("Restart with latest feature", () => editor.restart()),
         );
+      const disabled = draftActionAvailability(state);
       panel.append(
         row(
-          action("Undo", () => editor.undo(), !state.canUndo),
-          action("Redo", () => editor.redo(), !state.canRedo),
+          action("Undo", () => editor.undo(), disabled.Undo),
+          action("Redo", () => editor.redo(), disabled.Redo),
         ),
       );
       panel.append(
         row(
-          action("Cancel", () => editor.cancel(), state.phase === "pending"),
+          action("Cancel", () => editor.cancel(), disabled.Cancel),
           action(
             state.phase === "pending" ? "Pending" : "Finish",
             () => editor.finish(),
-            locked || Boolean(state.validation),
+            disabled.Finish,
             true,
           ),
         ),
@@ -398,7 +400,7 @@ export function attachDrawingControls<P extends Properties>(
           action(
             "Delete drawing",
             () => editor.delete(),
-            !editor.canDelete(),
+            disabled["Delete drawing"],
           ),
         );
       const help = document.createElement("p");

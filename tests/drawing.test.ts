@@ -348,6 +348,22 @@ test("History keeps only the last 100 completed changes, including gestures and 
   assert.equal(editor.getState().canRedo, false);
 });
 
+test("Ordinary edits independently retain only the last 100 draft actions", () => {
+  const { editor } = fixture();
+  line(editor);
+  for (let i = 1; i <= 120; i++) editor.setStyle({ label: `Edit ${i}` });
+  for (let i = 120; i > 20; i--) {
+    assert.equal(editor.getState().canUndo, true);
+    assert.equal(editor.getState().draft?.style.label, `Edit ${i}`);
+    editor.undo();
+  }
+  assert.equal(editor.getState().canUndo, false);
+  assert.equal(editor.getState().draft?.style.label, "Edit 20");
+  for (let i = 0; i < 100; i++) editor.redo();
+  assert.equal(editor.getState().canRedo, false);
+  assert.equal(editor.getState().draft?.style.label, "Edit 120");
+});
+
 test("Undo during a gesture settles that gesture before later edits", () => {
   const { editor } = fixture();
   line(editor);
