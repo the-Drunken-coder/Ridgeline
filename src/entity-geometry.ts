@@ -105,10 +105,11 @@ export function cameraRay(camera: CameraAttachment, x: number, y: number): Vec3 
 
 /** Four corner projection onto the local ground plane. Terrain only drapes the result. */
 export function cameraFootprint(origin: GeoPoint, camera: CameraAttachment, ground: number) {
-  const rays = cameraCornerRays(camera);
-  if (origin[2] <= ground || rays.every(ray => ray[2] >= 0)) return [];
+  if (origin[2] <= ground) return [];
+  const offsets = cameraGroundCornerOffsets(origin, camera, ground);
+  if (offsets.every(offset => offset[2] >= 0)) return [];
   const local = localFrame(origin);
-  const corners = cameraGroundCornerOffsets(origin, camera, ground).map(offset => {
+  const corners = offsets.map(offset => {
     const point = local(offset[0], offset[1], ground - origin[2]);
     return [point[0], point[1], ground] as GeoPoint;
   });
