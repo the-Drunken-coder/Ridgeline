@@ -252,7 +252,11 @@ export function attachDrawingControls<P extends Properties>(
             `Radius (${suffix})`,
             String(Number((shape.radius / scale).toFixed(2))),
             (value) =>
-              editor.setShape({ ...shape, radius: Number(value) * scale }),
+              {
+                const current = editor.getState().draft?.shape;
+                if (current?.kind === "circle")
+                  editor.setShape({ ...current, radius: Number(value) * scale });
+              },
             locked,
             "number",
           ),
@@ -264,7 +268,11 @@ export function attachDrawingControls<P extends Properties>(
               `Width (${suffix})`,
               String(Number((shape.width / scale).toFixed(2))),
               (value) =>
-                editor.setShape({ ...shape, width: Number(value) * scale }),
+                {
+                const current = editor.getState().draft?.shape;
+                if (current?.kind === "rectangle")
+                  editor.setShape({ ...current, width: Number(value) * scale });
+              },
               locked,
               "number",
             ),
@@ -272,7 +280,11 @@ export function attachDrawingControls<P extends Properties>(
               `Height (${suffix})`,
               String(Number((shape.height / scale).toFixed(2))),
               (value) =>
-                editor.setShape({ ...shape, height: Number(value) * scale }),
+                {
+                const current = editor.getState().draft?.shape;
+                if (current?.kind === "rectangle")
+                  editor.setShape({ ...current, height: Number(value) * scale });
+              },
               locked,
               "number",
             ),
@@ -282,7 +294,11 @@ export function attachDrawingControls<P extends Properties>(
           text(
             "Bearing (°)",
             String(Number(shape.bearing.toFixed(2))),
-            (value) => editor.setShape({ ...shape, bearing: Number(value) }),
+            (value) => {
+                const current = editor.getState().draft?.shape;
+                if (current?.kind === "rectangle")
+                  editor.setShape({ ...current, bearing: Number(value) });
+              },
             locked,
             "number",
           ),
