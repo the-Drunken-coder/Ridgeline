@@ -10,6 +10,7 @@ export type ElevationArea = {
   center: readonly [number, number];
   radiusMeters: number;
   preparationBounds?: readonly [number, number, number, number];
+  sampleRange?: number;
 };
 
 type Area = ElevationArea & { work?: Work; revision: number; unavailable?: boolean };
@@ -119,8 +120,8 @@ export class Elevation {
   }
 
   request(key: string, center: readonly [number, number], radiusMeters: number,
-    preparationBounds?: ElevationArea['preparationBounds']): void {
-    this.requestBatch([{ key, center, radiusMeters, preparationBounds }]);
+    preparationBounds?: ElevationArea['preparationBounds'], sampleRange?: number): void {
+    this.requestBatch([{ key, center, radiusMeters, preparationBounds, sampleRange }]);
   }
 
   /** New areas in one call share a consumer preparation and its signal. */
@@ -140,6 +141,7 @@ export class Elevation {
         center: [request.center[0], request.center[1]],
         radiusMeters: request.radiusMeters,
         preparationBounds: request.preparationBounds,
+        sampleRange: request.sampleRange,
         revision: ++this.revisionCounter,
       };
       this.areas.set(area.key, area);
@@ -155,6 +157,7 @@ export class Elevation {
       if (covering) {
         area.work = covering;
         covering.keys.add(area.key);
+        covering.areas.push(area);
         if (!options.deferProbe) this.startDeferred(covering);
       } else unclaimed.push(area);
     }
@@ -194,6 +197,7 @@ export class Elevation {
     const work = area.work;
     if (!work) return;
     work.keys.delete(key);
+    work.areas = work.areas.filter(area => area.key !== key);
     if (!work.keys.size) {
       work.controller.abort();
       this.works.delete(work);
@@ -224,7 +228,7 @@ export class Elevation {
     if (!area || this.destroyed) return 'unavailable';
     if (this.options.sampler)
       return area.work && area.work.status.phase !== 'settled' ? 'loading' : 'unavailable';
-    area.unavailable ||= this.raster!.readiness(area.center, area.radiusMeters, area.preparationBounds) === 'unavailable';
+    area.unavailable ||= this.raster!.readiness(area.center, area.radiusMeters, area.preparationBounds, area.sampleRange) === 'unavailable';
     return area.unavailable ? 'unavailable' : 'loading';
   }
 
@@ -315,7 +319,7 @@ export class Elevation {
   }
 
   private restart() {
-    const requests = [...this.areas.values()].map(({ key, center, radiusMeters, preparationBounds }) => ({ key, center, radiusMeters, preparationBounds }));
+    const requests = [...this.areas.values()].map(({ key, center, radiusMeters, preparationBounds, sampleRange }) => ({ key, center, radiusMeters, preparationBounds, sampleRange }));
     for (const work of this.works) work.controller.abort();
     this.works.clear();
     this.areas.clear();
