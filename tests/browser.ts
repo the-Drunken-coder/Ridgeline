@@ -657,28 +657,66 @@ async function suite() {
     const context=dem.getContext('2d')!; context.fillStyle='rgb(1,0,0)'; context.fillRect(0,0,256,256);
     const air=createViewport({container,basemap:style(),elevation:{tiles:[dem.toDataURL()],encoding:'custom',redFactor:100,greenFactor:0,blueFactor:0,baseShift:0,maxzoom:0},camera:{center:[0,0],zoom:14,pitch:50},onError:error=>errors.push(error),logger:()=>{}});
     current=air; await air.ready;
-    air.upsert([{...point('raw'),entity:{altitude:{meters:300,reference:'ground'},attachments:[{id:'camera',type:'camera',bearing:0,elevation:-45,fovX:50,fovY:30,range:1000},{id:'cylinder',type:'cylinder',radius:50,height:80}]}}]);
-    await until(()=>air.getEntityState('raw')?.coverage==='ready','raw DEM decoding');
+    air.upsert([
+      {...point('raw'),entity:{altitude:{meters:300,reference:'ground'},attachments:[{id:'camera',type:'camera',bearing:0,elevation:-45,fovX:50,fovY:30,range:1000},{id:'cylinder',type:'cylinder',radius:50,height:80}]}},
+      {...point('raw-visibility'),entity:{altitude:{meters:300,reference:'ground'},attachments:[{id:'camera',type:'camera',terrainVisibility:true,bearing:0,elevation:-45,fovX:50,fovY:30,range:1000}]}},
+    ]);
+    await until(()=>air.getEntityState('raw')?.coverage==='ready'&&air.getEntityState('raw-visibility')?.coverage==='ready','raw DEM decoding');
     check(air.getEntityState('raw')?.altitude===400,'Raw custom DEM did not decode to 100 metres');
     const triangles=air.getEntityState('raw')!.footprintTriangles;
     for(const exaggeration of [0.5,1,2]) {
       const before=air.getEntityState('raw')!.computedAt;
+      const visibilityBefore=air.getEntityState('raw-visibility')!.computedAt;
       air.configure({terrain:true,exaggeration});
-      await until(()=>air.getEntityState('raw')!.computedAt>before,'terrain display recomputation');
+      await until(()=>air.getEntityState('raw')!.computedAt>before&&air.getEntityState('raw-visibility')!.computedAt>visibilityBefore&&air.getEntityState('raw-visibility')?.coverage==='ready','terrain display recomputation');
       check(air.getEntityState('raw')?.footprintTriangles===triangles,'Terrain display changed physical coverage');
       check(air.getEntityState('raw')?.altitude===400,'Exaggeration changed physical altitude');
+      check(air.getEntityState('raw-visibility')?.altitude===400,'Exaggeration changed terrain visibility camera altitude');
+      const maskLayer=air.map.getStyle().layers.find(layer=>layer.id.startsWith('rl:camera-mask:'));
+      check(maskLayer&&air.map.getSource<ImageSource>(maskLayer.id)?.image instanceof ImageData,`Terrain visibility mask missing at exaggeration ${exaggeration}`);
     }
     air.configure({ projection: 'globe' });
     await until(() => air.getEntityState('raw')?.coverage === 'ready', 'globe camera overlay');
     check((air.getEntityState('raw')?.footprintTriangles ?? 0) > 0, 'Globe lost camera coverage');
     air.configure({ projection: 'flat', terrain: false });
     await until(() => air.getEntityState('raw')?.coverage === 'ready', 'Overlay restored after globe');
-    air.remove(['raw']);
+    air.remove(['raw','raw-visibility']);
     await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
     let remaining=0; air.on('click',event=>{remaining=event.features.length;});
     air.map.fire('click',{point:air.map.project([0,0]),lngLat:air.map.getCenter(),originalEvent:new MouseEvent('click')});
     check(remaining===0,'Removed attachments still pickable');
     check(!errors.some(error=>error.code==='UPDATE_FAILED'), 'Entity overlay reported an update failure: '+errors.map(error=>error.message).join(', '));
+    air.destroy();
+  });
+  await run('Exaggerated terrain keeps sphere and plain camera volume pickable', async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!; context.fillStyle = 'rgb(1,0,0)'; context.fillRect(0,0,256,256);
+    const air = createViewport({ container, basemap: style(), terrain: true,
+      elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 100, greenFactor: 0, blueFactor: 0, baseShift: 0, maxzoom: 0 },
+      camera: { center: [0,0], zoom: 17, pitch: 0 }, logger: () => {} });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('pick-exaggerated'), entity: { altitude: { meters: 300, reference: 'ground' }, attachments: [
+      { id: 'sphere', type: 'sphere', radius: 40 },
+      { id: 'camera', type: 'camera', bearing: 0, elevation: -90, fovX: 60, fovY: 60, range: 1000, volumeOpacity: .2 },
+    ] } };
+    let picked: string[] = [];
+    air.on('click', event => { picked = event.attachments.filter(hit => hit.entityId === feature.id).map(hit => hit.attachmentId); });
+    const pick = (lng: number, lat: number) => {
+      const screen = air.map.project([lng, lat]);
+      picked = [];
+      air.map.fire('click', { point: screen, lngLat: air.map.unproject(screen), originalEvent: new MouseEvent('click') });
+      return picked;
+    };
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'exaggerated picking geometry');
+    for (const exaggeration of [0.5, 2]) {
+      const before = air.getEntityState(feature.id)!.computedAt;
+      air.configure({ exaggeration });
+      await until(() => air.getEntityState(feature.id)!.computedAt > before && air.getEntityState(feature.id)?.coverage === 'ready', 'exaggerated picking update');
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      check(pick(0, 0).includes('sphere'), `Sphere was not pickable at exaggeration ${exaggeration}`);
+      check(pick(.0006, .0004).includes('camera'), `Plain camera volume was not pickable at exaggeration ${exaggeration}`);
+    }
     air.destroy();
   });
   await run('Visible footprint stays filled when displayed terrain differs slightly from sampled terrain', async () => {
@@ -1319,8 +1357,11 @@ async function suite() {
   await run('GPU visibility preserves flat-ground coverage at long range and caches terrain during movement', async () => {
     const meters = Math.PI / 180 * 6371008.8;
     let samples = 0;
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!; context.fillStyle = '#000000'; context.fillRect(0,0,256,256);
     const air = createViewport({ container, basemap: style('#000000'),
       elevationSampler: { sample: () => { samples++; return 0; }, prepare: async () => {} },
+      elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 0, greenFactor: 0, blueFactor: 0, baseShift: 0, maxzoom: 0 },
       camera: { center: [0, 4000 / meters], zoom: 16, pitch: 0 }, logger: () => {} });
     current = air; await air.ready;
     const feature: MapFeature = { ...point('gpu-flat'), entity: { altitude: { meters: 2000, reference: 'ground' },
@@ -1370,13 +1411,17 @@ async function suite() {
       air.upsert([{...feature, entity: {...feature.entity!, attachments: [{...camera, bearing: 15}]}}]);
       await until(() => sensorPasses > 0, 'changed camera aim recomputed depth');
     } finally { gl.drawElements = drawElements; }
+    const beforeExaggeration = air.getEntityState(feature.id)!.computedAt;
+    air.configure({ terrain: true, exaggeration: 2 });
+    await until(() => air.getEntityState(feature.id)!.computedAt > beforeExaggeration && air.getEntityState(feature.id)?.coverage === 'ready' && Boolean(air.map.getTerrain()), 'exaggerated GPU camera ready');
     const assertSynchronized=()=>{
       const gpu=air.map.getLayer('rl:camera-gpu') as unknown as {implementation:{cameras:Map<string,{published?:{origin:number[]}}>}};
       const geometry=air.map.getLayer('rl:entities') as unknown as {implementation:{draws:{attachmentId?:string;vertices:number[][]}[]}};
       const published=gpu.implementation.cameras.values().next().value?.published;
       const corner=geometry.implementation.draws.find(draw=>draw.attachmentId==='camera')?.vertices[0];
       check(!!published&&!!corner,'Published camera geometry missing');
-      check(JSON.stringify(published!.origin)===JSON.stringify(corner),'Wireframe and mask use different poses');
+      check(published!.origin[0]===corner![0]&&published!.origin[1]===corner![1]&&published!.origin[2]===corner![2],
+        'Wireframe origin differs from published camera pose in raw metres');
     };
     const initialSamples=samples;
     for(let i=0;i<24;i++) {
