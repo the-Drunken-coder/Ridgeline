@@ -630,3 +630,59 @@ for (const [name, appearance] of Object.entries(appearanceChanges)) test(`pendin
   coverage.destroy();
   preparation.resolve();
 });
+
+test('switching to a plain camera during unresolved placement discards terrain work', () => {
+  const adapter = controlledAdapter();
+  const { coverage } = owner(adapter);
+  update(coverage, input());
+  const displayed = latestRequest(adapter);
+  assert.equal(adapter.complete(displayed), true);
+
+  const moved = input({ origin: [.001, 0, 100] });
+  assert.equal(update(coverage, moved).coverage, 'loading');
+  const inFlight = latestRequest(adapter);
+  const plain = input({
+    origin: [.001, 0, 0],
+    placement: 'elevation-unavailable',
+    elevationPreparing: true,
+    cameras: [{ ...camera(), terrainVisibility: false }],
+  });
+  update(coverage, plain);
+
+  assert.deepEqual(adapter.values(), [], 'A plain camera must not submit the old terrain request');
+  assert.deepEqual(coverage.output('entity'), [], 'Terrain output must not remain on the plain camera');
+  assert.equal(adapter.complete(inFlight), false, 'Late terrain completion must be rejected');
+  assert.deepEqual(coverage.output('entity'), []);
+  coverage.destroy();
+});
+
+test('invalidation restamps an in-flight request while placement is unresolved', () => {
+  const adapter = controlledAdapter();
+  const { coverage } = owner(adapter);
+  update(coverage, input());
+  const displayed = latestRequest(adapter);
+  assert.equal(adapter.complete(displayed), true);
+  const previous = coverage.output('entity');
+
+  const moved = input({ origin: [.001, 0, 100] });
+  assert.equal(update(coverage, moved).coverage, 'loading');
+  const inFlight = latestRequest(adapter);
+  const waiting = input({
+    origin: [.001, 0, 0],
+    placement: 'elevation-unavailable',
+    elevationPreparing: true,
+  });
+  assert.equal(update(coverage, waiting).coverage, 'loading');
+  coverage.invalidate('entity');
+  update(coverage, waiting);
+
+  const restamped = latestRequest(adapter);
+  assert.notEqual(restamped.lifecycle, inFlight.lifecycle);
+  assert.deepEqual(coverage.output('entity'), previous, 'Invalidation retains completed output while waiting');
+  assert.equal(adapter.complete(inFlight), false, 'The old token must not publish');
+  assert.deepEqual(coverage.output('entity'), previous);
+  assert.equal(adapter.complete(restamped), true, 'The restamped in-flight request may publish');
+  assert.deepEqual(coverage.output('entity'), restamped.geometry);
+  assert.equal(coverage.status('entity'), 'loading', 'Placement is still unresolved');
+  coverage.destroy();
+});
