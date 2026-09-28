@@ -144,6 +144,29 @@ test('preparation rejection settles once with the original cause and can be retr
   elevation.destroy();
 });
 
+test('a sampler throwing during an eager probe settles the area and reports its cause', async () => {
+  const cause = new Error('sample failed');
+  let probes = 0;
+  let preparations = 0;
+  const { elevation, diagnostics, changes } = fixture({
+    sample() { probes++; throw cause; },
+    prepare() { preparations++; return Promise.resolve(); },
+  });
+  elevation.request('entity', [0, 0], 0);
+  await flush();
+  assert.equal(elevation.readiness('entity'), 'unavailable');
+  assert.equal(probes, 1);
+  assert.equal(preparations, 0);
+  assert.deepEqual(changes, [['entity']]);
+  assert.equal(diagnostics.length, 1);
+  assert.equal(diagnostics[0]!.code, 'ELEVATION_UNAVAILABLE');
+  assert.equal(diagnostics[0]!.cause, cause);
+  elevation.requirePreparation('entity');
+  await flush();
+  assert.equal(probes, 1, 'A callback failure must not start an automatic retry');
+  elevation.destroy();
+});
+
 test('moving a settled area prepares its new location and a removed scheduled area never starts', async () => {
   const source = controlled();
   const { elevation } = fixture(source.sampler);
@@ -241,4 +264,28 @@ test('deferred placement batches avoid probes until missing geometry requires on
   await flush();
   assert.equal(preparations, 1);
   elevation.destroy();
+});
+
+test('a raster tile failure notifies only area keys that use that tile', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('tile failed'); };
+  const changes: string[][] = [];
+  const elevation = new Elevation({
+    provider: { tiles: ['https://example.test/{z}/{x}/{y}.png'], maxzoom: 1 },
+    changed: keys => changes.push([...keys]),
+    diagnostic: () => {},
+  });
+  try {
+    elevation.request('left', [-90, -1], 1000);
+    elevation.request('right', [90, -1], 1000);
+    elevation.height(-90, -1);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.deepEqual(changes.at(-1), ['left']);
+    elevation.height(90, -1);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.deepEqual(changes.at(-1), ['right']);
+  } finally {
+    elevation.destroy();
+    globalThis.fetch = originalFetch;
+  }
 });

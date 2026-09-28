@@ -4,7 +4,7 @@ import { EntityGround } from './entity-ground';
 import type { Primitive } from './entity-layer';
 import { computeEntity } from './entity-computation';
 import type { EntityComputationResult } from './entity-computation';
-import { Elevation } from './elevation';
+import { Elevation, entityIdForAreaKey, placementAreaKey } from './elevation';
 import { SensorCameraCoverage } from './sensor-camera-coverage';
 import { RidgelineError } from './errors';
 import type {
@@ -64,9 +64,7 @@ export class EntityScene<P extends Properties> {
       diagnostic: options.diagnostic,
       changed: keys => {
         for (const key of keys) {
-          const id = key.startsWith('placement:') ? key.slice('placement:'.length)
-            : key.startsWith('camera:') ? key.slice('camera:'.length, key.lastIndexOf(':'))
-            : undefined;
+          const id = entityIdForAreaKey(key);
           if (id && this.features.has(id)) this.dirty.add(id);
         }
         if (this.dirty.size) this.schedule();
@@ -98,7 +96,7 @@ export class EntityScene<P extends Properties> {
   set(features: readonly MapFeature<P>[], removed: readonly string[] = []) {
     for (const id of removed) {
       this.coverage.remove(id);
-      this.elevation.release(`placement:${id}`);
+      this.elevation.release(placementAreaKey(id));
       this.features.delete(id);
       this.states.delete(id);
       this.positions.delete(id);
@@ -112,7 +110,7 @@ export class EntityScene<P extends Properties> {
         this.dirty.add(feature.id);
       } else {
         this.coverage.remove(feature.id);
-        this.elevation.release(`placement:${feature.id}`);
+        this.elevation.release(placementAreaKey(feature.id));
         this.features.delete(feature.id);
         this.states.delete(feature.id);
         this.positions.delete(feature.id);
@@ -138,7 +136,7 @@ export class EntityScene<P extends Properties> {
       this.coverage.requestAreas(feature.id, center,
         attachments.filter((attachment): attachment is CameraAttachment => attachment.type === 'camera'),
         footprintsVisible && Boolean(feature.entity.altitude));
-      areas.push({ key: `placement:${feature.id}`, center, radiusMeters });
+      areas.push({ key: placementAreaKey(feature.id), center, radiusMeters });
     }
     this.elevation.requestBatch(areas, { deferProbe: true });
     this.schedule();
@@ -234,7 +232,7 @@ export class EntityScene<P extends Properties> {
   }
   private build(feature: MapFeature<P>) {
     const input = { feature, configuration: this.options.configuration(), style: this.options.style(feature), selected: this.selected.has(feature.id) };
-    const placementKey = `placement:${feature.id}`;
+    const placementKey = placementAreaKey(feature.id);
     const result = computeEntity(input, this.height,
       this.elevation.readiness(placementKey),
       (west, south, east, north) => this.elevation.maximum(west, south, east, north));

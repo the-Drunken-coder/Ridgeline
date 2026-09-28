@@ -37,7 +37,8 @@ export class RasterElevationSampler {
   private queued = new Map<string, [number, number]>();
   private pending = new Set<string>();
   private failed = new Set<string>();
-  private noData = new Set<string>();
+  // Keep observed missing pixels after cache eviction; failures stay settled until retry.
+  private noData = new Map<string, { size: number; pixels: Set<number> }>();
   private controller = new AbortController();
   private templates: string[] = [];
   private zoom = 12;
@@ -45,7 +46,7 @@ export class RasterElevationSampler {
   private started = false;
   constructor(
     private provider: ElevationProvider,
-    private changed: () => void,
+    private changed: (tileKey?: string) => void,
     private error: (cause: unknown) => void,
   ) {}
 
@@ -74,11 +75,17 @@ export class RasterElevationSampler {
     // Most ray samples stay inside one tile. Avoid four neighbour lookups in this hot path.
     if (ix >= 0 && iy >= 0 && ix + 1 < tile.size && iy + 1 < tile.size) {
       const i = iy * tile.size + ix;
-      const result = tile.values[i]! * (1 - fx) * (1 - fy) +
-        tile.values[i + 1]! * fx * (1 - fy) +
-        tile.values[i + tile.size]! * (1 - fx) * fy +
-        tile.values[i + tile.size + 1]! * fx * fy;
-      if (!Number.isFinite(result)) this.markNoData(x, y);
+      const values = [tile.values[i]!, tile.values[i + 1]!,
+        tile.values[i + tile.size]!, tile.values[i + tile.size + 1]!];
+      const result = values[0]! * (1 - fx) * (1 - fy) +
+        values[1]! * fx * (1 - fy) +
+        values[2]! * (1 - fx) * fy + values[3]! * fx * fy;
+      if (!Number.isFinite(result)) {
+        if (!Number.isFinite(values[0])) this.markNoData(x, y, ix, iy, tile.size);
+        if (!Number.isFinite(values[1])) this.markNoData(x, y, ix + 1, iy, tile.size);
+        if (!Number.isFinite(values[2])) this.markNoData(x, y, ix, iy + 1, tile.size);
+        if (!Number.isFinite(values[3])) this.markNoData(x, y, ix + 1, iy + 1, tile.size);
+      }
       return Number.isFinite(result) ? result : null;
     }
     const value = (xx: number, yy: number) => {
@@ -88,7 +95,8 @@ export class RasterElevationSampler {
       if (!neighbour || neighbour.size !== tile.size) return NaN;
       const result =
         neighbour.values[((yy + tile.size) % tile.size) * tile.size + ((xx + tile.size) % tile.size)]!;
-      if (!Number.isFinite(result)) this.markNoData(x + dx, y + dy);
+      if (!Number.isFinite(result))
+        this.markNoData(x + dx, y + dy, (xx + tile.size) % tile.size, (yy + tile.size) % tile.size, tile.size);
       return result;
     };
     const result =
@@ -135,37 +143,79 @@ export class RasterElevationSampler {
     }
     return tile;
   }
-  private markNoData(x: number, y: number) {
+  private markNoData(x: number, y: number, px: number, py: number, size: number) {
     const n = 2 ** this.zoom;
-    if (y >= 0 && y < n) this.noData.add(`${((x % n) + n) % n}/${y}`);
+    if (y < 0 || y >= n) return;
+    const key = `${((x % n) + n) % n}/${y}`;
+    let missing = this.noData.get(key);
+    if (!missing) {
+      missing = { size, pixels: new Set() };
+      this.noData.set(key, missing);
+    }
+    missing.pixels.add(py * size + px);
   }
-  /** Unknown samples settle only when this area needs failed data. */
-  readiness(center: readonly [number, number], radiusMeters: number): 'loading' | 'unavailable' {
-    if (this.failed.has('source')) return 'unavailable';
+  private areaBounds(center: readonly [number, number], radiusMeters: number) {
     const [lng, lat] = center;
     const angularRadius = radiusMeters / EARTH_RADIUS_METERS;
     const south = lat - angularRadius * 180 / Math.PI;
     const north = lat + angularRadius * 180 / Math.PI;
-    if (south < -MAX_LAT || north > MAX_LAT) return 'unavailable';
-    if (!this.ready) return 'loading';
-
+    if (south < -MAX_LAT || north > MAX_LAT) return null;
     const longitudeRadius = Math.asin(Math.min(1, Math.sin(angularRadius) / Math.cos(lat * Math.PI / 180))) * 180 / Math.PI;
     const n = 2 ** this.zoom;
-    const firstX = Math.floor((lng - longitudeRadius + 180) / 360 * n);
-    const lastX = Math.floor((lng + longitudeRadius + 180) / 360 * n);
-    const firstY = Math.floor(tilePosition(lng, north, this.zoom).y);
-    const lastY = Math.floor(tilePosition(lng, south, this.zoom).y);
-    for (const keys of [this.failed, this.noData])
-      for (const key of keys) {
-        const [x, y] = key.split('/').map(Number);
-        if (x === undefined || y === undefined || !Number.isInteger(x) || !Number.isInteger(y)) continue;
-        const distance = ((x - firstX) % n + n) % n;
-        if (distance <= lastX - firstX && y >= firstY && y <= lastY) return 'unavailable';
-      }
-    return 'loading';
+    const westX = (lng - longitudeRadius + 180) / 360 * n;
+    const eastX = (lng + longitudeRadius + 180) / 360 * n;
+    const northY = tilePosition(lng, north, this.zoom).y;
+    const southY = tilePosition(lng, south, this.zoom).y;
+    const tileSize = this.tiles.values().next().value?.size ?? this.provider.tileSize ?? 256;
+    const border = 0.5 / tileSize;
+    return {
+      westX, eastX, northY, southY, n,
+      firstX: Math.floor(westX - border), lastX: Math.floor(eastX + border),
+      firstY: Math.floor(northY - border), lastY: Math.floor(southY + border),
+    };
   }
-  unavailable() {
-    return this.failed.size > 0 || this.noData.size > 0;
+  /** Whether a loaded tile could affect this requested area. */
+  affects(center: readonly [number, number], radiusMeters: number, tileKey: string) {
+    const bounds = this.areaBounds(center, radiusMeters);
+    if (!bounds) return false;
+    const [x, y] = tileKey.split('/').map(Number);
+    if (x === undefined || y === undefined || y < bounds.firstY || y > bounds.lastY) return false;
+    const distance = ((x - bounds.firstX) % bounds.n + bounds.n) % bounds.n;
+    return bounds.lastX - bounds.firstX >= bounds.n || distance <= bounds.lastX - bounds.firstX;
+  }
+  /** Unknown samples settle only when this area needs failed data. */
+  readiness(center: readonly [number, number], radiusMeters: number): 'loading' | 'unavailable' {
+    if (this.failed.has('source')) return 'unavailable';
+    const bounds = this.areaBounds(center, radiusMeters);
+    if (!bounds) return 'unavailable';
+    if (!this.ready) return 'loading';
+    const { westX, eastX, northY, southY, n, firstX, lastX, firstY, lastY } = bounds;
+    if (lastX - firstX >= n)
+      return [...this.failed].some(key => key.includes('/')) || this.noData.size > 0
+        ? 'unavailable' : 'loading';
+    // Readiness examines only tiles intersecting this request, regardless of
+    // how many failures have accumulated elsewhere in the world.
+    for (let y = firstY; y <= lastY; y++) for (let x = firstX; x <= lastX; x++) {
+      const key = `${((x % n) + n) % n}/${y}`;
+      if (this.failed.has(key)) return 'unavailable';
+      const missing = this.noData.get(key);
+      if (!missing) continue;
+      const size = missing.size;
+      const x0 = Math.max(0, Math.floor((westX - x) * size - 0.5));
+      const x1 = Math.min(size - 1, Math.floor((eastX - x) * size - 0.5) + 1);
+      const y0 = Math.max(0, Math.floor((northY - y) * size - 0.5));
+      const y1 = Math.min(size - 1, Math.floor((southY - y) * size - 0.5) + 1);
+      if ((x1 - x0 + 1) * (y1 - y0 + 1) <= missing.pixels.size) {
+        for (let py = y0; py <= y1; py++) for (let px = x0; px <= x1; px++)
+          if (missing.pixels.has(py * size + px)) return 'unavailable';
+      } else {
+        for (const index of missing.pixels) {
+          const px = index % size, py = Math.floor(index / size);
+          if (px >= x0 && px <= x1 && py >= y0 && py <= y1) return 'unavailable';
+        }
+      }
+    }
+    return 'loading';
   }
   retry() {
     this.failed.clear();
@@ -244,7 +294,7 @@ export class RasterElevationSampler {
         .finally(() => {
           this.pending.delete(key);
           if (!this.controller.signal.aborted) {
-            this.changed();
+            this.changed(key);
             this.pump();
           }
         });

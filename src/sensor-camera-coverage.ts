@@ -9,7 +9,7 @@ import type { Primitive } from './entity-layer';
 import { GpuCameras, sameCamera, sameCameraAppearance } from './gpu-cameras';
 import type { GpuCamera } from './gpu-cameras';
 import { parseColor } from './color';
-import type { Elevation } from './elevation';
+import { cameraAreaKey, placementAreaKey, type Elevation } from './elevation';
 
 type Color = Primitive['color'];
 
@@ -44,7 +44,11 @@ export type SensorCameraOutput = {
 };
 
 type Displayed = { geometry: Primitive[]; terrain: boolean; value?: GpuCamera };
-type TerrainWork = { patch?: CameraTerrain };
+type TerrainWork = {
+  patch?: CameraTerrain;
+  center?: readonly [number, number];
+  revision?: number;
+};
 type CameraState = {
   lifecycle: number;
   requested?: GpuCamera;
@@ -222,7 +226,7 @@ export class SensorCameraCoverage {
   }
 
   private terrainKey(entityId: string, range: number) {
-    return `camera:${entityId}:${range}`;
+    return cameraAreaKey(entityId, range);
   }
 
   update(input: SensorCameraInput): SensorCameraOutput {
@@ -266,7 +270,7 @@ export class SensorCameraCoverage {
       this.updateTerrain(entity);
     } else if (waitingForPlacement) {
       this.updateTerrain(entity);
-      if (this.options.elevation.readiness(`placement:${input.entityId}`) === 'unavailable') {
+      if (this.options.elevation.readiness(placementAreaKey(input.entityId)) === 'unavailable') {
         for (const camera of input.cameras) if (!camera.terrainVisibility)
           entity.cameras.get(camera.id)!.displayed = undefined;
       }
@@ -382,13 +386,20 @@ export class SensorCameraCoverage {
       work = {};
       entity.terrain.set(range, work);
     }
-    // Incomplete patches must be resampled on each elevation notification.
-    // Complete patches retain cameraTerrain's movement-margin reuse.
-    const terrain = cameraTerrain(input.origin[0], input.origin[1], range,
-      (lng, lat) => this.options.elevation.height(lng, lat), work.patch);
-    work.patch = terrain;
+    const key = this.terrainKey(input.entityId, range);
+    const revision = this.options.elevation.revision(key);
+    const center: readonly [number, number] = [input.origin[0], input.origin[1]];
+    if (!work.patch || work.revision !== revision || work.center?.[0] !== center[0] || work.center?.[1] !== center[1]) {
+      // An incomplete patch is expensive to sample and only changes after
+      // elevation does, movement, or a source reset.
+      work.patch = cameraTerrain(center[0], center[1], range,
+        (lng, lat) => this.options.elevation.height(lng, lat), work.patch);
+      work.center = center;
+      work.revision = revision;
+    }
+    const terrain = work.patch;
     if (!terrain.ready)
-      this.options.elevation.requirePreparation(this.terrainKey(input.entityId, range));
+      this.options.elevation.requirePreparation(key);
     return terrain;
   }
 
@@ -424,7 +435,7 @@ export class SensorCameraCoverage {
     const input = entity.input;
     const placementUnavailable = input.placement === 'elevation-unavailable';
     const placementReadiness = placementUnavailable
-      ? this.options.elevation.readiness(`placement:${input.entityId}`) : undefined;
+      ? this.options.elevation.readiness(placementAreaKey(input.entityId)) : undefined;
     if (!entity.cameras.size) return placementUnavailable && placementReadiness === 'unavailable' ? 'unavailable' : 'ready';
     let coverage: EntityState['coverage'] = 'ready';
     if (placementUnavailable && placementReadiness === 'loading') coverage = 'loading';
@@ -451,7 +462,7 @@ export class SensorCameraCoverage {
     // earlier placement request has settled without data.
     if (cameraReadiness === 'loading') return false;
     if (entity.input.placement === 'elevation-unavailable' &&
-      this.options.elevation.readiness(`placement:${entity.input.entityId}`) === 'unavailable') return true;
+      this.options.elevation.readiness(placementAreaKey(entity.input.entityId)) === 'unavailable') return true;
     return !terrainReady;
   }
 

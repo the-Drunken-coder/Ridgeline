@@ -9,16 +9,25 @@ export type ElevationArea = {
   radiusMeters: number;
 };
 
-type Area = ElevationArea & { work?: Work };
+type Area = ElevationArea & { work?: Work; revision: number };
+type WorkStatus =
+  | { phase: 'scheduled'; deferred: boolean; force: boolean }
+  | { phase: 'pending' }
+  | { phase: 'settled'; prepared: boolean };
 type Work = {
   keys: Set<string>;
   areas: ElevationArea[];
   controller: AbortController;
-  state: 'scheduled' | 'pending' | 'settled';
-  deferred: boolean;
-  required: boolean;
-  prepared: boolean;
+  status: WorkStatus;
 };
+
+export const placementAreaKey = (entityId: string) => `placement:${entityId}`;
+export const cameraAreaKey = (entityId: string, range: number) => `camera:${entityId}:${range}`;
+export function entityIdForAreaKey(key: string) {
+  if (key.startsWith('placement:')) return key.slice('placement:'.length);
+  if (key.startsWith('camera:')) return key.slice('camera:'.length, key.lastIndexOf(':'));
+  return undefined;
+}
 
 type ElevationOptions = {
   provider: ElevationProvider;
@@ -59,6 +68,7 @@ export class Elevation {
   private readonly works = new Set<Work>();
   private raster?: RasterElevationSampler;
   private destroyed = false;
+  private revisionCounter = 0;
 
   constructor(private readonly options: ElevationOptions) {
     if (!options.sampler) this.raster = this.createRaster(options.provider);
@@ -96,6 +106,7 @@ export class Elevation {
         key: request.key,
         center: [request.center[0], request.center[1]],
         radiusMeters: request.radiusMeters,
+        revision: ++this.revisionCounter,
       };
       this.areas.set(area.key, area);
       if (this.options.sampler?.prepare) fresh.push(area);
@@ -105,7 +116,7 @@ export class Elevation {
     const unclaimed: Area[] = [];
     for (const area of fresh) {
       const covering = [...this.works].find(work =>
-        work.keys.size && work.state !== 'settled' &&
+        work.keys.size && work.status.phase !== 'settled' &&
         work.areas.some(candidate => work.keys.has(candidate.key) && contains(candidate, area)));
       if (covering) {
         area.work = covering;
@@ -120,7 +131,7 @@ export class Elevation {
     if (unclaimed.length === 1) {
       const wider = unclaimed[0]!;
       for (const work of [...this.works]) {
-        if (work.state !== 'scheduled' || !work.areas.every(area => contains(wider, area))) continue;
+        if (work.status.phase !== 'scheduled' || !work.areas.every(area => contains(wider, area))) continue;
         for (const key of work.keys) {
           const area = this.areas.get(key);
           if (area) unclaimed.push(area);
@@ -135,14 +146,11 @@ export class Elevation {
       keys: new Set(unclaimed.map(area => area.key)),
       areas: unclaimed,
       controller: new AbortController(),
-      state: 'scheduled',
-      deferred: options.deferProbe ?? false,
-      required: false,
-      prepared: false,
+      status: { phase: 'scheduled', deferred: options.deferProbe ?? false, force: false },
     };
     for (const area of unclaimed) area.work = work;
     this.works.add(work);
-    if (!work.deferred) queueMicrotask(() => this.start(work));
+    if (work.status.phase === 'scheduled' && !work.status.deferred) queueMicrotask(() => this.start(work));
   }
 
   release(key: string): void {
@@ -161,13 +169,19 @@ export class Elevation {
   /** A caller found unknown elevation beyond the area's preparation grid. */
   requirePreparation(key: string): void {
     const work = this.areas.get(key)?.work;
-    if (!work || work.prepared || this.destroyed) return;
-    work.required = true;
-    if (work.state === 'scheduled') this.startDeferred(work);
-    else if (work.state === 'settled') {
-      work.state = 'scheduled';
+    if (!work || this.destroyed) return;
+    if (work.status.phase === 'scheduled') {
+      work.status.force = true;
+      this.startDeferred(work);
+    } else if (work.status.phase === 'settled' && !work.status.prepared) {
+      work.status = { phase: 'scheduled', deferred: false, force: true };
       queueMicrotask(() => this.start(work));
     }
+  }
+
+  /** Changes whenever this requested area's elevation might have changed. */
+  revision(key: string): number {
+    return this.areas.get(key)?.revision ?? 0;
   }
 
   /** Unknown samples are loading until their area settles. Known heights are ready. */
@@ -175,7 +189,7 @@ export class Elevation {
     const area = this.areas.get(key);
     if (!area || this.destroyed) return 'unavailable';
     if (this.options.sampler)
-      return area.work && area.work.state !== 'settled' ? 'loading' : 'unavailable';
+      return area.work && area.work.status.phase !== 'settled' ? 'loading' : 'unavailable';
     return this.raster!.readiness(area.center, area.radiusMeters);
   }
 
@@ -208,24 +222,34 @@ export class Elevation {
   private createRaster(provider: ElevationProvider) {
     return new RasterElevationSampler(
       provider,
-      () => this.notify([...this.areas.keys()]),
+      tileKey => this.notify([...this.areas.values()]
+        .filter(area => !tileKey || this.raster?.affects(area.center, area.radiusMeters, tileKey))
+        .map(area => area.key)),
       cause => this.report('Raw elevation data is unavailable for entity placement or sensor coverage.', cause),
     );
   }
 
   private start(work: Work) {
     if (this.destroyed || !this.works.has(work) || work.controller.signal.aborted ||
-        work.deferred || work.state !== 'scheduled') return;
+        work.status.phase !== 'scheduled' || work.status.deferred) return;
     const sampler = this.options.sampler;
     if (!sampler?.prepare) return;
     const samples = work.areas.filter(area => work.keys.has(area.key)).flatMap(positions);
-    if (!work.required && samples.every(([lng, lat]) => this.height(lng, lat) !== null)) {
-      work.state = 'settled';
+    let known = false;
+    try {
+      known = !work.status.force && samples.every(([lng, lat]) => this.height(lng, lat) !== null);
+    } catch (cause) {
+      work.status = { phase: 'settled', prepared: true };
+      this.report('Consumer elevation source could not sample entity or sensor terrain.', cause);
       this.notify([...work.keys]);
       return;
     }
-    work.state = 'pending';
-    work.prepared = true;
+    if (known) {
+      work.status = { phase: 'settled', prepared: false };
+      this.notify([...work.keys]);
+      return;
+    }
+    work.status = { phase: 'pending' };
     // Call as a method so a stateful consumer sampler keeps its receiver.
     void Promise.resolve().then(() => {
       if (!work.controller.signal.aborted) return sampler.prepare!(samples, work.controller.signal);
@@ -241,14 +265,14 @@ export class Elevation {
   }
 
   private startDeferred(work?: Work) {
-    if (!work || !work.deferred || work.state !== 'scheduled') return;
-    work.deferred = false;
+    if (!work || work.status.phase !== 'scheduled' || !work.status.deferred) return;
+    work.status.deferred = false;
     queueMicrotask(() => this.start(work));
   }
 
   private settle(work: Work) {
     if (this.destroyed || work.controller.signal.aborted || !this.works.has(work)) return;
-    work.state = 'settled';
+    work.status = { phase: 'settled', prepared: true };
     this.notify([...work.keys]);
   }
 
@@ -272,6 +296,10 @@ export class Elevation {
 
   private notify(keys: readonly string[]) {
     if (this.destroyed || !keys.length) return;
+    for (const key of keys) {
+      const area = this.areas.get(key);
+      if (area) area.revision = ++this.revisionCounter;
+    }
     // A consumer's event handler must not interrupt resource cleanup.
     try { this.options.changed(keys); } catch { /* Consumer callback failures are isolated by the viewport. */ }
   }
