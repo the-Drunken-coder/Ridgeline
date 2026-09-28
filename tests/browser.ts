@@ -989,13 +989,15 @@ async function suite() {
     air.destroy();
   });
   await run('Mixed terrain cameras retain shared preparation for non-camera attachments', async () => {
-    let available = false;
+    const preparedBounds: [number, number, number, number][] = [];
     const preparationExtents: number[] = [];
     const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
-      sample: () => available ? 0 : null,
+      sample: (lng, lat) => preparedBounds.some(([west, south, east, north]) =>
+        lng >= west && lng <= east && lat >= south && lat <= north) ? 0 : null,
       prepare: async positions => {
         preparationExtents.push(Math.max(...positions.map(([lng, lat]) => Math.max(Math.abs(lng), Math.abs(lat)) * 111195)));
-        available = true;
+        const longitudes = positions.map(([lng]) => lng), latitudes = positions.map(([, lat]) => lat);
+        preparedBounds.push([Math.min(...longitudes), Math.min(...latitudes), Math.max(...longitudes), Math.max(...latitudes)]);
       },
     } });
     current = air; await air.ready;

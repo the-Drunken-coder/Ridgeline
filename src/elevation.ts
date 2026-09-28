@@ -64,7 +64,7 @@ function contains(outer: ElevationArea, inner: ElevationArea) {
 }
 
 function positions(area: ElevationArea): [number, number][] {
-  const output: [number, number][] = [[...area.center]];
+  const output: [number, number][] = [[wrapLongitude(area.center[0]), area.center[1]]];
   if (area.preparationBounds) {
     const [west, south, east, north] = area.preparationBounds;
     for (const lng of [west, area.center[0], east]) for (const lat of [south, area.center[1], north])
