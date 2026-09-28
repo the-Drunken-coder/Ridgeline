@@ -11,18 +11,22 @@ import type {
   DrawingTool,
 } from "./drawing-types";
 import {
-  bearing,
   DEFAULT_DRAWING_STYLE,
-  destination,
-  distance,
-  measurements,
-  position,
-  shapeGeometry,
-  sizeFromPoint,
-  translateShape,
   validateDrawingStyle,
-  validateShape,
 } from "./drawing-geometry";
+import {
+  emptyShape,
+  insertVertex as insertShapeVertex,
+  measurements,
+  placePoint,
+  removeVertex as removeShapeVertex,
+  reverseShape,
+  shapeFromGeometry,
+  shapeGeometry,
+  shapeHandles,
+  translateShape,
+  validateShape,
+} from "./drawing-shapes";
 
 type DrawingHost<P extends Properties> = Pick<
   Viewport<P>,
@@ -178,12 +182,7 @@ export function createDrawingSession<P extends Properties>(
     validateFeature(feature);
     if (host.getFeature(feature.id))
       throw new Error("A new drawing needs an unused feature ID.");
-    const shape: DrawingShape =
-      tool === "circle"
-        ? { kind: tool, center: [0, 0], radius: 0 }
-        : tool === "rectangle"
-          ? { kind: tool, center: [0, 0], width: 0, height: 0, bearing: 0 }
-          : { kind: tool, vertices: [] };
+    const shape = emptyShape(tool);
     const style = { ...DEFAULT_DRAWING_STYLE, ...options.defaults };
     const error = validateDrawingStyle(style);
     if (error) throw new Error(error);
@@ -199,17 +198,7 @@ export function createDrawingSession<P extends Properties>(
       before.geometry.coordinates.length !== 1
     )
       throw new Error("Editing polygons with holes is not supported.");
-    const geometry = before.geometry;
-    const shape: DrawingShape =
-      before.drawing?.shape ??
-      (geometry.type === "Point"
-        ? { kind: "point", position: position(geometry.coordinates) }
-        : geometry.type === "LineString"
-          ? { kind: "line", vertices: geometry.coordinates.map(position) }
-          : {
-              kind: "polygon",
-              vertices: geometry.coordinates[0]!.slice(0, -1).map(position),
-            });
+    const shape = before.drawing?.shape ?? shapeFromGeometry(before.geometry);
     const defaults = { ...DEFAULT_DRAWING_STYLE, ...options.defaults };
     const rendered = host.getStyle(before);
     const style = before.drawing?.style ?? {
@@ -232,18 +221,10 @@ export function createDrawingSession<P extends Properties>(
   function addPoint(p: DrawingPosition) {
     if (!draft?.placing) return;
     change((current) => {
-      const s = current.shape;
-      if ("vertices" in s) {
-        const last = s.vertices.at(-1);
-        if (last && distance(last, p) < 0.001) return;
-        s.vertices.push(p);
-      } else if (s.kind === "circle" || s.kind === "rectangle") {
-        if (!current.placed) s.center = p;
-        else {
-          current.shape = sizeFromPoint(s, p);
-          current.placing = false;
-        }
-      }
+      const placed = placePoint(current.shape, current.placed, p);
+      if (!placed) return;
+      current.shape = placed.shape;
+      current.placing = placed.placing;
       current.placed++;
     });
   }
@@ -269,39 +250,19 @@ export function createDrawingSession<P extends Properties>(
   }
   function moveVertex(index: number, p: DrawingPosition) {
     change((current) => {
-      const s = current.shape;
-      if ("vertices" in s) {
-        if (!s.vertices[index]) throw new Error("Unknown vertex.");
-        s.vertices[index] = p;
-      } else if (s.kind === "point") s.position = p;
-      else if (index === 0) s.center = p;
-      else if (s.kind === "circle") s.radius = distance(s.center, p);
-      else if (index === 1)
-        s.width =
-          2 *
-          Math.abs(
-            distance(s.center, p) *
-              Math.sin(((bearing(s.center, p) - s.bearing) * Math.PI) / 180),
-          );
-      else if (index === 2)
-        s.height =
-          2 *
-          Math.abs(
-            distance(s.center, p) *
-              Math.cos(((bearing(s.center, p) - s.bearing) * Math.PI) / 180),
-          );
-      else s.bearing = bearing(s.center, p);
+      const handle = shapeHandles(current.shape)[index];
+      if (!handle) throw new Error("Unknown vertex.");
+      current.shape = handle.move(p);
     });
   }
   function insertVertex(after: number, p: DrawingPosition) {
     change((current) => {
-      if ("vertices" in current.shape)
-        current.shape.vertices.splice(after + 1, 0, p);
+      current.shape = insertShapeVertex(current.shape, after, p);
     });
   }
   function removeVertex(index: number) {
     change((current) => {
-      if ("vertices" in current.shape) current.shape.vertices.splice(index, 1);
+      current.shape = removeShapeVertex(current.shape, index);
     });
   }
   function translate(from: DrawingPosition, to: DrawingPosition) {
@@ -311,7 +272,7 @@ export function createDrawingSession<P extends Properties>(
   }
   function reverse() {
     change((current) => {
-      if (current.shape.kind === "arrow") current.shape.vertices.reverse();
+      current.shape = reverseShape(current.shape);
     });
   }
   function undo() {
@@ -493,43 +454,3 @@ export function createDrawingSession<P extends Properties>(
 export type DrawingSession<P extends Properties = Properties> = ReturnType<
   typeof createDrawingSession<P>
 >;
-
-/** Handles describe defining parameters, not tessellation points of circles or rectangles. */
-export function drawingHandles(
-  shape: DrawingShape,
-): { position: DrawingPosition; label: string }[] {
-  if ("vertices" in shape)
-    return shape.vertices.map((position, i) => ({
-      position,
-      label: `Vertex ${i + 1}`,
-    }));
-  if (shape.kind === "point")
-    return [{ position: shape.position, label: "Position" }];
-  if (shape.kind === "circle")
-    return [
-      { position: shape.center, label: "Center" },
-      {
-        position: destination(shape.center, shape.radius, 90),
-        label: "Radius",
-      },
-    ];
-  return [
-    { position: shape.center, label: "Center" },
-    {
-      position: destination(shape.center, shape.width / 2, shape.bearing + 90),
-      label: "Width",
-    },
-    {
-      position: destination(shape.center, shape.height / 2, shape.bearing),
-      label: "Height",
-    },
-    {
-      position: destination(
-        shape.center,
-        shape.height / 2 + Math.max(20, shape.height * 0.2),
-        shape.bearing,
-      ),
-      label: "Bearing",
-    },
-  ];
-}
