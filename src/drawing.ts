@@ -365,6 +365,17 @@ export function attachDrawing<P extends Properties>(
                 e.preventDefault();
                 e.stopPropagation();
                 session.removeVertex(index);
+                const remaining = session.getState().draft?.shape;
+                const count = remaining && "vertices" in remaining
+                  ? remaining.vertices.length : 0;
+                const target = markers.get(`vertex-${Math.min(index, count - 1)}`)?.button
+                  ?? markers.get("move")?.button;
+                if (target) target.focus({ preventScroll: true });
+                else {
+                  const canvas = map.getCanvas();
+                  canvas.tabIndex = 0;
+                  canvas.focus({ preventScroll: true });
+                }
               }
               return;
             }

@@ -147,7 +147,7 @@ export function measurements(shape: DrawingShape) {
       ? {
           area:
             shape.kind === "circle"
-              ? 2 * Math.PI * R * R * (1 - Math.cos(shape.radius / R))
+              ? 4 * Math.PI * R * R * Math.sin(shape.radius / (2 * R)) ** 2
               : Math.abs(signedArea(unroll(points))),
         }
       : {}),

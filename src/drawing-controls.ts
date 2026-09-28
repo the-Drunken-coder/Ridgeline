@@ -39,8 +39,29 @@ export function attachDrawingControls<P extends Properties>(
   options.inspector.append(panel);
   let units = options.units ?? "metric",
     error: string | undefined,
-    disposed = false;
+    disposed = false,
+    changingField = false,
+    pointerPressed = false,
+    renderTimer: ReturnType<typeof setTimeout> | undefined;
   const abort = new AbortController();
+  function scheduleRender() {
+    if (renderTimer !== undefined || pointerPressed) return;
+    renderTimer = setTimeout(() => {
+      renderTimer = undefined;
+      if (!pointerPressed) render();
+    }, 0);
+  }
+  function fieldChanged(update: () => void) {
+    changingField = true;
+    try {
+      update();
+    } catch (cause) {
+      fail(cause);
+    } finally {
+      changingField = false;
+      scheduleRender();
+    }
+  }
   const action = (
     label: string,
     fn: () => void | Promise<unknown>,
@@ -69,7 +90,8 @@ export function attachDrawingControls<P extends Properties>(
       cause instanceof Error
         ? cause.message
         : "The drawing could not be changed.";
-    render();
+    if (changingField || pointerPressed) scheduleRender();
+    else render();
   }
   function field(label: string, input: HTMLElement) {
     const row = document.createElement("label");
@@ -89,13 +111,7 @@ export function attachDrawingControls<P extends Properties>(
     input.value = value;
     input.disabled = disabled;
     input.dataset.field = label;
-    input.addEventListener("change", () => {
-      try {
-        onChange(input.value);
-      } catch (cause) {
-        fail(cause);
-      }
-    });
+    input.addEventListener("change", () => fieldChanged(() => onChange(input.value)));
     return field(label, input);
   }
   function select(
@@ -115,13 +131,7 @@ export function attachDrawingControls<P extends Properties>(
       input.append(item);
     }
     input.value = value;
-    input.addEventListener("change", () => {
-      try {
-        onChange(input.value);
-      } catch (cause) {
-        fail(cause);
-      }
-    });
+    input.addEventListener("change", () => fieldChanged(() => onChange(input.value)));
     return field(label, input);
   }
   function row(...children: HTMLElement[]) {
@@ -413,7 +423,8 @@ export function attachDrawingControls<P extends Properties>(
   });
   const off = editor.onChange(() => {
       error = undefined;
-      render();
+      if (changingField || pointerPressed) scheduleRender();
+      else render();
     }),
     offSelection = viewport.on("selectionchange", render),
     offData = viewport.on("datachange", () => {
@@ -459,6 +470,7 @@ export function attachDrawingControls<P extends Properties>(
   function destroy() {
     if (disposed) return;
     disposed = true;
+    if (renderTimer !== undefined) clearTimeout(renderTimer);
     abort.abort();
     off();
     offPreview();
@@ -469,6 +481,31 @@ export function attachDrawingControls<P extends Properties>(
     panel.remove();
   }
   const offDestroy = viewport.on("destroy", destroy);
+  panel.addEventListener("pointerdown", () => {
+    pointerPressed = true;
+    if (renderTimer !== undefined) {
+      clearTimeout(renderTimer);
+      renderTimer = undefined;
+    }
+  }, { signal: abort.signal });
+  document.addEventListener("click", () => {
+    if (!pointerPressed) return;
+    pointerPressed = false;
+    scheduleRender();
+  }, { signal: abort.signal });
+  document.addEventListener("pointerup", () => {
+    if (!pointerPressed) return;
+    setTimeout(() => {
+      if (pointerPressed && !disposed) {
+        pointerPressed = false;
+        scheduleRender();
+      }
+    }, 0);
+  }, { signal: abort.signal });
+  document.addEventListener("pointercancel", () => {
+    pointerPressed = false;
+    scheduleRender();
+  }, { signal: abort.signal });
   render();
   return { destroy, refresh: render };
 }
