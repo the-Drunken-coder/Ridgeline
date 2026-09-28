@@ -674,6 +674,58 @@ async function suite() {
     check(air.getEntityState(mixed.id)?.coverage === 'unavailable', 'Ready camera hid unknown ground terrain');
     air.destroy();
   });
+  await run('One failed terrain region does not settle another pending camera', async () => {
+    let secondReady = false;
+    let finishSecond: (() => void) | undefined;
+    const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+      sample(lng, lat) {
+        if (Math.abs(lat) < 1e-8 && (Math.abs(lng) < 1e-8 || Math.abs(lng - .02) < 1e-8)) return 0;
+        return secondReady && Math.abs(lng - .02) < .01 ? 0 : null;
+      },
+      prepare(positions) {
+        if (Math.abs(positions[0]![0]) < .01) return Promise.reject(new Error('First region failed'));
+        return new Promise<void>(resolve => { finishSecond = () => { secondReady = true; resolve(); }; });
+      },
+    } });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'camera', type: 'camera', terrainVisibility: true,
+      bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 };
+    const first: MapFeature = { ...point('failed-region'), entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [camera] } };
+    const second: MapFeature = { ...point('pending-region', .02), entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [camera] } };
+    try {
+      air.upsert([first, second]);
+      await until(() => air.getEntityState(first.id)?.coverage === 'unavailable' &&
+        air.getEntityState(second.id)?.coverage === 'loading' && Boolean(finishSecond), 'independent terrain statuses');
+      finishSecond!();
+      await until(() => air.getEntityState(second.id)?.coverage === 'ready', 'second camera after unrelated failure');
+      check(air.getEntityState(first.id)?.coverage === 'unavailable', 'Unrelated success changed failed region');
+    } finally { finishSecond?.(); air.destroy(); }
+  });
+  await run('A failed airborne style update retains its last complete display', async () => {
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style(), camera: { center: [.005, 0], zoom: 15 },
+      elevationSampler: { sample: () => 0 }, logger: () => {}, onError: error => errors.push(error),
+      style: feature => { if (feature.properties.fail) throw new Error('Airborne style failed'); return { color: '#1166aa' }; } });
+    current = air; await air.ready;
+    const original: MapFeature = { ...point('retained-air'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [{ id: 'zone', type: 'circle', radius: 100 }, { id: 'ball', type: 'sphere', radius: 30 }] } };
+    const moved: MapFeature = { ...original, geometry: { type: 'Point', coordinates: [.01, 0] } };
+    const zoneAt = (lng: number) => air.map.queryRenderedFeatures(air.map.project([lng, 0]), { layers: ['rl:entity-ground-fill'] })
+      .some(hit => hit.properties.entityId === original.id && hit.properties.attachmentId === 'zone');
+    try {
+      air.upsert([original]);
+      await until(() => zoneAt(0), 'initial airborne ground attachment');
+      air.upsert([{ ...moved, properties: { fail: true } }]);
+      await until(() => errors.some(error => error.context.featureId === original.id && error.code === 'UPDATE_FAILED'), 'airborne style failure');
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      check(zoneAt(0) && !zoneAt(.01), 'Failed style update moved or erased retained ground attachment');
+      const accepted = air.getFeature(original.id);
+      check(accepted?.geometry.type === 'Point' && accepted.geometry.coordinates[0] === .01,
+        'Accepted data did not advance after style failure');
+      air.upsert([moved]);
+      await until(() => zoneAt(.01) && !zoneAt(0), 'corrected airborne update');
+    } finally { air.destroy(); }
+  });
   await run('Custom elevation preparation also covers entities with only plain cameras', async () => {
     let prepared = false, prepareCalls = 0;
     const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
@@ -921,6 +973,58 @@ async function suite() {
     check(remaining===0,'Removed attachments still pickable');
     check(!errors.some(error=>error.code==='UPDATE_FAILED'), 'Entity overlay reported an update failure: '+errors.map(error=>error.message).join(', '));
     air.destroy();
+  });
+  await run('Custom DEM shifts agree with the installed renderer on both sides of zero', async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!; context.fillStyle = 'rgb(1,0,0)'; context.fillRect(0, 0, 256, 256);
+    for (const [shift, expected] of [[40, 60], [-40, 140]] as const) {
+      const air = createViewport({ container, basemap: style(), terrain: true,
+        elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 100, greenFactor: 0,
+          blueFactor: 0, baseShift: shift, maxzoom: 0 }, camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+      current = air;
+      try {
+        await air.ready;
+        air.upsert([{ ...point(`shift-${shift}`), entity: {} }]);
+        await until(() => Math.abs((air.getEntityState(`shift-${shift}`)?.ground ?? NaN) - expected) < .1 &&
+          Math.abs((air.map.queryTerrainElevation([0, 0]) ?? NaN) - expected) < .1, `custom shift ${shift} renderer agreement`);
+        check(Math.abs(air.getEntityState(`shift-${shift}`)!.ground! - expected) < .1, `Raw custom shift ${shift} disagreed`);
+      } finally { air.destroy(); }
+    }
+  });
+  await run('TileJSON Terrarium metadata decodes flat ground in raw and displayed terrain', async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!; context.fillStyle = 'rgb(128,0,0)'; context.fillRect(0, 0, 256, 256);
+    const tilejson = { tilejson: '3.0.0', tiles: [dem.toDataURL()], minzoom: 0, maxzoom: 0,
+      encoding: 'terrarium', scheme: 'tms' };
+    const url = `data:application/json,${encodeURIComponent(JSON.stringify(tilejson))}`;
+    const air = createViewport({ container, basemap: style(), terrain: true,
+      elevation: { url }, camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+    current = air;
+    try {
+      await air.ready;
+      air.upsert([{ ...point('tilejson-flat'), entity: {} }]);
+      await until(() => air.getEntityState('tilejson-flat')?.ground === 0 &&
+        Math.abs(air.map.queryTerrainElevation([0, 0]) ?? NaN) < .1, 'TileJSON flat terrain agreement');
+      check(air.getEntityState('tilejson-flat')?.ground === 0, 'TileJSON Terrarium raw height was not zero');
+    } finally { air.destroy(); }
+  });
+  await run('A 50 km camera at latitude 46 settles with bounded raw terrain loading', async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!; context.fillStyle = 'rgb(0,0,0)'; context.fillRect(0, 0, 256, 256);
+    const air = createViewport({ container, basemap: style(),
+      elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 0, greenFactor: 0,
+        blueFactor: 0, baseShift: 0, minzoom: 0, maxzoom: 12 },
+      camera: { center: [0, 46], zoom: 9 }, logger: () => {} });
+    current = air;
+    const feature: MapFeature = { ...point('wide-range'), geometry: { type: 'Point', coordinates: [0, 46] },
+      entity: { altitude: { meters: 1000, reference: 'ground' }, attachments: [{ id: 'camera', type: 'camera',
+        terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 50_000 }] } };
+    try {
+      await air.ready;
+      air.upsert([feature]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', '50 km terrain convergence');
+      check(air.getEntityState(feature.id)?.coverage === 'ready', 'Wide camera never reached ready');
+    } finally { air.destroy(); }
   });
   await run('Visible footprint stays filled when displayed terrain differs slightly from sampled terrain', async () => {
     const dem=document.createElement('canvas'); dem.width=dem.height=256;
