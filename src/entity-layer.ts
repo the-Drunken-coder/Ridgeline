@@ -6,6 +6,7 @@ export type Primitive = {
   entityId: string;
   attachmentId?: string;
   mode: 'triangles' | 'lines' | 'points' | 'polygon';
+  /** Heights are raw meters in the elevation source's datum. */
   vertices: GeoPoint[];
   color: [number, number, number, number];
   size?: number;
@@ -43,8 +44,13 @@ export class EntityLayer implements CustomLayerInterface {
   private projection?: CustomRenderMethodInput;
   private gl?: WebGL2RenderingContext;
   private failed = false;
+  private verticalScale = 1;
   constructor(private report: (cause: unknown) => void) {}
-  set(primitives: Primitive[]) {
+  private displayHeight(height: number) {
+    return height * this.verticalScale;
+  }
+  set(primitives: Primitive[], verticalScale: number) {
+    this.verticalScale = verticalScale;
     let first = 0;
     this.draws = primitives.map((p) => {
       const d = { ...p, first, count: p.mode === 'lines' ? p.vertices.length * 3 : p.vertices.length };
@@ -94,7 +100,7 @@ export class EntityLayer implements CustomLayerInterface {
           let x = m.x - center.x;
           if (x > .5) x--;
           if (x < -.5) x++;
-          return [x, m.y - center.y, p[2], m.meterInMercatorCoordinateUnits()];
+          return [x, m.y - center.y, this.displayHeight(p[2]), m.meterInMercatorCoordinateUnits()];
         };
         for (const draw of this.draws) {
           if (draw.mode === 'lines') {
@@ -234,10 +240,11 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
       for (const shader of shaders) gl.deleteShader(shader);
     }
   }
-  project(p: GeoPoint): ScreenPoint | null {
+  project(p: GeoPoint, alreadyScaled = false): ScreenPoint | null {
     const data = this.projection;
     if (!data || !this.map) return null;
-    const m = MercatorCoordinate.fromLngLat([p[0], p[1]], p[2]),
+    const height = alreadyScaled ? p[2] : this.displayHeight(p[2]);
+    const m = MercatorCoordinate.fromLngLat([p[0], p[1]], height),
       d = data.defaultProjectionData;
     const globe = data.shaderData.define.includes('GLOBE');
     const x = m.x + Math.round((this.map.getCenter().lng + 180) / 360 - m.x);
@@ -245,7 +252,7 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
     if (globe) {
       const lon = (p[0] * Math.PI) / 180,
         lat = (p[1] * Math.PI) / 180,
-        r = 1 + p[2] / 6371008.8;
+        r = 1 + height / 6371008.8;
       const sphere = [
         -Math.sin(lon) * Math.cos(lat) * r,
         Math.sin(lat) * r,
@@ -273,7 +280,8 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
     if (this.map && this.projection) {
       const location = this.map.unproject([x, y]);
       const height = this.map.getTerrain() ? this.map.queryTerrainElevation(location) : 0;
-      if (height !== null) terrainDepth = this.project([location.lng, location.lat, height])?.depth;
+      // MapLibre's terrain query returns a height that already includes exaggeration.
+      if (height !== null) terrainDepth = this.project([location.lng, location.lat, height], true)?.depth;
     }
     const visible = (depth: number) => terrainDepth === undefined || depth <= terrainDepth + 1e-6;
     for (const draw of this.draws) {
