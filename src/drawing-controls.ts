@@ -520,10 +520,13 @@ export function attachDrawingControls<P extends Properties>(
       }
     }, 0);
   }, { signal: abort.signal });
-  document.addEventListener("pointercancel", () => {
+  function endPointerPress() {
     pointerPressed = false;
     scheduleRender();
-  }, { signal: abort.signal });
+  }
+  document.addEventListener("pointercancel", endPointerPress, { signal: abort.signal });
+  document.addEventListener("lostpointercapture", endPointerPress, { signal: abort.signal });
+  window.addEventListener("blur", endPointerPress, { signal: abort.signal });
   render();
   return { destroy, refresh: render };
 }
