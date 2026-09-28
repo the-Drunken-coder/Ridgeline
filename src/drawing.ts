@@ -81,7 +81,7 @@ export function attachDrawing<P extends Properties>(
             (id) => map.getLayer(id),
           ),
         })
-        .flatMap((f) => typeof f.id === "string" ? [f.id] : []),
+        .flatMap((f) => typeof f.properties._rl_feature_id === "string" ? [f.properties._rl_feature_id] : []),
     );
     for (const id of visible) {
       const feature = viewport.getFeature(id);
@@ -338,6 +338,7 @@ export function attachDrawing<P extends Properties>(
         });
         marker.on("dragstart", () => {
           if (!editable()) return;
+          button.focus({ preventScroll: true });
           previous =
             markers.get(key)?.position ??
             position(marker.getLngLat().toArray());

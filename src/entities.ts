@@ -364,8 +364,11 @@ export class EntityScene<P extends Properties> {
       elevationPreparing: this.options.sampler ? this.preparing.has(feature.id) : false,
     });
     if (this.destroyed || this.features.get(feature.id) !== feature) return;
-    this.nonCameraCoverage.set(feature.id, result.state.coverage);
-    result.state.coverage = combineCoverage(result.state.coverage, camera.coverage);
+    const placementCoverage = result.state.placement === 'elevation-unavailable' &&
+      this.coverage.isPreparing(feature.id) && result.state.coverage === 'unavailable'
+      ? 'loading' : result.state.coverage;
+    this.nonCameraCoverage.set(feature.id, placementCoverage);
+    result.state.coverage = combineCoverage(placementCoverage, camera.coverage);
     result.state.footprintTriangles = camera.footprintTriangles;
     this.apply(feature.id, result);
   }

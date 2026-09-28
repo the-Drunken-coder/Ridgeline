@@ -507,6 +507,7 @@ export class SensorCameraCoverage {
     if (work?.patch?.terrain.ready && entity.input.elevationPreparing) return false;
     // One settled range must not wait for an unrelated camera's preparation.
     return Boolean(work?.patch?.terrain.failed || work?.settled ||
+      (this.options.pollTerrain === false && !this.options.prepare && !entity.input.elevationPreparing && work?.patch && !work.patch.terrain.ready) ||
       entity.input.elevationUnavailable &&
       (entity.input.placement === 'elevation-unavailable' || !this.options.height.forRange));
   }

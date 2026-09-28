@@ -48,7 +48,7 @@ export function attachDrawingControls<P extends Properties>(
     if (renderTimer !== undefined || pointerPressed) return;
     renderTimer = setTimeout(() => {
       renderTimer = undefined;
-      if (!pointerPressed) render();
+      if (!pointerPressed && !(document.activeElement instanceof HTMLInputElement && panel.contains(document.activeElement))) render();
     }, 0);
   }
   function fieldChanged(update: () => void) {
@@ -481,6 +481,9 @@ export function attachDrawingControls<P extends Properties>(
     panel.remove();
   }
   const offDestroy = viewport.on("destroy", destroy);
+  panel.addEventListener("focusout", () => {
+    if (!pointerPressed) scheduleRender();
+  }, { signal: abort.signal });
   panel.addEventListener("pointerdown", () => {
     pointerPressed = true;
     if (renderTimer !== undefined) {

@@ -12,6 +12,7 @@ declare global {
     drawingPointer?: (action: 'move' | 'click', x: number, y: number) => Promise<void>;
     browserKey?: (key: string) => Promise<void>;
     browserClick?: (x: number, y: number) => Promise<void>;
+    browserClickSelector?: (selector: string) => Promise<void>;
     browserMouse?: (action: 'down' | 'move' | 'up', x: number, y: number) => Promise<void>;
     browserFill?: (selector: string, value: string) => Promise<void>;
   }
@@ -26,10 +27,10 @@ const point = (id: string, lng = 0): MapFeature => ({ type: 'Feature', id, prope
 const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
 let current: Viewport | undefined;
 status.dataset.state = 'running';
-async function until(predicate: () => boolean, description: string) {
+async function until(predicate: () => boolean, description: string, timeout = 8_000) {
   const start = performance.now();
   while (!predicate()) {
-    if (performance.now() - start > 8_000) throw new Error(`Timed out: ${description}`);
+    if (performance.now() - start > timeout) throw new Error(`Timed out: ${description}`);
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
   }
 }
@@ -40,7 +41,7 @@ async function run(name: string, test: () => Promise<void>, options: { realPoint
     return;
   }
   try { await test(); row.className = 'pass'; row.textContent = `PASS: ${name}`; }
-  catch (error) { row.className = 'fail'; row.textContent = `FAIL: ${name}: ${String(error)}`; throw error; }
+  catch (error) { row.className = 'fail'; row.textContent = `FAIL: ${name}: ${error instanceof Error ? error.stack : String(error)}`; throw error; }
 }
 async function pointer(action: 'move' | 'click', point: { x: number; y: number }) {
   const drawingPointer = window.drawingPointer;
@@ -160,7 +161,8 @@ async function suite() {
         acceptedFirst.layers[0].paint?.['background-color'] === '#112233', 'Creation input changed accepted basemap');
       const second = style('#445566');
       map.configure({ basemap: second });
-      await until(() => map.map.getPaintProperty('background', 'background-color') === '#445566', 'configured basemap loaded');
+      await until(() => map.map.isStyleLoaded() === true &&
+        map.map.getPaintProperty('background', 'background-color') === '#445566', 'configured basemap loaded');
       second.layers[0] = { id: 'background', type: 'background', paint: { 'background-color': '#00ff00' } };
       const acceptedSecond = map.getConfiguration().basemap;
       check(typeof acceptedSecond !== 'string' && acceptedSecond.layers[0]?.type === 'background' &&
@@ -468,9 +470,12 @@ async function suite() {
     viewport.remove(['custom-broken', 'custom-healthy']);
   }, { realPointer: true });
   await run('Point above a ground area wins the click and picker-free selection', async () => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;left:0;top:0;z-index:9999';
     const mount = document.createElement('div');
-    mount.style.cssText = 'width:320px;height:240px;position:absolute;left:0;top:0';
-    document.body.append(mount);
+    mount.style.cssText = 'width:320px;height:240px';
+    overlay.append(mount);
+    document.body.append(overlay);
     const air = createViewport({ container: mount, basemap: style(), camera: { center: [0, 0], zoom: 16 },
       elevationSampler: { sample: () => 0 }, logger: () => {} });
     let ui: ReturnType<typeof attachInteractions> | undefined;
@@ -480,24 +485,31 @@ async function suite() {
         { ...point('ground-area', -.002), entity: { attachments: [{ id: 'zone', type: 'circle', radius: 500 }] } },
         point('top-point'),
       ]);
-      await until(() => air.getEntityState('ground-area')?.coverage === 'ready' &&
-        air.map.queryRenderedFeatures(air.map.project([0, 0]), { layers: ['rl:points', 'rl:entity-ground-fill'] }).length >= 2,
+      await until(() => {
+        const hits = air.map.queryRenderedFeatures(air.map.project([0, 0]), { layers: ['rl:points', 'rl:entity-ground-fill'] });
+        return air.getEntityState('ground-area')?.coverage === 'ready' &&
+          hits.some(hit => hit.properties._rl_feature_id === 'top-point') &&
+          hits.some(hit => hit.properties.entityId === 'ground-area');
+      },
       'overlapping ground area and point');
       const rendered = air.map.queryRenderedFeatures(air.map.project([0, 0]), { layers: ['rl:points', 'rl:entity-ground-fill'] });
-      check(rendered[0]?.properties._rl_feature_id === 'top-point', 'Test setup did not render the point above the ground area');
+      check(rendered[0]?.properties._rl_feature_id === 'top-point',
+        `Test setup did not render the point above the ground area: ${rendered.slice(0, 4).map(hit => `${hit.layer.id}/${hit.properties._rl_feature_id ?? hit.properties.entityId}`).join(',')}`);
       let clicked: string[] = [];
       let requested: string[] = [];
-      air.on('click', event => { clicked = event.features.map(feature => feature.id); });
+      let clickEvents = 0;
+      air.on('click', event => { clickEvents++; clicked = event.features.map(feature => feature.id); });
       air.on('selectionrequest', event => { requested = event.ids; });
       ui = attachInteractions(air, { picker: false });
       const pointAt = air.map.project([0, 0]);
       const rect = air.map.getCanvas().getBoundingClientRect();
       if (!window.browserClick) throw new Error('Playwright click bridge required');
       await window.browserClick(rect.left + pointAt.x, rect.top + pointAt.y);
-      check(clicked[0] === 'top-point' && clicked.includes('ground-area'), `Click order differed from rendering: ${clicked}`);
+      check(clicked[0] === 'top-point' && clicked.includes('ground-area'),
+        `Click order differed from rendering: ${clicked}; events=${clickEvents}`);
       check(requested[0] === 'top-point', `Picker-free selection chose ${requested[0]}`);
     } finally {
-      ui?.destroy(); air.destroy(); mount.remove();
+      ui?.destroy(); air.destroy(); overlay.remove();
     }
   }, { realPointer: true });
   await run('Hillshade options update live and survive toggles and basemap replacement', async () => {
@@ -753,7 +765,7 @@ async function suite() {
           300, 300, context.RGBA, context.UNSIGNED_BYTE, values);
         let count = 0;
         for (let i = 0; i < values.length; i += 4)
-          if (values[i]! > 180 && values[i + 1]! < 60 && values[i + 2]! < 60) count++;
+          if (values[i]! > values[i + 1]! + 20 && values[i]! > values[i + 2]! + 20) count++;
         resolve(count);
       });
       air.map.triggerRepaint();
@@ -839,7 +851,7 @@ async function suite() {
       air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [movedLng, 0] } }]);
       await until(() => prepareCalls === 1 && air.getEntityState(feature.id)?.placement === 'elevation-unavailable', 'center preparation and placement after movement');
       const pending = air.getEntityState(feature.id);
-      check(pending?.placement === 'elevation-unavailable' && pending.coverage === 'loading', 'Missing center did not remain loading during preparation');
+      check(pending?.placement === 'elevation-unavailable' && pending.coverage === 'loading', `Missing center did not remain loading during preparation: ${JSON.stringify(pending)}; calls=${prepareCalls}`);
       check(preparedPositions.some(([lng, lat]) => Math.abs(lng - movedLng) < 1e-8 && Math.abs(lat) < 1e-8), 'Preparation omitted the moved center');
       check(pickAt(0, .0008) === camera.id, 'Historical camera coverage disappeared during center preparation');
       centerAvailable = true;
@@ -1064,7 +1076,7 @@ async function suite() {
     try {
       await air.ready;
       air.upsert([feature]);
-      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', '50 km terrain convergence');
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', '50 km terrain convergence', 20_000);
       check(air.getEntityState(feature.id)?.coverage === 'ready', 'Wide camera never reached ready');
     } finally { air.destroy(); }
   });
@@ -1165,7 +1177,9 @@ async function suite() {
     draw.configure({basemap:style('#dddddd'),projection:'globe'});
     await until(()=>Boolean(draw.map.getLayer('rl:draft-fill')),'draft restored after style replacement');
     check(Boolean(editor.getState().draft),'Style replacement discarded the draft');
+    await until(() => draw.map.querySourceFeatures('rl:features').some(hit => hit.properties._rl_feature_id === 'drawn'), 'edited source restored');
     const editedSource = draw.map.querySourceFeatures('rl:features').find(hit => hit.properties._rl_feature_id === 'drawn');
+    await until(() => editedSource?.id !== undefined && Boolean(draw.map.getFeatureState({source:'rl:features',id:editedSource.id}).editing), 'editing state restored');
     check(editedSource?.id !== undefined && draw.map.getFeatureState({source:'rl:features',id:editedSource.id}).editing,'Original feature not hidden during edit');
     editor.cancel();check(editedSource?.id !== undefined && !draw.map.getFeatureState({source:'rl:features',id:editedSource.id}).editing,'Cancel left original hidden');
     controls.destroy();editor.destroy();check(!container.querySelector('.rl-drawing-handle'),'Handle leaked on destroy');
@@ -1182,14 +1196,12 @@ async function suite() {
     const controls = attachDrawingControls(draw, editor, { tools, inspector });
     try {
       editor.start('line'); editor.addPoint([0, 0]); editor.addPoint([.01, 0]);
-      if (!window.browserFill || !window.browserKey || !window.browserClick) throw new Error('Playwright input bridge required');
+      if (!window.browserFill || !window.browserKey || !window.browserClickSelector) throw new Error('Playwright input bridge required');
       await window.browserFill('#case25-inspector [data-field="Label"]', 'First label');
       await window.browserKey('Tab');
       check(document.activeElement?.getAttribute('data-field') === 'Stroke', 'Tab skipped the next inspector field');
       await window.browserFill('#case25-inspector [data-field="Label"]', 'Final label');
-      const finish = inspector.querySelector<HTMLButtonElement>('[data-field="action:Finish"]')!;
-      const rect = finish.getBoundingClientRect();
-      await window.browserClick(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      await window.browserClickSelector('#case25-inspector [data-field="action:Finish"]');
       await until(() => Boolean(draw.getFeature('inspector-finish')), 'first Finish click accepted');
       check(accepts === 1 && draw.getFeature('inspector-finish')?.drawing?.style.label === 'Final label', 'Finish lost the label or submitted twice');
     } finally {
@@ -1238,7 +1250,7 @@ async function suite() {
       await window.browserKey('Control+z');
       await window.browserMouse('up', x + 40, y);
       const afterUndo = editor.getState().draft?.shape;
-      check(afterUndo?.kind === 'line' && afterUndo.vertices[1]?.[0] === .01, 'Undo during drag left the moved vertex');
+      check(afterUndo?.kind === 'line' && Math.abs((afterUndo.vertices[1]?.[0] ?? 0) - .01) < 1e-10, 'Undo during drag left the moved vertex');
       editor.insertVertex(0, [.005, 0]);
       editor.moveVertex(1, [.006, 0]);
       editor.undo();

@@ -37,6 +37,7 @@ try {
   });
   await page.exposeFunction('browserKey', async key => { await page.keyboard.press(key); });
   await page.exposeFunction('browserClick', async (x, y) => { await page.mouse.click(x, y); });
+  await page.exposeFunction('browserClickSelector', async selector => { await page.locator(selector).click(); });
   await page.exposeFunction('browserMouse', async (action, x, y) => {
     await page.mouse.move(x, y);
     if (action === 'down') await page.mouse.down();
