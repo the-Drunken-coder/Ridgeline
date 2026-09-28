@@ -6,6 +6,7 @@ import { cameraTerrain } from '../src/gpu-camera-terrain';
 import type { CameraAttachment } from '../src/types';
 const camera:CameraAttachment={id:'camera',type:'camera',bearing:105,elevation:-10,fovX:60,fovY:40,range:6001};
 const dot=(a:number[],b:number[])=>a.reduce((s,v,i)=>s+v*b[i]!,0);
+const pointKey=(point:number[])=>point.map(value=>value.toFixed(8)).join(',');
 
 test('preset upper corners remain on upward rays and within range',()=>{
   const terrain=cameraTerrain(0,0,camera.range,()=>0);
@@ -44,11 +45,35 @@ test('wireframe rays stop at the first hill and never reappear beyond it',()=>{
   const volume=cameraVolume(origin,pose,terrain);
   const lines=visibleCameraEdges(origin,volume,terrain);
   // The ridge spans every ray, including both upward corners. No far-cap edges survive.
-  assert.ok(lines.length>8,'Terrain intersection outline missing');
-  for(let i=1;i<lines.length;i+=2){
-    assert.ok(lines[i]![1]*111195<300,'Wireframe resumed on the far side of the hill');
-    assert.ok(lines[i]![1]*111195>100,'Wireframe was removed before reaching terrain');
+  const rays: typeof lines = [], outline: typeof lines = [];
+  for(let i=0;i<lines.length;i+=2){
+    const a=lines[i]!,b=lines[i+1]!;
+    const fromOrigin=a.every((value,index)=>value===origin[index]);
+    (fromOrigin?rays:outline).push(a,b);
+    if(!fromOrigin)assert.ok(a[1]*111195<300,'Wireframe resumed on the far side of the hill');
+    assert.ok(b[1]*111195<300,'Wireframe resumed on the far side of the hill');
   }
+  assert.equal(rays.length,8,'Each camera corner needs a visible ray');
+  assert.ok(outline.length>0,'Terrain intersection outline missing');
+  const neighbors=new Map<string,string[]>();
+  for(let i=0;i<outline.length;i+=2){
+    const a=outline[i]!,b=outline[i+1]!;
+    assert.ok(a[1]*111195>100&&b[1]*111195>100,'Outline was removed before reaching terrain');
+    for(const [from,to] of [[pointKey(a),pointKey(b)],[pointKey(b),pointKey(a)]] as const)
+      neighbors.set(from,[...(neighbors.get(from)??[]),to]);
+  }
+  assert.ok(neighbors.size>0);
+  assert.ok([...neighbors.values()].every(ends=>ends.length===2),'Terrain outline has a gap or branch');
+  for(let i=1;i<rays.length;i+=2)
+    assert.ok(neighbors.has(pointKey(rays[i]!)),'A corner ray stopped without joining the terrain outline');
+  const visited=new Set<string>(),pending=[neighbors.keys().next().value!];
+  while(pending.length){
+    const point=pending.pop()!;
+    if(visited.has(point))continue;
+    visited.add(point);
+    pending.push(...neighbors.get(point)!);
+  }
+  assert.equal(visited.size,neighbors.size,'Terrain outline split into disconnected pieces');
 });
 
 
@@ -56,12 +81,27 @@ test('ground wireframe connects terrain hits and leaves skyward misses open',()=
   const terrain=cameraTerrain(0,0,6001,()=>0);
   const origin:[number,number,number]=[0,0,2000];
   const lines=visibleCameraEdges(origin,cameraVolume(origin,camera,terrain),terrain);
-  let groundEdges=0;
+  const neighbors=new Map<string,string[]>();
   for(let i=0;i<lines.length;i+=2){
     const a=lines[i]!,b=lines[i+1]!;
-    if(a[2]<1&&b[2]<1){groundEdges++;assert.ok(a[2]>=0&&b[2]>=0,'Outline sank below terrain');}
+    if(a[2]<1&&b[2]<1){
+      assert.ok(a[2]>=0&&b[2]>=0,'Outline sank below terrain');
+      for(const [from,to] of [[pointKey(a),pointKey(b)],[pointKey(b),pointKey(a)]] as const)
+        neighbors.set(from,[...(neighbors.get(from)??[]),to]);
+    }
   }
-  assert.ok(groundEdges>10,'Perimeter terrain hits were not joined');
+  assert.ok(neighbors.size>0,'Perimeter terrain hits were not joined');
+  const ends=[...neighbors].filter(([,adjacent])=>adjacent.length===1).map(([point])=>point);
+  assert.equal(ends.length,2,'The ground outline should remain open between two terrain hits');
+  assert.ok([...neighbors.values()].every(adjacent=>adjacent.length<=2),'Ground outline branched');
+  const visited=new Set<string>(),pending=[ends[0]!];
+  while(pending.length){
+    const point=pending.pop()!;
+    if(visited.has(point))continue;
+    visited.add(point);
+    pending.push(...neighbors.get(point)!);
+  }
+  assert.equal(visited.size,neighbors.size,'Ground outline has disconnected pieces');
   const sky={...camera,elevation:90};
   const skyLines=visibleCameraEdges(origin,cameraVolume(origin,sky,terrain),terrain);
   assert.ok(skyLines.every(point=>point[2]>=origin[2]),'Skyward rays invented a ground outline');
