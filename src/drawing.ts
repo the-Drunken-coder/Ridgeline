@@ -1,7 +1,7 @@
 import { GeoJSONSource, Marker } from "maplibre-gl";
 import type { MapMouseEvent } from "maplibre-gl";
 import type { Feature, Geometry } from "geojson";
-import type { Properties, Viewport } from "./types";
+import type { MapFeature, Properties, Viewport } from "./types";
 import type {
   DrawingOptions,
   DrawingPosition,
@@ -20,7 +20,8 @@ import {
   unroll,
   wrapLongitude,
 } from "./drawing-geometry";
-import { addArrowImage, arrowFeatures, ARROW_IMAGE } from "./drawing-render";
+import { createArrowheads } from "./arrowheads";
+import { getViewportDrawingInternals } from "./viewport";
 
 const attached = new WeakSet<object>();
 const SOURCE = "rl:draft";
@@ -29,7 +30,6 @@ const layers = [
   "rl:draft-line",
   "rl:draft-points",
   "rl:draft-label",
-  "rl:draft-arrow",
 ];
 
 /** Map gestures and draft rendering. Controls are optional and attach separately. */
@@ -39,9 +39,13 @@ export function attachDrawing<P extends Properties>(
 ) {
   if (attached.has(viewport))
     throw new Error("Drawing is already attached to this viewport.");
+  const internals = getViewportDrawingInternals(viewport);
+  if (!internals)
+    throw new Error("Drawing requires a viewport created by createViewport.");
   attached.add(viewport);
   const session = createDrawingSession(viewport, options),
     map = viewport.map;
+  const draftArrowheads = createArrowheads(map, "rl:draft-arrows", "rl:draft-arrow");
   const markers = new Map<
     string,
     {
@@ -55,7 +59,6 @@ export function attachDrawing<P extends Properties>(
     cursor: DrawingPosition | undefined,
     active = false,
     restoreDoubleClick = false;
-  let hiddenId: string | undefined;
   let snapEnabled = true,
     pointerType = "mouse",
     bypassSnap = false;
@@ -153,6 +156,7 @@ export function attachDrawing<P extends Properties>(
       draft = state.draft,
       shape = previewShape();
     const features: Feature<Geometry>[] = [];
+    let arrow: MapFeature | undefined;
     if (
       draft &&
       shape &&
@@ -181,14 +185,7 @@ export function attachDrawing<P extends Properties>(
           },
         });
       if (shape.kind === "arrow")
-        features.push(
-          ...arrowFeatures([
-            { ...draft.feature, drawing: { version: 1, shape, style } },
-          ]).features.map((f) => ({
-            ...f,
-            properties: { ...f.properties, arrow: true },
-          })),
-        );
+        arrow = { ...draft.feature, drawing: { version: 1, shape, style } };
       map.setPaintProperty(
         "rl:draft-line",
         "line-dasharray",
@@ -198,16 +195,16 @@ export function attachDrawing<P extends Properties>(
     const source = map.getSource(SOURCE);
     if (source instanceof GeoJSONSource)
       source.setData({ type: "FeatureCollection", features });
+    draftArrowheads.show(arrow ? [arrow] : []);
     for (const listener of previewListeners) listener();
   }
   function prepare() {
-    if (disposed || !map.getLayer("rl:fill")) return;
+    if (disposed) return;
     if (!map.getSource(SOURCE))
       map.addSource(SOURCE, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       });
-    addArrowImage(map);
     if (!map.getLayer(layers[0]!)) {
       map.addLayer({
         id: layers[0]!,
@@ -233,14 +230,13 @@ export function attachDrawing<P extends Properties>(
         id: layers[2]!,
         type: "circle",
         source: SOURCE,
-        filter: ["all", ["==", "$type", "Point"], ["!=", "arrow", true]],
+        filter: ["==", "$type", "Point"],
         paint: { "circle-radius": 4, "circle-color": ["get", "color"] },
       });
       map.addLayer({
         id: layers[3]!,
         type: "symbol",
         source: SOURCE,
-        filter: ["!=", "arrow", true],
         layout: {
           "text-field": ["get", "label"],
           "text-font": ["Noto Sans Regular"],
@@ -252,19 +248,6 @@ export function attachDrawing<P extends Properties>(
           "text-halo-color": "#ffffff",
           "text-halo-width": 1.5,
         },
-      });
-      map.addLayer({
-        id: layers[4]!,
-        type: "symbol",
-        source: SOURCE,
-        filter: ["==", "arrow", true],
-        layout: {
-          "icon-image": ARROW_IMAGE,
-          "icon-rotate": ["get", "bearing"],
-          "icon-rotation-alignment": "map",
-          "icon-allow-overlap": true,
-        },
-        paint: { "icon-color": ["get", "color"] },
       });
     }
     render();
@@ -452,14 +435,7 @@ export function attachDrawing<P extends Properties>(
       cursor = undefined;
     }
     const editingId = session.getState().draft?.before?.id;
-    for (const source of ["rl:features", "rl:arrows"])
-      if (map.getSource(source)) {
-        if (hiddenId && hiddenId !== editingId)
-          map.removeFeatureState({ source, id: hiddenId }, "editing");
-        if (editingId)
-          map.setFeatureState({ source, id: editingId }, { editing: true });
-      }
-    hiddenId = editingId;
+    internals.setEditing(editingId ?? null);
     active = next;
     map
       .getCanvas()
@@ -488,7 +464,6 @@ export function attachDrawing<P extends Properties>(
   }
   map.on("click", onClick);
   map.on("mousemove", onMove);
-  map.on("style.load", prepare);
   map.getCanvas().addEventListener(
     "pointerdown",
     (event) => {
@@ -546,24 +521,26 @@ export function attachDrawing<P extends Properties>(
     { signal: abort.signal },
   );
   const off = session.onChange(render);
-  void viewport.ready.then(prepare).catch(() => {});
+  const offPrepared = internals.onPrepared(prepare);
   let offDestroy = () => {};
   function destroy() {
     if (disposed) return;
     session.destroy();
     disposed = true;
+    internals.setEditing(null);
     previewListeners.clear();
     attached.delete(viewport);
     off();
+    offPrepared();
     offDestroy();
     abort.abort();
     map.off("click", onClick);
     map.off("mousemove", onMove);
-    map.off("style.load", prepare);
     for (const item of markers.values()) item.marker.remove();
     markers.clear();
     for (const layer of [...layers].reverse())
       if (map.getLayer(layer)) map.removeLayer(layer);
+    draftArrowheads.remove();
     if (map.getSource(SOURCE)) map.removeSource(SOURCE);
   }
   offDestroy = viewport.on("destroy", destroy);
