@@ -77,7 +77,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     if (options.features) store.upsert(options.features);
     map = new GLMap({
       container: options.container,
-      style: configuration.basemap,
+      style: structuredClone(configuration.basemap),
       center: [6.87, 45.92], zoom: 11,
       ...options.camera,
       attributionControl: { compact: true },
@@ -379,7 +379,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         entityVisibility: { ...configuration.entityVisibility, ...next.entityVisibility },
       };
       entities.configure(next.elevation !== undefined);
-      if (styleChanged) { prepared = false; publication.retire(); map.setStyle(configuration.basemap, { diff: false }); }
+      if (styleChanged) { prepared = false; publication.retire(); map.setStyle(structuredClone(configuration.basemap), { diff: false }); }
       else if (prepared) {
         map.setProjection({ type: configuration.projection === 'flat' ? 'mercator' : 'globe' });
         applyElevation(next.elevation !== undefined);
