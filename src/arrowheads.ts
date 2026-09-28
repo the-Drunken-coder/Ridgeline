@@ -1,4 +1,5 @@
 import type { Feature, FeatureCollection, Point } from "geojson";
+import { GeoJSONSource } from "maplibre-gl";
 import type { Map as GLMap } from "maplibre-gl";
 import type { MapFeature } from "./types";
 import { sourceFeatureId } from "./maplibre-feature-publication";
@@ -14,8 +15,9 @@ function segmentBearing(a: DrawingPosition, b: DrawingPosition) {
 }
 
 export const ARROW_IMAGE = "rl:drawing-arrow";
+const imageUsers = new WeakMap<GLMap, number>();
 /** A single shared SDF arrowhead stays legible at every zoom without geography-dependent sizing. */
-export function addArrowImage(map: GLMap) {
+function addArrowImage(map: GLMap) {
   if (map.hasImage(ARROW_IMAGE)) return;
   const size = 32,
     data = new Uint8Array(size * size * 4);
@@ -60,4 +62,46 @@ export function arrowFeatures(
     });
   }
   return { type: "FeatureCollection", features: result };
+}
+
+/** Owns one arrowhead source and layer. The image is shared by all arrowhead layers. */
+export function createArrowheads(map: GLMap, sourceId: string, layerId: string) {
+  imageUsers.set(map, (imageUsers.get(map) ?? 0) + 1);
+  let removed = false;
+  return {
+    show(features: readonly MapFeature[]) {
+      if (removed) return;
+      addArrowImage(map);
+      if (removed) return;
+      const data = arrowFeatures(features);
+      const source = map.getSource(sourceId);
+      if (source instanceof GeoJSONSource) source.setData(data);
+      else map.addSource(sourceId, { type: "geojson", promoteId: "_rl_id", data });
+      if (removed) return;
+      if (!map.getLayer(layerId)) map.addLayer({
+        id: layerId,
+        type: "symbol",
+        source: sourceId,
+        layout: {
+          "icon-image": ARROW_IMAGE,
+          "icon-rotate": ["get", "bearing"],
+          "icon-rotation-alignment": "map",
+          "icon-allow-overlap": true,
+        },
+        paint: { "icon-color": ["get", "color"] },
+      });
+    },
+    remove() {
+      if (removed) return;
+      removed = true;
+      if (map.getLayer(layerId)) map.removeLayer(layerId);
+      if (map.getSource(sourceId)) map.removeSource(sourceId);
+      const users = (imageUsers.get(map) ?? 1) - 1;
+      if (users) imageUsers.set(map, users);
+      else {
+        imageUsers.delete(map);
+        if (map.hasImage(ARROW_IMAGE)) map.removeImage(ARROW_IMAGE);
+      }
+    },
+  };
 }

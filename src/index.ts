@@ -10,7 +10,7 @@ import './style.css';
 
 export { attachDrawing } from './drawing';
 export { createDrawingSession, DRAWING_TOOLS } from './drawing-session';
-export { shapeGeometry, measurements as measureDrawing } from './drawing-geometry';
+export { shapeGeometry, measurements as measureDrawing } from './drawing-shapes';
 export type { DrawingEditor } from './drawing';
 export type { DrawingSession } from './drawing-session';
 export type * from './drawing-types';

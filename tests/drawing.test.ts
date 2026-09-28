@@ -5,14 +5,12 @@ import {
   DEFAULT_DRAWING_STYLE,
   destination,
   distance,
-  measurements,
-  shapeGeometry,
   unroll,
-  validateShape,
 } from "../src/drawing-geometry";
+import { measurements, shapeGeometry, validateShape } from "../src/drawing-shapes";
 import { FeatureStore } from "../src/features";
 import { RidgelineError } from "../src/errors";
-import { arrowFeatures } from "../src/drawing-render";
+import { arrowFeatures } from "../src/arrowheads";
 import type {
   DrawingChange,
   DrawingDecision,
@@ -348,6 +346,22 @@ test("History keeps only the last 100 completed changes, including gestures and 
   editor.undo();
   editor.setStyle({ label: "Later" });
   assert.equal(editor.getState().canRedo, false);
+});
+
+test("Ordinary edits independently retain only the last 100 draft actions", () => {
+  const { editor } = fixture();
+  line(editor);
+  for (let i = 1; i <= 120; i++) editor.setStyle({ label: `Edit ${i}` });
+  for (let i = 120; i > 20; i--) {
+    assert.equal(editor.getState().canUndo, true);
+    assert.equal(editor.getState().draft?.style.label, `Edit ${i}`);
+    editor.undo();
+  }
+  assert.equal(editor.getState().canUndo, false);
+  assert.equal(editor.getState().draft?.style.label, "Edit 20");
+  for (let i = 0; i < 100; i++) editor.redo();
+  assert.equal(editor.getState().canRedo, false);
+  assert.equal(editor.getState().draft?.style.label, "Edit 120");
 });
 
 test("Undo during a gesture settles that gesture before later edits", () => {
@@ -757,8 +771,6 @@ for (const tool of ["circle", "rectangle"] as const) {
     assert.ok("center" in sized.shape);
     assert.deepEqual(sized.shape.center, center);
     assert.ok(editor.getState().measurements.area! > 0);
-    if (sized.shape.kind === "circle")
-      assert.ok(Math.abs(sized.shape.radius - 1000) < 0.001);
     assert.equal(host.getFeature("new"), undefined);
 
     editor.undo();
@@ -772,18 +784,6 @@ for (const tool of ["circle", "rectangle"] as const) {
     editor.destroy();
   });
 }
-
-test("Rectangle placement uses the current bearing and keeps the clicked corner", () => {
-  const { editor } = fixture();
-  editor.start("rectangle"); editor.addPoint([0, 0]);
-  editor.setShape({ kind: "rectangle", center: [0, 0], width: 0, height: 0, bearing: 45 });
-  const corner = destination([0, 0], 1000, 70);
-  editor.addPoint(corner);
-  const geometry = shapeGeometry(editor.getState().draft!.shape);
-  assert.equal(geometry.type, "Polygon");
-  if (geometry.type !== "Polygon") return;
-  assert.ok(geometry.coordinates[0]!.some(p => distance(corner, [p[0]!, p[1]!]) < .001));
-});
 
 test("Detailed polygon validation detects distant crossing edges and keeps snapshots detached", () => {
   const vertices = Array.from({ length: 2000 }, (_, i) => destination([179.999, 0], 1000, i / 2000 * 360));
@@ -801,4 +801,191 @@ test("Detailed polygon validation detects distant crossing edges and keeps snaps
   assert.match(editor.getState().validation!, /cross/);
   editor.undo();
   assert.equal(editor.getState().validation, undefined);
+});
+
+test("Session previews match placement for the first and later vertex of every vertex tool", () => {
+  for (const tool of ["line", "polygon", "arrow"] as const) {
+    const { editor } = fixture();
+    editor.start(tool);
+    assert.equal(editor.getPreview(), undefined);
+    for (const point of [[0, 0], [0.01, 0], [0.01, 0.01]] satisfies DrawingPosition[]) {
+      editor.setCursor(point);
+      const preview = editor.getPreview();
+      const live = editor.getMeasurements();
+      assert.deepEqual(live, measurements(preview!));
+      editor.addPoint(point);
+      assert.deepEqual(editor.getState().draft?.shape, preview);
+      assert.deepEqual(editor.getState().measurements, live);
+    }
+    editor.destroy();
+  }
+});
+
+test("Centered shape previews use the same sizing as placement, including rectangle bearing", () => {
+  for (const tool of ["circle", "rectangle"] as const) {
+    const { editor } = fixture();
+    const center: DrawingPosition = [179.999, 45];
+    const corner = destination(center, 1000, 70);
+    editor.start(tool);
+    editor.setCursor(center);
+    assert.equal(editor.getPreview(), undefined);
+    assert.deepEqual(editor.getMeasurements(), { length: 0 });
+    editor.addPoint(center);
+    assert.equal(editor.getPreview()?.kind, tool);
+    if (tool === "rectangle")
+      editor.setShape({ kind: "rectangle", center, width: 0, height: 0, bearing: 45 });
+    editor.setCursor(corner);
+    const preview = editor.getPreview();
+    const live = editor.getMeasurements();
+    assert.deepEqual(live, measurements(preview!));
+    editor.addPoint(corner);
+    assert.deepEqual(editor.getState().draft?.shape, preview);
+    assert.deepEqual(editor.getState().measurements, live);
+    editor.setCursor(destination(center, 2000, 70));
+    assert.deepEqual(editor.getPreview(), preview);
+    editor.destroy();
+  }
+});
+
+test("Cursor updates leave draft state and history untouched and notify preview listeners only", () => {
+  const { editor } = fixture();
+  editor.start("line");
+  editor.addPoint([0, 0]);
+  const original = editor.getState();
+  let changes = 0, previews = 0;
+  const offChange = editor.onChange(() => { changes++; });
+  const offPreview = editor.onPreview(() => { previews++; });
+  const cursor: DrawingPosition = [0.01, 0];
+  editor.setCursor(cursor);
+  cursor[0] = 99;
+  assert.deepEqual(editor.getState(), original);
+  assert.deepEqual(editor.getPreview(), { kind: "line", vertices: [[0, 0], [0.01, 0]] });
+  assert.deepEqual(editor.getMeasurements(), measurements(editor.getPreview()!));
+  assert.equal(changes, 0);
+  assert.equal(previews, 1);
+  const preview = editor.getPreview()!;
+  if ("vertices" in preview) preview.vertices[1]![0] = 99;
+  assert.deepEqual(editor.getPreview(), { kind: "line", vertices: [[0, 0], [0.01, 0]] });
+  editor.setStyle({ label: "Updated" });
+  assert.equal(changes, 1);
+  assert.equal(previews, 2);
+  assert.deepEqual(editor.getPreview(), editor.getState().draft?.shape);
+  offChange(); offPreview();
+  editor.destroy();
+});
+
+test("Throwing session listeners do not block preview updates or accepted submission cleanup", async () => {
+  let decide: (value: DrawingDecision) => void = () => {};
+  const { editor, host, owner, diagnostics } = fixture({
+    submit: () => new Promise(resolve => { decide = resolve; }),
+  });
+  line(editor);
+  let changes = 0, previews = 0;
+  editor.onChange(() => { throw new Error("Consumer change listener failed"); });
+  editor.onChange(() => { changes++; });
+  editor.onPreview(() => { throw new Error("Consumer preview listener failed"); });
+  editor.onPreview(() => { previews++; });
+
+  editor.setCursor([0.02, 0]);
+  assert.deepEqual(editor.getPreview(), { kind: "line", vertices: [[0, 0], [0.01, 0], [0.02, 0]] });
+  assert.equal(previews, 1);
+  assert.ok(diagnostics.some(error =>
+    error.code === "CALLBACK_FAILED" &&
+    error.context.operation === "drawing.onPreview" &&
+    error.cause instanceof Error && error.cause.message === "Consumer preview listener failed"));
+  const submission = editor.finish();
+  assert.equal(editor.getState().phase, "pending");
+  assert.equal(changes, 1);
+  assert.equal(previews, 2);
+  decide({ accepted: true });
+  assert.equal(await submission, true);
+  assert.equal(changes, 2);
+  assert.equal(previews, 3);
+  assert.equal(owner(), null);
+  assert.ok(host.getFeature("new"));
+  editor.destroy();
+});
+
+test("Preview deduplication follows placement across the one millimeter boundary", () => {
+  const { editor } = fixture();
+  editor.start("line");
+  editor.addPoint([0, 0]);
+  for (const meters of [0.0009, 0.0011]) {
+    const point = destination([0, 0], meters, 90);
+    editor.setCursor(point);
+    const preview = editor.getPreview();
+    const before = editor.getState();
+    editor.addPoint(point);
+    assert.deepEqual(editor.getState().draft?.shape, preview);
+    assert.equal(editor.getState().draft?.placed, meters < 0.001 ? before.draft?.placed : before.draft!.placed + 1);
+  }
+  const boundary: DrawingPosition = [0.001 / 6_371_008.8 / (Math.PI / 180), 0];
+  assert.equal(distance([0, 0], boundary), 0.001);
+  editor.undo();
+  editor.setCursor(boundary);
+  const preview = editor.getPreview();
+  editor.addPoint(boundary);
+  assert.deepEqual(editor.getState().draft?.shape, preview);
+  assert.equal(editor.getState().draft?.placed, 2);
+  editor.destroy();
+});
+
+test("Draft changes, undo, redo, cancellation, and destruction clear the cursor", () => {
+  const { editor } = fixture();
+  editor.start("line");
+  editor.addPoint([0, 0]);
+  editor.setCursor([0.02, 0]);
+  editor.addPoint([0.01, 0]);
+  assert.deepEqual(editor.getPreview(), editor.getState().draft?.shape);
+  editor.setCursor([0.03, 0]);
+  editor.undo();
+  assert.deepEqual(editor.getPreview(), editor.getState().draft?.shape);
+  editor.setCursor([0.03, 0]);
+  editor.redo();
+  assert.deepEqual(editor.getPreview(), editor.getState().draft?.shape);
+  editor.setCursor([0.03, 0]);
+  editor.cancel();
+  assert.equal(editor.getPreview(), undefined);
+  editor.start("polygon");
+  assert.equal(editor.getPreview(), undefined);
+  editor.setCursor([0.03, 0]);
+  editor.destroy();
+  assert.equal(editor.getPreview(), undefined);
+});
+
+test("Pending, conflict, and forbidden phases show only committed geometry", async () => {
+  let decide: (value: DrawingDecision) => void = () => {};
+  const pending = fixture({ submit: () => new Promise(resolve => { decide = resolve; }) });
+  line(pending.editor);
+  pending.editor.setCursor([0.02, 0]);
+  const request = pending.editor.finish();
+  pending.editor.setCursor([0.03, 0]);
+  assert.equal(pending.editor.getState().phase, "pending");
+  assert.deepEqual(pending.editor.getPreview(), pending.editor.getState().draft?.shape);
+  decide({ accepted: false, reason: "Try again" });
+  assert.equal(await request, false);
+  pending.editor.setCursor([0.03, 0]);
+  assert.equal(pending.editor.getState().phase, "rejected");
+  assert.notDeepEqual(pending.editor.getPreview(), pending.editor.getState().draft?.shape);
+  pending.editor.destroy();
+
+  let permitted = true;
+  const forbidden = fixture({ canEdit: () => permitted });
+  forbidden.editor.start("line");
+  forbidden.editor.addPoint([0, 0]);
+  permitted = false;
+  forbidden.editor.refreshPermissions();
+  forbidden.editor.setCursor([0.01, 0]);
+  assert.equal(forbidden.editor.getState().phase, "forbidden");
+  assert.deepEqual(forbidden.editor.getPreview(), forbidden.editor.getState().draft?.shape);
+  forbidden.editor.destroy();
+
+  const conflicted = fixture();
+  conflicted.editor.start("line");
+  conflicted.editor.addPoint([0, 0]);
+  conflicted.host.upsert([feature({ kind: "point", position: [0, 0] }, "new")]);
+  conflicted.editor.setCursor([0.01, 0]);
+  assert.equal(conflicted.editor.getState().phase, "conflict");
+  assert.deepEqual(conflicted.editor.getPreview(), conflicted.editor.getState().draft?.shape);
+  conflicted.editor.destroy();
 });

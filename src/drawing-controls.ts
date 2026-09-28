@@ -1,6 +1,7 @@
 import type { Properties, Viewport } from "./types";
 import type { DrawingEditor } from "./drawing";
 import type { DrawingStyle } from "./drawing-types";
+import { shapeHandles, shapeParameters } from "./drawing-shapes";
 
 export type DrawingControlsOptions = {
   tools: HTMLElement;
@@ -46,20 +47,21 @@ export function attachDrawingControls<P extends Properties>(
     renderTimer: ReturnType<typeof setTimeout> | undefined,
     releaseTimer: ReturnType<typeof setTimeout> | undefined;
   const abort = new AbortController();
-  function refreshDraftActions() {
-    const state = editor.getState();
-    if (!state.draft) return;
-    const disabled: Record<string, boolean> = {
+  function draftActionAvailability(state: ReturnType<typeof editor.getState>) {
+    return {
       Undo: !state.canUndo,
       Redo: !state.canRedo,
       Finish: !["editing", "rejected"].includes(state.phase) || Boolean(state.validation),
       Cancel: state.phase === "pending",
       "Delete drawing": !editor.canDelete(),
     };
-    for (const button of panel.querySelectorAll<HTMLButtonElement>("button[data-field]")) {
-      const label = button.dataset.field?.slice("action:".length);
-      const value = label === undefined ? undefined : disabled[label];
-      if (value !== undefined) button.disabled = value;
+  }
+  function refreshDraftActions() {
+    const state = editor.getState();
+    if (!state.draft) return;
+    for (const [label, disabled] of Object.entries(draftActionAvailability(state))) {
+      const button = panel.querySelector<HTMLButtonElement>(`button[data-field="action:${label}"]`);
+      if (button) button.disabled = disabled;
     }
   }
   function scheduleRender() {
@@ -269,63 +271,34 @@ export function attachDrawingControls<P extends Properties>(
       );
       const scale = units === "metric" ? 1 : 0.3048,
         suffix = units === "metric" ? "m" : "ft";
-      if (shape.kind === "circle")
-        panel.append(
-          text(
-            `Radius (${suffix})`,
-            String(Number((shape.radius / scale).toFixed(2))),
-            (value) =>
-              {
-                const current = editor.getState().draft?.shape;
-                if (current?.kind === "circle")
-                  editor.setShape({ ...current, radius: Number(value) * scale });
-              },
-            locked,
-            "number",
-          ),
-        );
-      if (shape.kind === "rectangle") {
-        panel.append(
-          row(
-            text(
-              `Width (${suffix})`,
-              String(Number((shape.width / scale).toFixed(2))),
-              (value) =>
-                {
-                const current = editor.getState().draft?.shape;
-                if (current?.kind === "rectangle")
-                  editor.setShape({ ...current, width: Number(value) * scale });
-              },
-              locked,
-              "number",
-            ),
-            text(
-              `Height (${suffix})`,
-              String(Number((shape.height / scale).toFixed(2))),
-              (value) =>
-                {
-                const current = editor.getState().draft?.shape;
-                if (current?.kind === "rectangle")
-                  editor.setShape({ ...current, height: Number(value) * scale });
-              },
-              locked,
-              "number",
+      const parameters = shapeParameters(shape);
+      const parameterField = (parameter: (typeof parameters)[number]) =>
+        text(
+          parameter.unit === "length"
+            ? `${parameter.label} (${suffix})`
+            : `${parameter.label} (°)`,
+          String(
+            Number(
+              (parameter.value / (parameter.unit === "length" ? scale : 1)).toFixed(2),
             ),
           ),
+          (value) => {
+            const current = editor.getState().draft?.shape;
+            if (!current || current.kind !== shape.kind) return;
+            const field = shapeParameters(current).find(field => field.label === parameter.label);
+            if (field) editor.setShape(field.set(Number(value) * (field.unit === "length" ? scale : 1)));
+          },
+          locked,
+          "number",
         );
-        panel.append(
-          text(
-            "Bearing (°)",
-            String(Number(shape.bearing.toFixed(2))),
-            (value) => {
-                const current = editor.getState().draft?.shape;
-                if (current?.kind === "rectangle")
-                  editor.setShape({ ...current, bearing: Number(value) });
-              },
-            locked,
-            "number",
-          ),
-        );
+      const dimensions = parameters.filter(
+        (parameter) =>
+          parameter.label === "Width" || parameter.label === "Height",
+      );
+      for (const parameter of parameters) {
+        if (parameter.label === "Width")
+          panel.append(row(...dimensions.map(parameterField)));
+        else if (parameter.label !== "Height") panel.append(parameterField(parameter));
       }
       if (shape.kind === "arrow")
         panel.append(
@@ -405,19 +378,20 @@ export function attachDrawingControls<P extends Properties>(
         panel.append(
           action("Restart with latest feature", () => editor.restart()),
         );
+      const disabled = draftActionAvailability(state);
       panel.append(
         row(
-          action("Undo", () => editor.undo(), !state.canUndo),
-          action("Redo", () => editor.redo(), !state.canRedo),
+          action("Undo", () => editor.undo(), disabled.Undo),
+          action("Redo", () => editor.redo(), disabled.Redo),
         ),
       );
       panel.append(
         row(
-          action("Cancel", () => editor.cancel(), state.phase === "pending"),
+          action("Cancel", () => editor.cancel(), disabled.Cancel),
           action(
             state.phase === "pending" ? "Pending" : "Finish",
             () => editor.finish(),
-            locked || Boolean(state.validation),
+            disabled.Finish,
             true,
           ),
         ),
@@ -427,14 +401,14 @@ export function attachDrawingControls<P extends Properties>(
           action(
             "Delete drawing",
             () => editor.delete(),
-            !editor.canDelete(),
+            disabled["Delete drawing"],
           ),
         );
       const help = document.createElement("p");
       help.className = "rl-drawing-help";
       help.textContent = draft.placing
         ? "Click to add points. Drag empty map to pan."
-        : "vertices" in draft.shape
+        : shapeHandles(draft.shape).some((handle) => handle.removable)
           ? "Drag handles to reshape. Use + to insert a vertex."
           : "Drag handles to move or reshape.";
       panel.append(help);
