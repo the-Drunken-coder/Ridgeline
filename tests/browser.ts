@@ -520,6 +520,43 @@ async function suite() {
       air.destroy();
     }
   });
+  await run('Switching to a plain camera during unresolved placement drops pending terrain coverage', async () => {
+    const missingLng = .0001;
+    let resolvePreparation: (() => void) | undefined;
+    const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+      sample: (lng, lat) => Math.abs(lng - missingLng) < 1e-8 && Math.abs(lat) < 1e-8 ? null : 0,
+      prepare: async () => new Promise<void>(resolve => { resolvePreparation = resolve; }),
+    } });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'camera', type: 'camera', terrainVisibility: true,
+      bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300, volumeOpacity: 0, wireframe: false };
+    const feature: MapFeature = { ...point('camera-kind-switch'), entity: {
+      altitude: { meters: 100, reference: 'ground' }, attachments: [camera],
+    } };
+    const mask = () => air.map.getStyle().layers.some(layer => layer.id.startsWith('rl:camera-mask:'));
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready' && mask(), 'initial terrain camera coverage');
+    const gl = air.map.getCanvas().getContext('webgl2')!;
+    const clientWaitSync = gl.clientWaitSync.bind(gl);
+    let heldWaits = 0;
+    gl.clientWaitSync = () => { heldWaits++; return gl.TIMEOUT_EXPIRED; };
+    try {
+      air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [.00005, 0] } }]);
+      await until(() => heldWaits > 0 && air.getEntityState(feature.id)?.coverage === 'loading', 'replacement camera fence');
+      air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [missingLng, 0] },
+        entity: { ...feature.entity!, attachments: [{ ...camera, terrainVisibility: false }] } }]);
+      await until(() => air.getEntityState(feature.id)?.placement === 'elevation-unavailable', 'plain camera placement preparation');
+      check(!mask(), 'Terrain mask remained after switching to a plain camera');
+      check(!air.map.getLayer('rl:camera-gpu'), 'Plain camera retained the terrain renderer');
+      gl.clientWaitSync = clientWaitSync;
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      check(!mask(), 'Late terrain completion restored a plain camera mask');
+    } finally {
+      gl.clientWaitSync = clientWaitSync;
+      resolvePreparation?.();
+      air.destroy();
+    }
+  });
   await run('No-altitude terrain cameras use prepared ground placement without GPU coverage', async () => {
     let prepared = false;
     let positions: readonly [number, number][] = [];
