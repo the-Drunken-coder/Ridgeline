@@ -2,3 +2,5 @@ node_modules/
 dist/
 .pnpm-store/
 *.local
+test-results/
+playwright-report/

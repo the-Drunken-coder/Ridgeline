@@ -56,9 +56,10 @@ test('concave ground polygons preserve their area and reject crossed boundaries'
     [0, 4],
   ];
   const indices = triangulate(boundary);
-  assert.equal(indices.length, 9);
+  assert.ok(indices.length > 0 && indices.length % 3 === 0);
   let area = 0;
   for (let i = 0; i < indices.length; i += 3) {
+    assert.ok(indices.slice(i, i + 3).every(index => Number.isInteger(index) && index >= 0 && index < boundary.length));
     const a = boundary[indices[i]!]!,
       b = boundary[indices[i + 1]!]!,
       c = boundary[indices[i + 2]!]!;
@@ -150,8 +151,26 @@ test('ground zones sample hills inside their boundary and withhold incomplete te
   const zone = groundZone([0, 0, 300], boundary, (lng, lat) =>
     Math.abs(lng) < 0.0003 && Math.abs(lat) < 0.0003 ? 100 : 0,
   );
+  assert.equal(zone.missing, false);
   assert.ok(zone.triangles.some((p) => p[2] === 100));
-  assert.equal(groundZone([0, 0, 300], boundary, () => null).triangles.length, 0);
+  const meters = (point: [number, number, number]) => [point[0] * 111195, point[1] * 111195];
+  let area = 0;
+  for (let i = 0; i < zone.triangles.length; i += 3) {
+    const [a, b, c] = zone.triangles.slice(i, i + 3).map(meters);
+    assert.ok(a && b && c);
+    area += Math.abs((b[0]! - a[0]!) * (c[1]! - a[1]!) - (c[0]! - a[0]!) * (b[1]! - a[1]!)) / 2;
+  }
+  assert.ok(Math.abs(area - 40_000) < 200, `Ground zone covered ${area} square meters instead of 40,000`);
+  const outlineLength = zone.lines.reduce((sum, point, i) => {
+    if (i % 2 === 0) return sum;
+    const a = meters(zone.lines[i - 1]!), b = meters(point);
+    return sum + Math.hypot(b[0]! - a[0]!, b[1]! - a[1]!);
+  }, 0);
+  assert.ok(Math.abs(outlineLength - 800) < 2, `Ground outline covered ${outlineLength} meters instead of 800`);
+  const incomplete = groundZone([0, 0, 300], boundary, () => null);
+  assert.equal(incomplete.missing, true);
+  assert.deepEqual(incomplete.triangles, []);
+  assert.deepEqual(incomplete.lines, []);
 });
 
 

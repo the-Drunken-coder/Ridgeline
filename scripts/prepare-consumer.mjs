@@ -5,6 +5,7 @@ const directory = '.artifacts/consumer';
 await mkdir(directory, { recursive: true });
 await copyFile('tests/browser.html', `${directory}/index.html`);
 await copyFile('tests/browser.ts', `${directory}/main.ts`);
+await copyFile('tests/browser-cases.ts', `${directory}/browser-cases.ts`);
 // The focused GPU test compiles the production GLSL function directly.
 await copyFile('src/gpu-camera-shaders.ts', `${directory}/gpu-camera-shaders.ts`);
 await writeFile(`${directory}/gpu-vote.ts`, (await readFile('tests/gpu-vote.ts', 'utf8')).replace('../src/gpu-camera-shaders', './gpu-camera-shaders'));
