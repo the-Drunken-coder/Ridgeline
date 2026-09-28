@@ -44,6 +44,29 @@ async function pointer(action: 'move' | 'click', point: { x: number; y: number }
   await drawingPointer(action, point.x, point.y);
   await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 }
+async function pixelAt(viewport: Viewport, coordinates: [number, number]): Promise<number[]> {
+  return new Promise(resolve => {
+    viewport.map.once('render', () => {
+      const canvas = viewport.map.getCanvas();
+      const gl = canvas.getContext('webgl2')!;
+      const scale = canvas.width / canvas.clientWidth;
+      const point = viewport.map.project(coordinates);
+      const pixel = new Uint8Array(4);
+      gl.readPixels(Math.round(point.x * scale), canvas.height - 1 - Math.round(point.y * scale), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+      resolve([...pixel]);
+    });
+    viewport.map.triggerRepaint();
+  });
+}
+async function untilPixel(viewport: Viewport, coordinates: [number, number], visible: boolean, description: string) {
+  const start = performance.now();
+  while (true) {
+    const [red, green, blue] = await pixelAt(viewport, coordinates);
+    const isLine = Math.max(red!, green!, blue!) - Math.min(red!, green!, blue!) > 35;
+    if (isLine === visible) return;
+    if (performance.now() - start > 8_000) throw new Error(`Timed out: ${description} (${red}, ${green}, ${blue})`);
+  }
+}
 async function suite() {
   await run('Destroy during initialization, repeat destroy, then remount', async () => {
     const abandoned = createViewport({ container, basemap: style() });
@@ -775,11 +798,14 @@ async function suite() {
     handle.focus();handle.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
     check(JSON.stringify(editor.getState().draft?.shape)!==original,'Keyboard did not move a vertex');
     editor.undo();check(JSON.stringify(editor.getState().draft?.shape)===original,'Draft undo failed');
+    editor.moveVertex(0,[.01,.01]);
     draw.configure({basemap:style('#dddddd'),projection:'globe'});
     await until(()=>Boolean(draw.map.getLayer('rl:draft-fill')),'draft restored after style replacement');
     check(Boolean(editor.getState().draft),'Style replacement discarded the draft');
-    check(draw.map.getFeatureState({source:'rl:features',id:'drawn'}).editing,'Original feature not hidden during edit');
-    editor.cancel();check(!draw.map.getFeatureState({source:'rl:features',id:'drawn'}).editing,'Cancel left original hidden');
+    await untilPixel(draw,[0,.01],false,'original polygon outline hidden during edit');
+    await untilPixel(draw,[.005,.015],true,'polygon draft outline restored after style replacement');
+    editor.cancel();
+    await untilPixel(draw,[0,.01],true,'cancel restores original polygon outline');
     controls.destroy();editor.destroy();check(!container.querySelector('.rl-drawing-handle'),'Handle leaked on destroy');
     check(!draw.map.getSource('rl:draft'),'Draft source leaked on destroy');
     draw.destroy();tools.remove();inspector.remove();
@@ -943,6 +969,29 @@ async function suite() {
       check(Math.abs(center.x-origin.x-step)<0.5&&Math.abs(center.y-origin.y-step)<0.5,'Whole drawing jumped to its own moving vertex');
     }
     draw.map.getCanvas().dispatchEvent(new MouseEvent('mouseup',{clientX:x+30,clientY:y+30,button:0,bubbles:true,view:window}));
+    editor.destroy();draw.destroy();
+  });
+  await run('Editing an arrow keeps only its draft visible across a basemap replacement', async () => {
+    const shape = {kind:'arrow' as const,vertices:[[-.01,0],[.01,0]] as [number,number][]};
+    const arrow:MapFeature = {type:'Feature',id:'editing-arrow',geometry:shapeGeometry(shape),properties:{},drawing:{version:1,shape,style:{color:'#ff0000',fillColor:'#ff0000',lineWidth:3,fillOpacity:0,dashed:false,label:''}}};
+    const draw=createViewport({container,basemap:style('#eeeeee'),features:[arrow],camera:{center:[0,0],zoom:12},logger:()=>{}});current=draw;await draw.ready;
+    const heads=()=>draw.map.queryRenderedFeatures({layers:['rl:arrowheads']});
+    const draftHeads=()=>draw.map.queryRenderedFeatures({layers:['rl:draft-arrow']});
+    await until(()=>heads().some(feature=>feature.id===arrow.id),'accepted arrowhead rendered');
+    await untilPixel(draw,[0,0],true,'accepted arrow line rendered');
+    const editor=attachDrawing(draw,{createFeature:()=>({id:'new',properties:{}}),submit:()=>({accepted:true})});
+    editor.edit(arrow.id);
+    editor.setShape({kind:'arrow',vertices:[[-.01,.01],[.01,.01]]});
+    draw.configure({basemap:style('#dddddd')});
+    await until(()=>Boolean(draw.map.getLayer('rl:draft-arrow'))&&Boolean(draw.map.getLayer('rl:arrowheads')),'arrow layers restored after style replacement');
+    await until(()=>draftHeads().some(feature=>feature.geometry.type==='Point'&&Math.abs(feature.geometry.coordinates[1]!-.01)<.0001),'draft arrowhead restored');
+    await until(()=>!heads().some(feature=>feature.id===arrow.id),'original arrowhead hidden during edit');
+    await untilPixel(draw,[0,0],false,'original arrow line hidden during edit');
+    await untilPixel(draw,[0,.01],true,'draft arrow line restored after style replacement');
+    editor.cancel();
+    await until(()=>heads().some(feature=>feature.id===arrow.id),'cancel restores original arrowhead');
+    await untilPixel(draw,[0,0],true,'cancel restores original arrow line');
+    await untilPixel(draw,[0,.01],false,'cancel removes draft arrow line');
     editor.destroy();draw.destroy();
   });
   await run('Arrowheads follow accepted geometry updates and disappear on deletion', async () => {
