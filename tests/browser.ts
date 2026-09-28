@@ -2,8 +2,8 @@ import { checkGpuVote } from './gpu-vote';
 import { browserCases } from './browser-cases';
 import { createViewport, attachInteractions, attachDrawing, attachDrawingControls, shapeGeometry, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
-import { GeoJSONSource, ErrorEvent as MapErrorEvent, setWorkerUrl } from 'maplibre-gl';
-import type { ImageSource, StyleSpecification } from 'maplibre-gl';
+import { MercatorCoordinate, GeoJSONSource, ErrorEvent as MapErrorEvent, setWorkerUrl } from 'maplibre-gl';
+import type { CustomLayerInterface, ImageSource, StyleSpecification } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import '@ridgeline/map/style.css';
@@ -121,7 +121,7 @@ async function suite() {
       } });
       const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 },
         features: [feature('initial-preparation', 0)], logger: () => {}, onError: error => errors.push(error),
-        elevationSampler: { sample: () => 0, prepare: () => {
+        elevationSampler: { sample: () => null, prepare: () => {
           if (immediate) throw new Error('Immediate preparation failure');
           return Promise.reject(new Error('Rejected preparation failure'));
         } } });
@@ -138,7 +138,7 @@ async function suite() {
           air.map.queryRenderedFeatures({ layers: ['rl:points'] }).some(hit => hit.properties._rl_feature_id === 'healthy-preparation'),
         'update diagnostic and healthy publication');
         check(changes.includes('updated-preparation') && changes.includes('healthy-preparation'), 'Preparation failure interrupted datachange');
-        check(air.getFeature('updated-preparation') !== undefined && air.getEntityState('updated-preparation')?.placement === 'airborne', 'Accepted entity update was abandoned');
+        check(air.getFeature('updated-preparation') !== undefined && air.getEntityState('updated-preparation')?.coverage === 'unavailable', 'Accepted entity update was abandoned');
         check(errors.some(error => error.context.operation === 'entities' && error.cause instanceof Error), 'Preparation diagnostic lost context or cause');
       } finally { air.destroy(); }
       check(!container.querySelector('canvas'), 'Preparation failure leaked a canvas after destroy');
@@ -147,7 +147,7 @@ async function suite() {
   await run('Removing an entity from preparation leaves accepted data and rendered output absent', async () => {
     let removeDuringPreparation = false;
     const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, logger: () => {},
-      elevationSampler: { sample: () => 0, prepare: async () => {
+      elevationSampler: { sample: () => null, prepare: async () => {
         if (removeDuringPreparation) { removeDuringPreparation = false; air.remove(['removed-in-preparation']); }
       } } });
     current = air;
@@ -1200,6 +1200,35 @@ async function suite() {
       air.destroy();
     }
   });
+  await run('Switching to a plain camera during unresolved placement drops terrain coverage', async () => {
+    const missingLng = .0001;
+    let resolvePreparation: (() => void) | undefined;
+    const air = createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+      sample: (lng, lat) => Math.abs(lng - missingLng) < 1e-8 && Math.abs(lat) < 1e-8 ? null : 0,
+      prepare: async () => new Promise<void>(resolve => { resolvePreparation = resolve; }),
+    } });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'camera', type: 'camera', terrainVisibility: true,
+      bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300, volumeOpacity: 0, wireframe: false };
+    const feature: MapFeature = { ...point('camera-kind-switch'), entity: {
+      altitude: { meters: 100, reference: 'ground' }, attachments: [camera],
+    } };
+    const mask = () => air.map.getStyle().layers.some(layer => layer.id.startsWith('rl:camera-mask:'));
+    air.upsert([feature]);
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready' && mask(), 'initial terrain camera coverage');
+    try {
+      air.upsert([{ ...feature, geometry: { type: 'Point', coordinates: [missingLng, 0] },
+        entity: { ...feature.entity!, attachments: [{ ...camera, terrainVisibility: false }] } }]);
+      await until(() => air.getEntityState(feature.id)?.placement === 'elevation-unavailable', 'plain camera placement preparation');
+      check(!mask(), 'Terrain mask remained after switching to a plain camera');
+      check(!air.map.getLayer('rl:camera-gpu'), 'Plain camera retained the terrain renderer');
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      check(!mask(), 'Late terrain completion restored a plain camera mask');
+    } finally {
+      resolvePreparation?.();
+      air.destroy();
+    }
+  });
   await run('No-altitude terrain cameras use prepared ground placement without GPU coverage', async () => {
     let prepared = false;
     let positions: readonly [number, number][] = [];
@@ -1272,14 +1301,16 @@ async function suite() {
     check(!air.map.getLayer('rl:camera-gpu'), 'Hidden camera allocated GPU coverage');
     air.destroy();
   });
-  await run('Hiding coverage replaces aborted camera preparation for entity placement', async () => {
+  await run('Hiding coverage keeps shared placement preparation active', async () => {
     class PendingSampler {
       #ready = false;
       calls = 0;
+      signal?: AbortSignal;
       finish?: () => void;
       sample() { return this.#ready ? 0 : null; }
       prepare(_positions: readonly [number, number][], signal: AbortSignal) {
         this.calls++;
+        this.signal = signal;
         return new Promise<void>((resolve, reject) => {
           const abort = () => {
             signal.removeEventListener('abort', abort);
@@ -1304,7 +1335,7 @@ async function suite() {
     air.upsert([feature]);
     await until(() => sampler.calls === 1 && air.getEntityState(feature.id)?.coverage === 'loading', 'initial camera preparation');
     air.configure({ entityVisibility: { footprints: false, zones: false, groundLines: false } });
-    await until(() => sampler.calls >= 2, 'placement preparation after hiding coverage');
+    check(sampler.calls === 1 && !sampler.signal?.aborted, 'Hiding coverage cancelled shared placement preparation');
     sampler.finish?.();
     await until(() => air.getEntityState(feature.id)?.placement === 'airborne', 'placement recovery after hiding coverage');
     check(air.getEntityState(feature.id)?.coverage === 'ready', 'Hidden placement remained loading');
@@ -1337,23 +1368,41 @@ async function suite() {
     const context=dem.getContext('2d')!; context.fillStyle='rgb(1,0,0)'; context.fillRect(0,0,256,256);
     const air=createViewport({container,basemap:style(),elevation:{tiles:[dem.toDataURL()],encoding:'custom',redFactor:100,greenFactor:0,blueFactor:0,baseShift:0,maxzoom:0},camera:{center:[0,0],zoom:14,pitch:50},onError:error=>errors.push(error),logger:()=>{}});
     current=air; await air.ready;
-    air.upsert([{...point('raw'),entity:{altitude:{meters:300,reference:'ground'},attachments:[{id:'camera',type:'camera',bearing:0,elevation:-45,fovX:50,fovY:30,range:1000},{id:'cylinder',type:'cylinder',radius:50,height:80}]}}]);
-    await until(()=>air.getEntityState('raw')?.coverage==='ready','raw DEM decoding');
+    air.upsert([
+      {...point('raw'),entity:{altitude:{meters:300,reference:'ground'},attachments:[{id:'camera',type:'camera',bearing:0,elevation:-45,fovX:50,fovY:30,range:1000},{id:'cylinder',type:'cylinder',radius:50,height:80}]}},
+      {...point('raw-visibility'),entity:{altitude:{meters:300,reference:'ground'},attachments:[{id:'camera',type:'camera',terrainVisibility:true,bearing:0,elevation:-45,fovX:50,fovY:30,range:1000}]}},
+    ]);
+    await until(()=>air.getEntityState('raw')?.coverage==='ready'&&air.getEntityState('raw-visibility')?.coverage==='ready','raw DEM decoding');
     check(air.getEntityState('raw')?.altitude===400,'Raw custom DEM did not decode to 100 metres');
     const triangles=air.getEntityState('raw')!.footprintTriangles;
+    const visibilityTriangles=air.getEntityState('raw-visibility')!.footprintTriangles;
+    const completedMask = air.map.getStyle().layers.find(layer => layer.id.startsWith('rl:camera-mask:'));
+    const completedImage = completedMask && air.map.getSource<ImageSource>(completedMask.id)?.image;
+    let pickedRetained = false;
+    air.on('click', event => { pickedRetained = event.attachments.some(hit => hit.entityId === 'raw-visibility' && hit.attachmentId === 'camera'); });
     for(const exaggeration of [0.5,1,2]) {
       const before=air.getEntityState('raw')!.computedAt;
+      const visibilityBefore=air.getEntityState('raw-visibility')!.computedAt;
       air.configure({terrain:true,exaggeration});
-      await until(()=>air.getEntityState('raw')!.computedAt>before,'terrain display recomputation');
+      await until(()=>air.getEntityState('raw')!.computedAt>before&&air.getEntityState('raw-visibility')!.computedAt>visibilityBefore&&air.getEntityState('raw-visibility')?.coverage==='ready','terrain display recomputation');
       check(air.getEntityState('raw')?.footprintTriangles===triangles,'Terrain display changed physical coverage');
+      check(air.getEntityState('raw-visibility')?.footprintTriangles===visibilityTriangles,'Exaggeration changed terrain visibility camera footprint');
       check(air.getEntityState('raw')?.altitude===400,'Exaggeration changed physical altitude');
+      check(air.getEntityState('raw-visibility')?.altitude===400,'Exaggeration changed terrain visibility camera altitude');
+      const maskLayer=air.map.getStyle().layers.find(layer=>layer.id.startsWith('rl:camera-mask:'));
+      check(maskLayer&&air.map.getSource<ImageSource>(maskLayer.id)?.image instanceof ImageData,`Terrain visibility mask missing at exaggeration ${exaggeration}`);
+      check(maskLayer && air.map.getSource<ImageSource>(maskLayer.id)?.image === completedImage, 'Exaggeration discarded completed physical coverage');
+      await until(() => air.map.loaded(), 'display terrain ready');
+      pickedRetained = false;
+      await pointer('click', air.map.project([0, .0027]));
+      check(pickedRetained, `Retained coverage was not pickable at exaggeration ${exaggeration}`);
     }
     air.configure({ projection: 'globe' });
     await until(() => air.getEntityState('raw')?.coverage === 'ready', 'globe camera overlay');
     check((air.getEntityState('raw')?.footprintTriangles ?? 0) > 0, 'Globe lost camera coverage');
     air.configure({ projection: 'flat', terrain: false });
     await until(() => air.getEntityState('raw')?.coverage === 'ready', 'Overlay restored after globe');
-    air.remove(['raw']);
+    air.remove(['raw','raw-visibility']);
     await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
     let remaining=0; air.on('click',event=>{remaining=event.features.length;});
     await pointer('click', air.map.project([0,0]));
@@ -1412,6 +1461,78 @@ async function suite() {
       await until(() => air.getEntityState(feature.id)?.coverage === 'ready', '50 km terrain convergence', 20_000);
       check(air.getEntityState(feature.id)?.coverage === 'ready', 'Wide camera never reached ready');
     } finally { air.destroy(); }
+  });
+  await run('Exaggerated terrain keeps sphere and plain camera volume pickable', async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!; context.fillStyle = 'rgb(1,0,0)'; context.fillRect(0,0,256,256);
+    const air = createViewport({ container, basemap: style(), terrain: true, exaggeration: 1,
+      elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 100, greenFactor: 0, blueFactor: 0, baseShift: 0, maxzoom: 0 },
+      camera: { center: [0,0], zoom: 14, pitch: 60 }, logger: () => {} });
+    current = air; await air.ready;
+    const sphere: MapFeature = { ...point('pick-sphere', -.004), entity: { altitude: { meters: 200, reference: 'ground' },
+      attachments: [{ id: 'sphere', type: 'sphere', radius: 35 }] } };
+    const cameraAttachment: CameraAttachment = { id: 'camera', type: 'camera', bearing: 0, elevation: -45,
+      fovX: 60, fovY: 40, range: 180, volumeOpacity: .3, fillOpacity: 0, outline: false };
+    const camera: MapFeature = { ...point('pick-camera', .004), entity: { altitude: { meters: 200, reference: 'ground' },
+      attachments: [cameraAttachment] } };
+    let projection: number[] | undefined;
+    const projectionLayer: CustomLayerInterface = { id: 'test:height-projection', type: 'custom', renderingMode: '3d',
+      render(_gl, input) { projection = Array.from(input.defaultProjectionData.mainMatrix); } };
+    air.map.addLayer(projectionLayer);
+    const projectHeight = (lng: number, lat: number, height: number) => {
+      const matrix = projection;
+      if (!matrix) throw new Error('Map projection is unavailable');
+      const coordinate = MercatorCoordinate.fromLngLat([lng, lat], height);
+      const point = [coordinate.x, coordinate.y, coordinate.z, 1];
+      const clip = [0, 1, 2, 3].map(row => matrix[row]! * point[0]! + matrix[row + 4]! * point[1]!
+        + matrix[row + 8]! * point[2]! + matrix[row + 12]!);
+      const canvas = air.map.getCanvas();
+      return { x: (clip[0]! / clip[3]! + 1) * canvas.clientWidth / 2,
+        y: (1 - clip[1]! / clip[3]!) * canvas.clientHeight / 2 };
+    };
+    let picked: string[] = [];
+    let clicks = 0;
+    air.on('click', event => { clicks++; picked = event.attachments.map(hit => hit.attachmentId); });
+    const pick = async (screen: { x: number; y: number }) => {
+      const before = clicks;
+      picked = [];
+      await pointer('click', screen);
+      check(clicks > before, 'Real pointer click did not reach the viewport');
+      return picked;
+    };
+    air.upsert([sphere, camera]);
+    await until(() => air.getEntityState(sphere.id)?.coverage === 'ready'
+      && air.getEntityState(camera.id)?.coverage === 'ready' && Boolean(projection), 'exaggerated picking geometry');
+    check((air.getEntityState(camera.id)?.footprintTriangles ?? 0) > 0, 'Plain camera has no ground footprint');
+    // Centroid of the face between the sensor origin and its two lower corner rays.
+    const radians = Math.PI / 180;
+    const elevation = cameraAttachment.elevation * radians;
+    const halfX = Math.tan(cameraAttachment.fovX * radians / 2);
+    const halfY = Math.tan(cameraAttachment.fovY * radians / 2);
+    const north = Math.cos(elevation) + halfY * Math.sin(elevation);
+    const up = Math.sin(elevation) - halfY * Math.cos(elevation);
+    const distance = cameraAttachment.range * 2 / (3 * Math.hypot(halfX, north, up));
+    const radius = 6371008.8 + 300 + up * distance;
+    const face = { lat: Math.atan2(north * distance, radius) / radians,
+      rawHeight: Math.hypot(radius, north * distance) - 6371008.8 };
+    for (const exaggeration of [1, 2]) {
+      const before = air.getEntityState(sphere.id)!.computedAt;
+      air.configure({ exaggeration });
+      if (exaggeration !== 1) await until(() => air.getEntityState(sphere.id)!.computedAt > before
+        && air.getEntityState(camera.id)?.coverage === 'ready', 'exaggerated picking update');
+      await until(() => air.map.loaded() && Math.abs((air.map.queryTerrainElevation([-.004, 0]) ?? 0) - 100 * exaggeration) < .1
+        && Math.abs((air.map.queryTerrainElevation([.004, 0]) ?? 0) - 100 * exaggeration) < .1, 'exaggerated terrain ready for picking');
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      check((await pick(projectHeight(-.004, 0, 300 * exaggeration))).includes('sphere'),
+        `Sphere was not pickable at exaggeration ${exaggeration}`);
+      check((await pick(projectHeight(.004, face.lat, face.rawHeight * exaggeration))).includes('camera'),
+        `Plain camera face was not pickable at exaggeration ${exaggeration}`);
+      if (exaggeration === 2) {
+        check(!(await pick(projectHeight(-.004, 0, 300))).includes('sphere'), 'Sphere remained pickable at its raw-height position');
+        check(!(await pick(projectHeight(.004, face.lat, face.rawHeight))).includes('camera'), 'Camera face remained pickable at its raw-height position');
+      }
+    }
+    air.destroy();
   });
   await run('Visible footprint stays filled when displayed terrain differs slightly from sampled terrain', async () => {
     const dem=document.createElement('canvas'); dem.width=dem.height=256;
