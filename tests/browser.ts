@@ -10,6 +10,8 @@ import '@ridgeline/map/style.css';
 declare global {
   interface Window {
     drawingPointer?: (action: 'move' | 'click', x: number, y: number) => Promise<void>;
+    drawingKey?: (key: string) => Promise<void>;
+    drawingDragHandle?: (label: string, dx: number, dy: number) => Promise<void>;
   }
 }
 
@@ -42,6 +44,15 @@ async function pointer(action: 'move' | 'click', point: { x: number; y: number }
   const drawingPointer = window.drawingPointer;
   if (!drawingPointer) throw new Error('Playwright pointer bridge is unavailable.');
   await drawingPointer(action, point.x, point.y);
+  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+}
+async function drawingKey(key: string) {
+  if (!window.drawingKey) throw new Error('Playwright keyboard bridge is unavailable.');
+  await window.drawingKey(key);
+}
+async function drawingDragHandle(label: string, dx: number, dy: number) {
+  if (!window.drawingDragHandle) throw new Error('Playwright handle drag bridge is unavailable.');
+  await window.drawingDragHandle(label, dx, dy);
   await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 }
 async function suite() {
@@ -956,7 +967,7 @@ async function suite() {
     const before=editor.getState().draft!.shape;
     if(before.kind!=='rectangle')throw new Error('Missing rotated rectangle');
     const width=container.querySelector<HTMLButtonElement>('[aria-label="Width"]')!;
-    width.focus();width.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+    width.focus();await drawingKey('ArrowRight');
     const after=editor.getState().draft!.shape;
     check(after.kind==='rectangle'&&after.width!==before.width&&after.height===before.height&&after.bearing===before.bearing&&JSON.stringify(after.center)===JSON.stringify(before.center),'Width keyboard step changed another rectangle parameter');
     editor.undo();
@@ -966,17 +977,12 @@ async function suite() {
     const origin=draw.map.project([0,0]),edge=draw.map.unproject([origin.x+80,origin.y]);
     editor.start('circle');editor.addPoint([0,0]);editor.addPoint([edge.lng,edge.lat]);
     await until(()=>draw.map.loaded(),'circle handle map ready');
-    const center=container.querySelector<HTMLButtonElement>('[aria-label="Center"]')!;
-    const rect=center.getBoundingClientRect(),x=rect.x+rect.width/2,y=rect.y+rect.height/2;
-    center.dispatchEvent(new MouseEvent('mousedown',{clientX:x,clientY:y,button:0,buttons:1,bubbles:true,cancelable:true,view:window}));
-    draw.map.getCanvas().dispatchEvent(new MouseEvent('mousemove',{clientX:x+72,clientY:y,buttons:1,bubbles:true,view:window}));
-    await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
-    draw.map.getCanvas().dispatchEvent(new MouseEvent('mouseup',{clientX:x+72,clientY:y,button:0,bubbles:true,view:window}));
+    await drawingDragHandle('Center',72,0);
     const circle=editor.getState().draft!.shape;
     if(circle.kind!=='circle')throw new Error('Missing circle draft');
     check(Math.abs(draw.map.project(circle.center).x-origin.x-72)<1,'Circle Center snapped to its own Radius handle');
     editor.destroy();draw.destroy();
-  });
+  },{realPointer:true});
   await run('Arrowheads follow accepted geometry updates and disappear on deletion', async () => {
     const arrowShape = { kind:'arrow' as const, vertices:[[-.01,0],[.01,0]] as [number,number][] };
     const arrow:MapFeature = { type:'Feature', id:'arrow', geometry:shapeGeometry(arrowShape), properties:{}, drawing:{version:1,shape:arrowShape,style:{color:'#ff0000',fillColor:'#ff0000',lineWidth:3,fillOpacity:0,dashed:false,label:''}} };

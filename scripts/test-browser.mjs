@@ -35,6 +35,23 @@ try {
     if (action === 'move') await page.mouse.move(position.x, position.y);
     else await page.mouse.click(position.x, position.y);
   });
+  await page.exposeFunction('drawingKey', async key => {
+    if (key !== 'ArrowRight') throw new Error(`Unknown drawing key: ${key}`);
+    await page.keyboard.press(key);
+  });
+  await page.exposeFunction('drawingDragHandle', async (label, dx, dy) => {
+    if (label !== 'Center' || ![dx, dy].every(Number.isFinite))
+      throw new Error('Invalid drawing handle drag.');
+    const handle = page.locator('#map').getByRole('button', { name: label, exact: true });
+    await handle.scrollIntoViewIfNeeded();
+    const box = await handle.boundingBox();
+    if (!box) throw new Error(`${label} handle is not visible.`);
+    const x = box.x + box.width / 2, y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + dx, y + dy);
+    await page.mouse.up();
+  });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(server.resolvedUrls.local[0]);
