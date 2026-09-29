@@ -2622,6 +2622,8 @@ async function suite() {
       const draw = createViewport({ container, basemap: style(), terrain: true, elevation: elevation(first),
         camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
       current = draw;
+      const errors: RidgelineError[] = [];
+      const offDiagnostic = draw.on('diagnostic', error => errors.push(error));
       try {
         await draw.ready;
         const editor = attachDrawing(draw, { createFeature: () => ({ id: 'replacement-line', properties: {} }),
@@ -2633,7 +2635,9 @@ async function suite() {
           await until(() => !!container.querySelector('.rl-ground-crosshair:not([hidden])'), 'initial terrain target');
           draw.configure({ elevation: elevation(failed) });
           check(!container.querySelector('.rl-ground-crosshair:not([hidden])'), 'Failed source replacement retained old target');
-          await until(() => failedRequest, 'failed DEM request');
+          await until(() => failedRequest && errors.some(error => error.code === 'ELEVATION_UNAVAILABLE' &&
+            error.context.sourceId === 'rl:terrain'), 'failed DEM diagnostic');
+          await until(() => !!container.querySelector('.rl-ground-unavailable:not([hidden])'), 'failed terrain unavailable feedback');
           await pointer('click', screen);
           check(editor.getState().draft?.placed === 0, 'Failed terrain permitted placement');
           draw.configure({ elevation: elevation(replacement) });
@@ -2647,7 +2651,7 @@ async function suite() {
           await pointer('click', screen);
           check(editor.getState().draft?.placed === 1, 'Recovered terrain did not permit placement');
         } finally { editor.destroy(); }
-      } finally { draw.destroy(); }
+      } finally { offDiagnostic(); draw.destroy(); }
     } finally {
       release();
       removeProtocol(first);
