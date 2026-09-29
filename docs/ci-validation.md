@@ -15,7 +15,7 @@ pnpm test:browser -- --shard=1/4
 
 `pnpm validate` runs local checks sequentially. CI distributes the same checks across jobs. `pnpm test` includes executable validation-automation tests as well as the library and control-lab module tests. Both browser suites use production consumer builds. The packaged suite retains a fresh page per case even when cases are distributed across shards.
 
-Packaged browser runs, including nightly shards, acquire `.artifacts/browser-run.lock` before building or replacing the consumer. Run local shards sequentially in a checkout; an overlapping invocation fails immediately. Normal completion and command failures release the lock. After an interrupted run, stop any remaining build, browser, and preview processes before removing the lock directory. Its `owner` file records the parent PID for diagnosis. Hosted shards use separate checkouts and runners.
+Packaged browser runs, including nightly shards, acquire `.artifacts/browser-run.lock` before building or replacing the consumer. Run local shards sequentially in a checkout; an overlapping invocation fails immediately. Normal completion and ordinary command failures release the lock. Timeouts and signal termination retain it because child processes may still be writing. After an interrupted run, stop any remaining build, browser, and preview processes before removing the lock directory. Its `owner` file records the parent PID for diagnosis. Hosted shards use separate checkouts and runners.
 
 The shard-report fixture reads machine-readable reports from explicit JSON files. If it fails, it retains its inputs, reports, and subprocess diagnostics under `.artifacts/validation/`; CI uploads them as `validation-fixture-failures`. Successful fixtures are removed.
 

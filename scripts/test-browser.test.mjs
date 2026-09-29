@@ -19,6 +19,15 @@ const path = require('node:path');
 const root = process.env.FIXTURE_ROOT;
 fs.appendFileSync(path.join(root, 'commands'), JSON.stringify(process.argv.slice(2)) + '\\n');
 if (process.env.FAIL_BUILD) process.exit(1);
+if (process.env.INTERRUPT_BUILD) {
+  const child = require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+    detached: true, stdio: 'ignore',
+  });
+  fs.writeFileSync(path.join(root, 'descendant.pid'), String(child.pid));
+  child.unref();
+  if (process.env.INTERRUPT_BUILD === 'signal') process.kill(process.pid, 'SIGTERM');
+  setInterval(() => {}, 1000);
+}
 if (process.argv.includes('scripts/prepare-consumer.mjs')) fs.mkdirSync(path.join(root, '.artifacts/consumer'), { recursive: true });
 if (process.env.PAUSE_BUILD && process.cwd() === root && process.argv[2] === 'build') {
   console.log('build paused');
@@ -106,4 +115,37 @@ test('an abandoned lock is retained until explicitly removed', async t => {
   const next = f.run();
   assert.ifError(next.error);
   assert.equal(next.status, 0, next.stderr);
+});
+
+test('timed-out and signalled commands retain the lock while a descendant survives', async t => {
+  for (const interruption of ['timeout', 'signal']) {
+    await t.test(interruption, async t => {
+      const f = await fixture(t);
+      const preload = join(f.root, 'short-timeout.mjs');
+      // Shorten only the timeout; use real spawnSync termination and an actual
+      // surviving grandchild to preserve the process-tree failure mode.
+      await writeFile(preload, `import childProcess from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
+const spawnSync = childProcess.spawnSync;
+childProcess.spawnSync = (command, args, options) => spawnSync(command, args, { ...options, timeout: 2000 });
+syncBuiltinESMExports();
+`);
+      const interrupted = f.run({ INTERRUPT_BUILD: interruption, NODE_OPTIONS: `--import=${preload}` });
+      const descendant = Number(await readFile(join(f.root, 'descendant.pid'), 'utf8'));
+      t.after(() => {
+        try { process.kill(descendant, 'SIGKILL'); } catch (error) {
+          if (error.code !== 'ESRCH') throw error;
+        }
+      });
+      assert.ifError(interrupted.error);
+      assert.equal(interrupted.status, 1);
+      if (interruption === 'timeout') assert.match(interrupted.stderr, /ETIMEDOUT/);
+      process.kill(descendant, 0);
+      const blocked = f.run();
+      assert.ifError(blocked.error);
+      assert.equal(blocked.status, 1, 'a second run must not start while descendants may survive');
+      assert.match(blocked.stderr, /already locked in this checkout/);
+      assert.equal(await readFile(join(f.root, 'commands'), 'utf8'), '["build"]\n');
+    });
+  }
 });

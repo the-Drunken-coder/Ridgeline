@@ -92,3 +92,33 @@ test('does not exempt unknown ticket types or wayfinding types without a map', a
     assert.equal(files.run().status, 1);
   }
 });
+
+test('ignores fenced examples with longer closers, indentation, or no closer', async t => {
+  const files = await fixture(t);
+  for (const [opener, closer] of [
+    ['```md', '````'],
+    ['~~~md', '~~~~'],
+    ['   ```md', '  ```'],
+    ['```md', ''],
+  ]) {
+    await files.write(`${opener}\n${valid}${closer}\n`);
+    const result = files.run();
+    assert.equal(result.status, 1, opener + '\n' + closer);
+    assert.match(result.stderr, /missing nonempty Spec:/);
+    assert.match(result.stderr, /Acceptance criteria must contain/);
+    if (closer) {
+      await files.write(`${opener}\n# Example\n${closer}\n${valid}`);
+      assert.equal(files.run().status, 0, 'real ticket after ' + closer);
+    }
+  }
+});
+
+test('does not end a fenced example at a shorter, mismatched, or annotated fence', async t => {
+  const files = await fixture(t);
+  for (const falseCloser of ['```', '~~~~', '```` example', '    ````']) {
+    await files.write(`\`\`\`\`md\n${falseCloser}\n${valid}\`\`\`\`\n`);
+    const result = files.run();
+    assert.equal(result.status, 1, falseCloser);
+    assert.match(result.stderr, /Acceptance criteria must contain/);
+  }
+});

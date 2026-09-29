@@ -7,9 +7,13 @@ const root = resolve(import.meta.dirname, '..');
 const consumer = resolve(root, '.artifacts/consumer');
 const lock = resolve(root, '.artifacts/browser-run.lock');
 let ownsLock = false;
+let retainLock = false;
 
 function run(args, cwd = root, timeout = 180_000) {
   const result = spawnSync('pnpm', args, { cwd, stdio: 'inherit', timeout });
+  // Timeout and signal termination do not establish that pnpm's descendants
+  // stopped writing. Preserve ownership for manual recovery in either case.
+  if (result.error?.code === 'ETIMEDOUT' || result.signal) retainLock = true;
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`pnpm ${args.join(' ')} failed with status ${result.status}`);
 }
@@ -40,5 +44,6 @@ try {
 } finally {
   // An interrupted process leaves the lock for manual recovery: child commands
   // may still be writing artifacts, so a dead parent PID is not enough to steal it.
-  if (ownsLock) rmSync(lock, { recursive: true, force: true });
+  if (ownsLock && !retainLock) rmSync(lock, { recursive: true, force: true });
+  if (ownsLock && retainLock) console.error(`Browser lock retained at ${lock}. Stop remaining child processes before removing this directory.`);
 }

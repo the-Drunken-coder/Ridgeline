@@ -23,6 +23,23 @@ async function isFile(path) {
   }
 }
 
+function withoutFencedCode(body) {
+  let fence;
+  return body.split(/\r?\n/).map(line => {
+    if (fence) {
+      const closing = line.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/)?.[1];
+      if (closing?.[0] === fence[0] && closing.length >= fence.length) fence = undefined;
+      return '';
+    }
+    const opening = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+    if (opening && (opening[1][0] === '~' || !opening[2].includes('`'))) {
+      fence = opening[1];
+      return '';
+    }
+    return line;
+  }).join('\n');
+}
+
 for (const feature of await entries(join(root, '.scratch'))) {
   if (!feature.isDirectory()) continue;
   const directory = join(root, '.scratch', feature.name);
@@ -30,9 +47,8 @@ for (const feature of await entries(join(root, '.scratch'))) {
     if (!ticket.isFile() || !ticket.name.endsWith('.md')) continue;
     const path = join(directory, 'issues', ticket.name);
     const fail = message => failures.push(`${relative(root, path)}: ${message}`);
-    const body = (await readFile(path, 'utf8'))
-      .replace(/<!--[\s\S]*?-->/g, '')
-      .replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1\s*$/gm, '');
+    const body = withoutFencedCode((await readFile(path, 'utf8'))
+      .replace(/<!--[\s\S]*?-->/g, ''));
     const header = body.split(/^##\s/m)[0];
     const field = name => header.match(new RegExp(`^${name}:[ \\t]*(.*)$`, 'm'))?.[1].trim();
     const type = field('Type');
