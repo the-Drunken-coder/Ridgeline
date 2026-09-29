@@ -12,10 +12,10 @@ export default defineConfig({
   },
   outputDir: './test-results',
   webServer: {
-    command: 'pnpm dev --port 4173 --strictPort',
+    command: 'pnpm build && pnpm preview --port 4173 --strictPort',
     cwd: import.meta.dirname,
     url: 'http://127.0.0.1:4173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
+    reuseExistingServer: false,
+    timeout: 120_000,
   },
 });
