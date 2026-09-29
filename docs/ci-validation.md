@@ -41,7 +41,7 @@ Desktop Chromium with software WebGL is the verified browser target. These check
 
 Local checks passed type checking, 168 Node tests, five control-lab state tests, all 88 packaged browser cases, four production control-lab browser cases, and both consumer builds. Both nightly shards passed, totaling 40 executions. The reporter accepted those actual JSON results without making an issue API request. The playground build retains its existing large-chunk warning.
 
-The controlled GitHub reporting exercise used synthetic failures in [#33](https://github.com/the-Drunken-coder/Ridgeline/issues/33) and [#34](https://github.com/the-Drunken-coder/Ridgeline/issues/34). It verified creation, idempotent same-run reporting, recurrence comments, distinct scenario identities, and leaving issues open after a pass. Those synthetic issues were then explicitly closed as test cleanup. Local HTTP integration tests additionally cover incomplete reports, API failure, and recovery after a partial write.
+The controlled GitHub reporting exercise used synthetic failures in [#33](https://github.com/the-Drunken-coder/Ridgeline/issues/33) and [#34](https://github.com/the-Drunken-coder/Ridgeline/issues/34). It verified creation, idempotent same-run reporting, recurrence comments, distinct scenario identities, and leaving issues open after a pass. Those synthetic issues were then explicitly closed as test cleanup. Local HTTP integration tests additionally cover incomplete reports and API failure.
 
 Standards and Spec reviews found no actionable issues in the implementation. Hosted verification then caught report-upload and Node setup defects that local tests did not cover; those required fixes before accepting CI results.
 

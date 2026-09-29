@@ -35,9 +35,11 @@ test('actual Playwright shard reports cover every case and preserve failures', a
         encoding: 'utf8', env: { ...process.env, ...env }, timeout: 60_000,
       });
     }
-    const discovery = run(['--list', '--reporter=json']);
+    // File output avoids depending on a subprocess flushing JSON to a stdout pipe.
+    const discoveryPath = `${directory}/discovery.json`;
+    const discovery = run(['--list', '--reporter=json'], { PLAYWRIGHT_JSON_OUTPUT_FILE: discoveryPath });
     assert.equal(discovery.status, 0, discovery.stderr);
-    const expected = JSON.parse(discovery.stdout);
+    const expected = JSON.parse(await readFile(discoveryPath, 'utf8'));
     const reports = [];
     for (let shard = 1; shard <= 4; shard++) {
       const path = `${directory}/${shard}.json`;
@@ -53,11 +55,13 @@ test('actual Playwright shard reports cover every case and preserve failures', a
     for (let shard = 1; shard <= 4; shard++) {
       await cp(`${directory}/blobs-${shard}`, `${directory}/combined`, { recursive: true });
     }
+    const mergedPath = `${directory}/merged.json`;
     const merged = spawnSync('pnpm', ['exec', 'playwright', 'merge-reports', '--reporter=json', `${directory}/combined`], {
       encoding: 'utf8', timeout: 60_000,
+      env: { ...process.env, PLAYWRIGHT_JSON_OUTPUT_FILE: mergedPath },
     });
     assert.equal(merged.status, 0, merged.stderr);
-    const combined = JSON.parse(merged.stdout);
+    const combined = JSON.parse(await readFile(mergedPath, 'utf8'));
     assert.equal(combined.stats.expected, 7);
     assert.equal(combined.stats.unexpected, 1);
     assert.equal(checkShards(expected, [combined], 1), 8);
