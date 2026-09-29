@@ -17,6 +17,10 @@ for (const name of browserCases) {
     await page.exposeFunction('browserKey', (key: string) => page.keyboard.press(key));
     await page.exposeFunction('browserKeyDown', (key: string) => page.keyboard.down(key));
     await page.exposeFunction('browserKeyUp', (key: string) => page.keyboard.up(key));
+    await page.exposeFunction('browserStationaryClick', async () => {
+      await page.mouse.down();
+      await page.mouse.up();
+    });
     await page.exposeFunction('browserClick', (selector: string) => page.locator(selector).click({ timeout: 5_000 }));
     await page.exposeFunction('browserFill', (selector: string, value: string) => page.locator(selector).fill(value, { timeout: 5_000 }));
     await page.exposeFunction('browserMouse', async (action: string, x: number, y: number) => {

@@ -529,6 +529,7 @@ export function attachDrawing<P extends Properties>(
     const target = resolveGround(event.point);
     if (disposed || revision !== stateRevision) return;
     if (target.kind !== "available") {
+      if (keyboardFeedbackTimer) clearTimeout(keyboardFeedbackTimer);
       session.setCursor(undefined);
       if (disposed || revision !== stateRevision) return;
       feedback?.show(event.point, target, undefined);
