@@ -43,7 +43,7 @@ Desktop Chromium with software WebGL is the verified browser target. These check
 
 ## Current closeout record
 
-Recorded 2026-09-29. Integrated implementation is accepted at `96472fda2eefc8f4ef061e0808b62f46d5ea9d62`. This closeout update changes documentation only; merge readiness still requires successful checks on the final PR head.
+Recorded 2026-09-29. Integrated implementation was verified at `96472fda2eefc8f4ef061e0808b62f46d5ea9d62`. A subsequent bot review changed browser-report cancellation to `!cancelled()` and clarified the nightly pre-merge acceptance criterion. The short required gate intentionally retains `always()` because GitHub treats skipped required jobs as successful. Merge readiness requires successful checks on the final PR head, including those follow-up changes.
 
 - Spec: [canonical consumer-testing spec](../.scratch/consumer-testing/spec.md), sourced from GitHub #32.
 - Integration owner: PR #35 coordinating agent, through [ticket 01](../.scratch/consumer-testing/issues/01-parallel-validation.md), integrating tickets 02 and 03.

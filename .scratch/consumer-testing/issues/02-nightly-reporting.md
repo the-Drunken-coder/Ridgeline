@@ -10,7 +10,7 @@ Implement bounded nightly drawing/recovery/remount repetitions and deduplicated 
 
 ## Acceptance criteria
 
-- Scheduled and manual default-branch runs exercise drawing, terrain recovery, and destruction/remount, including ticket 03's late-terrain scenario. Document bounded repeats, shards, and timeouts.
+- Configure scheduled and manual default-branch runs for drawing, terrain recovery, and destruction/remount, including ticket 03's late-terrain scenario. Document bounded repeats, shards, and timeouts. Before merge, verify the workflow manually on a trusted temporary branch with only its branch guards changed and record that difference. Scheduled default-branch execution begins after merge and is not claimed as pre-merge evidence.
 - Each scenario/project has repetitions 0 through 9 exactly once across reports. Missing or duplicate identities, invalid indices, runner errors, and incomplete reports produce an infrastructure issue and fail reporting. Verify through `reportNightly`.
 - A first failure creates an issue containing scenario identity, revision, run, and artifact links. Recurrence updates the same open issue, repeated reporting is idempotent, distinct failures remain distinguishable, and a later pass leaves issues open.
 - Concurrent reporting is serialized. Issue API failures fail visibly. Verify that reporting can resume after one issue write succeeds and a later write fails, without duplicating issues or recurrence evidence.

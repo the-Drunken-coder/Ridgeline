@@ -135,7 +135,7 @@ jobs:
           if-no-files-found: warn
 
   browser-reports:
-    if: always()
+    if: ${{ !cancelled() }}
     needs: [packaged-browser, control-browser]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -176,6 +176,8 @@ jobs:
           node scripts/check-shards.mjs discovery.json reports/packaged-{1,2,3,4}.json
 
   validate:
+    # A skipped required job permits merging. Always evaluate the short gate,
+    # including cancelled prerequisites, instead of skipping it on cancellation.
     if: always()
     needs: [typecheck, module-tests, packaged-browser, control-browser, consumer-builds, browser-reports]
     runs-on: ubuntu-latest
