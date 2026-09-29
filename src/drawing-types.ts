@@ -52,6 +52,8 @@ export type DrawingOptions<P extends Properties> = {
   tools?: readonly DrawingTool[];
   styleFields?: readonly (keyof DrawingStyle)[];
   defaults?: Partial<DrawingStyle>;
+  /** Show ground contact feedback while placing points. Target validation stays active when false. */
+  visualFeedback?: boolean;
 };
 export type DrawingDraft<P extends Properties = Properties> = {
   feature: MapFeature<P>;

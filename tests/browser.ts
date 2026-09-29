@@ -1980,6 +1980,179 @@ async function suite() {
     check(visited.length>0&&visited.every(id=>id==='near'),'Snapping inspected features outside its pointer radius');
     editor.destroy();draw.destroy();
   });
+  await run('Ground drawing target follows real pointer placement and clears on sky', async () => {
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12, pitch: 85 }, logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'ground-target', properties: {} }), submit: () => ({ accepted: true }) });
+    editor.start('line');
+    const center = draw.map.project([0, 0]);
+    await pointer('move', center);
+    const crosshair = container.querySelector<SVGPathElement>('.rl-ground-crosshair');
+    if (!crosshair || crosshair.hasAttribute('hidden')) throw new Error('Ground target did not appear');
+    check(!container.querySelector('.rl-ground-footprint')?.hasAttribute('hidden'), 'Ground contact footprint did not appear');
+    await pointer('click', center);
+    const shape = editor.getState().draft?.shape;
+    if (shape?.kind !== 'line' || shape.vertices.length !== 1) throw new Error('Ground click did not place one point');
+    const placed = draw.map.project(shape.vertices[0]!);
+    check(Math.hypot(placed.x - center.x, placed.y - center.y) < 2, 'Placed point disagrees with target');
+    const bounds = draw.map.getCanvas().getBoundingClientRect();
+    await window.browserMouse!('move', bounds.right + 10, bounds.top + center.y);
+    check(crosshair.hasAttribute('hidden'), 'Leaving the canvas retained placement feedback');
+    await pointer('move', center);
+    check(!crosshair.hasAttribute('hidden'), 'Re-entering the canvas did not restore placement feedback');
+    await window.browserMouse!('down', bounds.left + center.x + 35, bounds.top + center.y + 35);
+    await window.browserMouse!('move', bounds.left + center.x + 75, bounds.top + center.y + 55);
+    check(crosshair.hasAttribute('hidden'), 'Map drag kept placement feedback visible');
+    await window.browserMouse!('up', bounds.left + center.x + 75, bounds.top + center.y + 55);
+    check(editor.getState().draft?.placed === 1, 'Map drag placed a point');
+    draw.configure({ projection: 'globe' });
+    draw.setCamera({ center: [0, 0], zoom: 1, pitch: 0 });
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    const sky = { x: 2, y: 2 };
+    await pointer('move', sky);
+    check(crosshair.hasAttribute('hidden'), 'Sky pointer kept a ground target');
+    await pointer('click', sky);
+    check(editor.getState().draft?.placed === 1, 'Sky click changed the draft');
+    editor.cancel();
+    check(crosshair.hasAttribute('hidden'), 'Cancellation retained ground feedback');
+    check(draw.map.getCanvas().style.cursor !== 'none', 'Cancellation retained the drawing cursor override');
+    editor.destroy();
+    const plain = attachDrawing(draw, { visualFeedback: false,
+      createFeature: () => ({ id: 'no-visual', properties: {} }), submit: () => ({ accepted: true }) });
+    plain.start('line');
+    draw.configure({ projection: 'flat' });
+    draw.setCamera({ center: [0, 0], zoom: 12, pitch: 0 });
+    await pointer('click', draw.map.project([0, 0]));
+    check(plain.getState().draft?.placed === 1, 'Visual opt-out disabled placement');
+    check(!container.querySelector('.rl-ground-feedback'), 'Visual opt-out created an overlay');
+    plain.destroy(); draw.destroy();
+  });
+  await run('Ground drawing uses loaded ridge, zero, and negative DEM cells and rejects missing DEM', async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!;
+    context.fillStyle = 'rgb(100,0,0)'; context.fillRect(0, 0, 256, 256);
+    context.fillStyle = 'rgb(240,0,0)'; context.fillRect(0, 100, 256, 42);
+    context.fillStyle = 'rgb(40,0,0)'; context.fillRect(0, 180, 256, 76);
+    const latitude = (pixel: number) => Math.atan(Math.sinh(Math.PI * (1 - 2 * pixel / 256))) * 180 / Math.PI;
+    const fixture = [
+      { name: 'ridge', latitude: latitude(120), expected: 140 },
+      { name: 'zero', latitude: latitude(60), expected: 0 },
+      { name: 'negative', latitude: latitude(210), expected: -60 },
+    ];
+    const terrainErrors: string[] = [];
+    const draw = createViewport({ container, basemap: style(), terrain: true,
+      elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 1, greenFactor: 0, blueFactor: 0, baseShift: 100, maxzoom: 0 },
+      camera: { center: [0.04, latitude(120)], zoom: 12, pitch: 55 }, onError: error => terrainErrors.push(error.message), logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'dem-drawing', properties: {} }), submit: () => ({ accepted: true }) });
+    editor.start('line');
+    for (const sample of fixture) {
+      draw.setCamera({ center: [0, sample.name === 'ridge' ? latitude(110) : sample.latitude],
+        zoom: sample.name === 'ridge' ? 3 : 12, pitch: 55 });
+      const geographic: [number, number] = [0.04, sample.latitude];
+      await until(() => Math.abs((draw.map.queryTerrainElevation(geographic) ?? NaN) - sample.expected) < 1,
+        `${sample.name} DEM fixture loaded`).catch(() => { throw new Error(`${sample.name} elevation is ${draw.map.queryTerrainElevation(geographic)}; ${terrainErrors.join('; ')}`); });
+      const screen = draw.map.project(geographic);
+      check(screen.x >= 0 && screen.y >= 0 && screen.x < container.clientWidth && screen.y < container.clientHeight,
+        `${sample.name} fixture is outside viewport`);
+      await pointer('move', screen);
+      const crosshair = container.querySelector<SVGPathElement>('.rl-ground-crosshair')!;
+      check(!crosshair.hasAttribute('hidden'), `${sample.name} target is unavailable`);
+      const bounds = crosshair.getBBox();
+      const shown = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+      await pointer('click', screen);
+      const shape = editor.getState().draft?.shape;
+      if (shape?.kind !== 'line') throw new Error('Line draft disappeared');
+      const committed = shape.vertices.at(-1)!;
+      const placed = draw.map.project(committed);
+      check(Math.hypot(placed.x - shown.x, placed.y - shown.y) < 2, `${sample.name} preview and placement differ`);
+      check(sample.name === 'ridge'
+        ? committed[1] <= latitude(100) && committed[1] >= latitude(142)
+        : Math.abs(committed[1] - sample.latitude) < 0.003,
+      `${sample.name} chose a different ground region: ${committed[1]} versus ${sample.latitude}`);
+      check(Math.abs((draw.map.queryTerrainElevation(committed) ?? NaN) - sample.expected) < 1,
+        `${sample.name} was placed on another elevation region`);
+    }
+    draw.configure({ projection: 'globe' });
+    draw.setCamera({ center: [0, latitude(120)], zoom: 3, pitch: 45 });
+    const globeGeographic: [number, number] = [15, latitude(120)];
+    await until(() => Math.abs((draw.map.queryTerrainElevation(globeGeographic) ?? NaN) - 140) < 1,
+      'globe ridge DEM loaded');
+    const globeTarget = draw.map.project(globeGeographic);
+    check(globeTarget.x >= 0 && globeTarget.y >= 0 && globeTarget.x < container.clientWidth && globeTarget.y < container.clientHeight,
+      `Globe ridge target outside viewport: ${globeTarget.x}, ${globeTarget.y}`);
+    await pointer('move', globeTarget);
+    check(!container.querySelector('.rl-ground-crosshair')?.hasAttribute('hidden'), 'Globe terrain target is unavailable');
+    check(!container.querySelector('.rl-ground-footprint')?.hasAttribute('hidden'), 'Globe terrain footprint is unavailable');
+    await pointer('click', globeTarget);
+    const globeShape = editor.getState().draft?.shape;
+    check(globeShape?.kind === 'line' && globeShape.vertices.length === 4, 'Globe terrain click did not place a point');
+    editor.destroy(); draw.destroy();
+
+    const missing = createViewport({ container, basemap: style(), terrain: false,
+      elevation: { tiles: ['/missing-ground-target-dem.png'], encoding: 'custom', redFactor: 1, greenFactor: 0, blueFactor: 0, baseShift: 0, maxzoom: 0 },
+      camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+    current = missing; await missing.ready;
+    const blocked = attachDrawing(missing, { createFeature: () => ({ id: 'missing-dem', properties: {} }), submit: () => ({ accepted: true }) });
+    blocked.start('line');
+    const center = missing.map.project([0, 0]);
+    await pointer('move', center);
+    const initialPreview = blocked.getPreview();
+    check(initialPreview?.kind === 'line' && initialPreview.vertices.length === 1, 'Valid base surface had no preview');
+    missing.configure({ terrain: true });
+    await pointer('click', center);
+    check(blocked.getState().draft?.placed === 0 && blocked.getPreview() === undefined,
+      'An unavailable click retained the old ground preview');
+    await pointer('move', center);
+    check(container.querySelector('.rl-ground-crosshair')?.hasAttribute('hidden'), 'Missing DEM showed a valid target');
+    blocked.destroy();
+    const withoutVisuals = attachDrawing(missing, { visualFeedback: false,
+      createFeature: () => ({ id: 'missing-dem-no-visual', properties: {} }), submit: () => ({ accepted: true }) });
+    withoutVisuals.start('line');
+    await pointer('click', center);
+    check(withoutVisuals.getState().draft?.placed === 0, 'Visual opt-out accepted missing DEM');
+    withoutVisuals.destroy(); missing.destroy();
+  });
+  await run('Ground drawing chooses a foreground ridge over terrain behind it', async () => {
+    // An exaggerated synthetic ridge makes a foreground hit distinct from the flat terrain behind it.
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!;
+    context.fillStyle = 'rgb(100,0,0)'; context.fillRect(0, 0, 256, 256);
+    context.fillStyle = 'rgb(240,0,0)'; context.fillRect(0, 112, 256, 16);
+    const latitude = (pixel: number) => Math.atan(Math.sinh(Math.PI *
+      (1 - 2 * (128 + pixel / 256) / 256))) * 180 / Math.PI;
+    const behind: [number, number] = [0.04, latitude(90)];
+    const ridge: [number, number] = [0.04, latitude(120)];
+    const draw = createViewport({ container, basemap: style(), terrain: true,
+      elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 100, greenFactor: 0,
+        blueFactor: 0, baseShift: 10000, minzoom: 8, maxzoom: 8 },
+      camera: { center: [0.04, latitude(155)], zoom: 10, pitch: 75 }, logger: () => {} });
+    current = draw; await draw.ready;
+    await until(() => Math.abs((draw.map.queryTerrainElevation(ridge) ?? NaN) - 14000) < 1 &&
+      Math.abs(draw.map.queryTerrainElevation(behind) ?? NaN) < 1, 'foreground and rear DEM loaded');
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'ridge-depth', properties: {} }), submit: () => ({ accepted: true }) });
+    editor.start('line');
+    const rearScreen = draw.map.project(behind);
+    check(rearScreen.x >= 0 && rearScreen.y >= 0 && rearScreen.x < container.clientWidth && rearScreen.y < container.clientHeight,
+      `Rear terrain is outside viewport: ${rearScreen.x}, ${rearScreen.y}`);
+    await pointer('move', rearScreen);
+    const crosshair = container.querySelector<SVGPathElement>('.rl-ground-crosshair');
+    if (!crosshair || crosshair.hasAttribute('hidden')) throw new Error('Foreground ridge target did not appear');
+    const bounds = crosshair.getBBox();
+    const shown = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    await pointer('click', rearScreen);
+    const shape = editor.getState().draft?.shape;
+    if (shape?.kind !== 'line' || shape.vertices.length !== 1) throw new Error(`Foreground target did not place: ${JSON.stringify(shape)}`);
+    const placed = shape.vertices[0]!;
+    check(placed[1] <= latitude(112) + 0.001 && placed[1] >= latitude(128) - 0.001,
+      `Behind-terrain fallback won over ridge: ${placed[1]} versus ridge ${latitude(112)} to ${latitude(128)}`);
+    check((draw.map.queryTerrainElevation(placed) ?? 0) > 1000,
+      `Foreground placement height ${draw.map.queryTerrainElevation(placed)} at ${placed[1]}`);
+    const placedScreen = draw.map.project(placed);
+    check(Math.hypot(placedScreen.x - shown.x, placedScreen.y - shown.y) < 2,
+      'Foreground preview and placement differ');
+    editor.destroy(); draw.destroy();
+  });
   await run('Real pointer drawing previews stay ephemeral, snap, and place circle and rotated rectangle', async () => {
     const draw=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:12},features:[point('preview-anchor',-.025)],logger:()=>{}});
     current=draw;await draw.ready;
@@ -2055,6 +2228,10 @@ async function suite() {
     const snappedVertex=snappedPreview?.kind==='line' ? snappedPreview.vertices[0] : undefined;
     const snappedPoint=snappedVertex && draw.map.project(snappedVertex);
     check(snappedPoint&&Math.hypot(snappedPoint.x-anchor.x,snappedPoint.y-anchor.y)<1,'Real pointer preview did not snap to the visible feature');
+    const snappedFootprint=container.querySelector<SVGPathElement>('.rl-ground-footprint');
+    if(!snappedFootprint||snappedFootprint.hasAttribute('hidden'))throw new Error('Snapped target lost its ground footprint');
+    const ring=snappedFootprint.getBBox();
+    check(Math.hypot(ring.x+ring.width/2-anchor.x,ring.y+ring.height/2-anchor.y)<2,'Ground footprint did not follow the snapped target');
     editor.cancel();
     editor.destroy();draw.destroy();
   });
