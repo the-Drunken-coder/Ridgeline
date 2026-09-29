@@ -358,6 +358,58 @@ async function suite() {
     await abandoned.ready.then(() => { throw new Error('Expected canceled readiness'); }, error => check(error instanceof RidgelineError && error.code === 'DESTROYED', 'Structured cancellation'));
     check(!container.querySelector('canvas,.rl-ui'), 'Old canvas or overlay remains');
   });
+  await run('Late terrain preparation cannot affect a replacement viewport', async () => {
+    let finishPreparation: (() => void) | undefined;
+    let preparationSignal: AbortSignal | undefined;
+    let available = false;
+    let destroyed = false;
+    let lateErrors = 0;
+    const abandoned = createViewport({ container, basemap: style(), logger: () => {},
+      onError: () => { if (destroyed) lateErrors++; },
+      elevationSampler: {
+        sample: () => available ? 12 : null,
+        // Some consumer loaders cannot stop their underlying work after cancellation.
+        prepare: (_positions, signal) => {
+          preparationSignal = signal;
+          return new Promise<void>(resolve => { finishPreparation = resolve; });
+        },
+      },
+    });
+    current = abandoned;
+    let replacement: Viewport | undefined;
+    try {
+      await abandoned.ready;
+      abandoned.upsert([{ ...point('shared-id'), entity: { altitude: { meters: 100, reference: 'ground' } } }]);
+      await until(() => Boolean(finishPreparation), 'old viewport terrain preparation starts');
+      abandoned.destroy();
+      destroyed = true;
+      check(preparationSignal?.aborted, 'Destroy did not cancel terrain preparation');
+      check(!container.querySelector('canvas,.rl-ui'), 'Old viewport retained DOM');
+
+      replacement = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 8 },
+        features: [{ ...point('shared-id'), properties: { name: 'Replacement' } }],
+      });
+      current = replacement;
+      const mounted = replacement;
+      await mounted.ready;
+      const ui = attachInteractions(mounted);
+      const off = mounted.on('selectionrequest', event => mounted.setSelection(event.ids));
+      try {
+        available = true;
+        finishPreparation?.();
+        await until(() => mounted.map.queryRenderedFeatures({ layers: ['rl:points'] })
+          .some(hit => hit.properties._rl_feature_id === 'shared-id'), 'replacement renders after old terrain completes');
+        await pointer('click', mounted.map.project([0, 0]));
+        check(mounted.getSelection()[0] === 'shared-id', 'Replacement stopped accepting real clicks');
+        check(mounted.getFeature('shared-id')?.properties.name === 'Replacement', 'Old preparation replaced current data');
+        check(!mounted.getFeature('shared-id')?.entity, 'Old airborne entity leaked into replacement');
+        check(container.querySelectorAll('canvas').length === 1, 'Old preparation recreated a canvas');
+        check(lateErrors === 0, 'Destroyed viewport emitted a late diagnostic');
+      } finally { off(); ui.destroy(); }
+    } finally {
+      finishPreparation?.(); abandoned.destroy(); replacement?.destroy();
+    }
+  });
   const viewport = createViewport({ container, basemap: style(), camera: { center: [0,0], zoom: 8 }, features: [point('initial')], style: feature => { if (feature.properties.broken) throw new Error('Broken style'); return { color: feature.properties.color === 'red' ? '#ff0000' : '#008855', icon: typeof feature.properties.icon === 'string' ? feature.properties.icon : undefined }; }, logger: () => {} });
   current = viewport;
   const hits = () => viewport.map.queryRenderedFeatures({ layers: ['rl:points'] });

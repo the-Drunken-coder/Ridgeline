@@ -49,7 +49,7 @@ pnpm build:playground
 pnpm measure
 ```
 
-`pnpm test` runs the fast module and control-lab state tests. `pnpm validate` runs type checking, those tests, both browser suites, and the playground and control-lab builds. The pull-request workflow runs the same full command.
+`pnpm test` runs the fast module and control-lab state tests. `pnpm validate` runs type checking, those tests, both browser suites, and the playground and control-lab builds. CI runs these checks in independent jobs on every pull request and push to `main`, and supports manual runs.
 
 `pnpm build` produces the importable ESM library and declarations in `dist`. `pnpm build:playground` also builds the playground against those exports, without development source aliases. This package is private and has not been published to npm. Install a local tarball in another application:
 
@@ -231,13 +231,13 @@ pnpm test:controls:browser
 
 `pnpm test:browser` builds and packs the library, installs it in a fresh separate consumer, checks its declarations, builds that consumer, then runs independent Playwright cases in headless Chromium with software WebGL. The consumer imports package exports and styles without a source alias and uses local map resources. Each case starts with a fresh page, and failures keep a screenshot and trace in `.artifacts/playwright/`. Package setup and failing cases return a nonzero exit status. Use `pnpm test:browser -- --grep 'Picker'` to run matching cases after the same package preparation.
 
-`pnpm test:controls:browser` opens the separate control lab and uses real mouse, keyboard, and wheel input. Its failure artifacts are in `control-lab/test-results/`. Run one case with `pnpm exec playwright test -c control-lab/playwright.config.ts -g 'dragging an armed map'`.
+`pnpm test:controls:browser` builds and previews the separate control lab and uses real mouse, keyboard, and wheel input. Its failure artifacts are in `control-lab/test-results/`. Run one case with `pnpm exec playwright test -c control-lab/playwright.config.ts -g 'dragging an armed map'`.
 
-`pnpm validate` runs both browser suites with type checking, module tests, and affected consumer builds. The pull-request workflow runs this command and uploads browser failure artifacts. Repository administrators should require its **validate** job before merging. Dependency and browser installation require network access on a fresh machine. Playwright is a development dependency only. Desktop Chromium with software WebGL does not establish touch behavior, complete accessibility, or hardware GPU coverage.
+`pnpm validate` runs both browser suites with type checking, module tests, and affected consumer builds. CI distributes the packaged browser suite across four runners, each installing and building its own packed consumer, with one browser worker per runner. See [CI and nightly validation](docs/ci-validation.md) for required jobs, reports, stress runs, and enforcement. Dependency and browser installation require network access on a fresh machine. Playwright is a development dependency only. Desktop Chromium with software WebGL does not establish Firefox, WebKit, touch behavior, complete accessibility, hardware GPU coverage, or long-session memory guarantees.
 
 Add `--headed` to the targeted browser command to watch the case run. See [measured results](docs/performance.md) for bundle size, workload observations, and validation limits.
 
-The [reliability regression inventory](docs/reliability-validation.md) maps the consumer audit to tests retained across the terrain and drawing integrations.
+The [consumer journey audit](docs/consumer-testing-audit.md) records the testing gaps reviewed for parallel CI. The [reliability regression inventory](docs/reliability-validation.md) maps the consumer audit to tests retained across the terrain and drawing integrations.
 
 ## Drawing and editing
 

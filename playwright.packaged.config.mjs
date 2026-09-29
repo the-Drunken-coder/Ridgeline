@@ -5,14 +5,17 @@ export default defineConfig({
   timeout: 90_000,
   expect: { timeout: 10_000 },
   workers: 1,
+  fullyParallel: true,
   retries: 0,
+  forbidOnly: !!process.env.CI,
+  failOnFlakyTests: true,
   reporter: 'list',
   outputDir: '.artifacts/playwright',
   use: {
     baseURL: 'http://127.0.0.1:5174',
     viewport: { width: 1280, height: 720 },
     launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] },
-    screenshot: 'off',
+    screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
   },
   webServer: {

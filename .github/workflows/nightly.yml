@@ -1,0 +1,81 @@
+name: Nightly consumer stress
+
+'on':
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.9
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: node scripts/ci/run-nightly.mjs ${{ matrix.shard }}
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: reports/nightly-${{ matrix.shard }}.json
+          PLAYWRIGHT_HTML_OUTPUT_DIR: nightly-html-${{ matrix.shard }}
+          PLAYWRIGHT_HTML_OPEN: never
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-${{ matrix.shard }}
+          path: |
+            reports/
+            nightly-html-${{ matrix.shard }}/
+            .artifacts/playwright/
+          if-no-files-found: warn
+          retention-days: 14
+          include-hidden-files: true
+
+  report:
+    if: always() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # All issue writers share this group, including manual runs and reruns.
+    concurrency:
+      group: nightly-issue-reporting
+      cancel-in-progress: false
+      queue: max
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/download-artifact@v4
+        id: artifacts
+        continue-on-error: true
+        with:
+          pattern: nightly-*
+          path: nightly-results
+          merge-multiple: true
+      - run: node scripts/ci/nightly-report.mjs nightly-results/reports
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NIGHTLY_REVISION: ${{ github.sha }}
+          NIGHTLY_OUTCOME: ${{ needs.browser.result }}
+      - if: always() && steps.artifacts.outcome == 'failure'
+        run: exit 1

@@ -3,6 +3,9 @@ import { defineConfig } from 'playwright/test';
 export default defineConfig({
   testDir: './tests',
   workers: 1,
+  retries: 0,
+  forbidOnly: !!process.env.CI,
+  failOnFlakyTests: true,
   timeout: 30_000,
   use: {
     baseURL: 'http://127.0.0.1:4173',
@@ -12,10 +15,10 @@ export default defineConfig({
   },
   outputDir: './test-results',
   webServer: {
-    command: 'pnpm dev --port 4173 --strictPort',
+    command: 'pnpm build && pnpm preview --port 4173 --strictPort',
     cwd: import.meta.dirname,
     url: 'http://127.0.0.1:4173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
+    reuseExistingServer: false,
+    timeout: 120_000,
   },
 });

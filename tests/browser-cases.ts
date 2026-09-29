@@ -8,6 +8,7 @@ export const browserCases = [
   'Destroying from a restoration diagnostic stops callbacks and resource creation',
   'Unrelated terrain failure preserves the displayed mask of a pending replacement',
   'Destroy during initialization, repeat destroy, then remount',
+  'Late terrain preparation cannot affect a replacement viewport',
   'Queued features render with stable string IDs and click events',
   'Reserved feature IDs remain selectable without inherited state',
   'Incremental updates replace data without moving the camera',
