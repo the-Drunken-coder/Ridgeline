@@ -2,6 +2,20 @@
 
 A framework-neutral TypeScript map viewport with an optional radial feature picker. Consumers supply data and own their application workflows. MapLibre GL JS renders the map; Mapterhorn supplies the default elevation data.
 
+## Standout features
+
+- [Radial feature picker](#interaction-and-application-ui) for overlapping features, with hover previews, keyboard navigation, and paging. Choices keep their positions while features move.
+- [Airborne entities](#airborne-entities-and-attachments) with ground-relative or sea-level altitude. Attached ground zones, airborne volumes, and sensor cameras follow the entity as it moves.
+- [Sensor camera terrain visibility](#airborne-entities-and-attachments) with camera footprints and 3D viewing volumes. Optional GPU visibility estimates which ground regions are visible or blocked by hills.
+- [Drawing and editing](#drawing-and-editing) for lines, polygons, circles, rectangles, and arrows, with vertex snapping, draft undo/redo, and live measurements. Saved shape definitions keep circles, rectangles, and arrows editable after reload.
+
+## Other map features
+
+- [GeoJSON points, lines, and polygons](#features-and-updates) with custom icons, labels, styling, and selection highlights.
+- [Live feature updates](#features-and-updates) batched per animation frame, with incremental additions, changes, and removals.
+- [Flat and globe projections, 3D terrain, and configurable hillshade](#maps-terrain-and-network-access). Swap basemaps or elevation providers while retaining features and selection.
+- [Custom hover content and context menus](#interaction-and-application-ui), themeable interaction UI, and direct MapLibre access for application-specific extensions.
+
 ## Core design decisions
 
 Ridgeline is built for anyone who needs an easy-to-use, reusable map viewport. Core design decisions must serve consuming applications generally.
