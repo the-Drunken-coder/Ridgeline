@@ -299,6 +299,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     if (interactionOwner) return;
     updateHover(event);
   });
+  // Feature publication and camera changes can alter the pick under a still pointer.
+  map.on('idle', refreshHover);
   map.on('moveend', () => emit('camerachange', { center: map.getCenter(), zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() }));
   const resize = new ResizeObserver(() => { if (!destroyed) map.resize(); });
   resize.observe(options.container);
