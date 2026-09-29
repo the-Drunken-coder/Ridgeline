@@ -95,6 +95,7 @@ jobs:
         with:
           name: failures-packaged-${{ matrix.shard }}
           path: .artifacts/playwright/
+          include-hidden-files: true
           if-no-files-found: warn
 
   control-browser:
@@ -153,6 +154,7 @@ jobs:
         with:
           name: browser-report
           path: .artifacts/browser-report/
+          include-hidden-files: true
           if-no-files-found: error
       - uses: actions/download-artifact@v4
         if: always()
@@ -176,6 +178,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '24'
+          package-manager-cache: false
       - run: node scripts/check-validation.mjs
         env:
           VALIDATION_NEEDS: ${{ toJSON(needs) }}
