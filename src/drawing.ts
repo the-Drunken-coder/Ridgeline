@@ -695,6 +695,8 @@ export function attachDrawing<P extends Properties>(
   const off = session.onChange(render);
   let offPrepared = () => {};
   const offSceneChange = drawingInternals.onSceneChange(() => {
+    // Invalidate ground resolutions already in progress, including consumer snap callbacks.
+    stateRevision++;
     feedback?.clear();
     session.setCursor(undefined);
   });

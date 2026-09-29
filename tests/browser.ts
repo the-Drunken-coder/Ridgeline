@@ -2821,6 +2821,128 @@ async function suite() {
       check(canvas.style.cursor === 'grabbing', 'Destroy restored a cursor drawing did not own');
     } finally { editor.destroy(); draw.destroy(); }
   });
+  await run('Snap callbacks cannot place a target from a replaced scene', async () => {
+    const protocol = `snap-scene-${crypto.randomUUID()}`;
+    let release = () => {};
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    addProtocol(protocol, async () => { await gate; throw new Error('Terrain held for scene replacement'); });
+    const elevation = { tiles: [`${protocol}://dem/{z}/{x}/{y}.png`], encoding: 'custom' as const,
+      redFactor: 1, greenFactor: 0, blueFactor: 0, baseShift: 0, maxzoom: 0 };
+    try {
+      const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 },
+        features: [point('scene-snap')], logger: () => {} });
+      current = draw; await draw.ready;
+      let replace = false;
+      const editor = attachDrawing(draw, { createFeature: () => ({ id: 'scene-click', properties: {} }),
+        canSnap: () => {
+          if (replace) { replace = false; draw.configure({ terrain: true, elevation }); }
+          return true;
+        }, submit: () => ({ accepted: true }) });
+      try {
+        editor.start('line');
+        const screen = draw.map.project([0, 0]);
+        await until(() => draw.map.queryRenderedFeatures([[screen.x - 12, screen.y - 12],
+          [screen.x + 12, screen.y + 12]], { layers: ['rl:points'] }).length > 0, 'snap candidate visible');
+        await pointer('move', screen);
+        await until(() => editor.getPreview()?.kind === 'line', 'initial ground preview');
+        let stalePreview = false;
+        const offPreview = editor.onPreview(() => {
+          if (replace === false && draw.getConfiguration().terrain && editor.getPreview()) stalePreview = true;
+        });
+        try {
+          replace = true;
+          await pointer('move', { x: screen.x + 1, y: screen.y });
+          check(!stalePreview && editor.getPreview() === undefined,
+            'Scene replacement republished a ground preview from the old scene');
+          draw.configure({ terrain: false });
+          await until(() => !!container.querySelector('.rl-ground-crosshair:not([hidden])'), 'flat target restored');
+          replace = true;
+          await pointer('click', screen);
+          check(editor.getState().draft?.placed === 0, 'Snap callback placed a target from the replaced scene');
+        } finally { offPreview(); }
+      } finally { editor.destroy(); draw.destroy(); }
+    } finally { release(); removeProtocol(protocol); }
+  });
+  await run('A valid terrain center keeps its target while footprint tiles load', async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!;
+    context.fillStyle = 'rgb(100,0,0)'; context.fillRect(0, 0, 256, 256);
+    const data = await (await fetch(dem.toDataURL())).arrayBuffer();
+    const protocol = `partial-footprint-${crypto.randomUUID()}`;
+    let release = () => {};
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let neighboringTileRequested = false;
+    addProtocol(protocol, async params => {
+      const zoom = Number(params.url.split('/').at(-3));
+      const x = Number(params.url.split('/').at(-2));
+      if (x >= 2 ** (zoom - 1)) { neighboringTileRequested = true; await gate; }
+      return { data: data.slice(0) };
+    });
+    try {
+      const center: [number, number] = [-0.001, 0];
+      const draw = createViewport({ container, basemap: style(), terrain: true,
+        elevation: { tiles: [`${protocol}://dem/{z}/{x}/{y}.png`], encoding: 'custom',
+          redFactor: 1, greenFactor: 0, blueFactor: 0, baseShift: 100, maxzoom: 12 },
+        camera: { center, zoom: 12 }, logger: () => {} });
+      current = draw; await draw.ready;
+      const editor = attachDrawing(draw, { createFeature: () => ({ id: 'partial-footprint', properties: {} }),
+        submit: () => ({ accepted: true }) });
+      try {
+        editor.start('line');
+        const screen = draw.map.project(center);
+        await pointer('move', screen);
+        await until(() => neighboringTileRequested &&
+          !!container.querySelector('.rl-ground-crosshair:not([hidden])'), 'valid center beside pending terrain');
+        check(!container.querySelector('.rl-ground-footprint:not([hidden])'),
+          'Footprint crossed unavailable surrounding terrain');
+        await pointer('click', screen);
+        check(editor.getState().draft?.placed === 1, 'Missing footprint blocked a valid center');
+      } finally { editor.destroy(); draw.destroy(); }
+    } finally { release(); removeProtocol(protocol); }
+  });
+  await run('Destroying during terrain replacement releases active drawing work', async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!;
+    context.fillStyle = 'rgb(100,0,0)'; context.fillRect(0, 0, 256, 256);
+    const data = await (await fetch(dem.toDataURL())).arrayBuffer();
+    for (const editing of [false, true]) {
+      const protocol = `pending-destroy-${crypto.randomUUID()}`;
+      let release = () => {};
+      const gate = new Promise<void>(resolve => { release = resolve; });
+      let requested = false, completed = false;
+      addProtocol(protocol, async () => {
+        requested = true;
+        await gate;
+        completed = true;
+        return { data: data.slice(0) };
+      });
+      try {
+        const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 },
+          features: [point('edit-after-destroy')], logger: () => {} });
+        current = draw; await draw.ready;
+        const editor = attachDrawing(draw, { createFeature: () => ({ id: 'place-after-destroy', properties: {} }),
+          submit: () => ({ accepted: true }) });
+        let previews = 0;
+        const offPreview = editor.onPreview(() => { previews++; });
+        try {
+          if (editing) editor.edit('edit-after-destroy');
+          else { editor.start('line'); await pointer('move', draw.map.project([0, 0])); }
+          draw.configure({ terrain: true, elevation: { tiles: [`${protocol}://dem/{z}/{x}/{y}.png`],
+            encoding: 'custom', redFactor: 1, greenFactor: 0, blueFactor: 0, baseShift: 100, maxzoom: 0 } });
+          await until(() => requested, 'terrain request before active drawing destruction');
+          draw.destroy();
+          const afterDestroy = previews;
+          check(!container.querySelector('canvas,.rl-ground-feedback,.rl-drawing-handle'),
+            'Destroyed viewport retained drawing or map elements');
+          release();
+          await until(() => completed, 'pending terrain response');
+          await new Promise<void>(resolve => setTimeout(resolve, 100));
+          check(previews === afterDestroy && !container.querySelector('canvas,.rl-ground-feedback,.rl-drawing-handle'),
+            'Pending terrain restored drawing output after destruction');
+        } finally { offPreview(); editor.destroy(); draw.destroy(); }
+      } finally { release(); removeProtocol(protocol); }
+    }
+  });
   await run('Ground drawing uses loaded ridge, zero, and negative DEM cells and rejects missing DEM', async () => {
     const dem = document.createElement('canvas'); dem.width = dem.height = 256;
     const context = dem.getContext('2d')!;
