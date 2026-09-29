@@ -2,6 +2,8 @@
 
 Status: ready-for-agent
 
+Canonical requirements: this versioned file. Source: [GitHub spec #32](https://github.com/the-Drunken-coder/Ridgeline/issues/32), recorded here on 2026-09-29. Follow the [tracker precedence rule](../../docs/agents/issue-tracker.md#canonical-requirements) if the copies diverge.
+
 ## Problem Statement
 
 Maintainers need confidence that Ridgeline works for real consumers before changes merge. Tests should establish complete workflows through the installed package, including rendering, interaction, recovery, and cleanup. Focused module tests should cover detailed invariants and failure paths that support those workflows.

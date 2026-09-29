@@ -41,6 +41,13 @@ jobs:
           node-version: '24'
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: validation-fixture-failures
+          path: .artifacts/validation/
+          include-hidden-files: true
+          if-no-files-found: ignore
 
   consumer-builds:
     runs-on: ubuntu-latest

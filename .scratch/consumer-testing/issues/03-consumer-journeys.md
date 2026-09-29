@@ -1,11 +1,23 @@
 # consumer-journeys
 
-Status: resolved
+Status: ready-for-agent
 Blocked by: none
-Spec: ../spec.md
+Acceptance depends on: ticket 01's integrated verification, including ticket 02 consuming the new scenario
+Integration owner: PR #35 coordinating agent, through ticket 01
+Spec: [Consumer testing and parallel CI](../spec.md)
 
 Audit critical consumer workflows, add concrete missing coverage, run control-lab browser workflows against production build. Own browser test files, control-lab config and consumer audit documentation. Keep existing coverage.
 
-## Result
+## Acceptance criteria
 
-Implemented on the spec branch. See [validation evidence](../../../docs/ci-validation.md) and [consumer audit](../../../docs/consumer-testing-audit.md).
+- Record the critical-journey audit, mapping package installation, updates/selection, real input, drawing, recovery, and cleanup to existing coverage or a concrete gap. Retain useful module tests.
+- The packaged late-terrain case proves destruction cancels preparation, delayed completion cannot change replacement data or recreate old DOM, and the replacement accepts real selection input without late diagnostics.
+- Deliver the scenario named `Late terrain preparation cannot affect a replacement viewport` for ticket 02's nightly selection, and verify it executes there.
+- The four control-lab browser journeys use a production build and preview server, with real mouse, keyboard, and wheel input and no reuse of an unknown server.
+- Verify both browser suites and consumer builds on the integrated revision. Document Chromium/software-WebGL limits separately from unverified platforms and workloads.
+
+## Evidence and remaining work
+
+The [consumer audit](../../../docs/consumer-testing-audit.md) maps the journeys and added lifecycle case. Browser shards, control-lab browser tests, and consumer builds passed in the hosted PR run at `4fc9bfd`; module tests and the aggregate gate failed. Earlier nightly evidence is dated in the [verification record](../../../docs/ci-validation.md#verification-record-2026-09-29).
+
+Acceptance remains pending at integration. The coordinating agent must verify that the revised nightly reporter accepts executions of the delivered scenario and record hosted checks for the final revision in the [shared closeout record](../../../docs/ci-validation.md#current-closeout-record).

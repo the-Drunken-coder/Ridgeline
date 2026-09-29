@@ -24,26 +24,36 @@ test('gate only succeeds when all required jobs succeed', () => {
   }
 });
 
-test('actual Playwright shard reports cover every case and preserve failures', async () => {
-  const directory = await mkdtemp(resolve('.validation-fixture-'));
+test('actual Playwright shard reports cover every case and preserve failures', async t => {
+  const artifacts = resolve('.artifacts/validation');
+  await mkdir(artifacts, { recursive: true });
+  const directory = await mkdtemp(`${artifacts}/fixture-`);
+  let completed = false;
   try {
     await writeFile(`${directory}/playwright.config.mjs`, `export default { testDir: '.', fullyParallel: true, workers: 1, retries: 0, outputDir: './results' };`);
     await writeFile(`${directory}/cases.spec.mjs`, `import { test, expect } from 'playwright/test';
       for (let i = 0; i < 8; i++) test('case ' + i, () => expect(i).not.toBe(0));`);
-    function run(args, env = {}) {
-      return spawnSync('pnpm', ['exec', 'playwright', 'test', '-c', `${directory}/playwright.config.mjs`, ...args], {
+    async function run(name, args, env = {}) {
+      const result = spawnSync('pnpm', ['exec', 'playwright', ...args], {
         encoding: 'utf8', env: { ...process.env, ...env }, timeout: 60_000,
       });
+      await writeFile(`${directory}/${name}.process.json`, JSON.stringify({
+        args, status: result.status, signal: result.signal, error: result.error?.message,
+        stdout: result.stdout, stderr: result.stderr,
+      }, null, 2));
+      assert.ifError(result.error);
+      return result;
     }
+    const testArgs = ['test', '-c', `${directory}/playwright.config.mjs`];
     // File output avoids depending on a subprocess flushing JSON to a stdout pipe.
     const discoveryPath = `${directory}/discovery.json`;
-    const discovery = run(['--list', '--reporter=json'], { PLAYWRIGHT_JSON_OUTPUT_FILE: discoveryPath });
+    const discovery = await run('discovery', [...testArgs, '--list', '--reporter=json'], { PLAYWRIGHT_JSON_OUTPUT_FILE: discoveryPath });
     assert.equal(discovery.status, 0, discovery.stderr);
     const expected = JSON.parse(await readFile(discoveryPath, 'utf8'));
     const reports = [];
     for (let shard = 1; shard <= 4; shard++) {
       const path = `${directory}/${shard}.json`;
-      const result = run([`--shard=${shard}/4`, '--reporter=json,blob'], {
+      const result = await run(`shard-${shard}`, [...testArgs, `--shard=${shard}/4`, '--reporter=json,blob'], {
         PLAYWRIGHT_JSON_OUTPUT_FILE: path,
         PLAYWRIGHT_BLOB_OUTPUT_DIR: `${directory}/blobs-${shard}`,
       });
@@ -56,10 +66,7 @@ test('actual Playwright shard reports cover every case and preserve failures', a
       await cp(`${directory}/blobs-${shard}`, `${directory}/combined`, { recursive: true });
     }
     const mergedPath = `${directory}/merged.json`;
-    const merged = spawnSync('pnpm', ['exec', 'playwright', 'merge-reports', '--reporter=json', `${directory}/combined`], {
-      encoding: 'utf8', timeout: 60_000,
-      env: { ...process.env, PLAYWRIGHT_JSON_OUTPUT_FILE: mergedPath },
-    });
+    const merged = await run('merge', ['merge-reports', '--reporter=json', `${directory}/combined`], { PLAYWRIGHT_JSON_OUTPUT_FILE: mergedPath });
     assert.equal(merged.status, 0, merged.stderr);
     const combined = JSON.parse(await readFile(mergedPath, 'utf8'));
     assert.equal(combined.stats.expected, 7);
@@ -78,7 +85,9 @@ test('actual Playwright shard reports cover every case and preserve failures', a
     const retried = structuredClone(reports);
     retried[0].suites[0].specs[0].tests[0].results.push({ status: 'passed', retry: 1 });
     assert.throws(() => checkShards(expected, retried), /exactly once/);
+    completed = true;
   } finally {
-    await rm(directory, { recursive: true, force: true });
+    if (completed) await rm(directory, { recursive: true, force: true });
+    else t.diagnostic(`Validation fixture and subprocess diagnostics retained at ${directory}`);
   }
 });

@@ -15,6 +15,8 @@ pnpm test:browser -- --shard=1/4
 
 `pnpm validate` runs local checks sequentially. CI distributes the same checks across jobs. `pnpm test` includes executable validation-automation tests as well as the library and control-lab module tests. Both browser suites use production consumer builds. The packaged suite retains a fresh page per case even when cases are distributed across shards.
 
+The shard-report fixture reads machine-readable reports from explicit JSON files. If it fails, it retains its inputs, reports, and subprocess diagnostics under `.artifacts/validation/`; CI uploads them as `validation-fixture-failures`. Successful fixtures are removed.
+
 Keep useful coverage when runtime grows. Runs approaching fifteen minutes should prompt investigation of setup costs and case timings, followed by additional parallelism where warranted.
 
 ## Browser reports
@@ -27,6 +29,8 @@ The nightly workflow runs at 03:17 UTC and accepts manual runs on the default br
 
 The `nightly-1` and `nightly-2` artifacts retain JSON, HTML reports, traces, and failure screenshots for fourteen days. Only the trusted default-branch reporting job receives issue-writing permission. It creates an issue per failing scenario/project identity, adds a comment when that failure recurs in another run, and avoids duplicate comments when the same run is reported again. A later pass leaves the issue open. Missing or incomplete reports produce an infrastructure issue and fail reporting; API failures also fail the job.
 
+Completeness requires repetition indices 0 through 9 exactly once for each scenario in every reported project. Duplicate identities across shards, invalid indices, and missing repetitions fail reporting even when the total record count is ten.
+
 Reporting is serialized across nightly runs. `queue: max` preserves up to 100 pending reporters; GitHub cancels arrivals beyond that limit. See [GitHub concurrency documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency). Ordinary PR validation has no issue-writing permission.
 
 The [consumer journey audit](consumer-testing-audit.md) maps existing coverage and the added lifecycle regression. Module tests remain responsible for detailed geometry, validation, publication, and asynchronous ownership invariants.
@@ -36,6 +40,17 @@ The [consumer journey audit](consumer-testing-audit.md) maps existing coverage a
 On 2026-09-29, GitHub reported this repository as private, with no existing rulesets or branch protection. The implementation configured and read back protection for `main` requiring `validate`, with strict status checks. Administrator bypass remains enabled. Repository visibility was not changed. Private-repository hosted runner usage still applies.
 
 Desktop Chromium with software WebGL is the verified browser target. These checks do not establish Firefox or WebKit support, physical-GPU behavior, touch interaction, complete accessibility, or long-session production memory guarantees. Dependency and browser installation need network access on a fresh machine.
+
+## Current closeout record
+
+Recorded 2026-09-29. Implementation is present, with local follow-up checks complete; integrated acceptance and merge readiness remain pending.
+
+- Spec: [canonical consumer-testing spec](../.scratch/consumer-testing/spec.md), sourced from GitHub #32.
+- Integration owner: PR #35 coordinating agent, through [ticket 01](../.scratch/consumer-testing/issues/01-parallel-validation.md), after deliveries from tickets 02 and 03.
+- Reviewed: `5ea50b7b5140d9c6271baeb03dd65b45efad946b...4fc9bfd927d5ac3cd6a4fb94c923c030a0ba86d1`. Standards/Spec review identified the inaccurate coverage claim and failing hosted report fixture. Later review identified count-only nightly completeness. Final integrated review of the follow-up changes is pending.
+- Local verification: `5055653c3617ceedc66cf5bfff8a7f4a47251c8f` plus uncommitted changes to the nightly reporter, its tests, validation fixture, and artifact-upload workflow. `pnpm test` passed 175 Node tests and five control-lab tests; `pnpm check` passed. A controlled subprocess failure verified local fixture and diagnostic retention. These results do not establish hosted artifact upload or nightly browser execution for the revised code.
+- Hosted verification: [PR run 36518622803](https://github.com/the-Drunken-coder/Ridgeline/actions/runs/36518622803) reported head `4fc9bfd927d5ac3cd6a4fb94c923c030a0ba86d1`; the tested merge checkout SHA was not established in this closeout. `module-tests` failed parsing the merged report, and `validate` correctly failed. Type checking, browser jobs, combined reports, and consumer builds passed. No hosted run covers the local follow-up changes.
+- Remaining limits: commit and review the integrated changes, verify current required hosted checks and the revised nightly path, exercise PR supersession, and update this record with the resulting revisions. Partial-write recovery now passes local HTTP tests for both issue creation and recurrence comments. Earlier successful runs below remain historical evidence.
 
 ## Verification record, 2026-09-29
 

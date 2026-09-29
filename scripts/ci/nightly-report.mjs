@@ -14,7 +14,8 @@ export const nightlyShards = 2;
 // Titles and project names identify scenarios across moves, repetitions, and revisions.
 export async function reportNightly({ directory, repository, revision, runId, serverUrl, token, apiUrl = 'https://api.github.com', outcome }) {
   const failures = new Map();
-  const counts = new Map(nightlyScenarios.map(title => [title, 0]));
+  const executions = new Map(nightlyScenarios.map(title => [title, new Map()]));
+  const projects = new Set();
   const incomplete = [];
   for (let shard = 1; shard <= nightlyShards; shard++) {
     try {
@@ -24,9 +25,22 @@ export async function reportNightly({ directory, repository, revision, runId, se
       function visit(suites) {
         for (const suite of suites) {
           for (const spec of suite.specs ?? []) {
-            if (!counts.has(spec.title)) throw new Error(`Unexpected scenario: ${spec.title}`);
+            if (!executions.has(spec.title)) throw new Error(`Unexpected scenario: ${spec.title}`);
             for (const test of spec.tests) {
-              counts.set(spec.title, counts.get(spec.title) + 1);
+              const project = test.projectName ?? '';
+              if (typeof project !== 'string') throw new Error('Invalid project name');
+              projects.add(project);
+              const scenario = executions.get(spec.title);
+              if (!scenario.has(project)) scenario.set(project, new Set());
+              const repetitions = scenario.get(project);
+              const index = test.repeatEachIndex;
+              if (!Number.isInteger(index) || index < 0 || index >= nightlyRepeats) {
+                incomplete.push(`${spec.title} [${project}]: invalid repetition ${index}`);
+              } else if (repetitions.has(index)) {
+                incomplete.push(`${spec.title} [${project}]: duplicate repetition ${index}`);
+              } else {
+                repetitions.add(index);
+              }
               if (test.status !== 'expected' || test.results.length !== 1 || test.results[0].status !== 'passed') {
                 const identity = `${test.projectName ?? ''}\n${spec.title}`;
                 failures.set(identity, { title: spec.title, detail: JSON.stringify(test.results, null, 2).slice(0, 12_000) });
@@ -41,8 +55,11 @@ export async function reportNightly({ directory, repository, revision, runId, se
       incomplete.push(`Shard ${shard}: ${error.message}`);
     }
   }
-  for (const [title, count] of counts) {
-    if (count !== nightlyRepeats) incomplete.push(`${title}: expected ${nightlyRepeats} executions, found ${count}`);
+  for (const [title, scenario] of executions) {
+    for (const project of projects.size ? projects : ['']) {
+      const count = scenario.get(project)?.size ?? 0;
+      if (count !== nightlyRepeats) incomplete.push(`${title} [${project}]: expected ${nightlyRepeats} executions, found ${count}`);
+    }
   }
   if (outcome !== 'success' && failures.size === 0) incomplete.push(`Browser job outcome: ${outcome}`);
   if (incomplete.length) failures.set('nightly-infrastructure', { title: 'Incomplete nightly execution', detail: incomplete.join('\n') });
