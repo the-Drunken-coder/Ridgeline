@@ -51,6 +51,14 @@ for (const feature of await entries(join(root, '.scratch'))) {
       .replace(/<!--[\s\S]*?-->/g, ''));
     const header = body.split(/^##\s/m)[0];
     const field = name => header.match(new RegExp(`^${name}:[ \\t]*(.*)$`, 'm'))?.[1].trim();
+    const canonicalIssue = field('Canonical issue');
+    if (canonicalIssue !== undefined) {
+      if (!/^\[[^\]\r\n]+\]\(https:\/\/github\.com\/the-Drunken-coder\/Ridgeline\/issues\/[1-9]\d*\)$/.test(canonicalIssue)) {
+        fail('Canonical issue: must link to a GitHub issue in the-Drunken-coder/Ridgeline');
+      }
+      // Migrated snapshots retain history; their GitHub issue owns current requirements.
+      continue;
+    }
     const type = field('Type');
     // Wayfinding tickets answer questions under a map, rather than implementing a spec.
     if (['research', 'prototype', 'grilling', 'task'].includes(type) && await isFile(join(directory, 'map.md'))) continue;

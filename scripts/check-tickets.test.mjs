@@ -45,6 +45,48 @@ test('accepts implementation tickets and map-backed wayfinding tickets', async t
   assert.equal(files.run().status, 0);
 });
 
+test('accepts migrated snapshots linking their canonical GitHub issue without live metadata', async t => {
+  const files = await fixture(t);
+  await rm(join(files.directory, 'spec.md'));
+  await files.write(`# Consumer check\n\nCanonical issue: [Consumer check](https://github.com/the-Drunken-coder/Ridgeline/issues/38)\n\nHistorical snapshot: migrated to GitHub Issues.\n\n## Original scope\n\nRetained for reference.\n`);
+  const result = files.run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Checked 0 implementation tickets/);
+});
+
+test('rejects malformed and foreign canonical issue links even on otherwise valid tickets', async t => {
+  const files = await fixture(t);
+  for (const canonicalIssue of [
+    '',
+    'migrated',
+    'https://github.com/the-Drunken-coder/Ridgeline/issues/38',
+    '[Issue](https://github.com/other/Ridgeline/issues/38)',
+    '[Issue](https://example.com/the-Drunken-coder/Ridgeline/issues/38)',
+    '[Issue](https://github.com/the-Drunken-coder/Ridgeline/pull/38)',
+    '[Issue](https://github.com/the-Drunken-coder/Ridgeline/issues/0)',
+    '[Issue](https://github.com/the-Drunken-coder/Ridgeline/issues/-1)',
+    '[Issue](https://github.com/the-Drunken-coder/Ridgeline/issues/38extra)',
+  ]) {
+    await files.write(`Canonical issue: ${canonicalIssue}\n${valid}`);
+    const result = files.run();
+    assert.equal(result.status, 1, canonicalIssue);
+    assert.match(result.stderr, /Canonical issue: must link/);
+  }
+});
+
+test('does not exempt tickets when the canonical issue appears only in examples or later sections', async t => {
+  const files = await fixture(t);
+  const canonicalIssue = 'Canonical issue: [Issue](https://github.com/the-Drunken-coder/Ridgeline/issues/38)';
+  for (const body of [
+    `\`\`\`md\n${canonicalIssue}\n\`\`\`\n`,
+    `<!-- ${canonicalIssue} -->\n`,
+    `## Comments\n${canonicalIssue}\n`,
+  ]) {
+    await files.write(body);
+    assert.equal(files.run().status, 1, body);
+  }
+});
+
 test('reports each missing or empty required field with its ticket path', async t => {
   const files = await fixture(t);
   for (const field of ['Status', 'Spec', 'Blocked by', 'Acceptance depends on', 'Integration owner']) {
