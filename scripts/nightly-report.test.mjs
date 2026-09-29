@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { spawnSync } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { nightlyScenarios, nightlyRepeats, reportNightly } from './ci/nightly-report.mjs';
 
@@ -182,4 +183,28 @@ test('reporting resumes after a partial write without duplicate issues or recurr
   assert.equal(f.issues.length, 2);
   assert.equal(f.comments.get(1).length, 1);
   assert.equal(f.comments.get(2).length, 1);
+});
+
+test('real Playwright repetitions reach the nightly reporter with their execution identities', async t => {
+  const f = await fixture(t);
+  const directory = await mkdtemp(resolve('.nightly-fixture-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(`${directory}/playwright.config.mjs`, `export default { testDir: '.', fullyParallel: true, workers: 1, retries: 0, outputDir: './results' };`);
+  await writeFile(`${directory}/cases.spec.mjs`, `import { test, expect } from 'playwright/test';
+    for (const title of ${JSON.stringify(nightlyScenarios)}) test(title, ({}, info) => {
+      expect(title === ${JSON.stringify(nightlyScenarios[0])} && info.repeatEachIndex === 0, 'controlled scenario failure').toBe(false);
+    });`);
+  for (let shard = 1; shard <= 2; shard++) {
+    const run = spawnSync('pnpm', ['exec', 'playwright', 'test', '-c', `${directory}/playwright.config.mjs`,
+      `--repeat-each=${nightlyRepeats}`, `--shard=${shard}/2`, '--reporter=./scripts/ci/nightly-json-reporter.mjs'], {
+      encoding: 'utf8', timeout: 60_000,
+      env: { ...process.env, PLAYWRIGHT_JSON_OUTPUT_FILE: join(f.directory, `nightly-${shard}.json`) },
+    });
+    assert.ifError(run.error);
+    assert.equal(run.status, shard === 1 ? 1 : 0, run.stderr);
+  }
+  await f.report('1');
+  assert.equal(f.issues.length, 1);
+  assert.equal(f.issues[0].title, `[Nightly] ${nightlyScenarios[0]}`);
+  assert.match(f.issues[0].body, /controlled scenario failure/);
 });
