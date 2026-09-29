@@ -223,7 +223,7 @@ pnpm test:controls:browser
 
 Add `--headed` to the targeted browser command to watch the case run. See [measured results](docs/performance.md) for bundle size, workload observations, and validation limits.
 
-The [reliability regression inventory](docs/reliability-validation.md) maps the consumer audit to tests retained across the terrain and drawing integrations.
+The [consumer journey audit](docs/consumer-testing-audit.md) records the testing gaps reviewed for parallel CI. The [reliability regression inventory](docs/reliability-validation.md) maps the consumer audit to tests retained across the terrain and drawing integrations.
 
 ## Drawing and editing
 
