@@ -19,7 +19,7 @@
     "build": "vite build && tsc -p tsconfig.build.json",
     "build:playground": "pnpm build && vite build --config vite.playground.config.ts",
     "check": "tsc --noEmit && pnpm --dir control-lab typecheck",
-    "test": "node --import tsx --test tests/*.test.ts && pnpm test:controls",
+    "test": "node --import tsx --test tests/*.test.ts scripts/*.test.mjs && pnpm test:controls",
     "test:browser": "node scripts/test-browser.mjs",
     "test:controls:browser": "playwright test -c control-lab/playwright.config.ts",
     "validate": "pnpm check && pnpm test && pnpm test:browser && pnpm test:controls:browser && pnpm build:playground && pnpm build:controls",

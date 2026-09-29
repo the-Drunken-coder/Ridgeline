@@ -11,7 +11,7 @@ pnpm install
 pnpm dev:controls
 ```
 
-Open the local URL printed by Vite. `pnpm build:controls` checks TypeScript and builds `control-lab/dist/`. `pnpm test:controls` checks selection, order placement, and camera geometry. `pnpm test:controls:browser` drives the rendered controls with Chromium mouse, keyboard, and wheel input. The root `pnpm check` and `pnpm test` commands also check this workspace.
+Open the local URL printed by Vite. `pnpm build:controls` checks TypeScript and builds `control-lab/dist/`. `pnpm test:controls` checks selection, order placement, and camera geometry. `pnpm test:controls:browser` builds the application, starts its production preview server, and drives the rendered controls with Chromium mouse, keyboard, and wheel input. The root `pnpm check` and `pnpm test` commands also check this workspace.
 
 ## Controls
 
