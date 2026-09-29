@@ -38,7 +38,9 @@ Prioritize these qualities over being lightweight for its own sake. Bundle size,
 
 - Give listeners, observers, scheduled work, interaction leases, and GPU resources a clear owner and disposal path. Teardown must tolerate partial initialization and repeated calls.
 - Guard asynchronous completion against destruction, replacement, and newer state. A stale render or terrain result must not overwrite current data.
+- Consumer callbacks may synchronously cancel, destroy, or replace the active operation. Before continuing side effects, verify that the owner and operation are still current.
 - Schedule rendering when data or the view changes. Keep idle interfaces idle and bound caches and repeated work.
+- When skipping duplicate updates, account for other code that clears or replaces the destination state. Unchanged input alone does not prove that the destination is current.
 - Use the existing `RidgelineError` and diagnostic mechanisms for library failures, preserving operation context and causes. Honor documented recovery behavior; avoid silent fallback or unbounded automatic retry.
 - Isolate consumer callback failures so they cannot prevent cleanup or unrelated updates. Explain intentional error suppression where it occurs.
 
@@ -49,9 +51,16 @@ Prioritize these qualities over being lightweight for its own sake. Bundle size,
 - Use focused module tests for geometry, validation, and state transitions. Assert observable results and invariants, including relevant failure paths, rather than private call sequences.
 - Use test doubles only where they preserve the failure mode being tested. Avoid source-text assertions and tests that merely restate the implementation.
 - When reviewing code that consumes external tool reports, verify required fields with output produced by the installed tool through its configured reporter. Retain an integration test through the report consumer; synthetic fixtures cover malformed inputs but cannot establish the producer's format.
-- When reviewing completeness, deduplication, cancellation, recovery, or ownership guarantees, construct a violating history the implementation might accept. Check whether valid and invalid histories can produce the same summary. Demonstrate suspected failures through an existing interface when practical; distinguish reproduced failures from untested hypotheses.
 - Run type checking and the checks covering the changed behavior. Validate affected consumers as well: the playground for playground integration and the control lab for its own changes. Broaden testing when the change crosses shared boundaries.
 - Distinguish completed checks from manual observations and unverified behavior. Keep historical measurements dated rather than presenting them as current guarantees.
+
+### Review completion
+
+Before reporting a review clean:
+
+1. Pin the base and head commit SHAs and identify the checkout used for execution, including any uncommitted changes under review. Before declaring runtime checks unavailable because dependencies are missing, inspect matching existing worktrees or prepare an isolated checkout with the required dependencies.
+2. For changed completeness, deduplication, cancellation, callback, cache, recovery, or ownership guarantees, trace the relevant callers and state owners, including files outside the diff. Construct a concrete sequence of actions that could violate each affected guarantee. Check whether valid and invalid histories can produce the same summary.
+3. Record the attempted sequence, outcome, and supporting evidence in the review. Demonstrate suspected failures through an existing interface when practical; distinguish executed reproductions, conclusions from code inspection, and untested hypotheses. Choose focused checks using the guidance above. In a two-axis review, complete this investigation before reporting either Standards or Spec clean, and keep their findings separate.
 
 ## Documentation
 

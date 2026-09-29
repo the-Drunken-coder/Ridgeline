@@ -159,6 +159,8 @@ export function createDrawingSession<P extends Properties>(
   }
   function setCursor(position: DrawingPosition | undefined) {
     if (disposed) return;
+    // This owner also clears the cursor on draft changes, so it owns deduplication.
+    if (position?.[0] === cursor?.[0] && position?.[1] === cursor?.[1]) return;
     cursor = position && [...position];
     emit(previewListeners, "drawing.onPreview");
   }

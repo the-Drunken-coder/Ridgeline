@@ -2027,6 +2027,100 @@ async function suite() {
     check(!container.querySelector('.rl-ground-feedback'), 'Visual opt-out created an overlay');
     plain.destroy(); draw.destroy();
   });
+  await run('Ground feedback respects preview callbacks that cancel, destroy, or replace drawing', async () => {
+    for (const action of ['cancel', 'destroy', 'replace'] as const) {
+      const draw = createViewport({ container, basemap: style(), terrain: false,
+        camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+      current = draw; await draw.ready;
+      let nextId = 0;
+      const editor = attachDrawing(draw, { createFeature: () => ({ id: `callback-draft-${nextId++}`, properties: {} }),
+        submit: () => ({ accepted: true }) });
+      const canvas = draw.map.getCanvas();
+      canvas.style.cursor = 'help';
+      editor.start('line');
+      let invoked = false;
+      editor.onPreview(() => {
+        if (invoked) return;
+        invoked = true;
+        if (action === 'replace') { editor.cancel(); editor.start('line'); }
+        else editor[action]();
+      });
+      const screen = draw.map.project([0, 0]);
+      await pointer('move', screen);
+      check(invoked, `${action} callback did not run`);
+      const state = editor.getState();
+      check(action === 'replace'
+        ? state.phase === 'editing' && state.draft?.feature.id === 'callback-draft-1' && state.draft.placed === 0
+        : state.phase === 'idle', `${action} callback left the wrong drawing session`);
+      const feedback = container.querySelector('.rl-ground-feedback');
+      check(action === 'destroy' ? !feedback : feedback?.hasAttribute('hidden'), `${action} callback revived old feedback`);
+      check(canvas.style.cursor === 'help', `${action} callback retained the drawing cursor`);
+      check(editor.getPreview() === undefined, `${action} callback retained the old preview`);
+      if (action === 'replace') {
+        await pointer('move', { x: screen.x + 20, y: screen.y });
+        const preview = editor.getPreview();
+        check(preview?.kind === 'line' && preview.vertices.length === 1, 'Replacement drawing did not resume preview');
+        check(!container.querySelector('.rl-ground-crosshair')?.hasAttribute('hidden'), 'Replacement drawing did not resume feedback');
+      }
+      editor.destroy();
+      check(canvas.style.cursor === 'help', 'Repeated cleanup changed the restored cursor');
+      draw.destroy();
+    }
+  });
+  await run('Ground drawing restores the snapped preview after changing draft style', async () => {
+    const draw = createViewport({ container, basemap: style(), terrain: false,
+      camera: { center: [0, 0], zoom: 12 }, features: [point('style-snap-anchor', .025)], logger: () => {} });
+    current = draw; await draw.ready;
+    await until(() => draw.map.queryRenderedFeatures({ layers: ['rl:points'] })
+      .some(feature => feature.properties._rl_feature_id === 'style-snap-anchor'), 'style snap anchor rendered');
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'style-preview', properties: {} }),
+      submit: () => ({ accepted: true }) });
+    editor.start('line');
+    await pointer('click', draw.map.project([0, 0]));
+    const anchor = draw.map.project([.025, 0]);
+    await pointer('move', { x: anchor.x + 4, y: anchor.y });
+    const before = editor.getPreview();
+    check(before?.kind === 'line' && before.vertices.length === 2 && Math.abs((before.vertices[1]?.[0] ?? NaN) - .025) < 1e-10,
+      'Initial line preview did not reach the snap anchor');
+    editor.setStyle({ color: '#ff0000' });
+    await pointer('move', { x: anchor.x + 5, y: anchor.y });
+    const preview = editor.getPreview();
+    check(preview?.kind === 'line' && preview.vertices.length === 2 && Math.abs((preview.vertices[1]?.[0] ?? NaN) - .025) < 1e-10 &&
+      preview.vertices[1]?.[1] === 0, 'Style change left the snapped preview without its next vertex');
+    check(editor.getState().draft?.placed === 1, 'Restoring the preview placed a draft vertex');
+    await pointer('click', { x: anchor.x + 5, y: anchor.y });
+    const committed = editor.getState().draft?.shape;
+    check(JSON.stringify(committed) === JSON.stringify(preview), 'Next click disagreed with the restored snapped preview');
+    editor.destroy(); draw.destroy();
+  });
+  await run('Ground drawing keeps a valid polar target without an unsafe footprint', async () => {
+    const draw = createViewport({ container, basemap: style(), terrain: false, projection: 'globe',
+      camera: { center: [0, 85], zoom: 1, pitch: 0 }, logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'polar-target', properties: {} }),
+      submit: () => ({ accepted: true }) });
+    editor.setSnapping(false);
+    editor.start('line');
+    await until(() => Math.abs(draw.map.unproject(draw.map.project([0, 89.5])).lat - 89.5) < .01,
+      'globe projection reaches the polar fixture');
+    const screen = draw.map.project([0, 89.5]);
+    check(screen.x > 0 && screen.y > 0 && screen.x < container.clientWidth && screen.y < container.clientHeight,
+      'Polar fixture is outside the viewport');
+    await pointer('move', screen);
+    const crosshair = container.querySelector<SVGPathElement>('.rl-ground-crosshair');
+    if (!crosshair || crosshair.hasAttribute('hidden')) throw new Error('Valid polar target lost its crosshair');
+    check(container.querySelector('.rl-ground-footprint')?.hasAttribute('hidden'), 'Unsafe polar footprint remained visible');
+    const bounds = crosshair.getBBox();
+    const shown = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    await pointer('click', screen);
+    const shape = editor.getState().draft?.shape;
+    if (shape?.kind !== 'line' || shape.vertices.length !== 1) throw new Error('Valid polar click did not place one point');
+    const vertex = shape.vertices[0]!;
+    check(vertex[1] > 88 && vertex[1] <= 90, 'Polar click selected another ground region');
+    const placed = draw.map.project(vertex);
+    check(Math.hypot(placed.x - shown.x, placed.y - shown.y) < 2, 'Polar crosshair and placement disagree');
+    editor.destroy(); draw.destroy();
+  });
   await run('Ground drawing uses loaded ridge, zero, and negative DEM cells and rejects missing DEM', async () => {
     const dem = document.createElement('canvas'); dem.width = dem.height = 256;
     const context = dem.getContext('2d')!;

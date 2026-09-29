@@ -113,6 +113,8 @@ function footprintPath(
       position[0] + radius * Math.cos(angle) / (111_320 * Math.cos(latitudeRadians)),
       position[1] + radius * Math.sin(angle) / 111_320,
     ];
+    // The local approximation can cross a pole even when the center is valid.
+    if (!geographic.every(Number.isFinite) || Math.abs(geographic[1]) > 90) return;
     const pixel = map.project(geographic);
     if (!Number.isFinite(pixel.x) || !Number.isFinite(pixel.y) ||
       Math.hypot(pixel.x - center.x, pixel.y - center.y) > 20) return;

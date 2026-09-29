@@ -68,7 +68,7 @@ export function attachDrawing<P extends Properties>(
     pointerType = "mouse",
     bypassSnap = false;
   let pointer: { x: number; y: number } | undefined;
-  let cursorPosition: DrawingPosition | undefined;
+  let stateRevision = 0;
   const abort = new AbortController();
   function editable() {
     return ["editing", "rejected"].includes(session.getState().phase);
@@ -413,6 +413,7 @@ export function attachDrawing<P extends Properties>(
       }
   }
   function render() {
+    stateRevision++;
     const next = Boolean(session.getState().draft);
     if (next && !active) {
       restoreDoubleClick = map.doubleClickZoom.isEnabled();
@@ -426,7 +427,6 @@ export function attachDrawing<P extends Properties>(
     if (!session.getState().draft?.placing || !editable()) {
       feedback?.clear();
       pointer = undefined;
-      cursorPosition = undefined;
     }
     map
       .getCanvas()
@@ -439,6 +439,7 @@ export function attachDrawing<P extends Properties>(
   }
   function onClick(event: MapMouseEvent) {
     if (
+      disposed ||
       navigating ||
       !editable() ||
       !session.getState().draft?.placing ||
@@ -446,24 +447,30 @@ export function attachDrawing<P extends Properties>(
       event.originalEvent.detail > 1
     )
       return;
+    const revision = stateRevision;
     const target = resolveGround(event.point);
+    if (disposed || revision !== stateRevision) return;
     if (target.kind !== "available") {
-      cursorPosition = undefined;
       session.setCursor(undefined);
+      if (disposed || revision !== stateRevision) return;
       feedback?.show(event.point, target, undefined);
       return;
     }
-    session.addPoint(snap(target.position, event.originalEvent.altKey));
+    const chosen = snap(target.position, event.originalEvent.altKey);
+    if (disposed || revision !== stateRevision) return;
+    session.addPoint(chosen);
   }
   function refreshPointer() {
-    if (navigating || !pointer || !session.getState().draft?.placing || !editable()) return;
-    const target = resolveGround(pointer);
+    if (disposed || navigating || !pointer || !session.getState().draft?.placing || !editable()) return;
+    const point = pointer, revision = stateRevision;
+    const target = resolveGround(point);
+    if (disposed || revision !== stateRevision || pointer !== point) return;
     const chosen = target.kind === "available" ? snap(target.position, bypassSnap) : undefined;
-    if (chosen?.[0] !== cursorPosition?.[0] || chosen?.[1] !== cursorPosition?.[1]) {
-      cursorPosition = chosen;
-      session.setCursor(chosen);
-    }
-    feedback?.show(pointer, target, chosen && target.kind === "available" &&
+    if (disposed || revision !== stateRevision || pointer !== point) return;
+    session.setCursor(chosen);
+    // Preview subscribers can cancel, destroy, or replace the draft synchronously.
+    if (disposed || revision !== stateRevision || pointer !== point) return;
+    feedback?.show(point, target, chosen && target.kind === "available" &&
       (chosen[0] !== target.position[0] || chosen[1] !== target.position[1]) ? chosen : undefined);
   }
   function onMove(event: MapMouseEvent) {
@@ -474,7 +481,6 @@ export function attachDrawing<P extends Properties>(
   }
   const onLeave = () => {
     pointer = undefined;
-    cursorPosition = undefined;
     session.setCursor(undefined);
     feedback?.clear();
   };
@@ -489,7 +495,6 @@ export function attachDrawing<P extends Properties>(
   };
   const onDragStart = () => {
     navigating = true;
-    cursorPosition = undefined;
     session.setCursor(undefined);
     feedback?.clear();
   };
