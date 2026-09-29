@@ -407,7 +407,7 @@ export function attachDrawingControls<P extends Properties>(
       const help = document.createElement("p");
       help.className = "rl-drawing-help";
       help.textContent = draft.placing
-        ? "Click to add points. Drag empty map to pan."
+        ? "Click to add points. Drag to pan or right-drag to rotate; release to resume placement."
         : shapeHandles(draft.shape).some((handle) => handle.removable)
           ? "Drag handles to reshape. Use + to insert a vertex."
           : "Drag handles to move or reshape.";

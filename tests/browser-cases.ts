@@ -67,6 +67,7 @@ export const browserCases = [
   'Ordinary edits preserve dynamic styles, delete-only controls, and hover recovery',
   'Drawing snapping visits only nearby rendered candidates',
   'Ground drawing target follows real pointer placement and clears on sky',
+  'Navigation and feature hover give way to active ground placement',
   'Ground feedback respects preview callbacks that cancel, destroy, or replace drawing',
   'Ground drawing restores the snapped preview after changing draft style',
   'Ground drawing keeps a valid polar target without an unsafe footprint',

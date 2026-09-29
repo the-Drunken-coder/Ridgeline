@@ -4,6 +4,8 @@ export type OverlayContent = { element: HTMLElement; dispose?: () => void };
 export type InteractionOptions<P extends Properties> = {
   picker?: boolean;
   hover?: boolean;
+  /** Show navigation and selectable-feature cursor feedback. */
+  visualFeedback?: boolean;
   /** Own the markup while Ridgeline owns placement and lifetime. */
   renderFeature?: (feature: MapFeature<P>) => HTMLElement | OverlayContent;
   contextMenu?: (interaction: Interaction<P>, close: () => void) => HTMLElement | OverlayContent | null;
@@ -27,6 +29,28 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
   let activeDisposers: (() => void)[] = [];
   let tooltipDisposers: (() => void)[] = [];
   let focusBeforeOpen: HTMLElement | null = null;
+  const canvas = viewport.map.getCanvas();
+  let cursorBefore = '';
+  let cursorValue: 'grab' | 'grabbing' | 'pointer' | undefined;
+  let overCanvas = false;
+  let pressed = false;
+  let hoveredFeature = false;
+  function setCursor(value: typeof cursorValue) {
+    if (options.visualFeedback === false) return;
+    if (value === cursorValue) return;
+    if (cursorValue && canvas.style.cursor === cursorValue) canvas.style.cursor = cursorBefore;
+    cursorValue = undefined;
+    if (value && !viewport.getInteractionOwner()) {
+      cursorBefore = canvas.style.cursor;
+      canvas.style.cursor = value;
+      cursorValue = value;
+    }
+  }
+  function refreshCursor() {
+    setCursor(overCanvas && !viewport.getInteractionOwner()
+      ? pressed ? 'grabbing' : hoveredFeature ? 'pointer' : 'grab'
+      : undefined);
+  }
   const choices = new Map<string, {
     button: HTMLButtonElement;
     label: HTMLElement;
@@ -212,6 +236,8 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
     } else viewport.requestSelection(event.features[0] ? [event.features[0].id] : [], event.attachments);
   }));
   subscriptions.push(viewport.on('hover', event => {
+    hoveredFeature = Boolean(event.features[0]);
+    refreshCursor();
     if (active || options.hover === false) return;
     const feature = event.features[0];
     if (feature) hover(feature, event.point); else hideTooltip();
@@ -249,6 +275,15 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
     else hideTooltip();
   }, { signal: abort.signal });
   viewport.container.addEventListener('mouseleave', hideTooltip, { signal: abort.signal });
+  canvas.addEventListener('mouseenter', () => { overCanvas = true; refreshCursor(); }, { signal: abort.signal });
+  canvas.addEventListener('mousemove', () => { overCanvas = true; refreshCursor(); }, { signal: abort.signal });
+  canvas.addEventListener('mouseleave', () => { overCanvas = false; pressed = false; hoveredFeature = false; refreshCursor(); }, { signal: abort.signal });
+  canvas.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'mouse') { pressed = true; refreshCursor(); }
+  }, { signal: abort.signal });
+  document.addEventListener('pointerup', () => { pressed = false; refreshCursor(); }, { signal: abort.signal });
+  document.addEventListener('pointercancel', () => { pressed = false; refreshCursor(); }, { signal: abort.signal });
+  window.addEventListener('blur', () => { pressed = false; overCanvas = false; refreshCursor(); }, { signal: abort.signal });
   document.addEventListener('pointerdown', event => {
     if (event.target instanceof Node && !viewport.container.contains(event.target)) close();
   }, { signal: abort.signal });
@@ -257,12 +292,16 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
   viewport.map.on('resize', closeOnMove);
   function destroy() {
     if (disposed) return;
-    disposed = true; close(); abort.abort();
+    disposed = true; close(); setCursor(undefined); abort.abort();
     viewport.map.off('movestart', closeOnMove); viewport.map.off('resize', closeOnMove);
     for (const unsubscribe of subscriptions) unsubscribe();
     root.remove();
   }
-  subscriptions.push(viewport.on('interactionchange', () => close()));
+  subscriptions.push(viewport.on('interactionchange', ({ owner }) => {
+    close(); hoveredFeature = false;
+    if (owner) refreshCursor();
+    else queueMicrotask(() => { if (!disposed) refreshCursor(); });
+  }));
   subscriptions.push(viewport.on('destroy', destroy));
   return { destroy, close: () => close() };
 }
