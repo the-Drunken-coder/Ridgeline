@@ -14,6 +14,8 @@ import {
 } from "./drawing-geometry";
 import { createArrowheads } from "./arrowheads";
 import { getViewportDrawingInternals } from "./viewport";
+import { createGroundTargetResolver } from "./ground-target";
+import { createGroundFeedback } from "./ground-feedback";
 import {
   shapeGeometry,
   shapeHandles,
@@ -45,6 +47,9 @@ export function attachDrawing<P extends Properties>(
   attached.add(viewport.map);
   const session = createDrawingSession(viewport, options),
     map = viewport.map;
+  const resolveGround = createGroundTargetResolver(map, () => viewport.getConfiguration().terrain,
+    cause => drawingInternals.reportTargetError(cause));
+  const feedback = options.visualFeedback === false ? undefined : createGroundFeedback(viewport.container, map, resolveGround);
   const draftArrowheads = createArrowheads(map, "rl:draft-arrows", "rl:draft-arrow");
   const markers = new Map<
     string,
@@ -57,10 +62,13 @@ export function attachDrawing<P extends Properties>(
   >();
   let disposed = false,
     active = false,
+    navigating = false,
     restoreDoubleClick = false;
   let snapEnabled = true,
     pointerType = "mouse",
     bypassSnap = false;
+  let pointer: { x: number; y: number } | undefined;
+  let stateRevision = 0;
   const abort = new AbortController();
   function editable() {
     return ["editing", "rejected"].includes(session.getState().phase);
@@ -405,6 +413,7 @@ export function attachDrawing<P extends Properties>(
       }
   }
   function render() {
+    stateRevision++;
     const next = Boolean(session.getState().draft);
     if (next && !active) {
       restoreDoubleClick = map.doubleClickZoom.isEnabled();
@@ -415,6 +424,10 @@ export function attachDrawing<P extends Properties>(
     const editingId = session.getState().draft?.before?.id;
     drawingInternals.setEditing(editingId ?? null);
     active = next;
+    if (!session.getState().draft?.placing || !editable()) {
+      feedback?.clear();
+      pointer = undefined;
+    }
     map
       .getCanvas()
       .classList.toggle(
@@ -426,23 +439,77 @@ export function attachDrawing<P extends Properties>(
   }
   function onClick(event: MapMouseEvent) {
     if (
+      disposed ||
+      navigating ||
       !editable() ||
+      !session.getState().draft?.placing ||
       pointerType !== "mouse" ||
       event.originalEvent.detail > 1
     )
       return;
-    session.addPoint(
-      snap(position(event.lngLat.toArray()), event.originalEvent.altKey),
-    );
+    const revision = stateRevision;
+    const target = resolveGround(event.point);
+    if (disposed || revision !== stateRevision) return;
+    if (target.kind !== "available") {
+      session.setCursor(undefined);
+      if (disposed || revision !== stateRevision) return;
+      feedback?.show(event.point, target, undefined);
+      return;
+    }
+    const chosen = snap(target.position, event.originalEvent.altKey);
+    if (disposed || revision !== stateRevision) return;
+    session.addPoint(chosen);
+  }
+  function refreshPointer() {
+    if (disposed || navigating || !pointer || !session.getState().draft?.placing || !editable()) return;
+    const point = pointer, revision = stateRevision;
+    const target = resolveGround(point);
+    if (disposed || revision !== stateRevision || pointer !== point) return;
+    const chosen = target.kind === "available" ? snap(target.position, bypassSnap) : undefined;
+    if (disposed || revision !== stateRevision || pointer !== point) return;
+    session.setCursor(chosen);
+    // Preview subscribers can cancel, destroy, or replace the draft synchronously.
+    if (disposed || revision !== stateRevision || pointer !== point) return;
+    feedback?.show(point, target, chosen && target.kind === "available" &&
+      (chosen[0] !== target.position[0] || chosen[1] !== target.position[1]) ? chosen : undefined);
   }
   function onMove(event: MapMouseEvent) {
     if (!session.getState().draft?.placing || !editable()) return;
-    session.setCursor(
-      snap(position(event.lngLat.toArray()), event.originalEvent.altKey),
-    );
+    pointer = { x: event.point.x, y: event.point.y };
+    bypassSnap = event.originalEvent.altKey;
+    refreshPointer();
   }
+  const onLeave = () => {
+    pointer = undefined;
+    session.setCursor(undefined);
+    feedback?.clear();
+  };
+  const onSceneRender = () => {
+    if (pointer) refreshPointer();
+  };
+  const onTerrainData = (event: { sourceId?: string }) => {
+    if (event.sourceId === "rl:terrain") feedback?.invalidate();
+  };
+  const onStyleData = () => {
+    feedback?.invalidate();
+  };
+  const onDragStart = () => {
+    navigating = true;
+    session.setCursor(undefined);
+    feedback?.clear();
+  };
+  const onDragEnd = () => {
+    navigating = false;
+    refreshPointer();
+  };
   map.on("click", onClick);
   map.on("mousemove", onMove);
+  map.on("render", onSceneRender);
+  map.on("sourcedata", onTerrainData);
+  map.on("styledata", onStyleData);
+  map.on("dragstart", onDragStart);
+  map.on("dragend", onDragEnd);
+  map.getCanvas().addEventListener("mouseleave", onLeave);
   map.getCanvas().addEventListener(
     "pointerdown",
     (event) => {
@@ -481,14 +548,14 @@ export function attachDrawing<P extends Properties>(
   document.addEventListener(
     "keydown",
     (event) => {
-      if (event.key === "Alt") bypassSnap = true;
+      if (event.key === "Alt") { bypassSnap = true; refreshPointer(); }
     },
     { signal: abort.signal },
   );
   document.addEventListener(
     "keyup",
     (event) => {
-      if (event.key === "Alt") bypassSnap = false;
+      if (event.key === "Alt") { bypassSnap = false; refreshPointer(); }
     },
     { signal: abort.signal },
   );
@@ -496,6 +563,7 @@ export function attachDrawing<P extends Properties>(
     "blur",
     () => {
       bypassSnap = false;
+      onLeave();
     },
     { signal: abort.signal },
   );
@@ -516,6 +584,13 @@ export function attachDrawing<P extends Properties>(
     abort.abort();
     map.off("click", onClick);
     map.off("mousemove", onMove);
+    map.off("render", onSceneRender);
+    map.off("sourcedata", onTerrainData);
+    map.off("styledata", onStyleData);
+    map.off("dragstart", onDragStart);
+    map.off("dragend", onDragEnd);
+    map.getCanvas().removeEventListener("mouseleave", onLeave);
+    feedback?.destroy();
     for (const item of markers.values()) item.marker.remove();
     markers.clear();
     for (const layer of [...layers].reverse())

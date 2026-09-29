@@ -17,6 +17,7 @@ const layerIds = ['rl:fill', 'rl:line', 'rl:dashed', 'rl:arrowheads', 'rl:points
 type ViewportDrawingInternals = {
   setEditing(id: string | null): void;
   onPrepared(listener: () => void): () => void;
+  reportTargetError(cause?: unknown): void;
 };
 const drawingInternals = new WeakMap<object, ViewportDrawingInternals>();
 
@@ -417,6 +418,10 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     },
   };
   drawingInternals.set(map, {
+    reportTargetError(cause) {
+      diagnostic(new RidgelineError('ELEVATION_UNAVAILABLE', 'Ground targeting requires MapLibre 6.11.0 terrain capabilities.',
+        { operation: 'drawing-target', recoverable: true }, cause));
+    },
     setEditing(id) {
       if (destroyed || editingId === id) return;
       const previous = editingId;

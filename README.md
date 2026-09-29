@@ -247,6 +247,7 @@ The [consumer journey audit](docs/consumer-testing-audit.md) records the testing
 import { attachDrawing, attachDrawingControls } from '@ridgeline/map';
 
 const drawing = attachDrawing(viewport, {
+  visualFeedback: true,
   createFeature: () => ({
     id: crypto.randomUUID(),
     properties: { name: 'Drawing' },
@@ -269,6 +270,8 @@ const controls = attachDrawingControls(viewport, drawing, {
 // Consumer-defined functions above own application validation and persistence.
 // On unmount: controls.destroy(); drawing.destroy();
 ```
+
+While a ground drawing tool is placing points, the attachment shows a small terrain footprint and an outlined crosshair at the next valid target. Missing elevation, sky, and positions beyond the globe prevent placement; existing draft points remain. The footprint is a visual contact cue, not a measured area. `visualFeedback` defaults to `true`; set it to `false` to hide these visuals while retaining target validation and snapping. This works without `attachDrawingControls` or `attachInteractions`. Programmatic geographic edits through the drawing session are unchanged.
 
 The API supports lines, polygons, rectangles, circles, and single-headed arrows. Existing ordinary points, lines, and polygons can also be edited with `drawing.edit(id)`. Entity geometry and polygons with holes stay outside this editor. `tools`, `styleFields`, and `defaults` let consumers restrict creation and appearance controls. `createFeature` supplies only identity and properties before placement; `submit` receives the completed geometry. `canEdit` is consulted before editing actions and submission. New drawings are checked after the first point is placed, using their current, possibly incomplete geometry. Call `refreshPermissions()` when application permissions change while a draft is open.
 

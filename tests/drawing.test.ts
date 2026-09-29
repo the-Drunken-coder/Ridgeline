@@ -863,6 +863,8 @@ test("Cursor updates leave draft state and history untouched and notify preview 
   assert.deepEqual(editor.getMeasurements(), measurements(editor.getPreview()!));
   assert.equal(changes, 0);
   assert.equal(previews, 1);
+  editor.setCursor([0.01, 0]);
+  assert.equal(previews, 1, "An unchanged cursor must not schedule another preview update");
   const preview = editor.getPreview()!;
   if ("vertices" in preview) preview.vertices[1]![0] = 99;
   assert.deepEqual(editor.getPreview(), { kind: "line", vertices: [[0, 0], [0.01, 0]] });
@@ -870,6 +872,9 @@ test("Cursor updates leave draft state and history untouched and notify preview 
   assert.equal(changes, 1);
   assert.equal(previews, 2);
   assert.deepEqual(editor.getPreview(), editor.getState().draft?.shape);
+  editor.setCursor([0.01, 0]);
+  assert.equal(previews, 3, "The same position must restore a cursor cleared by a draft change");
+  assert.deepEqual(editor.getPreview(), { kind: "line", vertices: [[0, 0], [0.01, 0]] });
   offChange(); offPreview();
   editor.destroy();
 });

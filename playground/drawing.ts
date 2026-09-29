@@ -57,6 +57,7 @@ export function mountDrawingDemo(
     target.push(change);
   }
   const editor = attachDrawing(viewport, {
+    visualFeedback: true,
     createFeature: () => ({
       id: crypto.randomUUID(),
       properties: { name: "Drawing", kind: "Drawing", color: "#b15624" },
