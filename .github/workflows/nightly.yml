@@ -52,6 +52,7 @@ jobs:
     concurrency:
       group: nightly-issue-reporting
       cancel-in-progress: false
+      queue: max
     permissions:
       contents: read
       actions: read
