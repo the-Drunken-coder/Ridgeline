@@ -97,4 +97,3 @@ GitHub reported the repository as private during the review, despite the initial
 The project issue tracker is local Markdown. This document publishes the implementation spec there with the agreed ready-for-agent status. Future nightly failure issues are an explicitly authorized GitHub automation channel and do not move the project's general spec and ticket workflow to GitHub.
 
 The testing boundaries and operational choices above synthesize the completed interview. No further testing-boundary interview is needed before implementing this spec.
-
