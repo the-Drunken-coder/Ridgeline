@@ -22,7 +22,12 @@ export function createGroundFeedback(
   crosshair.classList.add("rl-ground-crosshair");
   const unavailable = document.createElementNS("http://www.w3.org/2000/svg", "path");
   unavailable.classList.add("rl-ground-unavailable");
-  svg.append(footprint, footprintAccent, outline, crosshair, unavailable);
+  const snapGuide = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  snapGuide.classList.add("rl-ground-snap-guide");
+  const snapRing = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  snapRing.classList.add("rl-ground-snap-ring");
+  snapRing.setAttribute("r", "10");
+  svg.append(footprint, footprintAccent, snapGuide, snapRing, outline, crosshair, unavailable);
   container.append(svg);
   let ownedCursor = false;
   const canvas = map.getCanvas();
@@ -47,7 +52,7 @@ export function createGroundFeedback(
   }
   function clear() {
     lastSignature = "";
-    for (const element of [svg, crosshair, outline, unavailable, footprint, footprintAccent]) visible(element, false);
+    for (const element of [svg, crosshair, outline, unavailable, footprint, footprintAccent, snapGuide, snapRing]) visible(element, false);
     cursor(false);
   }
   function invalidate() {
@@ -64,13 +69,20 @@ export function createGroundFeedback(
     visible(svg, true);
     cursor(true);
     if (target.kind !== "available") {
-      for (const element of [crosshair, outline, footprint, footprintAccent]) visible(element, false);
+      for (const element of [crosshair, outline, footprint, footprintAccent, snapGuide, snapRing]) visible(element, false);
       visible(unavailable, true);
       unavailable.setAttribute("d", `M ${pointer.x - 4} ${pointer.y - 4} l 8 8 m 0 -8 l -8 8`);
       return;
     }
     visible(unavailable, false);
     const center = snapped ? map.project(snapped) : pointer;
+    visible(snapRing, Boolean(snapped));
+    visible(snapGuide, Boolean(snapped) && Math.hypot(center.x - pointer.x, center.y - pointer.y) > 2);
+    if (snapped) {
+      snapRing.setAttribute("cx", String(center.x));
+      snapRing.setAttribute("cy", String(center.y));
+      snapGuide.setAttribute("d", `M ${pointer.x} ${pointer.y} L ${center.x} ${center.y}`);
+    }
     const d = `M ${center.x - 8} ${center.y} h 5 m 6 0 h 5 M ${center.x} ${center.y - 8} v 5 m 0 6 v 5`;
     crosshair.setAttribute("d", d);
     outline.setAttribute("d", d);
