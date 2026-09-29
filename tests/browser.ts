@@ -2594,17 +2594,23 @@ async function suite() {
       removeProtocol(protocol);
     }
   });
-  await run('Replacing elevation retires a stationary drawing target until new terrain loads', async () => {
+  await run('Failed and replaced elevation retire a stationary target until new terrain loads', async () => {
     const dem = document.createElement('canvas'); dem.width = dem.height = 256;
     const context = dem.getContext('2d')!;
     context.fillStyle = 'rgb(100,0,0)'; context.fillRect(0, 0, 256, 256);
     const data = await (await fetch(dem.toDataURL())).arrayBuffer();
     const first = `ground-first-${crypto.randomUUID()}`;
+    const failed = `ground-failed-${crypto.randomUUID()}`;
     const replacement = `ground-replacement-${crypto.randomUUID()}`;
     let release = () => {};
     const gate = new Promise<void>(resolve => { release = resolve; });
     let requested = false;
+    let failedRequest = false;
     addProtocol(first, async () => ({ data: data.slice(0) }));
+    addProtocol(failed, async () => {
+      failedRequest = true;
+      throw new Error('Synthetic elevation failure');
+    });
     addProtocol(replacement, async () => {
       requested = true;
       await gate;
@@ -2625,6 +2631,11 @@ async function suite() {
           const screen = draw.map.project([0, 0]);
           await pointer('move', screen);
           await until(() => !!container.querySelector('.rl-ground-crosshair:not([hidden])'), 'initial terrain target');
+          draw.configure({ elevation: elevation(failed) });
+          check(!container.querySelector('.rl-ground-crosshair:not([hidden])'), 'Failed source replacement retained old target');
+          await until(() => failedRequest, 'failed DEM request');
+          await pointer('click', screen);
+          check(editor.getState().draft?.placed === 0, 'Failed terrain permitted placement');
           draw.configure({ elevation: elevation(replacement) });
           check(!container.querySelector('.rl-ground-crosshair:not([hidden])'), 'Old terrain target remained after replacement');
           await until(() => requested, 'replacement DEM request');
@@ -2640,6 +2651,7 @@ async function suite() {
     } finally {
       release();
       removeProtocol(first);
+      removeProtocol(failed);
       removeProtocol(replacement);
     }
   });

@@ -78,7 +78,7 @@ export const browserCases = [
   'Ground drawing restores the snapped preview after changing draft style',
   'Ground drawing keeps a valid polar target without an unsafe footprint',
   'Ground drawing recovers beneath a stationary pointer and settles without idle work',
-  'Replacing elevation retires a stationary drawing target until new terrain loads',
+  'Failed and replaced elevation retire a stationary target until new terrain loads',
   'Stationary placement follows camera, projection, resize, and style replacement',
   'Style replacement keeps a ground edit and releases its handles on destruction',
   'Date-line ground placement follows displayed exaggeration on flat and globe',
