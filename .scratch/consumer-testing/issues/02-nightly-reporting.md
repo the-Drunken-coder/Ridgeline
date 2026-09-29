@@ -1,6 +1,6 @@
 # nightly-reporting
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 Acceptance depends on: ticket 03's late-terrain scenario and ticket 01's integrated verification
 Integration owner: PR #35 coordinating agent, through ticket 01
@@ -21,4 +21,4 @@ Implement bounded nightly drawing/recovery/remount repetitions and deduplicated 
 
 Implementation is present. Local HTTP tests verify recurrence, idempotency, distinct failures, pass retention, incomplete results, runner errors, and rejected writes. New local regressions reject duplicated or invalid repetitions and accept distinct repetitions distributed across shards. Earlier hosted nightly and issue-reporting exercises are historical evidence in the [verification record](../../../docs/ci-validation.md#verification-record-2026-09-29).
 
-Acceptance remains pending. Local HTTP tests now verify recovery after partial issue creation and partial recurrence-comment writes without duplication. The revised reporter has not run with the integrated nightly suite on hosted CI. The coordinating agent owns those checks and the [shared closeout record](../../../docs/ci-validation.md#current-closeout-record).
+Acceptance completed at `96472fd`. Local HTTP tests verify recovery after partial issue creation and partial recurrence-comment writes without duplication. A real Playwright regression verifies that the custom nightly reporter preserves repetition identity. The hosted nightly verification passed all 40 executions, including ticket 03's scenario, and reporting. Exact revisions, the temporary branch-guard difference, and results are in the [shared closeout record](../../../docs/ci-validation.md#current-closeout-record).

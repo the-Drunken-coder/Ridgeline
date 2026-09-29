@@ -1,6 +1,6 @@
 # consumer-journeys
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 Acceptance depends on: ticket 01's integrated verification, including ticket 02 consuming the new scenario
 Integration owner: PR #35 coordinating agent, through ticket 01
@@ -20,4 +20,4 @@ Audit critical consumer workflows, add concrete missing coverage, run control-la
 
 The [consumer audit](../../../docs/consumer-testing-audit.md) maps the journeys and added lifecycle case. Browser shards, control-lab browser tests, and consumer builds passed in the hosted PR run at `4fc9bfd`; module tests and the aggregate gate failed. Earlier nightly evidence is dated in the [verification record](../../../docs/ci-validation.md#verification-record-2026-09-29).
 
-Acceptance remains pending at integration. The coordinating agent must verify that the revised nightly reporter accepts executions of the delivered scenario and record hosted checks for the final revision in the [shared closeout record](../../../docs/ci-validation.md#current-closeout-record).
+Acceptance completed at `96472fd`. Both hosted browser suites and consumer builds passed; the revised nightly reporter accepted all 40 executions, including the delivered late-terrain scenario. The coordinating agent recorded reviewed and tested revisions in the [shared closeout record](../../../docs/ci-validation.md#current-closeout-record).

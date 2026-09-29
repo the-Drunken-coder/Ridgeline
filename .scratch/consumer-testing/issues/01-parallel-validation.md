@@ -1,6 +1,6 @@
 # parallel-validation
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 Acceptance depends on: integrated deliveries from tickets 02 and 03
 Integration owner: PR #35 coordinating agent, through this ticket
@@ -21,4 +21,4 @@ Implement independent ordinary CI jobs, strict validate gate, four useful packag
 
 Implementation is present. Local gate and shard tests pass, including omission, duplication, interruption, and retry cases. A controlled subprocess failure retained fixture diagnostics. Earlier hosted exercises cover sibling failures, skips, cancellation, browser artifacts, and branch enforcement; see the dated [verification record](../../../docs/ci-validation.md#verification-record-2026-09-29).
 
-Acceptance remains pending. The hosted PR run at `4fc9bfd` failed in the report fixture and correctly failed `validate`. File-backed reports and diagnostic retention have local evidence but no hosted run of the revised implementation. PR supersession was configured but not separately exercised. The coordinating agent must complete integrated review and hosted verification after all deliveries are committed. See the [shared closeout record](../../../docs/ci-validation.md#current-closeout-record).
+Acceptance completed at `96472fd`. Hosted ordinary validation passed every required job and the strict aggregate gate. A newer PR push cancelled the preceding run, verifying supersession. The coordinating agent integrated tickets 02 and 03 and recorded exact reviewed and tested revisions in the [shared closeout record](../../../docs/ci-validation.md#current-closeout-record). Final documentation changes remain subject to the PR gate.
