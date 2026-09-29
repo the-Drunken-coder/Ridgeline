@@ -39,6 +39,9 @@ Geographic height data from which terrain and hillshade are derived.
 **Terrain**:
 The elevated shape of the map surface.
 
+**Terrain target**:
+The location on terrain that a point-placement or ground-editing action would affect. It is distinct from the pointer's position on screen and may be unavailable when no valid terrain location can be determined.
+
 **Hillshade**:
 Shading derived from elevation data that makes the shape of the ground visible.
 

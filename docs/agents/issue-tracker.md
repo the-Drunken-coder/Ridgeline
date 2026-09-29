@@ -1,20 +1,21 @@
-# Issue tracker: Local Markdown
+# Issue tracker: GitHub Issues
 
-Issues and specs for this repo live as markdown files in `.scratch/`.
+Use [Ridgeline's GitHub Issues](https://github.com/the-Drunken-coder/Ridgeline/issues) as the authoritative tracker for spec publication, implementation tickets, status, discussion, and dependencies. Approved requirements remain in versioned specs as described below.
 
 ## Conventions
 
-- One feature per directory: `.scratch/<feature-slug>/`
-- The spec is `.scratch/<feature-slug>/spec.md`
-- Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`, never a single combined tickets file
-- Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
-- Comments and conversation history append to the bottom of the file under a `## Comments` heading
+- Publish one GitHub issue per ticket. Apply the labels in [triage-labels.md](triage-labels.md); approved implementation tickets use `ready-for-agent`.
+- Keep approved requirements versioned at `.scratch/<feature-slug>/spec.md`. Publish new specs as GitHub issues labelled `spec`, or reference an existing published spec issue, and link the canonical versioned source.
+- Attach each implementation ticket to its source spec by a named link. Include its complete acceptance criteria and context, with GitHub URLs rather than relative filesystem links in issue bodies.
+- Use native GitHub blocking dependencies. A readable "Blocked by" section supplements those relationships; it does not replace them.
+- GitHub issue state, labels, assignees, and comments are authoritative. Local `.scratch` tickets are historical planning artifacts or working drafts, not a second live tracker. Migrated files link to their canonical GitHub issue.
+- Keep research, prototypes, screenshots, and other supporting artifacts versioned in `.scratch/`. Prefer commit-pinned links when preserving the evidence behind a decision.
 
 ## Canonical requirements
 
 Approved feature requirements are canonical in `.scratch/<feature-slug>/spec.md`, versioned with the feature branch. Import a GitHub-originated spec there with its source URL and import date. GitHub issues may track discussion and status; surface conflicting edits for resolution before implementing the disputed requirement. Record approved requirement changes in the local spec and pass its exact path to workers and reviewers.
 
-Nightly GitHub failure issues are a separate operational channel. They do not change where feature specs and implementation tickets live.
+Nightly GitHub failure issues are a separate operational workflow in the same tracker. Canonical feature requirements remain in versioned specs.
 
 ## Implementation tickets
 
@@ -45,19 +46,24 @@ Mark uncommitted changes explicitly instead of attributing them to `HEAD`. If a 
 
 ## When a skill says "publish to the issue tracker"
 
-Create a new file under `.scratch/<feature-slug>/` (creating the directory if needed).
+Create or update the GitHub issue in `the-Drunken-coder/Ridgeline`. Check for an existing matching issue before creating a duplicate. Writing or pushing a Markdown file alone does not publish a tracker issue.
+
+For multiline bodies, use a structured API payload or a temporary file with `gh issue create --body-file`. Create tickets first, then wire native dependencies once their GitHub identities exist. Verify the published body, labels, and relationships.
 
 ## When a skill says "fetch the relevant ticket"
 
-Read the file at the referenced path. The user will normally pass the path or the issue number directly.
+Fetch the GitHub issue body, comments, labels, state, and relevant blocking relationships. If given an older local ticket, follow its canonical GitHub link when present. Read linked spec and supporting context before implementation or review.
 
 ## Wayfinding operations
 
-Used by `/matt-wayfinder`. The **map** is a file with one **child** file per ticket.
+- **Map**: a GitHub issue labelled `wayfinder:map`.
+- **Child ticket**: a native sub-issue of the map, labelled `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling`, or `wayfinder:task`. Create missing labels when first needed.
+- **Blocking**: native GitHub issue dependencies. Keep named blocker links in the body for readability.
+- **Frontier**: list the map's open sub-issues, exclude assigned issues and those with open blocking dependencies, and take the lowest issue number first.
+- **Claim**: assign the ticket to the developer driving the work before starting it.
+- **Resolve**: post a resolution comment, close the issue, and add a named link with a one-line gist to the map's Decisions so far.
+- **Historical maps**: existing local maps and resolved decision tickets remain historical records; migrate them only when requested or resumed. New implementation work uses GitHub Issues.
 
-- **Map**: `.scratch/<effort>/map.md` (the Notes / Decisions-so-far / Fog body).
-- **Child ticket**: `.scratch/<effort>/issues/NN-<slug>.md`, numbered from `01`, with the question in the body. A `Type:` line records the ticket type (`research`/`prototype`/`grilling`/`task`); a `Status:` line records `claimed`/`resolved`.
-- **Blocking**: a `Blocked by: NN, NN` line near the top. A ticket is unblocked when every file it lists is `resolved`.
-- **Frontier**: scan `.scratch/<effort>/issues/` for files that are open, unblocked, and unclaimed; first by number wins.
-- **Claim**: set `Status: claimed` and save before any work.
-- **Resolve**: append the answer under an `## Answer` heading, set `Status: resolved`, then append a context pointer (gist + link) to the map's Decisions-so-far in `map.md`.
+## Native relationship APIs
+
+GitHub's [issue dependency API](https://docs.github.com/en/rest/issues/issue-dependencies) manages blocking relationships; its [sub-issue API](https://docs.github.com/en/rest/issues/sub-issues) manages map membership. Create relationships with issue IDs, not issue numbers. Read them back after writing. If permissions or platform support prevent a native relationship, report the limitation and retain explicit named links rather than claiming the relationship exists.
