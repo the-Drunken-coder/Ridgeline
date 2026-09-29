@@ -2594,6 +2594,168 @@ async function suite() {
       removeProtocol(protocol);
     }
   });
+  await run('Replacing elevation retires a stationary drawing target until new terrain loads', async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!;
+    context.fillStyle = 'rgb(100,0,0)'; context.fillRect(0, 0, 256, 256);
+    const data = await (await fetch(dem.toDataURL())).arrayBuffer();
+    const first = `ground-first-${crypto.randomUUID()}`;
+    const replacement = `ground-replacement-${crypto.randomUUID()}`;
+    let release = () => {};
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let requested = false;
+    addProtocol(first, async () => ({ data: data.slice(0) }));
+    addProtocol(replacement, async () => {
+      requested = true;
+      await gate;
+      return { data: data.slice(0) };
+    });
+    const elevation = (protocol: string) => ({ tiles: [`${protocol}://dem/{z}/{x}/{y}.png`],
+      encoding: 'custom' as const, redFactor: 1, greenFactor: 0, blueFactor: 0, baseShift: 100, maxzoom: 0 });
+    try {
+      const draw = createViewport({ container, basemap: style(), terrain: true, elevation: elevation(first),
+        camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+      current = draw;
+      try {
+        await draw.ready;
+        const editor = attachDrawing(draw, { createFeature: () => ({ id: 'replacement-line', properties: {} }),
+          submit: () => ({ accepted: true }) });
+        try {
+          editor.start('line');
+          const screen = draw.map.project([0, 0]);
+          await pointer('move', screen);
+          await until(() => !!container.querySelector('.rl-ground-crosshair:not([hidden])'), 'initial terrain target');
+          draw.configure({ elevation: elevation(replacement) });
+          check(!container.querySelector('.rl-ground-crosshair:not([hidden])'), 'Old terrain target remained after replacement');
+          await until(() => requested, 'replacement DEM request');
+          await pointer('click', screen);
+          check(editor.getState().draft?.placed === 0, 'Loading replacement terrain permitted placement');
+          check(!!container.querySelector('.rl-ground-unavailable:not([hidden])'), 'Loading replacement terrain lacked unavailable feedback');
+          release();
+          await until(() => !!container.querySelector('.rl-ground-crosshair:not([hidden])'), 'replacement terrain target');
+          await pointer('click', screen);
+          check(editor.getState().draft?.placed === 1, 'Recovered terrain did not permit placement');
+        } finally { editor.destroy(); }
+      } finally { draw.destroy(); }
+    } finally {
+      release();
+      removeProtocol(first);
+      removeProtocol(replacement);
+    }
+  });
+  await run('Stationary placement follows camera, projection, resize, and style replacement', async () => {
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 5 }, logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'scene-line', properties: {} }),
+      submit: () => ({ accepted: true }) });
+    const screen = { x: 320, y: 180 };
+    const preview = () => {
+      const shape = editor.getPreview();
+      return shape?.kind === 'line' ? shape.vertices[0] : undefined;
+    };
+    const agrees = () => {
+      const vertex = preview();
+      if (!vertex) return false;
+      const displayed = draw.map.project(vertex);
+      return Math.hypot(displayed.x - screen.x, displayed.y - screen.y) < 2;
+    };
+    try {
+      editor.start('line');
+      await pointer('move', screen);
+      await until(agrees, 'initial stationary placement');
+      draw.setCamera({ center: [10, 5], zoom: 5, bearing: 25, pitch: 40 });
+      await until(() => agrees() && Math.abs(preview()?.[0] ?? 0) > 5, 'camera refresh at stationary pointer');
+      const moved = preview()!;
+      draw.configure({ projection: 'globe' });
+      await until(() => draw.map.getProjection()?.type === 'globe' && agrees(), 'globe stationary placement');
+      check(Math.hypot(preview()![0] - moved[0], preview()![1] - moved[1]) < 5,
+        'Projection transition selected a distant region');
+      container.style.width = '700px';
+      await until(() => draw.map.getCanvas().clientWidth === 700 && agrees() &&
+        Math.abs(preview()![0] - moved[0]) > .01, 'resized stationary placement');
+      draw.configure({ basemap: style('#e2e8e4') });
+      check(!container.querySelector('.rl-ground-crosshair:not([hidden])'), 'Style replacement retained an old target');
+      await until(() => draw.map.getLayer('rl:draft-line') !== undefined && agrees() &&
+        !!container.querySelector('.rl-ground-crosshair:not([hidden])'), 'style replacement target recovery');
+      await pointer('click', screen);
+      const shape = editor.getState().draft?.shape;
+      if (shape?.kind !== 'line' || shape.vertices.length !== 1) throw new Error('Scene click did not place one vertex');
+      const placed = draw.map.project(shape.vertices[0]!);
+      check(Math.hypot(placed.x - screen.x, placed.y - screen.y) < 2, 'Scene click disagrees with target');
+    } finally { editor.destroy(); draw.destroy(); }
+  });
+  await run('Style replacement keeps a ground edit and releases its handles on destruction', async () => {
+    const feature: MapFeature = { type: 'Feature', id: 'scene-edit', properties: {},
+      geometry: { type: 'LineString', coordinates: [[-.01, 0], [.01, 0]] } };
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 },
+      features: [feature], logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused', properties: {} }),
+      submit: () => ({ accepted: true }) });
+    try {
+      editor.edit('scene-edit');
+      await until(() => !!container.querySelector('[aria-label="Vertex 1"]'), 'initial edit handle');
+      draw.configure({ basemap: style('#dce9e2') });
+      await until(() => draw.map.getLayer('rl:draft-line') !== undefined &&
+        !!container.querySelector('[aria-label="Vertex 1"]'), 'edit handle after style replacement');
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]')!;
+      handle.focus();
+      await browserKey('ArrowRight');
+      const shape = editor.getState().draft?.shape;
+      check(shape?.kind === 'line' && shape.vertices[0]![0] > -.01,
+        'Edit handle did not use the replacement scene');
+      check(draw.getFeature('scene-edit')?.geometry.type === 'LineString', 'Draft edit mutated accepted geometry');
+      draw.destroy();
+      check(!container.querySelector('.rl-ground-feedback,.rl-drawing-handle'), 'Viewport destruction retained edit feedback or handles');
+      editor.destroy();
+    } finally { editor.destroy(); draw.destroy(); }
+  });
+  await run('Date-line ground placement follows displayed exaggeration on flat and globe', async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!;
+    context.fillStyle = 'rgb(200,0,0)'; context.fillRect(0, 0, 256, 256);
+    const data = await (await fetch(dem.toDataURL())).arrayBuffer();
+    const protocol = `ground-dateline-${crypto.randomUUID()}`;
+    addProtocol(protocol, async () => ({ data: data.slice(0) }));
+    const known: [number, number] = [179.8, 0];
+    try {
+      const draw = createViewport({ container, basemap: style(), terrain: true,
+        elevation: { tiles: [`${protocol}://dem/{z}/{x}/{y}.png`], encoding: 'custom',
+          redFactor: 1, greenFactor: 0, blueFactor: 0, baseShift: 100, maxzoom: 0 },
+        camera: { center: known, zoom: 7, pitch: 50 }, logger: () => {} });
+      current = draw; await draw.ready;
+      const editor = attachDrawing(draw, { createFeature: () => ({ id: 'dateline-line', properties: {} }),
+        submit: () => ({ accepted: true }) });
+      try {
+        editor.start('line');
+        editor.setSnapping(false);
+        for (const projection of ['flat', 'globe'] as const) {
+          let firstLatitude: number | undefined;
+          for (const exaggeration of [1, 2]) {
+            draw.configure({ projection, exaggeration });
+            await until(() => draw.map.getProjection()?.type === (projection === 'flat' ? 'mercator' : 'globe') &&
+              draw.map.loaded() && Math.abs((draw.map.queryTerrainElevation(known) ?? NaN) - 100 * exaggeration) < 1,
+              `${projection} terrain at exaggeration ${exaggeration}`);
+            const screen = { x: 320, y: 180 };
+            await pointer('move', screen);
+            await until(() => !!container.querySelector('.rl-ground-crosshair:not([hidden])'),
+              `${projection} ground target at exaggeration ${exaggeration}`);
+            const shape = editor.getPreview();
+            if (shape?.kind !== 'line') throw new Error('Missing date-line preview');
+            const placed = shape.vertices.at(-1)!;
+            const longitudeDifference = ((placed[0] - known[0] + 540) % 360) - 180;
+            check(Math.abs(longitudeDifference) < .001 && Math.abs(placed[1] - known[1]) < .1,
+              `${projection} exaggeration ${exaggeration} changed stored geography: ${placed}`);
+            if (firstLatitude === undefined) firstLatitude = placed[1];
+            else check(Math.abs(placed[1] - firstLatitude) < .002,
+              `${projection} uniform terrain shifted geographic placement under exaggeration: ${firstLatitude}, ${placed[1]}`);
+          }
+        }
+        await pointer('click', { x: 320, y: 180 });
+        check(editor.getState().draft?.placed === 1, 'Date-line scene did not place the current target');
+      } finally { editor.destroy(); draw.destroy(); }
+    } finally { removeProtocol(protocol); }
+  });
   await run('Ground drawing uses loaded ridge, zero, and negative DEM cells and rejects missing DEM', async () => {
     const dem = document.createElement('canvas'); dem.width = dem.height = 256;
     const context = dem.getContext('2d')!;

@@ -17,6 +17,7 @@ const layerIds = ['rl:fill', 'rl:line', 'rl:dashed', 'rl:arrowheads', 'rl:points
 type ViewportDrawingInternals = {
   setEditing(id: string | null): void;
   onPrepared(listener: () => void): () => void;
+  onSceneChange(listener: () => void): () => void;
   reportTargetError(cause?: unknown): void;
 };
 const drawingInternals = new WeakMap<object, ViewportDrawingInternals>();
@@ -43,6 +44,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   let previewId: string | null = null;
   let editingId: string | null = null;
   const preparedListeners = new Set<() => void>();
+  const sceneListeners = new Set<() => void>();
   let interactionOwner: string | null = null;
   let destroyed = false;
   let prepared = false;
@@ -199,9 +201,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     arrowheads.show([...publishedArrows.values()].filter(feature => feature.id !== editingId));
   }
 
-  function notifyPrepared(listener: () => void) {
+  function notifyDrawingListener(listener: () => void, operation: 'style' | 'configure') {
     try { listener(); } catch (cause) {
-      diagnostic(new RidgelineError('CALLBACK_FAILED', 'A drawing preparation listener threw.', { operation: 'style', recoverable: true }, cause));
+      diagnostic(new RidgelineError('CALLBACK_FAILED', 'A drawing listener threw.', { operation, recoverable: true }, cause));
     }
   }
 
@@ -237,7 +239,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (previewId) synchronizeState(previewId);
       if (editingId) synchronizeState(editingId);
       if (!readySettled) { readySettled = true; clearTimeout(timer); resolveReady(); }
-      for (const listener of preparedListeners) notifyPrepared(listener);
+      for (const listener of preparedListeners) notifyDrawingListener(listener, 'style');
     } catch (cause) {
       prepared = false;
       publication.retire();
@@ -416,6 +418,11 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         elevation: structuredClone(next.elevation ?? configuration.elevation),
         entityVisibility: { ...configuration.entityVisibility, ...next.entityVisibility },
       };
+      if (styleChanged || next.projection !== undefined || next.terrain !== undefined ||
+        next.exaggeration !== undefined || next.elevation !== undefined) {
+        for (const listener of sceneListeners) notifyDrawingListener(listener, 'configure');
+        if (destroyed) return;
+      }
       entities.configure(next.elevation !== undefined);
       if (styleChanged) { prepared = false; publication.retire(); map.setStyle(structuredClone(configuration.basemap), { diff: false }); }
       else if (prepared) {
@@ -434,7 +441,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (!readySettled) { readySettled = true; rejectReady(new RidgelineError('DESTROYED', 'Viewport was destroyed before initialization completed.', { operation: 'initialize', recoverable: false })); }
       clearTimeout(timer); resize.disconnect();
       entities.destroy();
-      arrowheads.remove(); preparedListeners.clear(); drawingInternals.delete(map);
+      arrowheads.remove(); preparedListeners.clear(); sceneListeners.clear(); drawingInternals.delete(map);
       map.getCanvas().removeEventListener('mouseleave', onLeave);
       map.remove(); icons.clear(); selected.clear(); store.remove(store.ids());
       for (const set of Object.values(listeners)) set.clear();
@@ -456,8 +463,13 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     onPrepared(listener) {
       if (destroyed) return () => {};
       preparedListeners.add(listener);
-      if (prepared) notifyPrepared(listener);
+      if (prepared) notifyDrawingListener(listener, 'style');
       return () => { preparedListeners.delete(listener); };
+    },
+    onSceneChange(listener) {
+      if (destroyed) return () => {};
+      sceneListeners.add(listener);
+      return () => { sceneListeners.delete(listener); };
     },
   });
   return viewport;

@@ -690,6 +690,10 @@ export function attachDrawing<P extends Properties>(
   );
   const off = session.onChange(render);
   let offPrepared = () => {};
+  const offSceneChange = drawingInternals.onSceneChange(() => {
+    feedback?.clear();
+    session.setCursor(undefined);
+  });
   const offPreview = session.onPreview(renderGeometry);
   let offDestroy = () => {};
   function destroy() {
@@ -700,6 +704,7 @@ export function attachDrawing<P extends Properties>(
     attached.delete(viewport.map);
     off();
     offPrepared();
+    offSceneChange();
     offPreview();
     offDestroy();
     abort.abort();

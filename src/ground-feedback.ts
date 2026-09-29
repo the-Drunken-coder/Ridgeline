@@ -63,7 +63,7 @@ export function createGroundFeedback(
     const signature = [revision, pointer.x, pointer.y, target.kind,
       target.kind === "available" ? target.position.join(",") : target.reason,
       snapped?.join(","), camera.lng, camera.lat, map.getZoom(), map.getPitch(), map.getBearing(),
-      map.getProjection().type, canvas.clientWidth, canvas.clientHeight].join("|");
+      map.getProjection()?.type, canvas.clientWidth, canvas.clientHeight].join("|");
     if (signature === lastSignature) return;
     lastSignature = signature;
     visible(svg, true);
