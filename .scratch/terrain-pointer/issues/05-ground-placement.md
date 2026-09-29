@@ -1,6 +1,10 @@
 # 05: Place ground points with reliable target feedback
 
-Status: ready-for-agent
+Canonical issue: [Place ground points with reliable target feedback](https://github.com/the-Drunken-coder/Ridgeline/issues/38)
+
+Historical snapshot: migrated to GitHub Issues. Use the canonical issue for current status, discussion, and dependencies.
+
+Status at migration: ready-for-agent
 
 **What to build:** While placing points with an existing ground drawing tool, show approved design B, Ground contact, at the actual ground position the next click will use. A skyward pointer or unavailable elevation must not produce a fabricated point. Deliver this through the public drawing attachment and a working playground example.
 

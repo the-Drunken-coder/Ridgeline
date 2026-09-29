@@ -1,6 +1,10 @@
 # 07: Snap and edit ground positions precisely
 
-Status: ready-for-agent
+Canonical issue: [Snap and edit ground positions precisely](https://github.com/the-Drunken-coder/Ridgeline/issues/40)
+
+Historical snapshot: migrated to GitHub Issues. Use the canonical issue for current status, discussion, and dependencies.
+
+Status at migration: ready-for-agent
 
 **What to build:** Extend reliable ground targeting to visible vertex snapping, existing ground-point editing, handle dragging, and keyboard movement. Show the exact snapped position and preserve valid draft geometry when an attempted edit reaches unavailable terrain.
 

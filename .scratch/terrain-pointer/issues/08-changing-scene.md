@@ -1,6 +1,10 @@
 # 08: Keep targeting correct as the scene changes
 
-Status: ready-for-agent
+Canonical issue: [Keep targeting correct as the scene changes](https://github.com/the-Drunken-coder/Ridgeline/issues/41)
+
+Historical snapshot: migrated to GitHub Issues. Use the canonical issue for current status, discussion, and dependencies.
+
+Status at migration: ready-for-agent
 
 **What to build:** Keep the approved ground feedback and placement/editing result current while the camera, terrain, projection, or viewport changes. Recover from delayed or failed terrain without restarting the tool, and leave no stale feedback or continuous rendering after work ends.
 

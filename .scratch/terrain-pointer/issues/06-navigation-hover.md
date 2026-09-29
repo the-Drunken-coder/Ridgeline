@@ -1,6 +1,10 @@
 # 06: Coordinate navigation, hover, and placement
 
-Status: ready-for-agent
+Canonical issue: [Coordinate navigation, hover, and placement](https://github.com/the-Drunken-coder/Ridgeline/issues/39)
+
+Historical snapshot: migrated to GitHub Issues. Use the canonical issue for current status, discussion, and dependencies.
+
+Status at migration: ready-for-agent
 
 **What to build:** Make the pointer communicate navigation and selectable feature hover, and let users pan or rotate during placement without abandoning their draft or accidentally adding a point. Resume current ground feedback when navigation ends.
 
