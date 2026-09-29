@@ -70,6 +70,7 @@ export const browserCases = [
   'Ground feedback respects preview callbacks that cancel, destroy, or replace drawing',
   'Ground drawing restores the snapped preview after changing draft style',
   'Ground drawing keeps a valid polar target without an unsafe footprint',
+  'Ground drawing recovers beneath a stationary pointer and settles without idle work',
   'Ground drawing uses loaded ridge, zero, and negative DEM cells and rejects missing DEM',
   'Ground drawing chooses a foreground ridge over terrain behind it',
   'Real pointer drawing previews stay ephemeral, snap, and place circle and rotated rectangle',

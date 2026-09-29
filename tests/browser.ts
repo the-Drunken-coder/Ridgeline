@@ -2,7 +2,7 @@ import { checkGpuVote } from './gpu-vote';
 import { browserCases } from './browser-cases';
 import { createViewport, attachInteractions, attachDrawing, attachDrawingControls, shapeGeometry, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
-import { MercatorCoordinate, GeoJSONSource, ErrorEvent as MapErrorEvent, setWorkerUrl } from 'maplibre-gl';
+import { MercatorCoordinate, GeoJSONSource, ErrorEvent as MapErrorEvent, setWorkerUrl, addProtocol, removeProtocol } from 'maplibre-gl';
 import type { CustomLayerInterface, ImageSource, StyleSpecification } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -2120,6 +2120,69 @@ async function suite() {
     const placed = draw.map.project(vertex);
     check(Math.hypot(placed.x - shown.x, placed.y - shown.y) < 2, 'Polar crosshair and placement disagree');
     editor.destroy(); draw.destroy();
+  });
+  await run('Ground drawing recovers beneath a stationary pointer and settles without idle work', async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!;
+    context.fillStyle = 'rgb(100,0,0)'; context.fillRect(0, 0, 256, 256);
+    const data = await (await fetch(dem.toDataURL())).arrayBuffer();
+    const protocol = `ground-recovery-${crypto.randomUUID()}`;
+    let release = () => {};
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let requested = false;
+    addProtocol(protocol, async () => {
+      requested = true;
+      await gate;
+      return { data: data.slice(0) };
+    });
+    try {
+      const draw = createViewport({ container, basemap: style(), terrain: true,
+        elevation: { tiles: [`${protocol}://dem/{z}/{x}/{y}.png`], encoding: 'custom', redFactor: 1,
+          greenFactor: 0, blueFactor: 0, baseShift: 100, maxzoom: 0 },
+        camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+      current = draw;
+      try {
+        await draw.ready;
+        const editor = attachDrawing(draw, { createFeature: () => ({ id: 'stationary-target', properties: {} }),
+          submit: () => ({ accepted: true }) });
+        try {
+          editor.start('line');
+          await pointer('move', draw.map.project([0, 0]));
+          await until(() => requested, 'delayed DEM request');
+          check(editor.getPreview() === undefined, 'Unloaded DEM produced a draft preview');
+          check(!!container.querySelector('.rl-ground-unavailable:not([hidden])'), 'Unloaded DEM did not show unavailable feedback');
+          let idle = false, renders = 0, previews = 0;
+          const onRender = () => { idle = false; renders++; };
+          const onIdle = () => { idle = true; };
+          draw.map.on('render', onRender);
+          draw.map.on('idle', onIdle);
+          const offPreview = editor.onPreview(() => { previews++; });
+          try {
+            release();
+            await until(() => {
+              const preview = editor.getPreview();
+              return idle && preview?.kind === 'line' && preview.vertices.length === 1 &&
+                draw.map.queryTerrainElevation([0, 0]) === 0 &&
+                !!container.querySelector('.rl-ground-crosshair:not([hidden])');
+            }, 'stationary target recovery and renderer idle');
+            check(renders > 0 && previews > 0, 'Terrain recovery did not publish a fresh preview');
+            check(editor.getState().draft?.placed === 0, 'Terrain recovery placed a draft point');
+            const settledRenders = renders, settledPreviews = previews;
+            // Observe the settled map without pointer input or scheduling renderer work.
+            await new Promise<void>(resolve => setTimeout(resolve, 500));
+            check(renders === settledRenders && previews === settledPreviews,
+              `Idle target kept updating: ${renders - settledRenders} renders, ${previews - settledPreviews} previews`);
+          } finally {
+            offPreview();
+            draw.map.off('render', onRender);
+            draw.map.off('idle', onIdle);
+          }
+        } finally { editor.destroy(); }
+      } finally { draw.destroy(); }
+    } finally {
+      release();
+      removeProtocol(protocol);
+    }
   });
   await run('Ground drawing uses loaded ridge, zero, and negative DEM cells and rejects missing DEM', async () => {
     const dem = document.createElement('canvas'); dem.width = dem.height = 256;
