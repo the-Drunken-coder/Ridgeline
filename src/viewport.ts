@@ -244,7 +244,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       failReady(new RidgelineError('STYLE_FAILED', 'Unable to initialize Ridgeline map layers.', { operation: 'style', recoverable: readySettled }, cause));
     }
   }
-  function interaction(event: MapMouseEvent, tolerance: number): Interaction<P> {
+  function interaction(event: Pick<MapMouseEvent, 'point' | 'lngLat' | 'originalEvent'>, tolerance: number): Interaction<P> {
     const features: MapFeature<P>[] = [];
     const attachments: Interaction<P>['attachments'] = [];
     if (prepared) {
@@ -284,16 +284,25 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   map.on('error', onError);
   map.on('click', event => { if (!interactionOwner) emit('click', interaction(event, 12)); });
   map.on('contextmenu', event => { if (!interactionOwner) emit('contextmenu', interaction(event, 6)); });
-  map.on('mousemove', event => {
-    if (interactionOwner) return;
+  let lastPointer: Pick<MapMouseEvent, 'point' | 'originalEvent'> | undefined;
+  function updateHover(event: Pick<MapMouseEvent, 'point' | 'lngLat' | 'originalEvent'>) {
     const value = interaction(event, 3);
     const id = value.features[0]?.id ?? '';
     if (id !== hovered) { hovered = id; emit('hover', value); }
+  }
+  function refreshHover() {
+    if (destroyed || interactionOwner || !lastPointer) return;
+    updateHover({ ...lastPointer, lngLat: map.unproject(lastPointer.point) });
+  }
+  map.on('mousemove', event => {
+    lastPointer = { point: event.point, originalEvent: event.originalEvent };
+    if (interactionOwner) return;
+    updateHover(event);
   });
   map.on('moveend', () => emit('camerachange', { center: map.getCenter(), zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() }));
   const resize = new ResizeObserver(() => { if (!destroyed) map.resize(); });
   resize.observe(options.container);
-  const onLeave = () => { hovered = ''; viewport.preview(null); };
+  const onLeave = () => { lastPointer = undefined; hovered = ''; viewport.preview(null); };
   map.getCanvas().addEventListener('mouseleave', onLeave);
 
   const viewport: Viewport<P> = {
@@ -309,7 +318,15 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (!owner.trim()) throw new Error('An interaction owner needs a name.');
       interactionOwner = owner; hovered = ''; viewport.preview(null); emit('interactionchange', { owner });
       let released = false;
-      return () => { if (released) return; released = true; interactionOwner = null; hovered = ''; if (!destroyed) emit('interactionchange', { owner: null }); };
+      return () => {
+        if (released) return;
+        released = true; interactionOwner = null; hovered = '';
+        if (!destroyed) {
+          emit('interactionchange', { owner: null });
+          // Let the outgoing owner finish removing its cursor and feedback first.
+          queueMicrotask(refreshHover);
+        }
+      };
     },
     upsert(features) {
       assertActive();
@@ -330,6 +347,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       for (const id of removed) { selected.delete(id); if (editingId === id) editingId = null; if (previewId === id) previewId = null; if (prepared) map.removeFeatureState({ source: SOURCE, id: sourceFeatureId(id) }); }
       if (removed.length) entities.selection([...selected]);
       emit('datachange', { ids: [], removed });
+      if (removed.includes(hovered)) refreshHover();
     },
     clear() { viewport.remove(store.ids()); },
     retryUpdates() {

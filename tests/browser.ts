@@ -2068,7 +2068,11 @@ async function suite() {
     await until(() => Math.abs(draw.map.getBearing() - bearing) > 1, 'right drag rotated camera');
     await until(() => !container.querySelector('.rl-ground-crosshair')?.hasAttribute('hidden'), 'target resumed after rotation');
     check(editor.getState().draft?.placed === 1 && requests.length === 1, 'Rotation changed drawing or selection');
-    editor.cancel(); editor.destroy(); ui.destroy();
+    const featureAfterRotation = draw.map.project([.025, 0]);
+    await pointer('move', featureAfterRotation);
+    editor.cancel();
+    await until(() => canvas.style.cursor === 'pointer', 'feature hover resumed after drawing release');
+    editor.destroy(); ui.destroy();
     check(canvas.style.cursor === 'help', 'Detach did not restore the earlier cursor');
     const quietUi = attachInteractions(draw, { visualFeedback: false, hover: false, picker: false });
     const currentFeature = draw.map.project([.025, 0]);
@@ -2084,6 +2088,12 @@ async function suite() {
     check(quietDrawing.getState().draft?.placed === 1 && !container.querySelector('.rl-ground-feedback'),
       'Drawing visual opt-out changed placement or created feedback');
     quietDrawing.destroy();
+    const removalUi = attachInteractions(draw);
+    await pointer('move', draw.map.project([.025, 0]));
+    check(canvas.style.cursor === 'pointer', 'Feature cursor did not resume after visual opt-out');
+    draw.remove(['hover-target']);
+    check(canvas.style.cursor === 'grab', 'Removing hovered feature retained the pointer cursor');
+    removalUi.destroy();
     draw.destroy();
   });
   await run('Ground feedback respects preview callbacks that cancel, destroy, or replace drawing', async () => {
