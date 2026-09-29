@@ -27,6 +27,8 @@ Before delegation, each ticket must contain:
 - `Acceptance depends on:` listing deliveries needed for final verification, or `none`. Parallel development does not imply independent acceptance.
 - `Integration owner:` identifying the coordinating agent or person responsible for reviewing and checking the combined deliveries. Name the integration ticket or record shared by the workers.
 
+For local historical tickets and working drafts, place metadata before the first `##` section. Use `Spec: [Feature name](../spec.md)` and a `## Acceptance criteria` section with nonempty list items. `pnpm check:tickets`, included in `pnpm check` and CI, checks these local files under `.scratch/*/issues/`; it does not validate GitHub issue bodies or state. Migrated snapshots instead supply a `Canonical issue:` Markdown link to an issue in this repository and are exempt from local metadata requirements. Local wayfinding tickets are exempt when their `Type:` is `research`, `prototype`, `grilling`, or `task` and a sibling `map.md` exists. Reviewers still judge scope, dependency completeness, and whether the criteria prove the required behavior. Published GitHub tickets use the absolute links and native dependencies described above.
+
 At closeout, map each acceptance criterion to evidence or an explicit remaining gap. Use `Status: resolved` only when those criteria and acceptance dependencies are satisfied; otherwise retain a triage status and state what is implemented and what remains. The wayfinding statuses below apply to its separate research workflow.
 
 ## Closeout record
