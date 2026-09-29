@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+reviews:
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - CODE_CONVENTIONS.md

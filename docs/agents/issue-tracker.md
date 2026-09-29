@@ -27,6 +27,8 @@ Before delegation, each ticket must contain:
 - `Acceptance depends on:` listing deliveries needed for final verification, or `none`. Parallel development does not imply independent acceptance.
 - `Integration owner:` identifying the coordinating agent or person responsible for reviewing and checking the combined deliveries. Name the integration ticket or record shared by the workers.
 
+Place metadata before the first `##` section. Use `Spec: [Feature name](../spec.md)` and a `## Acceptance criteria` section with nonempty list items. `pnpm check:tickets`, included in `pnpm check` and CI, checks these fields and the canonical spec file for every Markdown ticket under `.scratch/*/issues/`. Wayfinding tickets are exempt only when their documented `Type:` accompanies a sibling `map.md`. Reviewers still judge scope, dependency completeness, and whether the criteria prove the required behavior.
+
 At closeout, map each acceptance criterion to evidence or an explicit remaining gap. Use `Status: resolved` only when those criteria and acceptance dependencies are satisfied; otherwise retain a triage status and state what is implemented and what remains. The wayfinding statuses below apply to its separate research workflow.
 
 ## Closeout record
