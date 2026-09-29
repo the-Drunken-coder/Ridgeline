@@ -58,6 +58,7 @@ export function mountDrawingDemo(
   }
   const editor = attachDrawing(viewport, {
     visualFeedback: true,
+    canSnap: feature => feature.id !== "drawing-no-snap",
     createFeature: () => ({
       id: crypto.randomUUID(),
       properties: { name: "Drawing", kind: "Drawing", color: "#b15624" },
@@ -160,7 +161,7 @@ export function drawingFeatures(): MapFeature<Sample>[] {
       color: "#355f93",
     },
   ];
-  return items.map((item, i) => ({
+  const drawings: MapFeature<Sample>[] = items.map((item, i) => ({
     type: "Feature",
     id: `drawing-${i}`,
     geometry: shapeGeometry(item.shape),
@@ -178,4 +179,10 @@ export function drawingFeatures(): MapFeature<Sample>[] {
       },
     },
   }));
+  return [...drawings,
+    { type: "Feature", id: "drawing-snap-anchor", geometry: { type: "Point", coordinates: [6.884, 45.933] },
+      properties: { name: "Snap anchor", kind: "Ground point", color: "#216e5b" } },
+    { type: "Feature", id: "drawing-no-snap", geometry: { type: "Point", coordinates: [6.872, 45.937] },
+      properties: { name: "No snap", kind: "Ground point", color: "#a54a22" } },
+  ];
 }

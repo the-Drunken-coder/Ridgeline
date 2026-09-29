@@ -233,6 +233,8 @@ function loadScenario() {
     });
   } else if (currentScenario !== 'empty') viewport.upsert(terrainFeatures());
   notice.hidden = currentScenario !== 'empty'; notice.textContent = 'No features. Choose a test scenario to add sample data.';
+  element('#interaction-hint', HTMLSpanElement).textContent = currentScenario === 'drawing'
+    ? 'Draw near Snap anchor · hold Alt to bypass · drag a handle to edit ground' : 'Click to select · hover for a name · right-click for actions';
   resetCamera(); lastEvent.textContent = scenario.selectedOptions[0]?.textContent ?? 'Scenario changed';
   mapStatus.textContent = 'Ready';
 }

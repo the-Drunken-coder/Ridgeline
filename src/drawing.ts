@@ -15,6 +15,7 @@ import {
 import { createArrowheads } from "./arrowheads";
 import { getViewportDrawingInternals } from "./viewport";
 import { createGroundTargetResolver } from "./ground-target";
+import type { ScreenPoint } from "./ground-target";
 import { createGroundFeedback } from "./ground-feedback";
 import {
   shapeGeometry,
@@ -67,20 +68,24 @@ export function attachDrawing<P extends Properties>(
   let snapEnabled = true,
     pointerType = "mouse",
     bypassSnap = false;
-  let pointer: { x: number; y: number } | undefined;
+  let pointer: ScreenPoint | undefined;
+  let draggingHandle = false;
+  let refreshDraggedHandle: (() => void) | undefined;
+  let keyboardFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
   let stateRevision = 0;
+  let draftEpoch = 0;
   const abort = new AbortController();
   function editable() {
     return ["editing", "rejected"].includes(session.getState().phase);
   }
   function snap(
     point: DrawingPosition,
+    screen: ScreenPoint,
     skip = false,
     except?: number | "draft",
   ): DrawingPosition {
     if (!snapEnabled || skip) return point;
     const state = session.getState(),
-      screen = map.project(point),
       candidates: DrawingPosition[] = [];
     const visible = new Set(
       map
@@ -93,12 +98,10 @@ export function attachDrawing<P extends Properties>(
     );
     for (const id of visible) {
       const feature = viewport.getFeature(id);
-      if (
-        !feature ||
-        feature.id === state.draft?.feature.id ||
-        options.canSnap?.(feature) === false
-      )
-        continue;
+      if (!feature || feature.id === state.draft?.feature.id) continue;
+      const allowed = options.canSnap?.(feature);
+      if (disposed) return point;
+      if (allowed === false) continue;
       if (feature.entity) continue;
       const g = feature.geometry;
       candidates.push(
@@ -130,12 +133,25 @@ export function attachDrawing<P extends Properties>(
       )
         continue;
       const d = Math.hypot(screen.x - projected.x, screen.y - projected.y);
-      if (d < best) {
+      if (d < best && visibleGroundVertex(candidate, projected)) {
         best = d;
         chosen = candidate;
       }
     }
     return chosen;
+  }
+  function visibleGroundVertex(candidate: DrawingPosition, screen: ScreenPoint) {
+    const hit = resolveGround(screen);
+    if (hit.kind !== "available") return false;
+    const latitude = candidate[1] * Math.PI / 180;
+    const distance = (a: DrawingPosition, b: DrawingPosition) => Math.hypot(
+      wrapLongitude(a[0] - b[0]) * Math.cos(latitude), a[1] - b[1],
+    );
+    if (distance(candidate, hit.position) <= 1e-7) return true;
+    let neighbor = resolveGround({ x: screen.x + 2, y: screen.y });
+    if (neighbor.kind !== "available") neighbor = resolveGround({ x: screen.x - 2, y: screen.y });
+    if (neighbor.kind !== "available") return false;
+    return distance(candidate, hit.position) <= Math.max(distance(hit.position, neighbor.position), 1e-7);
   }
   function renderGeometry() {
     if (disposed || !map.getSource(SOURCE)) return;
@@ -269,6 +285,11 @@ export function attachDrawing<P extends Properties>(
         item = { marker, button, position: p };
         markers.set(key, item);
         let previous = p;
+        let dragScreen: ScreenPoint | undefined;
+        let dragEpoch = draftEpoch;
+        const currentDrag = (revision?: number) => !disposed && dragEpoch === draftEpoch &&
+          markers.get(key)?.marker === marker && editable() &&
+          (revision === undefined || revision === stateRevision);
         button.addEventListener(
           "touchstart",
           (e) => {
@@ -302,29 +323,62 @@ export function attachDrawing<P extends Properties>(
         });
         marker.on("dragstart", () => {
           if (!editable()) return;
+          if (keyboardFeedbackTimer) clearTimeout(keyboardFeedbackTimer);
+          draggingHandle = true;
+          dragEpoch = draftEpoch;
+          dragScreen = map.project(marker.getLngLat());
+          refreshDraggedHandle = () => { if (dragScreen) applyDrag(dragScreen); };
           button.focus({ preventScroll: true });
+          if (dragEpoch !== draftEpoch || !editable()) return;
           previous =
             markers.get(key)?.position ??
             position(marker.getLngLat().toArray());
           session.beginGesture();
         });
-        marker.on("drag", () => {
-          if (!editable()) return;
+        function applyDrag(screen: ScreenPoint) {
+          if (!currentDrag()) return;
+          const revision = stateRevision;
           const current = session.getState().draft,
             currentHandle = index === undefined || !current
               ? undefined
               : shapeHandles(current.shape)[index];
+          const target = resolveGround(screen);
+          if (!currentDrag(revision)) return;
+          if (target.kind !== "available") {
+            marker.setLngLat(markers.get(key)?.position ?? previous);
+            feedback?.show(screen, target, undefined);
+            return;
+          }
           const next = snap(
-            position(marker.getLngLat().toArray()),
+            target.position,
+            screen,
             bypassSnap,
             key === "move" || currentHandle?.carriesShape ? "draft" : index,
           );
+          if (!currentDrag(revision)) return;
+          feedback?.show(screen, target, next !== target.position ? next : undefined);
+          if (!currentDrag(revision)) return;
+          const samePosition = (a: DrawingPosition, b: DrawingPosition) =>
+            Math.abs(wrapLongitude(a[0] - b[0])) < 1e-10 && Math.abs(a[1] - b[1]) < 1e-10;
           if (key === "move") {
-            session.translate(previous, next);
-            previous = next;
-          } else move(next);
+            if (!samePosition(previous, next)) {
+              session.translate(previous, next);
+              previous = next;
+            }
+          } else if (!currentHandle || !samePosition(currentHandle.position, next)) move(next);
+        }
+        marker.on("drag", () => {
+          dragScreen = map.project(marker.getLngLat());
+          applyDrag(dragScreen);
         });
-        marker.on("dragend", () => session.endGesture());
+        marker.on("dragend", () => {
+          if (dragEpoch !== draftEpoch) return;
+          draggingHandle = false;
+          dragScreen = undefined;
+          refreshDraggedHandle = undefined;
+          feedback?.clear();
+          if (editable()) session.endGesture();
+        });
         button.addEventListener(
           "keydown",
           (e) => {
@@ -367,7 +421,17 @@ export function attachDrawing<P extends Properties>(
               e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
             point.y +=
               e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
-            const next = position(map.unproject(point).toArray());
+            const revision = stateRevision;
+            const target = resolveGround(point);
+            if (disposed || revision !== stateRevision || !editable()) return;
+            if (keyboardFeedbackTimer) clearTimeout(keyboardFeedbackTimer);
+            if (target.kind !== "available") {
+              feedback?.show(point, target, undefined);
+              keyboardFeedbackTimer = setTimeout(() => feedback?.clear(), 800);
+              return;
+            }
+            const next = target.position;
+            feedback?.clear();
             if (key === "move")
               session.translate(position(marker.getLngLat().toArray()), next);
             else move(next);
@@ -419,12 +483,22 @@ export function attachDrawing<P extends Properties>(
       restoreDoubleClick = map.doubleClickZoom.isEnabled();
       map.doubleClickZoom.disable();
     } else if (!next && active) {
+      draftEpoch++;
+      draggingHandle = false;
+      refreshDraggedHandle = undefined;
       if (restoreDoubleClick) map.doubleClickZoom.enable();
+    }
+    if (!editable() && draggingHandle) {
+      draftEpoch++;
+      draggingHandle = false;
+      refreshDraggedHandle = undefined;
+      session.endGesture();
+      return;
     }
     const editingId = session.getState().draft?.before?.id;
     drawingInternals.setEditing(editingId ?? null);
     active = next;
-    if (!session.getState().draft?.placing || !editable()) {
+    if ((!session.getState().draft?.placing && !draggingHandle) || !editable()) {
       feedback?.clear();
       pointer = undefined;
     }
@@ -456,16 +530,17 @@ export function attachDrawing<P extends Properties>(
       feedback?.show(event.point, target, undefined);
       return;
     }
-    const chosen = snap(target.position, event.originalEvent.altKey);
+    const chosen = snap(target.position, event.point, event.originalEvent.altKey);
     if (disposed || revision !== stateRevision) return;
     session.addPoint(chosen);
   }
   function refreshPointer() {
     if (disposed || navigating || !pointer || !session.getState().draft?.placing || !editable()) return;
+    if (keyboardFeedbackTimer) clearTimeout(keyboardFeedbackTimer);
     const point = pointer, revision = stateRevision;
     const target = resolveGround(point);
     if (disposed || revision !== stateRevision || pointer !== point) return;
-    const chosen = target.kind === "available" ? snap(target.position, bypassSnap) : undefined;
+    const chosen = target.kind === "available" ? snap(target.position, point, bypassSnap) : undefined;
     if (disposed || revision !== stateRevision || pointer !== point) return;
     session.setCursor(chosen);
     // Preview subscribers can cancel, destroy, or replace the draft synchronously.
@@ -486,6 +561,7 @@ export function attachDrawing<P extends Properties>(
   };
   const onSceneRender = () => {
     if (pointer) refreshPointer();
+    if (draggingHandle) refreshDraggedHandle?.();
   };
   const onTerrainData = (event: { sourceId?: string }) => {
     if (event.sourceId === "rl:terrain") feedback?.invalidate();
@@ -548,14 +624,14 @@ export function attachDrawing<P extends Properties>(
   document.addEventListener(
     "keydown",
     (event) => {
-      if (event.key === "Alt") { bypassSnap = true; refreshPointer(); }
+      if (event.key === "Alt") { bypassSnap = true; refreshPointer(); refreshDraggedHandle?.(); }
     },
     { signal: abort.signal },
   );
   document.addEventListener(
     "keyup",
     (event) => {
-      if (event.key === "Alt") { bypassSnap = false; refreshPointer(); }
+      if (event.key === "Alt") { bypassSnap = false; refreshPointer(); refreshDraggedHandle?.(); }
     },
     { signal: abort.signal },
   );
@@ -582,6 +658,7 @@ export function attachDrawing<P extends Properties>(
     offPreview();
     offDestroy();
     abort.abort();
+    if (keyboardFeedbackTimer) clearTimeout(keyboardFeedbackTimer);
     map.off("click", onClick);
     map.off("mousemove", onMove);
     map.off("render", onSceneRender);
@@ -606,6 +683,8 @@ export function attachDrawing<P extends Properties>(
     destroy,
     setSnapping(value: boolean) {
       snapEnabled = value;
+      refreshPointer();
+      refreshDraggedHandle?.();
     },
     getSnapping: () => snapEnabled,
   };

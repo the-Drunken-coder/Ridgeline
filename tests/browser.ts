@@ -12,6 +12,8 @@ declare global {
   interface Window {
     drawingPointer?: (action: 'move' | 'click', x: number, y: number) => Promise<void>;
     browserKey?: (key: string) => Promise<void>;
+    browserKeyDown?: (key: string) => Promise<void>;
+    browserKeyUp?: (key: string) => Promise<void>;
     browserDrag?: (fromX: number, fromY: number, toX: number, toY: number) => Promise<void>;
     browserClick?: (selector: string) => Promise<void>;
     cleanupBrowserCase?: () => void;
@@ -1926,6 +1928,53 @@ async function suite() {
       check(afterInsertUndo?.kind === 'line' && afterInsertUndo.vertices.length === 2, 'Undo skipped the later insertion');
     } finally { editor.destroy(); draw.destroy(); }
   });
+  await run('Rejected submission during a handle drag keeps the next keyboard edit separate', async () => {
+    const line: MapFeature = { type: 'Feature', id: 'submitted-drag', properties: {},
+      geometry: { type: 'LineString', coordinates: [[0, 0], [.01, 0]] } };
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 13 },
+      features: [line], logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused-submission', properties: {} }),
+      submit: () => ({ accepted: false, reason: 'Try another position' }) });
+    try {
+      editor.edit('submitted-drag');
+      await until(() => draw.map.loaded(), 'submission drag map ready');
+      const original = JSON.stringify(editor.getState().draft?.shape);
+      let finishing: Promise<boolean> | undefined;
+      let submitted = false;
+      const off = editor.onChange(() => {
+        const shape = editor.getState().draft?.shape;
+        if (!submitted && shape?.kind === 'line' && JSON.stringify(shape) !== original) {
+          submitted = true;
+          finishing = editor.finish();
+        }
+      });
+      try {
+        const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]');
+        if (!handle || !window.browserMouse) throw new Error('Playwright handle input bridge unavailable');
+        const box = handle.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2;
+        await window.browserMouse('down', x, y);
+        await window.browserMouse('move', x + 40, y);
+        await until(() => Boolean(finishing) && editor.getState().phase === 'rejected', 'drag submission rejected');
+        await window.browserMouse('up', x + 40, y);
+        check(await finishing === false, 'Consumer rejection was not returned');
+        const dragged = JSON.stringify(editor.getState().draft?.shape);
+        check(dragged !== original, 'Submission began without a valid drag movement');
+        const focused = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]');
+        if (!focused) throw new Error('Rejected draft lost its vertex handle');
+        focused.focus();
+        await browserKey('ArrowRight');
+        const keyboard = JSON.stringify(editor.getState().draft?.shape);
+        check(keyboard !== dragged, 'Keyboard step after rejection did not edit the draft');
+        editor.undo();
+        check(JSON.stringify(editor.getState().draft?.shape) === dragged,
+          'First undo after rejection reverted the drag together with the keyboard step');
+        editor.undo();
+        check(JSON.stringify(editor.getState().draft?.shape) === original,
+          'Second undo after rejection did not restore the pre-drag geometry');
+      } finally { off(); }
+    } finally { editor.destroy(); draw.destroy(); }
+  });
   await run('Ordinary edits preserve dynamic styles, delete-only controls, and hover recovery', async () => {
     const line: MapFeature = {type:'Feature',id:'line',geometry:{type:'LineString',coordinates:[[-.01,0],[.01,0]]},properties:{closed:false}};
     const draw=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:12},features:[line,point('hover',.02)],
@@ -1979,6 +2028,203 @@ async function suite() {
     check(shape?.kind==='line'&&shape.vertices[0]?.[0]===0&&shape.vertices[0]?.[1]===0,'Nearby vertex did not snap');
     check(visited.length>0&&visited.every(id=>id==='near'),'Snapping inspected features outside its pointer radius');
     editor.destroy();draw.destroy();
+  });
+  await run('Snap callback replacement leaves no stale handle drag behind', async () => {
+    const line: MapFeature = { type: 'Feature', id: 'edited-line', properties: {},
+      geometry: { type: 'LineString', coordinates: [[.02, 0], [.03, 0]] } };
+    const draw = createViewport({ container, basemap: style(), camera: { center: [.01, 0], zoom: 13 },
+      features: [line, point('snap-replacement-anchor', 0)], logger: () => {} });
+    current = draw; await draw.ready;
+    await until(() => draw.map.queryRenderedFeatures({ layers: ['rl:points'] })
+      .some(hit => hit.properties._rl_feature_id === 'snap-replacement-anchor'), 'replacement snap anchor rendered');
+    let editor: ReturnType<typeof attachDrawing>;
+    let replaced = false;
+    editor = attachDrawing(draw, { createFeature: () => ({ id: 'replacement-draft', properties: {} }),
+      submit: () => ({ accepted: true }), canSnap: feature => {
+        if (feature.id === 'snap-replacement-anchor' && !replaced) {
+          replaced = true;
+          editor.cancel();
+          editor.start('line');
+        }
+        return true;
+      } });
+    try {
+      editor.edit('edited-line');
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]');
+      if (!handle) throw new Error('Editable vertex handle missing');
+      const box = handle.getBoundingClientRect(), target = draw.map.project([0, 0]);
+      await browserDrag(box.left + box.width / 2, box.top + box.height / 2,
+        draw.map.getCanvas().getBoundingClientRect().left + target.x + 5,
+        draw.map.getCanvas().getBoundingClientRect().top + target.y);
+      check(replaced, 'Real handle drag did not reach canSnap');
+      const state = editor.getState();
+      check(state.phase === 'editing' && state.draft?.feature.id === 'replacement-draft' &&
+        state.draft.placed === 0 && state.draft.shape.kind === 'line' && state.draft.shape.vertices.length === 0,
+      'Old handle drag changed the replacement draft');
+      check(editor.getPreview() === undefined && !!container.querySelector('.rl-ground-feedback[hidden]'),
+        'Old handle drag left feedback on the replacement draft');
+    } finally { editor.destroy(); draw.destroy(); }
+  });
+  await run('Stationary Alt toggles visible snap preview and placed vertex', async () => {
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 },
+      features: [point('eligible', .025), point('filtered', -.025),
+        { ...point('airborne', .05), entity: { altitude: { meters: 100, reference: 'sea-level' } } }], logger: () => {} });
+    current = draw; await draw.ready;
+    await until(() => draw.map.queryRenderedFeatures({ layers: ['rl:points'] }).length >= 3, 'snap candidates rendered');
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'alt-snap', properties: {} }),
+      canSnap: feature => feature.id !== 'filtered', submit: () => ({ accepted: true }) });
+    const eligible = draw.getFeature('eligible');
+    if (eligible?.geometry.type !== 'Point') throw new Error('Eligible snap feature missing');
+    const eligiblePosition = eligible.geometry.coordinates;
+    const anchor = draw.map.project([.025, 0]);
+    const screen = { x: anchor.x + 6, y: anchor.y };
+    try {
+      editor.start('line');
+      await pointer('move', screen);
+      const snapped = editor.getPreview();
+      check(snapped?.kind === 'line' && Math.abs((snapped.vertices[0]?.[0] ?? 0) - eligiblePosition[0]!) < 1e-10 &&
+        snapped.vertices[0]?.[1] === eligiblePosition[1],
+        `Visible eligible vertex did not win the ground target: ${JSON.stringify({ snapped, anchor, screen,
+          hits: draw.map.queryRenderedFeatures([[screen.x - 12, screen.y - 12], [screen.x + 12, screen.y + 12]], { layers: ['rl:points'] })
+            .map(hit => hit.properties._rl_feature_id) })}`);
+      const snappedCoordinate = snapped?.kind === 'line' ? snapped.vertices[0] : undefined;
+      check(!!container.querySelector('.rl-ground-snap-ring:not([hidden])') &&
+        !!container.querySelector('.rl-ground-snap-guide:not([hidden])'), 'Displaced snap target lost its ring or guide');
+      if (!window.browserKeyDown || !window.browserKeyUp) throw new Error('Playwright held-key bridge required');
+      await window.browserKeyDown('Alt');
+      await until(() => {
+        const preview = editor.getPreview();
+        return preview?.kind === 'line' && Math.abs((preview.vertices[0]?.[0] ?? 0) - .025) > 1e-5;
+      }, 'stationary Alt bypass preview');
+      check(!!container.querySelector('.rl-ground-snap-ring[hidden]'), 'Alt bypass retained the snap indicator');
+      const free = editor.getPreview();
+      await window.browserKeyUp('Alt');
+      await until(() => {
+        const preview = editor.getPreview();
+        return preview?.kind === 'line' && JSON.stringify(preview.vertices[0]) === JSON.stringify(snappedCoordinate);
+      }, 'stationary Alt release restores snapping');
+      await window.browserKeyDown('Alt');
+      await until(() => {
+        const preview = editor.getPreview();
+        return preview?.kind === 'line' && JSON.stringify(preview.vertices[0]) === JSON.stringify(free?.kind === 'line' ? free.vertices[0] : undefined);
+      }, 'stationary Alt press restores free placement');
+      await pointer('click', screen);
+      const placed = editor.getState().draft?.shape;
+      check(placed?.kind === 'line' && free?.kind === 'line' &&
+        Math.hypot(draw.map.project(placed.vertices[0]!).x - screen.x,
+          draw.map.project(placed.vertices[0]!).y - screen.y) < 2 &&
+        JSON.stringify(placed.vertices[0]) === JSON.stringify(free.vertices[0]),
+      'Alt placement disagreed with the unsnapped preview');
+      await window.browserKeyUp('Alt');
+      editor.cancel();
+      editor.start('line');
+      await pointer('move', screen);
+      await pointer('click', screen);
+      const snappedPlacement = editor.getState().draft?.shape;
+      check(snappedPlacement?.kind === 'line' &&
+        JSON.stringify(snappedPlacement.vertices[0]) === JSON.stringify(snappedCoordinate),
+        'Released Alt placement did not copy the anchor exactly');
+      editor.cancel();
+      for (const id of ['filtered', 'airborne']) {
+        editor.start('line');
+        const target = draw.map.project(id === 'filtered' ? [-.025, 0] : [.05, 0]);
+        await pointer('move', { x: target.x + 6, y: target.y });
+        const preview = editor.getPreview();
+        check(preview?.kind === 'line' && Math.abs((preview.vertices[0]?.[0] ?? 0) -
+          (id === 'filtered' ? -.025 : .05)) > 1e-5, `${id} became a snap target`);
+        editor.cancel();
+      }
+    } finally {
+      await window.browserKeyUp?.('Alt');
+      editor.destroy(); draw.destroy();
+    }
+  });
+  await run('Invalid terrain preserves ground handle edits and keyboard movement', async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    dem.getContext('2d')!.fillStyle = 'rgb(100,0,0)';
+    dem.getContext('2d')!.fillRect(0, 0, 256, 256);
+    const line: MapFeature = { type: 'Feature', id: 'terrain-edit', properties: {},
+      geometry: { type: 'LineString', coordinates: [[0, 0], [.01, 0]] } };
+    const draw = createViewport({ container, basemap: style(), terrain: true,
+      elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 1,
+        greenFactor: 0, blueFactor: 0, baseShift: 100, maxzoom: 0 },
+      camera: { center: [0, 0], zoom: 13 }, features: [line], logger: () => {} });
+    current = draw; await draw.ready;
+    await until(() => draw.map.queryTerrainElevation([0, 0]) === 0, 'edit terrain loaded');
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused', properties: {} }),
+      submit: () => ({ accepted: true }) });
+    try {
+      editor.start('line');
+      await pointer('move', draw.map.project([0, 0]));
+      await until(() => editor.getPreview()?.kind === 'line' &&
+        !!container.querySelector('.rl-ground-crosshair:not([hidden])'), 'loaded edit terrain target');
+      editor.cancel();
+      editor.edit('terrain-edit');
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]')!;
+      handle.focus();
+      await browserKey('ArrowRight');
+      const beforeDrag = editor.getState().draft?.shape;
+      check(beforeDrag?.kind === 'line' && beforeDrag.vertices[0]?.[0] !== 0,
+        `Valid keyboard move did not reach the draft: ${JSON.stringify({ beforeDrag, active: document.activeElement?.getAttribute('aria-label'),
+          elevation: draw.map.queryTerrainElevation([0, 0]), unavailable: !!container.querySelector('.rl-ground-unavailable:not([hidden])'),
+          handle: handle.getBoundingClientRect().toJSON() })}`);
+      const box = handle.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2;
+      if (!window.browserMouse) throw new Error('Playwright mouse bridge required');
+      await window.browserMouse('down', x, y);
+      await window.browserMouse('move', x + 40, y + 20);
+      await until(() => {
+        const shape = editor.getState().draft?.shape;
+        return shape?.kind === 'line' && JSON.stringify(shape) !== JSON.stringify(beforeDrag);
+      }, 'valid ground drag step');
+      const lastValid = JSON.stringify(editor.getState().draft?.shape);
+      draw.configure({ elevation: { tiles: ['/missing-edit-dem.png'], encoding: 'custom', redFactor: 1,
+        greenFactor: 0, blueFactor: 0, baseShift: 100, maxzoom: 0 } });
+      await until(() => !!container.querySelector('.rl-ground-unavailable:not([hidden])'),
+        'stationary drag reacts to unavailable terrain');
+      check(JSON.stringify(editor.getState().draft?.shape) === lastValid,
+        'Terrain loss changed a stationary drag');
+      await window.browserMouse('move', x + 80, y + 40);
+      await until(() => !!container.querySelector('.rl-ground-unavailable:not([hidden])'), 'invalid drag feedback');
+      check(JSON.stringify(editor.getState().draft?.shape) === lastValid, 'Invalid drag changed the last valid shape');
+      await window.browserMouse('up', x + 80, y + 40);
+      handle.focus();
+      await browserKey('Shift+ArrowRight');
+      check(JSON.stringify(editor.getState().draft?.shape) === lastValid, 'Invalid large keyboard step changed the shape');
+      editor.undo();
+      check(JSON.stringify(editor.getState().draft?.shape) === JSON.stringify(beforeDrag),
+        'One undo did not restore the shape before the drag');
+
+      editor.cancel();
+      const circleShape = { kind: 'circle' as const, center: [-.02, 0] as [number, number], radius: 200 };
+      const circle: MapFeature = { type: 'Feature', id: 'terrain-circle', properties: {}, geometry: shapeGeometry(circleShape),
+        drawing: { version: 1, shape: circleShape, style: { color: '#008855', fillColor: '#008855',
+          lineWidth: 2, fillOpacity: .2, dashed: false, label: '' } } };
+      const polygon: MapFeature = { type: 'Feature', id: 'terrain-polygon', properties: {},
+        geometry: { type: 'Polygon', coordinates: [[[0, .003], [.004, .003], [.004, .007], [0, .007], [0, .003]]] } };
+      const groundPoint: MapFeature = { type: 'Feature', id: 'terrain-point', properties: {},
+        geometry: { type: 'Point', coordinates: [.02, 0] } };
+      draw.upsert([groundPoint, circle, polygon]);
+      for (const [id, label] of [['terrain-point', 'Position'], ['terrain-circle', 'Radius'],
+        ['terrain-polygon', 'Move drawing']] as const) {
+        const accepted = JSON.stringify(draw.getFeature(id));
+        editor.edit(id);
+        const unchanged = JSON.stringify(editor.getState().draft?.shape);
+        const editHandle = container.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`);
+        if (!editHandle) throw new Error(`${label} handle missing`);
+        const bounds = editHandle.getBoundingClientRect();
+        const startX = bounds.left + bounds.width / 2, startY = bounds.top + bounds.height / 2;
+        await window.browserMouse('down', startX, startY);
+        await window.browserMouse('move', startX + 35, startY + 20);
+        await until(() => !!container.querySelector('.rl-ground-unavailable:not([hidden])'), `${label} unavailable drag feedback`);
+        check(JSON.stringify(editor.getState().draft?.shape) === unchanged, `${label} drag changed geometry on missing terrain`);
+        await window.browserMouse('up', startX + 35, startY + 20);
+        editHandle.focus();
+        await browserKey('Shift+ArrowRight');
+        check(JSON.stringify(editor.getState().draft?.shape) === unchanged, `${label} keyboard step changed geometry on missing terrain`);
+        editor.cancel();
+        check(JSON.stringify(draw.getFeature(id)) === accepted, `${label} edit changed accepted geometry or shape metadata`);
+      }
+    } finally { editor.destroy(); draw.destroy(); }
   });
   await run('Ground drawing target follows real pointer placement and clears on sky', async () => {
     const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12, pitch: 85 }, logger: () => {} });
@@ -2283,7 +2529,9 @@ async function suite() {
     const draw = createViewport({ container, basemap: style(), terrain: true,
       elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 100, greenFactor: 0,
         blueFactor: 0, baseShift: 10000, minzoom: 8, maxzoom: 8 },
-      camera: { center: [0.04, latitude(155)], zoom: 10, pitch: 75 }, logger: () => {} });
+      camera: { center: [0.04, latitude(155)], zoom: 10, pitch: 75 },
+      features: [{ type: 'Feature', id: 'occluded-snap', properties: { name: 'Behind ridge' },
+        geometry: { type: 'Point', coordinates: behind } }], logger: () => {} });
     current = draw; await draw.ready;
     await until(() => Math.abs((draw.map.queryTerrainElevation(ridge) ?? NaN) - 14000) < 1 &&
       Math.abs(draw.map.queryTerrainElevation(behind) ?? NaN) < 1, 'foreground and rear DEM loaded');
@@ -2293,6 +2541,9 @@ async function suite() {
     check(rearScreen.x >= 0 && rearScreen.y >= 0 && rearScreen.x < container.clientWidth && rearScreen.y < container.clientHeight,
       `Rear terrain is outside viewport: ${rearScreen.x}, ${rearScreen.y}`);
     await pointer('move', rearScreen);
+    const preview = editor.getPreview();
+    check(preview?.kind === 'line' && preview.vertices[0]?.[1] !== behind[1],
+      'Occluded vertex replaced the visible terrain target');
     const crosshair = container.querySelector<SVGPathElement>('.rl-ground-crosshair');
     if (!crosshair || crosshair.hasAttribute('hidden')) throw new Error('Foreground ridge target did not appear');
     const bounds = crosshair.getBBox();
@@ -2502,6 +2753,25 @@ async function suite() {
     const shape=editor.getState().draft?.shape,end=handle.getBoundingClientRect();
     check(shape?.kind==='line'&&shape.vertices[0]?.[0]===0&&shape.vertices[0]?.[1]===0,'Dragged vertex did not snap back to its anchor');
     check(Math.abs(end.x+end.width/2-x)<0.5&&Math.abs(end.y+end.height/2-y)<0.5,'Handle stayed displaced from its unchanged snap target');
+    if (!window.browserMouse || !window.browserKeyDown || !window.browserKeyUp) throw new Error('Playwright held-key bridge required');
+    await window.browserMouse('down', x, y);
+    try {
+      await window.browserMouse('move', x + 7, y);
+      await window.browserKeyDown('Alt');
+      await until(() => {
+        const draft = editor.getState().draft?.shape;
+        return draft?.kind === 'line' && Math.abs(draft.vertices[0]?.[0] ?? 0) > 1e-5;
+      }, 'Alt bypass during stationary handle drag');
+      check(!!container.querySelector('.rl-ground-snap-ring[hidden]'), 'Alt drag retained a snap indicator');
+      await window.browserKeyUp('Alt');
+      await until(() => {
+        const draft = editor.getState().draft?.shape;
+        return draft?.kind === 'line' && draft.vertices[0]?.[0] === 0 && draft.vertices[0]?.[1] === 0;
+      }, 'stationary drag re-snaps after Alt release');
+    } finally {
+      await window.browserKeyUp('Alt');
+      await window.browserMouse('up', x + 7, y);
+    }
     await browserDrag(x,y,x+30,y+35);
     const moved=editor.getState().draft?.shape,movedRect=handle.getBoundingClientRect();
     check(moved?.kind==='line'&&Math.abs(moved.vertices[0]![0])>.0001&&Math.abs(moved.vertices[0]![1])>.0001,'Dragging did not move the vertex in the draft');
