@@ -2756,6 +2756,55 @@ async function suite() {
       } finally { editor.destroy(); draw.destroy(); }
     } finally { removeProtocol(protocol); }
   });
+  await run('Stationary target resumes after permission and submission changes', async () => {
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+    current = draw; await draw.ready;
+    let permitted = true;
+    let reject!: (value: { accepted: false; reason: string }) => void;
+    const decision = new Promise<{ accepted: false; reason: string }>(resolve => { reject = resolve; });
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'permission-line', properties: {} }),
+      canEdit: () => permitted, submit: () => decision });
+    const marker = () => !!container.querySelector('.rl-ground-crosshair:not([hidden])');
+    try {
+      editor.start('line');
+      const center = draw.map.project([0, 0]);
+      await pointer('move', center);
+      await until(marker, 'initial placement target');
+      await pointer('click', center);
+      await pointer('move', { x: center.x + 80, y: center.y });
+      permitted = false;
+      editor.refreshPermissions();
+      check(!marker(), 'Permission loss retained actionable feedback');
+      permitted = true;
+      editor.refreshPermissions();
+      await until(marker, 'target after permission restoration');
+      await pointer('click', { x: center.x + 80, y: center.y });
+      await pointer('move', { x: center.x + 150, y: center.y });
+      await until(marker, 'target before submission');
+      const pending = editor.finish();
+      check(editor.getState().phase === 'pending' && !marker(), 'Pending submission retained actionable feedback');
+      reject({ accepted: false, reason: 'Try again' });
+      check(await pending === false, 'Rejected submission was accepted');
+      await until(marker, 'target after rejection without pointer movement');
+      check(editor.getState().draft?.placed === 2, 'Submission transition changed draft points');
+    } finally { editor.destroy(); draw.destroy(); }
+  });
+  await run('Drawing cursor opt-out preserves a consumer grabbing cursor', async () => {
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+    current = draw; await draw.ready;
+    const canvas = draw.map.getCanvas();
+    canvas.style.cursor = 'grabbing';
+    const editor = attachDrawing(draw, { visualFeedback: false,
+      createFeature: () => ({ id: 'cursor-line', properties: {} }), submit: () => ({ accepted: true }) });
+    try {
+      editor.start('line');
+      const bounds = canvas.getBoundingClientRect();
+      await window.browserDrag!(bounds.left + 300, bounds.top + 180, bounds.left + 350, bounds.top + 200);
+      check(canvas.style.cursor === 'grabbing', 'Navigation restored a cursor drawing did not own');
+      editor.destroy();
+      check(canvas.style.cursor === 'grabbing', 'Destroy restored a cursor drawing did not own');
+    } finally { editor.destroy(); draw.destroy(); }
+  });
   await run('Ground drawing uses loaded ridge, zero, and negative DEM cells and rejects missing DEM', async () => {
     const dem = document.createElement('canvas'); dem.width = dem.height = 256;
     const context = dem.getContext('2d')!;

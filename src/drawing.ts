@@ -67,6 +67,7 @@ export function attachDrawing<P extends Properties>(
     suppressReleaseClick = false,
     restoreDoubleClick = false;
   let navigationCursor = "";
+  let ownsNavigationCursor = false;
   const navigationGestures = new Set<"drag" | "rotate" | "pitch">();
   let snapEnabled = true,
     pointerType = "mouse",
@@ -503,10 +504,8 @@ export function attachDrawing<P extends Properties>(
     const editingId = session.getState().draft?.before?.id;
     drawingInternals.setEditing(editingId ?? null);
     active = next;
-    if ((!session.getState().draft?.placing && !draggingHandle) || !editable()) {
-      feedback?.clear();
-      pointer = undefined;
-    }
+    if (!session.getState().draft?.placing && !draggingHandle) pointer = undefined;
+    if (!session.getState().draft?.placing || !editable()) feedback?.clear();
     map
       .getCanvas()
       .classList.toggle(
@@ -515,6 +514,7 @@ export function attachDrawing<P extends Properties>(
       );
     renderGeometry();
     updateMarkers();
+    refreshPointer();
   }
   function onClick(event: MapMouseEvent) {
     if (
@@ -556,10 +556,10 @@ export function attachDrawing<P extends Properties>(
       (chosen[0] !== target.position[0] || chosen[1] !== target.position[1]) ? chosen : undefined);
   }
   function onMove(event: MapMouseEvent) {
-    if (!session.getState().draft?.placing || !editable()) return;
+    if (!session.getState().draft?.placing) return;
     pointer = { x: event.point.x, y: event.point.y };
     bypassSnap = event.originalEvent.altKey;
-    refreshPointer();
+    if (editable()) refreshPointer();
   }
   const onLeave = () => {
     pointer = undefined;
@@ -592,6 +592,7 @@ export function attachDrawing<P extends Properties>(
       const canvas = map.getCanvas();
       navigationCursor = canvas.style.cursor;
       canvas.style.cursor = "grabbing";
+      ownsNavigationCursor = true;
     }
   };
   const endNavigation = (gesture: "drag" | "rotate" | "pitch") => {
@@ -599,8 +600,11 @@ export function attachDrawing<P extends Properties>(
     if (navigationGestures.size) return;
     if (!navigating) return;
     navigating = false;
-    const canvas = map.getCanvas();
-    if (canvas.style.cursor === "grabbing") canvas.style.cursor = navigationCursor;
+    if (ownsNavigationCursor) {
+      const canvas = map.getCanvas();
+      if (canvas.style.cursor === "grabbing") canvas.style.cursor = navigationCursor;
+      ownsNavigationCursor = false;
+    }
     refreshPointer();
   };
   const onDragStart = () => beginNavigation("drag");
@@ -720,7 +724,9 @@ export function attachDrawing<P extends Properties>(
     map.off("rotateend", onRotateEnd);
     map.off("pitchstart", onPitchStart);
     map.off("pitchend", onPitchEnd);
-    if (map.getCanvas().style.cursor === "grabbing") map.getCanvas().style.cursor = navigationCursor;
+    if (ownsNavigationCursor && map.getCanvas().style.cursor === "grabbing")
+      map.getCanvas().style.cursor = navigationCursor;
+    ownsNavigationCursor = false;
     map.getCanvas().classList.remove("rl-drawing-active");
     map.getCanvas().removeEventListener("mouseleave", onLeave);
     feedback?.destroy();

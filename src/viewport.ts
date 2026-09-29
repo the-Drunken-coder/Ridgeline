@@ -420,8 +420,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       };
       if (styleChanged || next.projection !== undefined || next.terrain !== undefined ||
         next.exaggeration !== undefined || next.elevation !== undefined) {
+        const configuredScene = configuration;
         for (const listener of sceneListeners) notifyDrawingListener(listener, 'configure');
-        if (destroyed) return;
+        if (destroyed || configuration !== configuredScene) return;
       }
       entities.configure(next.elevation !== undefined);
       if (styleChanged) { prepared = false; publication.retire(); map.setStyle(structuredClone(configuration.basemap), { diff: false }); }

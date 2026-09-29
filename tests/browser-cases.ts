@@ -82,6 +82,8 @@ export const browserCases = [
   'Stationary placement follows camera, projection, resize, and style replacement',
   'Style replacement keeps a ground edit and releases its handles on destruction',
   'Date-line ground placement follows displayed exaggeration on flat and globe',
+  'Stationary target resumes after permission and submission changes',
+  'Drawing cursor opt-out preserves a consumer grabbing cursor',
   'Ground drawing uses loaded ridge, zero, and negative DEM cells and rejects missing DEM',
   'Ground drawing chooses a foreground ridge over terrain behind it',
   'Real pointer drawing previews stay ephemeral, snap, and place circle and rotated rectangle',
