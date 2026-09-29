@@ -70,6 +70,7 @@ export const browserCases = [
   'Snap callback replacement leaves no stale handle drag behind',
   'Stationary Alt toggles visible snap preview and placed vertex',
   'Invalid terrain preserves ground handle edits and keyboard movement',
+  'Old keyboard feedback cannot clear a later unavailable click',
   'Ground drawing target follows real pointer placement and clears on sky',
   'Ground feedback respects preview callbacks that cancel, destroy, or replace drawing',
   'Ground drawing restores the snapped preview after changing draft style',

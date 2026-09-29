@@ -14,6 +14,7 @@ declare global {
     browserKey?: (key: string) => Promise<void>;
     browserKeyDown?: (key: string) => Promise<void>;
     browserKeyUp?: (key: string) => Promise<void>;
+    browserStationaryClick?: () => Promise<void>;
     browserDrag?: (fromX: number, fromY: number, toX: number, toY: number) => Promise<void>;
     browserClick?: (selector: string) => Promise<void>;
     cleanupBrowserCase?: () => void;
@@ -2226,6 +2227,34 @@ async function suite() {
       }
     } finally { editor.destroy(); draw.destroy(); }
   });
+  await run('Old keyboard feedback cannot clear a later unavailable click', async () => {
+    const line: MapFeature = { type: 'Feature', id: 'timer-line', properties: {},
+      geometry: { type: 'LineString', coordinates: [[0, 0], [.01, 0]] } };
+    const draw = createViewport({ container, basemap: style(), terrain: true,
+      elevation: { tiles: ['/missing-keyboard-dem.png'], encoding: 'custom', redFactor: 1,
+        greenFactor: 0, blueFactor: 0, baseShift: 0, maxzoom: 0 },
+      camera: { center: [0, 0], zoom: 13 }, features: [line], logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'later-draft', properties: {} }),
+      submit: () => ({ accepted: true }) });
+    try {
+      editor.edit('timer-line');
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]');
+      if (!handle || !window.browserMouse || !window.browserStationaryClick) throw new Error('Real input bridge unavailable');
+      const box = handle.getBoundingClientRect();
+      await window.browserMouse('move', box.left + box.width / 2, box.top + box.height / 2);
+      handle.focus();
+      await browserKey('ArrowRight');
+      check(!!container.querySelector('.rl-ground-unavailable:not([hidden])'), 'Invalid keyboard step gave no feedback');
+      editor.cancel();
+      editor.start('line');
+      await window.browserStationaryClick();
+      check(!!container.querySelector('.rl-ground-unavailable:not([hidden])'), 'Unavailable click gave no feedback');
+      await new Promise(resolve => setTimeout(resolve, 850));
+      check(!!container.querySelector('.rl-ground-unavailable:not([hidden])'),
+        'Old keyboard timer cleared the newer unavailable click');
+    } finally { editor.destroy(); draw.destroy(); }
+  });
   await run('Ground drawing target follows real pointer placement and clears on sky', async () => {
     const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12, pitch: 85 }, logger: () => {} });
     current = draw; await draw.ready;
@@ -2490,6 +2519,29 @@ async function suite() {
     await pointer('click', globeTarget);
     const globeShape = editor.getState().draft?.shape;
     check(globeShape?.kind === 'line' && globeShape.vertices.length === 4, 'Globe terrain click did not place a point');
+    editor.cancel();
+    draw.configure({ projection: 'flat' });
+    for (const sample of fixture.filter(sample => sample.expected !== 0)) {
+      const anchor: [number, number] = [0, sample.latitude];
+      const id = `${sample.name}-snap-anchor`;
+      draw.upsert([{ type: 'Feature', id, geometry: { type: 'Point', coordinates: anchor }, properties: {} }]);
+      draw.setCamera({ center: anchor, zoom: 12, pitch: 55 });
+      await until(() => Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - sample.expected) < 1 &&
+        draw.map.queryRenderedFeatures({ layers: ['rl:points'] }).some(feature => feature.properties._rl_feature_id === id),
+      `${sample.name} snap anchor rendered on loaded terrain`);
+      editor.start('line');
+      const projected = draw.map.project(anchor);
+      const near = { x: projected.x + 6, y: projected.y };
+      await pointer('move', near);
+      const preview = editor.getPreview();
+      check(preview?.kind === 'line' && JSON.stringify(preview.vertices[0]) === JSON.stringify(anchor),
+        `${sample.name} elevated anchor did not snap in preview`);
+      await pointer('click', near);
+      const placed = editor.getState().draft?.shape;
+      check(placed?.kind === 'line' && JSON.stringify(placed.vertices[0]) === JSON.stringify(anchor),
+        `${sample.name} elevated anchor was not copied exactly`);
+      editor.cancel();
+    }
     editor.destroy(); draw.destroy();
 
     const missing = createViewport({ container, basemap: style(), terrain: false,
