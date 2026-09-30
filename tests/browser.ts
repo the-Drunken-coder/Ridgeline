@@ -1976,6 +1976,51 @@ async function suite() {
       } finally { off(); }
     } finally { editor.destroy(); draw.destroy(); }
   });
+  await run('Revoking edit permission during a handle drag clears feedback and restores the handle', async () => {
+    const line: MapFeature = { type: 'Feature', id: 'permission-drag', properties: {},
+      geometry: { type: 'LineString', coordinates: [[0, 0], [.01, 0]] } };
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 13 },
+      features: [line], logger: () => {} });
+    current = draw; await draw.ready;
+    let permitted = true;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused-permission', properties: {} }),
+      canEdit: () => permitted, submit: () => ({ accepted: true }) });
+    try {
+      editor.edit('permission-drag');
+      await until(() => draw.map.loaded(), 'permission drag map ready');
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]');
+      if (!handle || !window.browserMouse) throw new Error('Real handle input bridge unavailable');
+      const box = handle.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2;
+      const canvasBox = draw.map.getCanvas().getBoundingClientRect();
+      const initialPosition = draw.map.project([.01, 0]);
+      const markerOffset = { x: x - canvasBox.left - initialPosition.x, y: y - canvasBox.top - initialPosition.y };
+      await window.browserMouse('down', x, y);
+      await window.browserMouse('move', x + 40, y);
+      await until(() => {
+        const shape = editor.getState().draft?.shape;
+        return shape?.kind === 'line' && shape.vertices[1]?.[0] !== .01;
+      }, 'vertex moved before permission loss');
+      const moved = JSON.stringify(editor.getState().draft?.shape);
+      permitted = false;
+      editor.refreshPermissions();
+      check(editor.getState().phase === 'forbidden', 'Revoked permission did not lock the draft');
+      check(container.querySelector('.rl-ground-feedback')?.hasAttribute('hidden') === true,
+        'Revoked permission retained drag feedback');
+      check(handle.disabled, 'Revoked permission left the handle enabled');
+      const shape = editor.getState().draft?.shape;
+      if (shape?.kind !== 'line') throw new Error('Revoked permission lost the line draft');
+      const expected = draw.map.project(shape.vertices[1]!);
+      const lockedBox = handle.getBoundingClientRect();
+      check(Math.hypot(lockedBox.left + lockedBox.width / 2 - canvasBox.left - expected.x - markerOffset.x,
+        lockedBox.top + lockedBox.height / 2 - canvasBox.top - expected.y - markerOffset.y) < 2,
+      'Revoked permission left the handle away from its draft position');
+      await window.browserMouse('up', x + 40, y);
+      check(JSON.stringify(editor.getState().draft?.shape) === moved, 'Drag changed after permission loss');
+      permitted = true;
+      editor.refreshPermissions();
+      check(!handle.disabled && editor.getState().phase === 'editing', 'Restored permission did not unlock the handle');
+    } finally { editor.destroy(); draw.destroy(); }
+  });
   await run('Ordinary edits preserve dynamic styles, delete-only controls, and hover recovery', async () => {
     const line: MapFeature = {type:'Feature',id:'line',geometry:{type:'LineString',coordinates:[[-.01,0],[.01,0]]},properties:{closed:false}};
     const draw=createViewport({container,basemap:style(),camera:{center:[0,0],zoom:12},features:[line,point('hover',.02)],

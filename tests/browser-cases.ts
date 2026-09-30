@@ -65,6 +65,7 @@ export const browserCases = [
   'Deleting the focused final vertex keeps keyboard undo reachable',
   'Undo during a real vertex drag leaves later edits individually undoable',
   'Rejected submission during a handle drag keeps the next keyboard edit separate',
+  'Revoking edit permission during a handle drag clears feedback and restores the handle',
   'Ordinary edits preserve dynamic styles, delete-only controls, and hover recovery',
   'Drawing snapping visits only nearby rendered candidates',
   'Snap callback replacement leaves no stale handle drag behind',
