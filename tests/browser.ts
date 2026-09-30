@@ -2099,6 +2099,19 @@ async function suite() {
     draw.upsert([point('hover-target', .025)]);
     await until(() => canvas.style.cursor === 'pointer', 'cursor followed feature moved under stationary pointer');
     check(hoverIds.at(-1) === 'hover-target', 'Moving a feature under the pointer did not restore hover');
+    const cameraCenter = draw.map.getCenter().toArray();
+    await new Promise<void>(resolve => {
+      draw.map.once('moveend', () => resolve());
+      draw.setCamera({ center: [cameraCenter[0] + .2, cameraCenter[1]] });
+    });
+    check(canvas.style.cursor === 'grab' && hoverIds.at(-1) === '',
+      'Moving the camera did not clear stationary feature hover at move end');
+    await new Promise<void>(resolve => {
+      draw.map.once('moveend', () => resolve());
+      draw.setCamera({ center: cameraCenter });
+    });
+    check(canvas.style.cursor === 'pointer' && hoverIds.at(-1) === 'hover-target',
+      'Returning the camera did not restore stationary feature hover at move end');
     draw.remove(['hover-target']);
     check(canvas.style.cursor === 'grab', 'Removing hovered feature retained the pointer cursor');
     removalUi.destroy();
