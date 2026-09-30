@@ -492,6 +492,8 @@ export function attachDrawing<P extends Properties>(
       draftEpoch++;
       draggingHandle = false;
       refreshDraggedHandle = undefined;
+      // Ending the gesture notifies onChange synchronously. Its next render
+      // clears feedback and restores the locked marker state.
       session.endGesture();
       return;
     }
