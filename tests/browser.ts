@@ -2280,7 +2280,9 @@ async function suite() {
     const canvas = draw.map.getCanvas();
     canvas.style.cursor = 'help';
     const requests: string[][] = [];
+    const hoverIds: string[] = [];
     draw.on('selectionrequest', event => requests.push(event.ids));
+    draw.on('hover', event => hoverIds.push(event.features[0]?.id ?? ''));
     const ui = attachInteractions(draw);
     const feature = draw.map.project([.025, 0]);
     const empty = draw.map.project([-.025, 0]);
@@ -2337,6 +2339,12 @@ async function suite() {
     const removalUi = attachInteractions(draw);
     await pointer('move', draw.map.project([.025, 0]));
     check(canvas.style.cursor === 'pointer', 'Feature cursor did not resume after visual opt-out');
+    draw.upsert([point('hover-target', -.025)]);
+    await until(() => canvas.style.cursor === 'grab', 'cursor followed feature moved away from stationary pointer');
+    check(hoverIds.at(-1) === '', 'Moving a feature away did not clear stationary hover');
+    draw.upsert([point('hover-target', .025)]);
+    await until(() => canvas.style.cursor === 'pointer', 'cursor followed feature moved under stationary pointer');
+    check(hoverIds.at(-1) === 'hover-target', 'Moving a feature under the pointer did not restore hover');
     draw.remove(['hover-target']);
     check(canvas.style.cursor === 'grab', 'Removing hovered feature retained the pointer cursor');
     removalUi.destroy();
