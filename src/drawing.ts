@@ -495,6 +495,8 @@ export function attachDrawing<P extends Properties>(
       draftEpoch++;
       draggingHandle = false;
       refreshDraggedHandle = undefined;
+      // Ending the gesture notifies onChange synchronously. Its next render
+      // clears feedback and restores the locked marker state.
       session.endGesture();
       return;
     }
@@ -529,6 +531,7 @@ export function attachDrawing<P extends Properties>(
     const target = resolveGround(event.point);
     if (disposed || revision !== stateRevision) return;
     if (target.kind !== "available") {
+      if (keyboardFeedbackTimer) clearTimeout(keyboardFeedbackTimer);
       session.setCursor(undefined);
       if (disposed || revision !== stateRevision) return;
       feedback?.show(event.point, target, undefined);
