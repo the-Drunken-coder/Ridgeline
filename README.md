@@ -176,6 +176,8 @@ Core events are `click`, `hover`, `contextmenu`, `selectionrequest`, `datachange
 
 `attachInteractions(viewport, options)` is optional. It adds name/icon hover UI and an eight-per-page radial picker. Arrow keys move between candidates; Enter selects; Escape closes. Hovering previews without selecting. Candidate slots stay fixed while features move; removed choices become disabled. Closing the picker, clicking outside it, or moving the map preserves selection. Set `hover: false` or `picker: false` to disable either behavior; without the picker, a click requests the top candidate.
 
+The interaction helper also shows a screen-space grab cursor over empty map areas, a grabbing cursor while dragging, and a pointer over selectable features. `visualFeedback` defaults to `true`; set it to `false` to use your own cursor presentation without changing hover events, selection requests, or picker behavior. Drawing takes cursor priority while it owns interaction.
+
 Open picker choices refresh their names, icons, and availability when their feature changes or a registered icon is replaced. Hover content also refreshes when its feature changes. Reintroducing an ID enables its existing button. Default content stays intact on position-only updates. Custom `renderFeature` content is recreated for affected visible candidates and its previous `dispose` hook runs once; the button, candidate order, and button focus remain intact.
 
 If a feature's style callback throws while its picker is open, the choice remains available by name without an icon. If custom content throws, the choice uses default content. Other candidates still refresh. Custom content and name callback failures produce `CALLBACK_FAILED` diagnostics with the affected feature ID.
@@ -272,6 +274,8 @@ const controls = attachDrawingControls(viewport, drawing, {
 ```
 
 While a ground drawing tool is placing points, the attachment shows a small terrain footprint and an outlined crosshair at the next valid target. Missing elevation, sky, and positions beyond the globe prevent placement; existing draft points remain. The footprint is a visual contact cue, not a measured area. `visualFeedback` defaults to `true`; set it to `false` to hide these visuals while retaining target validation and snapping. This works without `attachDrawingControls` or `attachInteractions`. Programmatic geographic edits through the drawing session are unchanged.
+
+Drag the map or right-drag to rotate during placement. The ground target and preview pause during navigation, then resolve at the current pointer and camera position when the gesture ends. Releasing the drag does not place a point. The playground's **Drawing & editing** scenario demonstrates this with the public drawing attachment.
 
 The API supports lines, polygons, rectangles, circles, and single-headed arrows. Existing ordinary points, lines, and polygons can also be edited with `drawing.edit(id)`. Entity geometry and polygons with holes stay outside this editor. `tools`, `styleFields`, and `defaults` let consumers restrict creation and appearance controls. `createFeature` supplies only identity and properties before placement; `submit` receives the completed geometry. `canEdit` is consulted before editing actions and submission. New drawings are checked after the first point is placed, using their current, possibly incomplete geometry. Call `refreshPermissions()` when application permissions change while a draft is open.
 

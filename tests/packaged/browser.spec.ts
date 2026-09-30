@@ -24,11 +24,11 @@ for (const name of browserCases) {
       else if (action === 'up') await page.mouse.up();
       else if (action === 'click') await page.mouse.click(x, y);
     });
-    await page.exposeFunction('browserDrag', async (fromX: number, fromY: number, toX: number, toY: number) => {
+    await page.exposeFunction('browserDrag', async (fromX: number, fromY: number, toX: number, toY: number, button: 'left' | 'right' = 'left') => {
       await page.mouse.move(fromX, fromY);
-      await page.mouse.down();
+      await page.mouse.down({ button });
       await page.mouse.move(toX, toY, { steps: 6 });
-      await page.mouse.up();
+      await page.mouse.up({ button });
     });
     let failure: unknown;
     try {

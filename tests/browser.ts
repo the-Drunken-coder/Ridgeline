@@ -12,7 +12,7 @@ declare global {
   interface Window {
     drawingPointer?: (action: 'move' | 'click', x: number, y: number) => Promise<void>;
     browserKey?: (key: string) => Promise<void>;
-    browserDrag?: (fromX: number, fromY: number, toX: number, toY: number) => Promise<void>;
+    browserDrag?: (fromX: number, fromY: number, toX: number, toY: number, button?: 'left' | 'right') => Promise<void>;
     browserClick?: (selector: string) => Promise<void>;
     cleanupBrowserCase?: () => void;
     browserMouse?: (action: 'down' | 'move' | 'up' | 'click', x: number, y: number) => Promise<void>;
@@ -2026,6 +2026,96 @@ async function suite() {
     check(plain.getState().draft?.placed === 1, 'Visual opt-out disabled placement');
     check(!container.querySelector('.rl-ground-feedback'), 'Visual opt-out created an overlay');
     plain.destroy(); draw.destroy();
+  });
+  await run('Navigation and feature hover give way to active ground placement', async () => {
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 },
+      features: [point('hover-target', .025)], logger: () => {} });
+    current = draw; await draw.ready;
+    const canvas = draw.map.getCanvas();
+    canvas.style.cursor = 'help';
+    const requests: string[][] = [];
+    const hoverIds: string[] = [];
+    draw.on('selectionrequest', event => requests.push(event.ids));
+    draw.on('hover', event => hoverIds.push(event.features[0]?.id ?? ''));
+    const ui = attachInteractions(draw);
+    const feature = draw.map.project([.025, 0]);
+    const empty = draw.map.project([-.025, 0]);
+    await pointer('move', empty);
+    check(canvas.style.cursor === 'grab', 'Empty map did not show navigation cursor');
+    check(!container.querySelector('.rl-ground-feedback'), 'Ordinary navigation created a ground target');
+    await pointer('move', feature);
+    check(canvas.style.cursor === 'pointer', 'Selectable feature did not show hover cursor');
+    check(requests.length === 0, 'Hover requested selection');
+    await pointer('click', feature);
+    check(requests.at(-1)?.[0] === 'hover-target', 'Feature selection changed');
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'navigation-line', properties: {} }),
+      submit: () => ({ accepted: true }) });
+    editor.start('line');
+    await pointer('move', feature);
+    check(canvas.style.cursor === 'none', 'Feature hover overrode the ground target');
+    await pointer('click', feature);
+    check(editor.getState().draft?.placed === 1 && requests.length === 1, 'Feature stole the placement click');
+    const before = editor.getState().draft?.shape;
+    const bounds = canvas.getBoundingClientRect();
+    const from = { x: bounds.left + empty.x, y: bounds.top + empty.y };
+    await window.browserMouse!('down', from.x, from.y);
+    await window.browserMouse!('move', from.x + 55, from.y + 25);
+    check(container.querySelector('.rl-ground-feedback')?.hasAttribute('hidden'), 'Navigation retained target feedback');
+    check(canvas.style.cursor === 'grabbing', 'Navigation did not show grabbing feedback');
+    await window.browserMouse!('up', from.x + 55, from.y + 25);
+    check(editor.getState().draft?.placed === 1 && JSON.stringify(editor.getState().draft?.shape) === JSON.stringify(before), 'Drag changed the draft');
+    await until(() => !container.querySelector('.rl-ground-crosshair')?.hasAttribute('hidden'), 'target resumed after navigation');
+    const bearing = draw.map.getBearing();
+    await window.browserDrag!(from.x, from.y, from.x + 45, from.y + 40, 'right');
+    await until(() => Math.abs(draw.map.getBearing() - bearing) > 1, 'right drag rotated camera');
+    await until(() => !container.querySelector('.rl-ground-crosshair')?.hasAttribute('hidden'), 'target resumed after rotation');
+    check(editor.getState().draft?.placed === 1 && requests.length === 1, 'Rotation changed drawing or selection');
+    const featureAfterRotation = draw.map.project([.025, 0]);
+    await pointer('move', featureAfterRotation);
+    editor.cancel();
+    await until(() => canvas.style.cursor === 'pointer', 'feature hover resumed after drawing release');
+    editor.destroy(); ui.destroy();
+    check(canvas.style.cursor === 'help', 'Detach did not restore the earlier cursor');
+    const quietUi = attachInteractions(draw, { visualFeedback: false, hover: false, picker: false });
+    const currentFeature = draw.map.project([.025, 0]);
+    await pointer('move', currentFeature);
+    check(canvas.style.cursor === 'help', 'Interaction visual opt-out changed the cursor');
+    await pointer('click', currentFeature);
+    check(requests.at(-1)?.[0] === 'hover-target', 'Interaction visual opt-out disabled selection');
+    quietUi.destroy();
+    const quietDrawing = attachDrawing(draw, { visualFeedback: false,
+      createFeature: () => ({ id: 'quiet-navigation-line', properties: {} }), submit: () => ({ accepted: true }) });
+    quietDrawing.start('line');
+    await pointer('click', currentFeature);
+    check(quietDrawing.getState().draft?.placed === 1 && !container.querySelector('.rl-ground-feedback'),
+      'Drawing visual opt-out changed placement or created feedback');
+    quietDrawing.destroy();
+    const removalUi = attachInteractions(draw);
+    await pointer('move', draw.map.project([.025, 0]));
+    check(canvas.style.cursor === 'pointer', 'Feature cursor did not resume after visual opt-out');
+    draw.upsert([point('hover-target', -.025)]);
+    await until(() => canvas.style.cursor === 'grab', 'cursor followed feature moved away from stationary pointer');
+    check(hoverIds.at(-1) === '', 'Moving a feature away did not clear stationary hover');
+    draw.upsert([point('hover-target', .025)]);
+    await until(() => canvas.style.cursor === 'pointer', 'cursor followed feature moved under stationary pointer');
+    check(hoverIds.at(-1) === 'hover-target', 'Moving a feature under the pointer did not restore hover');
+    const cameraCenter = draw.map.getCenter().toArray();
+    await new Promise<void>(resolve => {
+      draw.map.once('moveend', () => resolve());
+      draw.setCamera({ center: [cameraCenter[0] + .2, cameraCenter[1]] });
+    });
+    check(canvas.style.cursor === 'grab' && hoverIds.at(-1) === '',
+      'Moving the camera did not clear stationary feature hover at move end');
+    await new Promise<void>(resolve => {
+      draw.map.once('moveend', () => resolve());
+      draw.setCamera({ center: cameraCenter });
+    });
+    check(canvas.style.cursor === 'pointer' && hoverIds.at(-1) === 'hover-target',
+      'Returning the camera did not restore stationary feature hover at move end');
+    draw.remove(['hover-target']);
+    check(canvas.style.cursor === 'grab', 'Removing hovered feature retained the pointer cursor');
+    removalUi.destroy();
+    draw.destroy();
   });
   await run('Ground feedback respects preview callbacks that cancel, destroy, or replace drawing', async () => {
     for (const action of ['cancel', 'destroy', 'replace'] as const) {
