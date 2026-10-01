@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
 async function fixture(t) {
-  const root = await mkdtemp(join(tmpdir(), 'ridgeline-browser-lock-'));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'ridgeline-browser-lock-')));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, 'scripts'));
   await mkdir(join(root, 'bin'));
