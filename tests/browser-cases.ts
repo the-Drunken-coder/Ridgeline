@@ -25,6 +25,8 @@ export const browserCases = [
   'Escape reaches consumers unless a picker is open',
   'Keyboard picker activation selects the chosen overlapping feature',
   'Picker candidates stay stable during movement; UI disposes once',
+  'Feature content keeps the newest update from render and disposal callbacks',
+  'Feature content returned after interaction destruction is disposed once',
   'Picker refreshes names, icons and availability without replacing buttons or focus',
   'Replacing a registered icon updates the map and an open picker',
   'Icon registration isolates an unrelated failing style callback',

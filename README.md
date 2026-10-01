@@ -180,6 +180,8 @@ The interaction helper also shows a screen-space grab cursor over empty map area
 
 Open picker choices refresh their names, icons, and availability when their feature changes or a registered icon is replaced. Hover content also refreshes when its feature changes. Reintroducing an ID enables its existing button. Default content stays intact on position-only updates. Custom `renderFeature` content is recreated for affected visible candidates and its previous `dispose` hook runs once; the button, candidate order, and button focus remain intact.
 
+Feature rendering and disposal hooks may synchronously update features, close the interaction UI, or destroy the attachment. Superseded content is discarded and its disposal hook runs once, including content returned after destruction.
+
 If a feature's style callback throws while its picker is open, the choice remains available by name without an icon. If custom content throws, the choice uses default content. Other candidates still refresh. Custom content and name callback failures produce `CALLBACK_FAILED` diagnostics with the affected feature ID.
 
 Use `renderFeature(feature)` to supply custom name/icon markup. Use `contextMenu(interaction, close)` to supply application actions. Either hook can return an element or `{ element, dispose }`, for framework mounting and cleanup. The context hook may return `null`. Display names use text content by default. The playground demonstrates a consumer-owned right-click menu.

@@ -1,13 +1,15 @@
-import type { IconDefinition, Interaction, MapFeature, Properties, Viewport } from './types';
+import { createFeatureContent } from './feature-content';
+import type { FeatureContentRenderer, OverlayContent } from './feature-content';
+import type { Interaction, MapFeature, Properties, Viewport } from './types';
 
-export type OverlayContent = { element: HTMLElement; dispose?: () => void };
+export type { OverlayContent } from './feature-content';
 export type InteractionOptions<P extends Properties> = {
   picker?: boolean;
   hover?: boolean;
   /** Show navigation and selectable-feature cursor feedback. */
   visualFeedback?: boolean;
   /** Own the markup while Ridgeline owns placement and lifetime. */
-  renderFeature?: (feature: MapFeature<P>) => HTMLElement | OverlayContent;
+  renderFeature?: FeatureContentRenderer<P>;
   contextMenu?: (interaction: Interaction<P>, close: () => void) => HTMLElement | OverlayContent | null;
 };
 
@@ -27,7 +29,7 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
   let candidates: string[] = [];
   let anchor = { x: 0, y: 0 };
   let activeDisposers: (() => void)[] = [];
-  let tooltipDisposers: (() => void)[] = [];
+  let tooltipContent: ReturnType<typeof createFeatureContent<P>> | null = null;
   let focusBeforeOpen: HTMLElement | null = null;
   const canvas = viewport.map.getCanvas();
   let cursorBefore = '';
@@ -53,49 +55,23 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
   }
   const choices = new Map<string, {
     button: HTMLButtonElement;
-    label: HTMLElement;
-    disposers: (() => void)[];
-    name?: string;
-    icon?: IconDefinition;
+    content: ReturnType<typeof createFeatureContent<P>>;
   }>();
 
   function releaseChoices() {
-    for (const choice of choices.values()) release(choice.disposers);
+    const previous = [...choices.values()];
     choices.clear();
-  }
-  function iconFor(feature: MapFeature<P>) {
-    try {
-      const id = viewport.getStyle(feature).icon;
-      return id ? viewport.getIcon(id) : undefined;
-    } catch {
-      // A failed style callback leaves the candidate available by name.
-      return undefined;
-    }
-  }
-  function nameFor(feature: MapFeature<P>) {
-    try { return viewport.getName(feature); }
-    catch (cause) {
-      viewport.reportCallbackError(cause, 'name', feature.id);
-      return feature.id;
-    }
+    for (const choice of previous) choice.content.destroy();
   }
   function refreshChoice(id: string) {
     const choice = choices.get(id);
     if (!choice) return;
     const feature = viewport.getFeature(id);
-    const name = feature ? nameFor(feature) : undefined;
-    const icon = feature && !options.renderFeature ? iconFor(feature) : undefined;
-    // Default presentation depends only on the name and registered icon, not position.
-    if (!options.renderFeature && choice.name === name && choice.icon === icon && choice.label.hasChildNodes()) return;
-    const disposers: (() => void)[] = [];
-    const replacement = feature ? content(feature, disposers) : document.createTextNode('Unavailable');
-    release(choice.disposers);
-    choice.disposers = disposers;
-    choice.label.replaceChildren(replacement);
-    choice.name = name; choice.icon = icon;
+    const result = choice.content.update(feature);
+    if (!result || disposed || choices.get(id) !== choice) return;
     const hadFocus = document.activeElement === choice.button;
     choice.button.disabled = !feature;
-    choice.button.setAttribute('aria-label', feature ? `Select ${name}` : 'Feature no longer available');
+    choice.button.setAttribute('aria-label', feature ? `Select ${result.name}` : 'Feature no longer available');
     if (!feature && hadFocus) {
       const buttons = [...choices.values()].map(item => item.button);
       const index = buttons.indexOf(choice.button);
@@ -107,36 +83,10 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
   function release(disposers: (() => void)[]) {
     for (const dispose of disposers.splice(0)) { try { dispose(); } catch { /* Finish disposing the remaining UI. */ } }
   }
-  function content(feature: MapFeature<P>, disposers: (() => void)[]) {
-    let custom: ReturnType<NonNullable<typeof options.renderFeature>> | undefined;
-    try { custom = options.renderFeature?.(feature); }
-    catch (cause) {
-      viewport.reportCallbackError(cause, 'renderFeature', feature.id);
-    }
-    if (custom) {
-      if (custom instanceof HTMLElement) return custom;
-      if (custom.dispose) disposers.push(custom.dispose);
-      return custom.element;
-    }
-    const element = document.createElement('span');
-    element.className = 'rl-feature-content';
-    const icon = iconFor(feature);
-    if (icon) {
-      if (icon.url) {
-        const image = document.createElement('img'); image.src = icon.url; image.alt = ''; image.width = 20; image.height = 20; element.append(image);
-      } else {
-        const canvas = document.createElement('canvas'); canvas.width = icon.image.width; canvas.height = icon.image.height;
-        const context = canvas.getContext('2d');
-        if (icon.image instanceof ImageData) context?.putImageData(icon.image, 0, 0); else context?.drawImage(icon.image, 0, 0);
-        canvas.setAttribute('aria-hidden', 'true'); element.append(canvas);
-      }
-    }
-    const name = document.createElement('span'); name.textContent = nameFor(feature); element.append(name);
-    return element;
-  }
   function hideTooltip() {
-    tooltip?.remove(); tooltip = null; tooltipFeatureId = null; tooltipPoint = null;
-    release(tooltipDisposers); viewport.preview(null);
+    const element = tooltip, content = tooltipContent;
+    tooltip = null; tooltipContent = null; tooltipFeatureId = null; tooltipPoint = null;
+    viewport.preview(null); element?.remove(); content?.destroy();
   }
   function close(restoreFocus = false) {
     active?.remove(); active = null; candidates = [];
@@ -150,12 +100,19 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
     element.style.top = `${Math.max(4, Math.min(viewport.container.clientHeight - height - 4, point.y - (centered ? height / 2 : 0)))}px`;
   }
   function hover(feature: MapFeature<P>, point: { x: number; y: number }) {
-    hideTooltip();
+    if (disposed) return;
+    let element = tooltip, content = tooltipContent;
+    if (!element || !content) {
+      element = document.createElement('div'); element.className = 'rl-tooltip'; element.setAttribute('role', 'tooltip');
+      content = createFeatureContent(element, viewport, options.renderFeature);
+      tooltip = element; tooltipContent = content;
+    }
     tooltipFeatureId = feature.id;
     tooltipPoint = point;
-    tooltip = document.createElement('div'); tooltip.className = 'rl-tooltip'; tooltip.setAttribute('role', 'tooltip');
-    tooltip.append(content(feature, tooltipDisposers)); root.append(tooltip);
-    position(tooltip, { x: point.x + 16, y: point.y + 18 });
+    if (!content.update(feature) || disposed || tooltipContent !== content) return;
+    if (element.parentNode !== root) root.append(element);
+    if (disposed || tooltipContent !== content) return;
+    position(element, { x: point.x + 16, y: point.y + 18 });
     viewport.preview(feature.id);
   }
   let clickedAttachments: Interaction<P>['attachments'] = [];
@@ -169,14 +126,18 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
     return element;
   }
   function drawPicker(focus = false) {
-    if (!active) return;
-    releaseChoices(); release(activeDisposers); active.replaceChildren();
+    const picker = active;
+    if (!picker || disposed) return;
+    releaseChoices(); release(activeDisposers);
+    if (disposed || active !== picker) return;
+    picker.replaceChildren();
     const size = Math.min(360, viewport.container.clientWidth - 12, viewport.container.clientHeight - 12);
-    active.style.width = `${size}px`; active.style.height = `${size}px`;
+    picker.style.width = `${size}px`; picker.style.height = `${size}px`;
     const center = size / 2, radius = center - 3, inside = Math.min(60, radius * .4);
     const slice = candidates.slice(page * 8, page * 8 + 8);
     const buttons: HTMLButtonElement[] = [];
-    slice.forEach((id, index) => {
+    for (const [index, id] of slice.entries()) {
+      if (disposed || active !== picker) return;
       const angle = -Math.PI / 2 + index * Math.PI * 2 / slice.length;
       const start = angle - Math.PI / slice.length + .008;
       const end = angle + Math.PI / slice.length - .008;
@@ -197,8 +158,9 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
       label.style.left = `${center + Math.cos(angle) * labelRadius}px`;
       label.style.top = `${center + Math.sin(angle) * labelRadius}px`;
       if (size < 330) label.style.width = '68px';
-      choices.set(id, { button: choice, label, disposers: [] });
+      choices.set(id, { button: choice, content: createFeatureContent(label, viewport, options.renderFeature) });
       refreshChoice(id);
+      if (disposed || active !== picker) return;
       choice.append(label);
       const show = () => { const current = viewport.getFeature(id); if (current) viewport.preview(id); };
       choice.addEventListener('mouseenter', show); choice.addEventListener('focus', show);
@@ -211,8 +173,9 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
         const direction = ['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : -1;
         enabled[(enabled.indexOf(choice) + direction + enabled.length) % enabled.length]?.focus({ preventScroll: true });
       });
-      buttons.push(choice); active?.append(choice);
-    });
+      buttons.push(choice); picker.append(choice);
+    }
+    if (disposed || active !== picker) return;
     const hub = document.createElement('div'); hub.className = 'rl-picker-hub';
     const count = document.createElement('strong'); count.textContent = `${candidates.length} features`;
     const range = document.createElement('span'); range.textContent = `${page * 8 + 1}–${Math.min((page + 1) * 8, candidates.length)} of ${candidates.length}`;
@@ -220,13 +183,15 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
     const previous = button('‹', () => { page--; drawPicker(true); }); previous.setAttribute('aria-label', 'Previous candidates'); previous.disabled = page === 0;
     const next = button('›', () => { page++; drawPicker(true); }); next.setAttribute('aria-label', 'Next candidates'); next.disabled = (page + 1) * 8 >= candidates.length;
     const dismiss = button('Close', () => close(true)); dismiss.className = 'rl-picker-close';
-    nav.append(previous, next); hub.append(count, range, nav, dismiss); active.append(hub);
-    position(active, anchor, true);
+    nav.append(previous, next); hub.append(count, range, nav, dismiss); picker.append(hub);
+    position(picker, anchor, true);
     if (focus) buttons.find(item => !item.disabled)?.focus({ preventScroll: true });
   }
   subscriptions.push(viewport.on('click', event => {
+    if (disposed) return;
     if (active) { close(); return; }
     hideTooltip();
+    if (disposed || viewport.getInteractionOwner()) return;
     clickedAttachments = event.attachments;
     if (event.features.length > 1 && options.picker !== false) {
       candidates = event.features.map(feature => feature.id); anchor = event.point; page = 0;
@@ -236,6 +201,7 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
     } else viewport.requestSelection(event.features[0] ? [event.features[0].id] : [], event.attachments);
   }));
   subscriptions.push(viewport.on('hover', event => {
+    if (disposed) return;
     hoveredFeature = Boolean(event.features[0]);
     refreshCursor();
     if (active || options.hover === false) return;
@@ -255,6 +221,7 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
     active.querySelector('button')?.focus({ preventScroll: true });
   }));
   subscriptions.push(viewport.on('datachange', event => {
+    if (disposed) return;
     if (tooltipFeatureId && event.removed.includes(tooltipFeatureId)) hideTooltip();
     else if (tooltipFeatureId && tooltipPoint && event.ids.includes(tooltipFeatureId)) {
       const feature = viewport.getFeature(tooltipFeatureId);
