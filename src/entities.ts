@@ -233,7 +233,13 @@ export class EntityScene<P extends Properties> {
       try {
         this.build(feature);
       } catch (cause) {
-        this.geometryDirty = this.geometry.delete(id) || this.geometryDirty;
+        if (this.destroyed || this.features.get(id) !== feature) continue;
+        this.coverage.unavailable(id);
+        const state = this.states.get(id);
+        if (state) this.states.set(id, { ...state, coverage: 'unavailable', footprintTriangles: 0 });
+        // Preserve the last valid placement and non-camera attachments while
+        // removing coverage whose required elevation calculation failed.
+        this.geometryDirty = true;
         this.options.diagnostic(
           new RidgelineError(
             'UPDATE_FAILED',

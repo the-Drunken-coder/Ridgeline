@@ -108,6 +108,50 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
+  await run('Reliability entity sampling failure clears completed plain and terrain coverage and retries current data', async () => {
+    const failure = new Error('Required camera elevation failed');
+    let broken = false, samples = 0;
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style('#ffffff'), camera: { center: [0, 0], zoom: 16 },
+      logger: () => {}, onError: error => errors.push(error), elevationSampler: { sample: lng => {
+        samples++;
+        if (broken && Math.abs(lng) < .003) throw failure;
+        return 0;
+      } } });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'plain', type: 'camera', range: 300, bearing: 0,
+      elevation: -90, fovX: 60, fovY: 40, color: '#ff0000', fillOpacity: .8 };
+    const feature: MapFeature = { ...point('calculation'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [camera, { ...camera, id: 'terrain', terrainVisibility: true, bearing: 90 },
+        { id: 'zone', type: 'circle', radius: 30, color: '#00aa00' }] } };
+    const other: MapFeature = { ...point('unrelated', .004), entity: {
+      attachments: [{ id: 'other-zone', type: 'circle', radius: 40, color: '#0000ff' }] } };
+    const plainVisible = () => air.map.queryRenderedFeatures(air.map.project([.0002, 0]), { layers: ['rl:entity-ground-fill'] })
+      .some(hit => hit.properties.entityId === feature.id && hit.properties.attachmentId === 'plain');
+    const maskVisible = () => air.map.getStyle().layers.some(layer => layer.id.startsWith('rl:camera-mask:'));
+    const zoneVisible = (id: string, lng: number) => air.map.queryRenderedFeatures(air.map.project([lng, 0]), { layers: ['rl:entity-ground-fill'] })
+      .some(hit => hit.properties.entityId === id);
+    try {
+      air.upsert([feature, other]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready' && plainVisible() && maskVisible(), 'completed cameras');
+      broken = true;
+      const moved: MapFeature = { ...feature, geometry: { type: 'Point', coordinates: [.0005, 0] } };
+      air.upsert([moved]);
+      await until(() => errors.some(error => error.cause === failure), 'original sampling diagnostic');
+      await until(() => air.getEntityState(feature.id)?.coverage === 'unavailable' && !plainVisible() && !maskVisible(), 'failed coverage removed');
+      check(air.getEntityState(feature.id)?.placement === 'airborne', 'Failure erased valid entity placement');
+      check(zoneVisible(feature.id, 0) && zoneVisible(other.id, .004), 'Failure erased unrelated ground geometry');
+      const accepted = air.getFeature(feature.id);
+      check(accepted?.geometry.type === 'Point' && accepted.geometry.coordinates[0] === .0005, 'Failure changed accepted data');
+      broken = false;
+      air.retryUpdates();
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready' && maskVisible() && zoneVisible(feature.id, .0005), 'current coverage recovered');
+      await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+      const settled = samples;
+      await new Promise(resolve => setTimeout(resolve, 200));
+      check(samples === settled, 'Recovered scene kept sampling while idle');
+    } finally { air.destroy(); }
+  });
   await run('Raw terrain and the installed renderer agree on nonzero TMS tile templates', async () => {
     const dem = document.createElement('canvas'); dem.width = dem.height = 256;
     const context = dem.getContext('2d')!;

@@ -1,5 +1,6 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Reliability entity sampling failure clears completed plain and terrain coverage and retries current data',
   'Raw terrain and the installed renderer agree on nonzero TMS tile templates',
   'An earlier pointer release cannot replace controls during a later native press',
   'Inspector resumes updates after window blur or lost pointer capture',
