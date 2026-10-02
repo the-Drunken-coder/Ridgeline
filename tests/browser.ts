@@ -108,6 +108,32 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
+  await run('Reliability drawing snapping follows the pointer world copy at low zoom', async () => {
+    container.style.width = '800px';
+    const anchor: [number, number] = [-179, 0];
+    const draw = createViewport({ container, basemap: style(), terrain: false,
+      camera: { center: [0, 0], zoom: 0 }, features: [point('multi-world-anchor', anchor[0])], logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'multi-world-draft', properties: {} }), submit: () => ({ accepted: true }) });
+    try {
+      const screen = draw.map.project([181, 0]);
+      await until(() => draw.map.queryRenderedFeatures([[screen.x - 8, screen.y - 8], [screen.x + 8, screen.y + 8]],
+        { layers: ['rl:points'] }).some(f => f.properties._rl_feature_id === 'multi-world-anchor'), 'alternate visible world vertex');
+      editor.start('line');
+      await pointer('move', { x: screen.x + 4, y: screen.y + 3 });
+      const preview = editor.getPreview();
+      check(preview?.kind === 'line' && JSON.stringify(preview.vertices[0]) === JSON.stringify(anchor), 'Visible alternate world vertex was excluded from snapping');
+      const ring = container.querySelector<SVGCircleElement>('.rl-ground-snap-ring:not([hidden])');
+      check(!!ring && Math.hypot(Number(ring.getAttribute('cx')) - screen.x,
+        Number(ring.getAttribute('cy')) - screen.y) < 1, 'Low-zoom snap ring projected on the other visible copy');
+      await pointer('click', { x: screen.x + 4, y: screen.y + 3 });
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]');
+      if (!handle) throw new Error('Placed world-copy handle missing');
+      const box = handle.getBoundingClientRect(), canvas = draw.map.getCanvas().getBoundingClientRect();
+      check(Math.hypot(box.x + box.width / 2 - canvas.x - screen.x,
+        box.y + box.height / 2 - canvas.y - screen.y) < 1, 'Placed handle used the other visible copy');
+    } finally { editor.destroy(); draw.destroy(); container.style.width = ''; }
+  });
   await run('Reliability drawing keyboard movement excludes carried shape vertices', async () => {
     const draw = createViewport({ container, basemap: style(), terrain: false,
       camera: { center: [0, 0], zoom: 16 }, logger: () => {} });

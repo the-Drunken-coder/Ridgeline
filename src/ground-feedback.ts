@@ -76,7 +76,8 @@ export function createGroundFeedback(
       return;
     }
     visible(unavailable, false);
-    const displayed: DrawingPosition = [nearbyLongitude((snapped ?? target.position)[0], camera.lng),
+    const reference = map.unproject([pointer.x, pointer.y]).lng;
+    const displayed: DrawingPosition = [nearbyLongitude((snapped ?? target.position)[0], reference),
       (snapped ?? target.position)[1]];
     const center = snapped ? map.project(displayed) : pointer;
     visible(snapRing, Boolean(snapped));
