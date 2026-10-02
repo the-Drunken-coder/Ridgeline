@@ -12,6 +12,7 @@ export const browserCases = [
   'Reliability content keeps a replacement menu alive when picker page disposal opens it',
   'Reliability content lets a picker replace a pending menu factory',
   'Reliability drawing callback ownership and interrupted acquisition',
+  'Reliability entity null buffer allocation diagnoses once and retry renders only current geometry',
   'Reliability entity date-line rendering and real picking agree across order pan and projection',
   'Reliability entity raster retry fetches repaired no-data and restores current camera pixels',
   'Reliability entity sampling failure clears completed plain and terrain coverage and retries current data',
