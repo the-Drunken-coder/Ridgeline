@@ -58,6 +58,7 @@ export function createDrawingSession<P extends Properties>(
     disposed = false,
     applying = false;
   let reason: string | undefined, release: (() => void) | undefined;
+  let acquisition: object | undefined;
   let submission: {
     controller: AbortController;
     kind: DrawingChange<P>["kind"];
@@ -182,9 +183,11 @@ export function createDrawingSession<P extends Properties>(
   }
   function requireDraft(operation?: DrawingChange<P>["kind"]) {
     if (disposed) throw new Error("Drawing session has been destroyed.");
-    if (!draft || pending || conflict || !allowed(operation))
+    const current = draft;
+    if (!current || pending || conflict || !allowed(operation) ||
+      disposed || draft !== current || pending || conflict)
       throw new Error("This draft cannot be edited now.");
-    return draft;
+    return current;
   }
   function change(update: (current: DrawingDraft<P>) => void) {
     const current = requireDraft();
@@ -200,7 +203,21 @@ export function createDrawingSession<P extends Properties>(
   function open(next: DrawingDraft<P>) {
     if (disposed) throw new Error("Drawing session has been destroyed.");
     if (draft) throw new Error("Finish or cancel the current drawing first.");
-    release = host.acquireInteraction("drawing");
+    const active = {};
+    acquisition = active;
+    let owned: () => void;
+    try {
+      owned = host.acquireInteraction("drawing");
+    } catch (error) {
+      if (acquisition === active) acquisition = undefined;
+      throw error;
+    }
+    if (disposed || acquisition !== active || draft) {
+      owned();
+      return;
+    }
+    acquisition = undefined;
+    release = owned;
     draft = next;
     initialStyle = structuredClone(next.style);
     past = [];
@@ -212,6 +229,7 @@ export function createDrawingSession<P extends Properties>(
   function cancel() {
     if (pending)
       throw new Error("Wait for the application to decide before cancelling.");
+    acquisition = undefined;
     const owned = release;
     release = undefined;
     draft = undefined;
@@ -418,6 +436,16 @@ export function createDrawingSession<P extends Properties>(
     submission = active;
     notify();
     try {
+      if (disposed || submission !== active || draft !== current) return false;
+      const mayStart = !conflict && !active.controller.signal.aborted && allowed(request.kind);
+      if (disposed || submission !== active || draft !== current) return false;
+      if (!mayStart || conflict || active.controller.signal.aborted ||
+        current.shape !== shape || current.style !== style) {
+        pending = false;
+        reason ??= "Permission changed while this request was pending. Review the draft and try again.";
+        notify();
+        return false;
+      }
       const decision = await options.submit(
         structuredClone(request),
         active.controller.signal,

@@ -89,6 +89,90 @@ function feature(shape: DrawingShape, id = "existing"): MapFeature {
   };
 }
 
+for (const action of ["destroy", "conflict", "permission"] as const) {
+  test(`Pending notification ${action} prevents persistence from starting`, async () => {
+    let permitted = true;
+    const { editor, host, requests, owner } = fixture({ canEdit: () => permitted });
+    const before = feature({ kind: "line", vertices: [[0, 0], [0.01, 0]] });
+    host.upsert([before]);
+    editor.edit(before.id);
+    editor.moveVertex(1, [0.02, 0]);
+    let armed = true;
+    editor.onChange(() => {
+      if (!armed || editor.getState().phase !== "pending") return;
+      armed = false;
+      if (action === "destroy") editor.destroy();
+      else if (action === "conflict") host.upsert([{ ...before, properties: { name: "newer" } }]);
+      else { permitted = false; editor.refreshPermissions(); }
+    });
+    assert.equal(await editor.finish(), false);
+    assert.equal(requests.length, 0);
+    assert.deepEqual(host.getFeature(before.id)?.geometry, before.geometry);
+    assert.equal(editor.getState().phase, action === "destroy" ? "idle" : action === "conflict" ? "conflict" : "forbidden");
+    if (action === "destroy") assert.equal(owner(), null);
+    editor.destroy();
+  });
+}
+
+for (const action of ["cancel", "destroy"] as const) {
+  test(`Interaction acquisition interrupted by ${action} releases its lease and stays idle`, () => {
+    const { editor, host, owner } = fixture();
+    const acquire = host.acquireInteraction;
+    host.acquireInteraction = (name) => {
+      const release = acquire(name);
+      editor[action]();
+      return release;
+    };
+    editor.start("line");
+    assert.equal(editor.getState().phase, "idle");
+    assert.equal(owner(), null);
+    editor.destroy();
+    editor.destroy();
+    const remounted = createDrawingSession(host, {
+      createFeature: () => ({ id: "remount", properties: {} }),
+      submit: () => ({ accepted: true }),
+    });
+    host.acquireInteraction = acquire;
+    remounted.start("line");
+    assert.equal(owner(), "drawing");
+    remounted.destroy();
+    assert.equal(owner(), null);
+  });
+}
+
+for (const action of ["cancel", "replace", "destroy"] as const) {
+  for (const operation of ["vertex", "style", "finish"] as const) {
+    test(`Initial ${operation} permission cannot ${action} and redirect the original action`, async () => {
+      let armed = false, nextId = 0;
+      const { editor, host, requests } = fixture({
+        createFeature: () => ({ id: `owned-${++nextId}`, properties: {} }),
+        canEdit: () => {
+          if (armed) {
+            armed = false;
+            if (action === "destroy") editor.destroy();
+            else {
+              editor.cancel();
+              if (action === "replace") line(editor);
+            }
+          }
+          return true;
+        },
+      });
+      line(editor);
+      armed = true;
+      if (operation === "finish") await assert.rejects(editor.finish());
+      else assert.throws(() => operation === "vertex" ? editor.moveVertex(0, [5, 5]) : editor.setStyle({ label: "obsolete" }));
+      assert.equal(requests.length, 0);
+      assert.equal(host.getFeature("owned-1"), undefined);
+      if (action === "replace") {
+        assert.deepEqual(editor.getState().draft?.shape, { kind: "line", vertices: [[0, 0], [0.01, 0]] });
+        assert.equal(editor.getState().draft?.style.label, "");
+      } else assert.equal(editor.getState().phase, "idle");
+      editor.destroy();
+    });
+  }
+}
+
 test("Circle and rotated rectangle retain meter-based definitions across storage", () => {
   const store = new FeatureStore();
   for (const shape of [
