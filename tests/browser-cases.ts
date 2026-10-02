@@ -10,6 +10,7 @@ export const browserCases = [
   'Reliability content ignores obsolete factory results and close callbacks',
   'Reliability content keeps a replacement menu alive when picker page disposal opens it',
   'Reliability content lets a picker replace a pending menu factory',
+  'Reliability drawing callback ownership and interrupted acquisition',
   'Raw terrain and the installed renderer agree on nonzero TMS tile templates',
   'An earlier pointer release cannot replace controls during a later native press',
   'Inspector resumes updates after window blur or lost pointer capture',
