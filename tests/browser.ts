@@ -108,6 +108,266 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
+  await run('Reliability drawing insertion handles preserve displayed edges', async () => {
+    const draw = createViewport({ container, basemap: style(), terrain: false,
+      camera: { center: [0, 60], zoom: 4 }, logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused', properties: {} }), submit: () => ({ accepted: true }) });
+    try {
+      for (const [kind, center, vertices] of [
+        ['line', [0, 60], [[-20, 60], [20, 60]]],
+        ['arrow', [179.8, 60], [[179, 60], [-179, 60]]],
+        ['polygon', [179.8, 60], [[179, 60], [-179, 60], [-179, 61], [179, 61]]],
+      ] as const) {
+        const shape = { kind, vertices: vertices.map(([longitude, latitude]): [number, number] => [longitude, latitude]) };
+        const feature: MapFeature = { type: 'Feature', id: `insert-${kind}`, properties: {}, geometry: shapeGeometry(shape),
+          drawing: { version: 1, shape, style: { color: '#008855', fillColor: '#008855', lineWidth: 3,
+            fillOpacity: .2, dashed: false, label: '' } } };
+        draw.upsert([feature]); draw.setCamera({ center: [...center], zoom: kind === 'line' ? 4 : 7 });
+        for (const projection of ['flat', 'globe'] as const) {
+          draw.configure({ projection });
+          await until(() => draw.map.getProjection()?.type === (projection === 'flat' ? 'mercator' : 'globe'), 'insertion projection');
+          editor.edit(feature.id);
+          const button = container.querySelector<HTMLButtonElement>('[aria-label="Insert vertex after 1"]');
+          if (!button) throw new Error('Insertion handle missing');
+          const box = button.getBoundingClientRect(), canvas = draw.map.getCanvas().getBoundingClientRect();
+          const screen = { x: box.x + box.width / 2 - canvas.x, y: box.y + box.height / 2 - canvas.y };
+          const expected = draw.map.project(kind === 'line' ? [0, 60] : [180, 60]);
+          check(Math.hypot(screen.x - expected.x, screen.y - expected.y) < 1,
+            `${kind}/${projection} insertion handle was displaced from the displayed edge`);
+          await until(() => draw.map.queryRenderedFeatures([[screen.x - 2, screen.y - 2], [screen.x + 2, screen.y + 2]],
+            { layers: ['rl:draft-line'] }).length > 0, 'displayed edge beneath insertion handle');
+          await browserClick('[aria-label="Insert vertex after 1"]');
+          const inserted = editor.getState().draft?.shape;
+          if (!inserted || !('vertices' in inserted)) throw new Error('Inserted geometry missing');
+          check(inserted.vertices.length === vertices.length + 1 &&
+            Math.abs(inserted.vertices[1]![1] - 60) < 1e-10, 'Insertion bent the existing edge');
+          const point = draw.map.project([kind === 'line' ? inserted.vertices[1]![0] : 180, inserted.vertices[1]![1]]);
+          check(Math.hypot(point.x - screen.x, point.y - screen.y) < 1, 'Activation inserted another coordinate');
+          check(JSON.stringify(inserted.vertices.filter((_, i) => i !== 1)) === JSON.stringify(vertices), 'Insertion changed original vertices');
+          editor.cancel();
+        }
+        draw.remove([feature.id]);
+      }
+    } finally { editor.destroy(); draw.destroy(); }
+  });
+  await run('Reliability drawing snapping follows the pointer world copy at low zoom', async () => {
+    container.style.width = '800px';
+    const anchor: [number, number] = [-179, 0];
+    const draw = createViewport({ container, basemap: style(), terrain: false,
+      camera: { center: [0, 0], zoom: 0 }, features: [point('multi-world-anchor', anchor[0])], logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'multi-world-draft', properties: {} }), submit: () => ({ accepted: true }) });
+    try {
+      const screen = draw.map.project([181, 0]);
+      await until(() => draw.map.queryRenderedFeatures([[screen.x - 8, screen.y - 8], [screen.x + 8, screen.y + 8]],
+        { layers: ['rl:points'] }).some(f => f.properties._rl_feature_id === 'multi-world-anchor'), 'alternate visible world vertex');
+      editor.start('line');
+      await pointer('move', { x: screen.x + 4, y: screen.y + 3 });
+      const preview = editor.getPreview();
+      check(preview?.kind === 'line' && JSON.stringify(preview.vertices[0]) === JSON.stringify(anchor), 'Visible alternate world vertex was excluded from snapping');
+      const ring = container.querySelector<SVGCircleElement>('.rl-ground-snap-ring:not([hidden])');
+      check(!!ring && Math.hypot(Number(ring.getAttribute('cx')) - screen.x,
+        Number(ring.getAttribute('cy')) - screen.y) < 1, 'Low-zoom snap ring projected on the other visible copy');
+      await pointer('click', { x: screen.x + 4, y: screen.y + 3 });
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]');
+      if (!handle) throw new Error('Placed world-copy handle missing');
+      const box = handle.getBoundingClientRect(), canvas = draw.map.getCanvas().getBoundingClientRect();
+      check(Math.hypot(box.x + box.width / 2 - canvas.x - screen.x,
+        box.y + box.height / 2 - canvas.y - screen.y) < 1, 'Placed handle used the other visible copy');
+    } finally { editor.destroy(); draw.destroy(); container.style.width = ''; }
+  });
+  await run('Reliability drawing keyboard movement excludes carried shape vertices', async () => {
+    const draw = createViewport({ container, basemap: style(), terrain: false,
+      camera: { center: [0, 0], zoom: 16 }, logger: () => {} });
+    current = draw; await draw.ready;
+    const origin = draw.map.project([0, 0]);
+    const circleShape = { kind: 'circle' as const, center: [0, 0] as [number, number], radius: 15 };
+    const circle: MapFeature = { type: 'Feature', id: 'carried-circle', properties: {}, geometry: shapeGeometry(circleShape),
+      drawing: { version: 1, shape: circleShape, style: { color: '#008855', fillColor: '#008855', lineWidth: 2,
+        fillOpacity: .2, dashed: false, label: '' } } };
+    const endpoints = [-16, 16].map(x => draw.map.unproject([origin.x + x, origin.y]).toArray());
+    const line: MapFeature = { type: 'Feature', id: 'carried-line', properties: {},
+      geometry: { type: 'LineString', coordinates: endpoints } };
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused', properties: {} }), submit: () => ({ accepted: true }) });
+    try {
+      for (const [feature, label] of [[circle, 'Center'], [line, 'Move drawing']] as const) {
+        draw.upsert([feature]); editor.edit(feature.id);
+        const handle = container.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`);
+        if (!handle) throw new Error(`${label} handle missing`);
+        handle.focus();
+        await browserKey('ArrowRight');
+        const shape = editor.getState().draft?.shape;
+        let center: [number, number];
+        if (shape?.kind === 'circle') {
+          check(shape.radius === 15, 'Center movement changed the circle radius');
+          center = shape.center;
+        } else if (shape?.kind === 'line') center = [(shape.vertices[0]![0] + shape.vertices[1]![0]) / 2,
+          (shape.vertices[0]![1] + shape.vertices[1]![1]) / 2];
+        else throw new Error('Carried shape missing');
+        const screen = draw.map.project(center);
+        check(Math.abs(screen.x - origin.x - 10) < 1 && Math.abs(screen.y - origin.y) < 1,
+          'Carried shape snapped to one of its own vertices');
+        check(document.activeElement === handle, 'Carried shape movement lost focus');
+        editor.cancel(); draw.remove([feature.id]);
+      }
+    } finally { editor.destroy(); draw.destroy(); }
+  });
+  await run('Reliability drawing keyboard snapping follows pointer policy', async () => {
+    const draw = createViewport({ container, basemap: style(), terrain: false,
+      camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+    current = draw; await draw.ready;
+    const origin = draw.map.project([0, 0]);
+    const target = draw.map.unproject([origin.x + 16, origin.y]).toArray();
+    const end = draw.map.unproject([origin.x + 60, origin.y + 60]).toArray();
+    const line: MapFeature = { type: 'Feature', id: 'keyboard-line', properties: {},
+      geometry: { type: 'LineString', coordinates: [[0, 0], end] } };
+    draw.upsert([line, { type: 'Feature', id: 'keyboard-anchor', properties: {},
+      geometry: { type: 'Point', coordinates: target } }]);
+    await until(() => draw.map.queryRenderedFeatures({ layers: ['rl:points'] })
+      .some(f => f.properties._rl_feature_id === 'keyboard-anchor'), 'keyboard anchor rendered');
+    let excluded = false;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused', properties: {} }),
+      canSnap: feature => feature.id !== 'keyboard-anchor' || !excluded, submit: () => ({ accepted: true }) });
+    const vertex = () => {
+      const shape = editor.getState().draft?.shape;
+      if (shape?.kind !== 'line') throw new Error('Keyboard line draft missing');
+      return shape.vertices[0]!;
+    };
+    const exact = () => JSON.stringify(vertex()) === JSON.stringify(target);
+    const freeStep = () => {
+      const screen = draw.map.project(vertex());
+      check(!exact() && Math.abs(screen.x - origin.x - 10) < 1 && Math.abs(screen.y - origin.y) < 1, 'Bypass did not make a free 10-pixel ground edit');
+    };
+    try {
+      editor.edit(line.id);
+      await browserClick('[aria-label="Vertex 1"]');
+      container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]')!.focus();
+      check(document.activeElement?.getAttribute('aria-label') === 'Vertex 1', 'Keyboard handle was not focused');
+      await browserKey('ArrowRight');
+      check(exact(), `Keyboard edit missed an eligible vertex: ${JSON.stringify({ actual: vertex(), target })}`);
+      check(document.activeElement?.getAttribute('aria-label') === 'Vertex 1', 'Snapping lost handle focus');
+      await browserKey('ControlOrMeta+z');
+      check(JSON.stringify(vertex()) === JSON.stringify([0, 0]), 'Undo did not restore the original keyboard vertex');
+      await browserKey('Alt+ArrowRight'); freeStep();
+      await browserKey('ControlOrMeta+z');
+      editor.setSnapping(false);
+      await browserKey('ArrowRight'); freeStep();
+      await browserKey('ControlOrMeta+z');
+      editor.setSnapping(true); excluded = true;
+      await browserKey('ArrowRight'); freeStep();
+      await browserKey('ControlOrMeta+z'); excluded = false;
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]')!;
+      const box = handle.getBoundingClientRect(), canvas = draw.map.getCanvas().getBoundingClientRect();
+      await browserDrag(box.x + box.width / 2, box.y + box.height / 2,
+        canvas.x + origin.x + 10, canvas.y + origin.y);
+      check(exact(), 'Pointer and keyboard edits disagreed on the same snap target');
+      await browserKey('ControlOrMeta+z');
+      const unchanged = JSON.stringify(editor.getState().draft?.shape);
+      draw.configure({ terrain: true, elevation: { tiles: ['/missing-keyboard-dem.png'], encoding: 'terrarium', maxzoom: 0 } });
+      await browserClick('[aria-label="Vertex 1"]');
+      container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]')!.focus();
+      await browserKey('Shift+ArrowRight');
+      check(JSON.stringify(editor.getState().draft?.shape) === unchanged, 'Unavailable ground changed the keyboard draft');
+      check(document.activeElement?.getAttribute('aria-label') === 'Vertex 1', 'Unavailable ground lost keyboard focus');
+    } finally { editor.destroy(); draw.destroy(); }
+  });
+  for (const projection of ['flat', 'globe'] as const) for (const terrain of [false, true]) {
+    await run(`Reliability drawing date-line storage snapping and reload ${projection} ${terrain ? 'with' : 'without'} terrain`, async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!;
+    context.fillStyle = 'rgb(128,100,0)'; context.fillRect(0, 0, 256, 256);
+    const image = await (await fetch(dem.toDataURL())).arrayBuffer();
+    const protocol = `reliable-world-${crypto.randomUUID()}`;
+    addProtocol(protocol, async () => ({ data: image.slice(0) }));
+    const anchor: [number, number] = [-179.65, 0];
+    const elevation = { tiles: [`${protocol}://dem/{z}/{x}/{y}.png`], encoding: 'terrarium' as const, maxzoom: 0 };
+    try {
+        const options = { container, basemap: style(), terrain, elevation, projection,
+          camera: { center: [179.8, 0] as [number, number], zoom: 7, pitch: projection === 'globe' ? 50 : 0 }, logger: () => {} };
+        let draw = createViewport({ ...options, features: [point('world-anchor', anchor[0])] });
+        current = draw; await draw.ready;
+        if (terrain) await until(() => draw.map.loaded() && Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - 100) < 1,
+          `${projection} date-line elevation loaded`);
+        let editor = attachDrawing(draw, { createFeature: () => ({ id: 'world-line', properties: {} }),
+          submit: () => ({ accepted: true }) });
+        try {
+          editor.start('line'); editor.setSnapping(false);
+          await pointer('click', draw.map.project([179.4, 0]));
+          const canonicalGlobeTerrain = projection === 'globe' && terrain;
+          if (canonicalGlobeTerrain) {
+            // The pinned globe renderer loads DEM samplers on its canonical
+            // side. Navigate across the seam before placing on western terrain.
+            const canvas = draw.map.getCanvas().getBoundingClientRect();
+            await browserDrag(canvas.x + 340, canvas.y + 250, canvas.x + 250, canvas.y + 250);
+            draw.setCamera({ center: [-179.8, 0] });
+            await until(() => draw.map.loaded() && Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - 100) < 1,
+              'western globe terrain loaded');
+          }
+          const across = draw.map.project(canonicalGlobeTerrain ? [-179.6, 0] : [180.4, 0]);
+          await pointer('move', across);
+          await until(() => !!container.querySelector('.rl-ground-crosshair:not([hidden])'), `${projection}/${terrain} date-line ground`);
+          const preview = editor.getPreview();
+          if (preview?.kind !== 'line') throw new Error('Date-line preview missing');
+          const next = preview.vertices.at(-1)!;
+          check(Math.abs(next[0]) <= 180 && Math.abs(next[1]) <= 90, `Date-line target is unbounded: ${next}`);
+          await pointer('click', across);
+          check(await editor.finish(), `${projection}/${terrain} date-line Finish failed`);
+          const saved = draw.getFeature('world-line');
+          if (!saved?.drawing || saved.geometry.type !== 'LineString') throw new Error('Saved date-line line missing');
+          check(saved.geometry.coordinates.every(p => Math.abs(p[0]!) <= 180) &&
+            saved.geometry.coordinates[0]![0]! > 0 && saved.geometry.coordinates[1]![0]! < 0, 'Crossing geometry was not bounded');
+          const restored: MapFeature = JSON.parse(JSON.stringify(saved));
+          editor.destroy(); draw.destroy();
+          draw = createViewport({ ...options, camera: { ...options.camera,
+            center: canonicalGlobeTerrain ? [-179.8, 0] : options.camera.center },
+            features: [restored, point('world-anchor', anchor[0])] });
+          current = draw; await draw.ready;
+          if (terrain) await until(() => draw.map.loaded() && Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - 100) < 1,
+            `${projection} reloaded date-line elevation`);
+          editor = attachDrawing(draw, { createFeature: () => ({ id: 'world-snap', properties: {} }),
+            canSnap: feature => feature.id === 'world-anchor', submit: () => ({ accepted: true }) });
+          editor.edit('world-line');
+          check(JSON.stringify(editor.getState().draft?.shape) === JSON.stringify(restored.drawing?.shape), 'Reload changed shape definition');
+          const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]');
+          if (!handle) throw new Error('Reloaded date-line handle missing');
+          const box = handle.getBoundingClientRect(), canvas = draw.map.getCanvas().getBoundingClientRect();
+          const visible = draw.map.project(canonicalGlobeTerrain ? [-179.6, 0] : [180.4, 0]);
+          check(Math.hypot(box.x + box.width / 2 - canvas.x - visible.x,
+            box.y + box.height / 2 - canvas.y - visible.y) < 2, 'Reloaded handle used another world copy');
+          check(await editor.finish(), 'Reloaded date-line edit could not finish');
+          await until(() => draw.map.queryRenderedFeatures({ layers: ['rl:points'] }).some(f => f.properties._rl_feature_id === 'world-anchor'), 'date-line snap anchor');
+          editor.start('line');
+          const screen = draw.map.project(canonicalGlobeTerrain ? anchor : [180.35, 0]);
+          await pointer('move', { x: screen.x + 5, y: screen.y + 3 });
+          const ring = container.querySelector<SVGCircleElement>('.rl-ground-snap-ring:not([hidden])');
+          check(!!ring && Math.hypot(Number(ring.getAttribute('cx')) - screen.x,
+            Number(ring.getAttribute('cy')) - screen.y) < 1, `Snap feedback projected a distant world copy: ${JSON.stringify({
+              projection, terrain, screen, ring: ring?.outerHTML, preview: editor.getPreview(),
+              hits: draw.map.queryRenderedFeatures([[screen.x - 12, screen.y - 12], [screen.x + 12, screen.y + 12]], { layers: ['rl:points', 'rl:line'] }).map(f => f.properties._rl_feature_id) })}`);
+          await pointer('click', { x: screen.x + 5, y: screen.y + 3 });
+          const snapped = editor.getState().draft?.shape;
+          check(snapped?.kind === 'line' && snapped.vertices[0]?.[0] === anchor[0] &&
+            snapped.vertices[0]?.[1] === anchor[1], 'Snap did not copy the stored vertex exactly');
+          await pointer('move', { x: screen.x + 5, y: screen.y + 3 });
+          draw.setCamera({ center: canonicalGlobeTerrain ? [-179.78, 0] : [179.82, 0] });
+          await until(() => {
+            const moved = draw.map.project(canonicalGlobeTerrain ? anchor : [180.35, 0]);
+            const currentRing = container.querySelector<SVGCircleElement>('.rl-ground-snap-ring:not([hidden])');
+            return !!currentRing && Math.hypot(Number(currentRing.getAttribute('cx')) - moved.x,
+              Number(currentRing.getAttribute('cy')) - moved.y) < 1;
+          }, 'stationary date-line snap feedback follows view');
+          if (terrain) {
+            const before = JSON.stringify(editor.getState().draft?.shape);
+            draw.configure({ elevation: { tiles: ['/missing-world-dem.png'], encoding: 'terrarium', maxzoom: 0 } });
+            await until(() => !!container.querySelector('.rl-ground-unavailable:not([hidden])'), 'date-line replacement retires old elevation');
+            await pointer('click', { x: screen.x + 5, y: screen.y + 3 });
+            check(JSON.stringify(editor.getState().draft?.shape) === before, 'Missing replacement elevation reused old globe coverage');
+          }
+        } finally { editor.destroy(); draw.destroy(); }
+    } finally { removeProtocol(protocol); }
+    });
+  }
   await run('Reliability entity nonsimple attachment polygons reject mixed batches before accepted or rendered changes', async () => {
     const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 },
       elevationSampler: { sample: () => 0 }, logger: () => {} });

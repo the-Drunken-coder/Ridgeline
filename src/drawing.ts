@@ -17,6 +17,7 @@ import { getViewportDrawingInternals } from "./viewport";
 import { createGroundTargetResolver } from "./ground-target";
 import type { ScreenPoint } from "./ground-target";
 import { createGroundFeedback } from "./ground-feedback";
+import { nearbyLongitude } from "./longitude";
 import {
   shapeGeometry,
   shapeHandles,
@@ -124,9 +125,10 @@ export function attachDrawing<P extends Properties>(
       );
     let best = 12,
       chosen = point;
+    const reference = map.unproject([screen.x, screen.y]).lng;
     for (const candidate of candidates) {
       const projected = map.project([
-        point[0] + wrapLongitude(candidate[0] - point[0]),
+        nearbyLongitude(candidate[0], reference),
         candidate[1],
       ]);
       if (
@@ -259,6 +261,9 @@ export function attachDrawing<P extends Properties>(
       draft = state.draft,
       keep = new Set<string>();
     const locked = !editable();
+    const reference = draft?.placing && pointer
+      ? map.unproject([pointer.x, pointer.y]).lng
+      : map.getCenter().lng;
     function handle(
       key: string,
       label: string,
@@ -268,6 +273,7 @@ export function attachDrawing<P extends Properties>(
       insert?: () => void,
     ) {
       if (!p.every(Number.isFinite) || Math.abs(p[1]) >= 90) return;
+      const displayed: DrawingPosition = [nearbyLongitude(p[0], reference), p[1]];
       keep.add(key);
       let item = markers.get(key);
       if (!item) {
@@ -284,7 +290,7 @@ export function attachDrawing<P extends Properties>(
           draggable: !insert,
           opacityWhenCovered: 0,
         })
-          .setLngLat(p)
+          .setLngLat(displayed)
           .addTo(map);
         item = { marker, button, position: p };
         markers.set(key, item);
@@ -434,7 +440,13 @@ export function attachDrawing<P extends Properties>(
               keyboardFeedbackTimer = setTimeout(() => feedback?.clear(), 800);
               return;
             }
-            const next = target.position;
+            const current = session.getState().draft,
+              currentHandle = index === undefined || !current
+                ? undefined
+                : shapeHandles(current.shape)[index];
+            const next = snap(target.position, point, e.altKey,
+              key === "move" || currentHandle?.carriesShape ? "draft" : index);
+            if (disposed || revision !== stateRevision || !editable()) return;
             feedback?.clear();
             if (key === "move")
               session.translate(position(marker.getLngLat().toArray()), next);
@@ -445,8 +457,8 @@ export function attachDrawing<P extends Properties>(
       }
       item.insert = insert;
       const actual = item.marker.getLngLat();
-      if (wrapLongitude(actual.lng - p[0]) !== 0 || actual.lat !== p[1])
-        item.marker.setLngLat(p);
+      if (actual.lng !== displayed[0] || actual.lat !== displayed[1])
+        item.marker.setLngLat(displayed);
       item.position = p;
       if (item.marker.isDraggable() !== (!locked && !insert))
         item.marker.setDraggable(!locked && !insert);

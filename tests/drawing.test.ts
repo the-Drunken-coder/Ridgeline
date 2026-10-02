@@ -5,6 +5,7 @@ import {
   DEFAULT_DRAWING_STYLE,
   destination,
   distance,
+  position,
   unroll,
 } from "../src/drawing-geometry";
 import { measurements, shapeGeometry, validateShape } from "../src/drawing-shapes";
@@ -88,6 +89,12 @@ function feature(shape: DrawingShape, id = "existing"): MapFeature {
     drawing: { version: 1, shape, style: { ...DEFAULT_DRAWING_STYLE } },
   };
 }
+
+test("Bounded stored vertices retain their exact coordinates when used as drawing positions", () => {
+  for (const coordinate of [[-179.65, 0], [0.015, 60], [180, -45]] satisfies DrawingPosition[])
+    assert.deepEqual(position(coordinate), coordinate);
+  assert.deepEqual(position([181, 20]), [-179, 20]);
+});
 
 for (const action of ["destroy", "conflict", "permission"] as const) {
   test(`Pending notification ${action} prevents persistence from starting`, async () => {

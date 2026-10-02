@@ -10,7 +10,8 @@ import type {
 const R = 6_371_008.8;
 const rad = Math.PI / 180;
 export function position(p: Position): DrawingPosition {
-  return [wrapLongitude(p[0]!), p[1]!];
+  const longitude = p[0]!;
+  return [Math.abs(longitude) <= 180 ? longitude : wrapLongitude(longitude), p[1]!];
 }
 export function distance(a: DrawingPosition, b: DrawingPosition) {
   const h =

@@ -1,5 +1,13 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Reliability drawing insertion handles preserve displayed edges',
+  'Reliability drawing snapping follows the pointer world copy at low zoom',
+  'Reliability drawing keyboard movement excludes carried shape vertices',
+  'Reliability drawing keyboard snapping follows pointer policy',
+  'Reliability drawing date-line storage snapping and reload flat without terrain',
+  'Reliability drawing date-line storage snapping and reload flat with terrain',
+  'Reliability drawing date-line storage snapping and reload globe without terrain',
+  'Reliability drawing date-line storage snapping and reload globe with terrain',
   'Reliability entity nonsimple attachment polygons reject mixed batches before accepted or rendered changes',
   'Reliability publication retires styling when callbacks replace the basemap',
   'Reliability publication keeps updates made during icon registration',
