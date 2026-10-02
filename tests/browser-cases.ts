@@ -1,5 +1,9 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Reliability publication retires styling when callbacks replace the basemap',
+  'Reliability publication keeps updates made during icon registration',
+  'Reliability publication keeps removals and scene changes made by later icon callbacks',
+  'Reliability publication runs a requested reset after a held update settles',
   'Raw terrain and the installed renderer agree on nonzero TMS tile templates',
   'An earlier pointer release cannot replace controls during a later native press',
   'Inspector resumes updates after window blur or lost pointer capture',
