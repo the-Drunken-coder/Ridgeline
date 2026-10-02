@@ -380,6 +380,7 @@ export function createDrawingSession<P extends Properties>(
   }
   async function submit(remove = false) {
     const current = requireDraft(remove ? "delete" : undefined);
+    const { shape, style } = current;
     if (remove && !current.before)
       throw new Error("Cancel an unsaved drawing instead.");
     const error = remove
@@ -423,7 +424,11 @@ export function createDrawingSession<P extends Properties>(
       );
       if (disposed || submission !== active || draft !== current) return false;
       pending = false;
-      if (conflict || active.controller.signal.aborted || !allowed(request.kind)) {
+      const permitted = !conflict && !active.controller.signal.aborted && allowed(request.kind);
+      // Permission callbacks can end, replace, or change this draft synchronously.
+      if (disposed || submission !== active || draft !== current ||
+        current.shape !== shape || current.style !== style) return false;
+      if (conflict || active.controller.signal.aborted || !permitted) {
         reason ??= "Permission changed while this request was pending. Review the draft and try again.";
         notify();
         return false;

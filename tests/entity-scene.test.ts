@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import type { FeatureCollection } from 'geojson';
 import type { Map as GLMap } from 'maplibre-gl';
 import { EntityScene, DEFAULT_ENTITY_VISIBILITY } from '../src/entities';
 import type { RidgelineError } from '../src/errors';
@@ -29,11 +30,15 @@ function sceneFixture(prepare: (positions: readonly [number, number][], signal: 
   globalThis.requestAnimationFrame = callback => { const id = ++nextFrame; frames.set(id, callback); return id; };
   globalThis.cancelAnimationFrame = id => { frames.delete(id); };
   const diagnostics: RidgelineError[] = [];
-  const map = { getPixelRatio: () => 1, getLayer: () => undefined, getSource: () => undefined, off: () => {} } as unknown as GLMap;
+  let ground: FeatureCollection = { type: 'FeatureCollection', features: [] };
+  const source = { setData: (data: FeatureCollection) => { ground = data; } };
+  const map = { getPixelRatio: () => 1, getLayer: () => undefined,
+    getSource: (id: string) => id === 'rl:entity-ground' ? source : undefined, off: () => {} } as unknown as GLMap;
   const scene = new EntityScene({ map, configuration: () => configuration, sampler: { sample, prepare },
     style, diagnostic: error => diagnostics.push(error), changed: () => {} });
   return {
     scene, diagnostics,
+    groundFeatures: () => structuredClone(ground.features),
     frame() { const callbacks = [...frames.values()]; frames.clear(); for (const callback of callbacks) callback(0); },
     destroy() {
       scene.destroy();
@@ -75,6 +80,42 @@ test('a preparation callback can remove its entity without reviving geometry', a
     assert.equal(scene.getState('aircraft'), undefined);
   } finally { f.destroy(); }
 });
+
+for (const callback of ['style', 'sample'] as const) {
+  for (const action of ['remove', 'replace'] as const) {
+    test(`${callback} can ${action} an entity without restoring its camera output`, () => {
+      let armed = false, acted = false;
+      const react = () => {
+        if (!armed || acted) return;
+        acted = true;
+        if (action === 'remove') f.scene.set([], ['aircraft']);
+        else f.scene.set([{ type: 'Feature', id: 'aircraft', properties: {},
+          geometry: { type: 'Point', coordinates: [0, 0] } }]);
+      };
+      const f = sceneFixture(async () => {}, () => {
+        if (callback === 'style') react();
+        return {};
+      }, () => { if (callback === 'sample') react(); return 0; });
+      const camera: MapFeature = { ...entity(), entity: {
+        altitude: { meters: 100, reference: 'ground' }, attachments: [
+          { id: 'view', type: 'camera', range: 500, bearing: 0, elevation: -45, fovX: 60, fovY: 40 },
+        ],
+      } };
+      try {
+        f.scene.set([camera]);
+        f.frame();
+        assert.equal(f.groundFeatures().length, 2, 'Initial camera fill and outline must exist');
+        armed = true;
+        f.scene.set([{ ...camera, properties: { revision: 2 } }]);
+        f.frame();
+        f.frame();
+        assert.ok(acted);
+        assert.equal(f.scene.getState(camera.id), undefined);
+        assert.deepEqual(f.groundFeatures(), []);
+      } finally { f.destroy(); }
+    });
+  }
+}
 
 test('a failed entity style retains the last complete placement', () => {
   let broken = false;
