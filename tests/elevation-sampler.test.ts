@@ -49,6 +49,78 @@ async function settle(sampler: RasterElevationSampler, lng: number, lat: number)
   assert.fail('Elevation did not settle');
 }
 
+test('explicit retry fetches repaired missing-data tiles while retaining healthy cached zero elevation', async () => {
+  const mixed = new Uint8ClampedArray(4 * 4 * 4);
+  for (let i = 0; i < 16; i++) mixed.set([128, 0, 0, i === 5 ? 0 : 255], i * 4);
+  await withTiles(async requests => {
+    const sampler = new RasterElevationSampler({
+      tiles: ['https://tiles.test/{z}/{x}/{y}.png'], encoding: 'terrarium', minzoom: 1, maxzoom: 1,
+    }, () => {}, cause => assert.fail(String(cause)));
+    const position = (x: number, y: number): [number, number] => [
+      x / 2 * 360 - 180, Math.atan(Math.sinh(Math.PI * (1 - y))) * 180 / Math.PI,
+    ];
+    const missing = position(.375, .375), healthy = position(1.75, .75);
+    try {
+      assert.equal(await settle(sampler, ...healthy), 0);
+      for (let i = 0; i < 20 && !sampler.unavailableAt(...missing); i++) {
+        sampler.sample(...missing);
+        await new Promise<void>(resolve => setImmediate(resolve));
+      }
+      assert.equal(sampler.sample(...missing), null);
+      assert.equal(sampler.unavailableAt(...missing), true);
+      assert.equal(requests.filter(url => url.endsWith('/1/0/0.png')).length, 1);
+      mixed[5 * 4 + 3] = 255;
+      sampler.retry();
+      assert.equal(await settle(sampler, ...missing), 0);
+      assert.equal(sampler.unavailableAt(...missing), false);
+      assert.equal(await settle(sampler, ...healthy), 0);
+      assert.equal(requests.filter(url => url.endsWith('/1/0/0.png')).length, 2);
+      assert.equal(requests.filter(url => url.endsWith('/1/1/0.png')).length, 1);
+      const completed = requests.length;
+      sampler.sample(...missing); sampler.sample(...healthy);
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(requests.length, completed, 'Healthy recovered input must stay idle');
+    } finally { sampler.destroy(); }
+  }, undefined, mixed);
+});
+
+test('replacing a raster provider aborts old fetches and ignores late decoded tiles', async () => {
+  await withTiles(async () => {
+    const fetchTile = globalThis.fetch;
+    let resume!: () => void;
+    const held = new Promise<void>(resolve => { resume = resolve; });
+    let oldSignal: AbortSignal | null | undefined;
+    globalThis.fetch = async (input, init) => {
+      if (String(input).includes('/old/')) {
+        oldSignal = init?.signal;
+        await held; // The provider deliberately ignores abort to exercise late completion.
+      }
+      return fetchTile(input, init);
+    };
+    let oldChanges = 0;
+    const old = new RasterElevationSampler({ tiles: ['https://tiles.test/old/{z}/{x}/{y}.png'], encoding: 'terrarium', maxzoom: 0 },
+      () => { oldChanges++; }, cause => assert.fail(String(cause)));
+    const replacement = new RasterElevationSampler({ tiles: ['https://tiles.test/new/{z}/{x}/{y}.png'], encoding: 'terrarium', maxzoom: 0 },
+      () => {}, cause => assert.fail(String(cause)));
+    try {
+      old.sample(0, 0);
+      await new Promise<void>(resolve => setImmediate(resolve));
+      old.sample(0, 0);
+      assert.ok(oldSignal);
+      old.destroy();
+      assert.equal(oldSignal.aborted, true);
+      const retired = oldChanges;
+      assert.equal(await settle(replacement, 0, 0), 0);
+      resume();
+      for (let i = 0; i < 3; i++) await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(oldChanges, retired);
+      assert.equal(old.sample(0, 0), null);
+      assert.equal(replacement.sample(0, 0), 0);
+      old.destroy();
+    } finally { resume(); old.destroy(); replacement.destroy(); }
+  });
+});
+
 test('TileJSON Terrarium and TMS metadata agree with raw height and geographic request', async () => {
   await withTiles(async requests => {
     const sampler = new RasterElevationSampler({ url: 'https://tiles.test/source.json', tileSize: 256 }, () => {}, cause => assert.fail(String(cause)));
