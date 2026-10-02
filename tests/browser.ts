@@ -108,6 +108,312 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
+  await run('Reliability publication retires styling when callbacks replace the basemap', async () => {
+    for (const initial of [true, false]) {
+      let replace = initial;
+      let map: Viewport | undefined;
+      const diagnostics: RidgelineError[] = [];
+      map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+        features: [point('scene-current')], logger: () => {}, onError: error => diagnostics.push(error),
+        style: () => {
+          if (replace && map) {
+            replace = false;
+            map.configure({ basemap: style('#ccddee') });
+            map.upsert([point('scene-current', .03)]);
+            map.setSelection(['scene-current']);
+          }
+          return { color: '#ff0000' };
+        },
+      });
+      current = map;
+      try {
+        await map.ready;
+        if (!initial) { replace = true; map.configure({ basemap: style('#eedddd') }); }
+        const active = map;
+        await until(() => Boolean(active.map.getLayer('rl:points')) && active.map.queryRenderedFeatures({ layers: ['rl:points'] })
+          .some(hit => hit.properties._rl_feature_id === 'scene-current' && hit.geometry.type === 'Point' && hit.geometry.coordinates[0]! > .02),
+          `${initial ? 'initial' : 'later'} replacement renders current geometry`);
+        check(active.getSelection()[0] === 'scene-current', 'Basemap replacement lost current selection');
+        check(active.map.getFeatureState({ source: 'rl:features', id: 'rl:scene-current' }).selected === true, 'Replacement lost selection display');
+        check(!diagnostics.some(error => error.code === 'STYLE_FAILED'), 'Obsolete restoration reported a style failure');
+      } finally { map.destroy(); }
+    }
+  });
+
+  await run('Reliability publication keeps updates made during icon registration', async () => {
+    let replace = false;
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+      features: [point('icon-current')], logger: () => {}, style: () => {
+        if (replace) { replace = false; map.upsert([point('icon-current', .03)]); }
+        return { icon: 'callback-icon' };
+      },
+    });
+    current = map;
+    try {
+      await map.ready;
+      replace = true;
+      map.registerIcon('callback-icon', { image: new ImageData(1, 1) });
+      await until(() => map.map.queryRenderedFeatures({ layers: ['rl:points'] }).some(hit =>
+        hit.properties._rl_feature_id === 'icon-current' && hit.geometry.type === 'Point' && hit.geometry.coordinates[0]! > .02), 'icon refresh renders the accepted callback update');
+      const feature = map.getFeature('icon-current');
+      check(feature?.geometry.type === 'Point' && feature.geometry.coordinates[0] === .03, 'Icon callback update was not accepted');
+    } finally { map.destroy(); }
+  });
+  await run('Reliability publication keeps removals and scene changes made by later icon callbacks', async () => {
+    for (const action of ['remove', 'scene', 'destroy']) {
+      let armed = false, afterDestroy = 0;
+      const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+        features: [point('icon-earlier'), point('icon-trigger', -.03), point('icon-later', .06)], logger: () => {},
+        style: feature => {
+          if (armed && feature.id === 'icon-trigger') {
+            armed = false;
+            if (action === 'remove') map.remove(['icon-earlier']);
+            else if (action === 'scene') { map.configure({ basemap: style('#ccddee') }); map.upsert([point('icon-earlier', .03)]); }
+            else map.destroy();
+          } else if (action === 'destroy' && !map.getFeature('icon-trigger') && feature.id === 'icon-later') afterDestroy++;
+          return { icon: 'callback-icon' };
+        },
+      });
+      current = map;
+      try {
+        await map.ready;
+        armed = true;
+        map.registerIcon('callback-icon', { image: new ImageData(1, 1) });
+        if (action === 'destroy') { check(afterDestroy === 0, 'Styling continued after viewport destruction'); continue; }
+        await map.map.once('idle');
+        const hits = map.map.queryRenderedFeatures({ layers: ['rl:points'] });
+        if (action === 'remove') {
+          check(!map.getFeature('icon-earlier') && !hits.some(hit => hit.properties._rl_feature_id === 'icon-earlier'), 'A later icon callback restored a removed feature');
+        } else {
+          check(hits.some(hit => hit.properties._rl_feature_id === 'icon-earlier' && hit.geometry.type === 'Point' && hit.geometry.coordinates[0]! > .02), 'Icon refresh overwrote the replacement scene');
+        }
+      } finally { map.destroy(); }
+    }
+  });
+  await run('Reliability publication runs a requested reset after a held update settles', async () => {
+    const mount = document.createElement('div');
+    mount.style.cssText = 'width:320px;height:240px;position:absolute;left:0;top:0';
+    document.body.append(mount);
+    const onAdd = GeoJSONSource.prototype.onAdd;
+    let rejected = false, workerLoads = 0;
+    GeoJSONSource.prototype.onAdd = function(map) {
+      if (this.id === 'rl:features') {
+        this.actorPromise = this.actorPromise.then(actor => new Proxy(actor, {
+          get(target, property, receiver) {
+            if (property !== 'sendAsync') return Reflect.get(target, property, receiver);
+            const send = target.sendAsync.bind(target);
+            return new Proxy(send, { apply(fn, receiver, args) {
+              const message: unknown = args[0];
+              if (message && typeof message === 'object' && 'type' in message && message.type === 'LD') {
+                workerLoads++;
+                if (!rejected) {
+                  rejected = true;
+                  return Promise.reject(new Error('Injected GeoJSON worker load rejection'));
+                }
+              }
+              return Reflect.apply(fn, receiver, args);
+            } });
+          },
+        }));
+      }
+      onAdd.call(this, map);
+    };
+    let map: Viewport | undefined;
+    try {
+      map = createViewport({ container: mount, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+        features: [point('worker-latest'), point('worker-removed')], logger: () => {} });
+      const active = map;
+      const diagnostics: RidgelineError[] = [];
+      active.on('diagnostic', error => diagnostics.push(error));
+      await active.ready;
+      await until(() => rejected && diagnostics.some(error => error.code === 'UPDATE_FAILED' && error.context.sourceId === 'rl:features'),
+        'initial GeoJSON worker rejection reported');
+      const rendered = () => active.map.queryRenderedFeatures({ layers: ['rl:points'] });
+      check(!rendered().some(hit => hit.properties._rl_feature_id === 'worker-latest'), 'Failed initial load appeared before retry');
+      const source = active.map.getSource('rl:features');
+      if (!(source instanceof GeoJSONSource)) throw new Error('Missing feature source');
+      let settle: (() => void) | undefined;
+      source.updateData = () => new Promise<void>(resolve => { settle = resolve; });
+      active.upsert([{ ...point('worker-latest', .03), properties: { name: 'Latest' } }]);
+      active.remove(['worker-removed']);
+      await until(() => Boolean(settle), 'held publication began');
+      active.retryUpdates();
+      settle!();
+      await until(() => rendered().some(hit => hit.properties._rl_feature_id === 'worker-latest' &&
+        hit.geometry.type === 'Point' && hit.geometry.coordinates[0]! > .02) &&
+        !rendered().some(hit => hit.properties._rl_feature_id === 'worker-removed'), 'worker recovery with latest snapshot');
+      check(workerLoads >= 2, 'Retry did not reach the GeoJSON worker');
+    } finally {
+      map?.destroy();
+      GeoJSONSource.prototype.onAdd = onAdd;
+      mount.remove();
+    }
+  });
+  await run('Reliability content keeps a menu closed when its factory closes synchronously', async () => {
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 }, logger: () => {} });
+    current = map; await map.ready;
+    let disposed = 0, opened = 0;
+    const content = document.createElement('button'); content.textContent = 'Obsolete action';
+    const interactions = attachInteractions(map, { contextMenu: (_, close) => {
+      opened++; close(); return { element: content, dispose: () => { disposed++; } };
+    } });
+    try {
+      const canvas = map.map.getCanvas(); canvas.focus();
+      const rect = canvas.getBoundingClientRect();
+      if (!window.browserDrag) throw new Error('Browser input bridge unavailable');
+      await window.browserDrag(rect.left + 200, rect.top + 200, rect.left + 200, rect.top + 200, 'right');
+      check(opened === 1, 'Native right click did not reach the menu factory');
+      check(!container.querySelector('.rl-context') && !content.isConnected, 'Synchronous close reopened obsolete menu content');
+      check(disposed === 1, 'Synchronous close did not release returned content once');
+      check(document.activeElement === canvas, 'Closed content stole keyboard focus');
+      await browserKey('Escape');
+      interactions.destroy(); interactions.destroy();
+      check(disposed === 1, 'Repeated teardown disposed closed content twice');
+    } finally { interactions.destroy(); map.destroy(); }
+  });
+  await run('Reliability content keeps replacement focus when a menu disposer opens another menu', async () => {
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 }, logger: () => {} });
+    current = map; await map.ready;
+    const canvas = map.map.getCanvas();
+    let opened = 0, oldDisposed = 0, newDisposed = 0;
+    const replacement = document.createElement('button'); replacement.textContent = 'Replacement action';
+    const interactions = attachInteractions(map, { contextMenu: event => {
+      opened++;
+      if (opened > 1) return { element: replacement, dispose: () => { newDisposed++; } };
+      const original = document.createElement('button'); original.textContent = 'Original action';
+      return { element: original, dispose: () => {
+        oldDisposed++;
+        canvas.focus();
+        map.map.fire('contextmenu', { point: event.point, lngLat: event.lngLat, originalEvent: event.originalEvent });
+      } };
+    } });
+    try {
+      canvas.focus();
+      const rect = canvas.getBoundingClientRect();
+      if (!window.browserDrag) throw new Error('Browser input bridge unavailable');
+      await window.browserDrag(rect.left + 200, rect.top + 200, rect.left + 200, rect.top + 200, 'right');
+      check(opened === 1, 'Native right click did not open the original menu');
+      await browserKey('Escape');
+      check(opened === 2 && oldDisposed === 1 && newDisposed === 0, 'Closing the original menu disposed its replacement');
+      check(replacement.isConnected && document.activeElement === replacement, 'Obsolete close stole replacement focus');
+      await browserKey('Escape');
+      check(!replacement.isConnected && newDisposed === 1, 'Keyboard dismissal did not dispose replacement once');
+      check(document.activeElement === canvas, 'Replacement dismissal lost saved focus');
+      interactions.destroy(); interactions.destroy();
+      check(oldDisposed === 1 && newDisposed === 1, 'Repeated teardown repeated disposal');
+    } finally { interactions.destroy(); map.destroy(); }
+  });
+  await run('Reliability content releases menu results after helper or viewport destruction', async () => {
+    for (const destroyViewport of [false, true]) {
+      const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 }, logger: () => {} });
+      current = map; await map.ready;
+      let disposed = 0, opened = 0;
+      const content = document.createElement('button'); content.textContent = 'Destroyed action';
+      const interactions = attachInteractions(map, { contextMenu: () => {
+        opened++;
+        if (destroyViewport) map.destroy(); else interactions.destroy();
+        return { element: content, dispose: () => { disposed++; } };
+      } });
+      try {
+        const canvas = map.map.getCanvas(); canvas.focus();
+        const rect = canvas.getBoundingClientRect();
+        if (!window.browserDrag) throw new Error('Browser input bridge unavailable');
+        await window.browserDrag(rect.left + 200, rect.top + 200, rect.left + 200, rect.top + 200, 'right');
+        check(opened === 1 && disposed === 1, 'Destroyed menu factory leaked returned content');
+        check(!container.querySelector('.rl-context') && !content.isConnected && document.activeElement !== content, 'Destroyed menu result mounted or received focus');
+        await browserKey('Escape');
+        interactions.destroy(); interactions.destroy(); map.destroy(); map.destroy();
+        check(disposed === 1, 'Destroyed content was disposed repeatedly');
+      } finally { interactions.destroy(); map.destroy(); }
+    }
+  });
+  await run('Reliability content ignores obsolete factory results and close callbacks', async () => {
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 }, logger: () => {} });
+    current = map; await map.ready;
+    let opened = 0, oldDisposed = 0, newDisposed = 0;
+    let obsoleteClose: (() => void) | undefined;
+    const replacement = document.createElement('button'); replacement.textContent = 'Replacement action';
+    const obsolete = document.createElement('button'); obsolete.textContent = 'Obsolete action';
+    const interactions = attachInteractions(map, { contextMenu: (event, close) => {
+      opened++;
+      if (opened > 1) return { element: replacement, dispose: () => { newDisposed++; } };
+      obsoleteClose = close;
+      map.map.fire('contextmenu', { point: event.point, lngLat: event.lngLat, originalEvent: event.originalEvent });
+      return { element: obsolete, dispose: () => { oldDisposed++; close(); } };
+    } });
+    try {
+      const canvas = map.map.getCanvas(); canvas.focus();
+      const rect = canvas.getBoundingClientRect();
+      if (!window.browserDrag) throw new Error('Browser input bridge unavailable');
+      await window.browserDrag(rect.left + 200, rect.top + 200, rect.left + 200, rect.top + 200, 'right');
+      check(opened === 2 && oldDisposed === 1 && newDisposed === 0, 'Replaced factory result did not release exactly once');
+      check(!obsolete.isConnected && replacement.isConnected && document.activeElement === replacement, 'Obsolete factory result replaced current content or focus');
+      obsoleteClose?.();
+      check(replacement.isConnected && document.activeElement === replacement && newDisposed === 0, 'An obsolete close callback affected current content');
+      await browserKey('Escape');
+      check(!replacement.isConnected && newDisposed === 1 && document.activeElement === canvas, 'Keyboard dismissal lost current disposal or focus');
+      interactions.destroy(); interactions.destroy();
+      check(oldDisposed === 1 && newDisposed === 1, 'Repeated teardown repeated menu disposal');
+    } finally { interactions.destroy(); map.destroy(); }
+  });
+  await run('Reliability content keeps a replacement menu alive when picker page disposal opens it', async () => {
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+      features: Array.from({ length: 10 }, (_, index) => point(`page-${index}`)), logger: () => {} });
+    current = map; await map.ready;
+    let replace = false, menuDisposed = 0;
+    const replacement = document.createElement('button'); replacement.textContent = 'Replacement action';
+    const canvas = map.map.getCanvas();
+    const interactions = attachInteractions(map, {
+      contextMenu: () => ({ element: replacement, dispose: () => { menuDisposed++; } }),
+      renderFeature: feature => {
+        const element = document.createElement('span'); element.textContent = feature.id;
+        return { element, dispose: () => {
+          if (!replace) return;
+          replace = false;
+          canvas.focus();
+          map.map.fire('contextmenu', { point: { x: 200, y: 200 }, lngLat: map.map.unproject([200, 200]), originalEvent: new MouseEvent('contextmenu') });
+        } };
+      },
+    });
+    try {
+      await until(() => map.map.queryRenderedFeatures({ layers: ['rl:points'] }).length === 10, 'overlapping picker candidates render');
+      await pointer('click', map.map.project([0, 0]));
+      check(Boolean(container.querySelector('.rl-picker')), 'Native click did not open the picker');
+      replace = true;
+      await browserClick('.rl-picker-pages button[aria-label="Next candidates"]');
+      check(replacement.isConnected && document.activeElement === replacement && menuDisposed === 0, 'Obsolete picker page disposed replacement content or focus');
+      await browserKey('Escape');
+      check(!replacement.isConnected && menuDisposed === 1 && document.activeElement === canvas, 'Replacement menu dismissal lost disposal or focus');
+      interactions.destroy(); interactions.destroy();
+      check(menuDisposed === 1, 'Teardown disposed the replacement twice');
+    } finally { interactions.destroy(); map.destroy(); }
+  });
+  await run('Reliability content lets a picker replace a pending menu factory', async () => {
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+      features: [point('factory-a'), point('factory-b')], logger: () => {} });
+    current = map; await map.ready;
+    let disposed = 0, opened = 0;
+    const obsolete = document.createElement('button'); obsolete.textContent = 'Obsolete action';
+    const interactions = attachInteractions(map, { contextMenu: event => {
+      opened++;
+      map.map.fire('click', { point: event.point, lngLat: event.lngLat, originalEvent: event.originalEvent });
+      return { element: obsolete, dispose: () => { disposed++; } };
+    } });
+    try {
+      await until(() => map.map.queryRenderedFeatures({ layers: ['rl:points'] }).length === 2, 'factory replacement candidates render');
+      const canvas = map.map.getCanvas(); canvas.focus();
+      const rect = canvas.getBoundingClientRect(), location = map.map.project([0, 0]);
+      if (!window.browserDrag) throw new Error('Browser input bridge unavailable');
+      await window.browserDrag(rect.left + location.x, rect.top + location.y, rect.left + location.x, rect.top + location.y, 'right');
+      check(opened === 1 && disposed === 1 && !obsolete.isConnected && !container.querySelector('.rl-context'), 'Menu factory overwrote a replacement picker');
+      const picker = container.querySelector('.rl-picker');
+      check(picker?.contains(document.activeElement) && picker.querySelectorAll('.rl-sector').length === 2, 'Replacement picker lost choices or focus');
+      await browserKey('Escape');
+      check(!container.querySelector('.rl-picker') && document.activeElement === canvas, 'Replacement picker dismissal lost focus');
+      interactions.destroy(); interactions.destroy();
+      check(disposed === 1, 'Obsolete menu content was disposed repeatedly');
+    } finally { interactions.destroy(); map.destroy(); }
+  });
   await run('Raw terrain and the installed renderer agree on nonzero TMS tile templates', async () => {
     const dem = document.createElement('canvas'); dem.width = dem.height = 256;
     const context = dem.getContext('2d')!;

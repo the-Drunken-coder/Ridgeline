@@ -43,6 +43,7 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
   let releaseInitial: (() => void) | undefined;
   let initialFailed = false;
   let resetRequested = false;
+  let restoration = Symbol();
 
   function preparationFailed(id: string, cause: unknown) {
     if (!pending.has(id)) failed.add(id);
@@ -114,13 +115,14 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
       source.off('error', onSourceError);
       if (submitting === token) {
         submitting = null;
-        if (pending.size) schedule();
+        if (pending.size || resetRequested) schedule();
       }
     }
   }
 
   /** Pause new work. Keep the in-flight token until its source settles or is replaced. */
   function retire() {
+    restoration = Symbol();
     active = false;
     frames.cancel(frame);
     frame = 0;
@@ -146,7 +148,7 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
       if (target.current()) {
         // A retained source still owns its in-flight submission and retry history.
         active = true;
-        if (pending.size) schedule();
+        if (pending.size || resetRequested) schedule();
         return;
       }
       retire();
@@ -158,23 +160,29 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
       failed.clear();
       initialFailed = false;
       resetRequested = false;
+      const token = restoration;
+      const current = () => !destroyed && active && restoration === token;
       const features: MapFeature[] = [];
       const preparedSnapshots: MapFeature<P>[] = [];
       for (const feature of store.all()) {
-        if (destroyed) return;
+        if (!current()) return;
         try {
           const rendered = render(feature);
+          if (!current()) return;
           if (pending.has(feature.id) || !store.get(feature.id)) continue;
           features.push(rendered);
           preparedSnapshots.push(feature);
         }
-        catch (cause) { preparationFailed(feature.id, cause); }
+        catch (cause) {
+          if (!current()) return;
+          preparationFailed(feature.id, cause);
+        }
       }
-      if (destroyed) return;
+      if (!current()) return;
       target.create(features);
-      if (destroyed) return;
+      if (!current()) return;
       options.restored?.(preparedSnapshots);
-      if (destroyed) return;
+      if (!current()) return;
       const source = target.current();
       if (source) releaseInitial = target.watchInitial?.(cause => {
         if (destroyed || target.current() !== source) return;
@@ -184,7 +192,7 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
         diagnostic(new RidgelineError('UPDATE_FAILED', 'The feature source could not load. Call retryUpdates() to retry.',
           { operation: 'upsert', recoverable: true, sourceId: 'rl:features' }, cause));
       });
-      if (pending.size) schedule();
+      if (pending.size || resetRequested) schedule();
     },
     retire,
     destroy() {

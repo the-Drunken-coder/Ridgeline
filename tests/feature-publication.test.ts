@@ -404,3 +404,67 @@ test('source creation stops restoration when an error observer destroys publicat
   assert.equal(restored, 0);
   assert.equal(watched, 0);
 });
+
+
+test('retry requested during a held update resets current accepted data after settlement', async () => {
+  const f = fixture();
+  f.upsert(point('a'), point('removed'));
+  f.publication.restore();
+  f.failInitial();
+  f.upsert(point('a', 2));
+  f.remove('removed');
+  f.frame();
+  f.publication.retry();
+  assert.equal(f.source().calls.length, 1);
+  f.source().succeed(0);
+  await Promise.resolve();
+  f.frame();
+  assert.equal(f.source().getCall(1).reset, true);
+  f.source().succeed(1);
+  await Promise.resolve();
+  assert.deepEqual([...f.source().features.values()], [point('a', 2)]);
+  f.frame();
+  assert.equal(f.source().calls.length, 2);
+  assert.equal(f.frames.size, 0);
+});
+
+
+test('a replacement restoration keeps its scene when an obsolete render callback returns', () => {
+  let replace = true;
+  let f: ReturnType<typeof fixture>;
+  f = fixture(feature => {
+    if (replace) {
+      replace = false;
+      f.replaceStyle();
+      f.store.upsert([point('a', 2)]);
+      f.publication.restore();
+    }
+    return feature;
+  });
+  f.upsert(point('a', 1));
+  f.publication.restore();
+  assert.deepEqual([...f.source().features.values()], [point('a', 2)]);
+  assert.equal(f.diagnostics.length, 0);
+});
+
+test('a deferred reset cannot publish after source replacement or destruction', async () => {
+  for (const destroy of [false, true]) {
+    const f = fixture();
+    f.upsert(point('a'));
+    f.publication.restore();
+    const old = f.source();
+    f.failInitial();
+    f.upsert(point('a', 1));
+    f.frame();
+    f.publication.retry();
+    if (destroy) f.publication.destroy();
+    else { f.replaceStyle(); f.store.upsert([point('a', 2)]); f.publication.restore(); }
+    old.succeed(0);
+    await Promise.resolve();
+    f.frame();
+    assert.equal(old.calls.length, 1);
+    assert.equal(f.frames.size, 0);
+    assert.deepEqual(f.published, []);
+    if (!destroy) assert.deepEqual([...f.source().features.values()], [point('a', 2)]);
+  }
+});
