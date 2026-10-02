@@ -108,6 +108,56 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
+  await run('Reliability entity coherent attachments reject empty space across the opposite world seam', async () => {
+    const air = createViewport({ container, basemap: style('#ffffff'), projection: 'flat',
+      camera: { center: [179, 0], zoom: 0 }, elevationSampler: { sample: () => 0 },
+      style: () => ({ color: '#0000ff', radius: 0 }), logger: () => {} });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('seam-volume'), entity: { altitude: { meters: 1_000_000, reference: 'ground' },
+      attachments: [{ id: 'volume', type: 'sphere', radius: 300_000, color: '#ff0000' }] } };
+    const other: MapFeature = { ...point('unrelated'), geometry: { type: 'Point', coordinates: [90, 20] } };
+    let hits: string[] = [], attachments: string[] = [];
+    air.on('click', event => { hits = event.features.map(f => f.id); attachments = event.attachments.map(hit => hit.attachmentId); });
+    try {
+      for (const reversed of [false, true]) {
+        air.remove([feature.id, other.id]);
+        air.upsert(reversed ? [other, feature] : [feature, other]);
+        await until(() => air.getEntityState(feature.id)?.placement === 'airborne', 'seam volume placement');
+        for (const longitude of [179, -179]) {
+          air.setCamera({ center: [longitude, 0], zoom: 0 });
+          const visible = await new Promise<{ x: number; y: number } | undefined>((resolve, reject) => {
+            const timeout = window.setTimeout(() => reject(new Error('Timed out reading the sphere')), 8000);
+            air.map.once('render', () => {
+              window.clearTimeout(timeout);
+              const canvas = air.map.getCanvas(), gl = canvas.getContext('webgl2');
+              if (!gl) { reject(new Error('WebGL2 unavailable while reading the sphere')); return; }
+              const pixels = new Uint8Array(canvas.width * canvas.height * 4);
+              gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+              let strongest = 35, point: { x: number; y: number } | undefined;
+              const scale = canvas.width / canvas.clientWidth;
+              for (let index = 0; index < pixels.length; index += 4) {
+                const contrast = pixels[index]! - Math.max(pixels[index + 1]!, pixels[index + 2]!);
+                if (contrast <= strongest) continue;
+                strongest = contrast;
+                const pixel = index / 4;
+                point = { x: (pixel % canvas.width) / scale, y: (canvas.height - 1 - Math.floor(pixel / canvas.width)) / scale };
+              }
+              resolve(point);
+            });
+            air.map.triggerRepaint();
+          });
+          check(visible, 'Sphere control has no rendered red face');
+          const empty: [number, number] = [longitude, 0];
+          const pixel = await pixelAt(air, empty, 8000, 'empty viewport center');
+          await pointer('click', air.map.project(empty));
+          check(pixel.red === 255 && pixel.green === 255 && pixel.blue === 255 && hits.length === 0 && attachments.length === 0,
+            'Coherent attachment spans empty space ' + JSON.stringify({ pixel, hits, attachments, longitude, reversed }));
+          await pointer('click', visible!);
+          check(hits.includes(feature.id) && attachments.includes('volume'), 'Visible sphere face cannot be picked');
+        }
+      }
+    } finally { air.destroy(); }
+  });
   await run('Reliability drawing insertion handles preserve displayed edges', async () => {
     const draw = createViewport({ container, basemap: style(), terrain: false,
       camera: { center: [0, 60], zoom: 4 }, logger: () => {} });
