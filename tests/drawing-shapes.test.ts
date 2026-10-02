@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { MercatorCoordinate } from "maplibre-gl";
 import { destination, distance } from "../src/drawing-geometry";
 import {
   emptyShape,
+  insertVertex,
   placePoint,
   shapeFromGeometry,
   shapeHandles,
@@ -21,6 +23,32 @@ const samples: { shape: DrawingShape; labels: string[] }[] = [
   { shape: { kind: "circle", center: [1, 2], radius: 200 }, labels: ["Center", "Radius"] },
   { shape: { kind: "rectangle", center: [1, 2], width: 400, height: 200, bearing: 35 }, labels: ["Center", "Width", "Height", "Bearing"] },
 ];
+
+test("insertion positions preserve Mercator edges at high latitude and across the date line", () => {
+  for (const kind of ["line", "arrow", "polygon"] as const) {
+    for (const vertices of [
+      [[-20, 60], [20, 60], [30, 65]],
+      [[179, 60], [-179, 65], [-178, 70]],
+    ] satisfies [number, number][][]) {
+      const shape: DrawingShape = { kind, vertices };
+      for (const edge of shapeInsertHandles(shape)) {
+        const a = MercatorCoordinate.fromLngLat(vertices[edge.after]!);
+        const b = MercatorCoordinate.fromLngLat(vertices[(edge.after + 1) % vertices.length]!);
+        const middle = MercatorCoordinate.fromLngLat(edge.position);
+        const unwrappedX = (x: number, relative: number) => x + Math.round(relative - x);
+        const endX = unwrappedX(b.x, a.x), middleX = unwrappedX(middle.x, a.x);
+        const length = Math.hypot(endX - a.x, b.y - a.y);
+        const displacement = Math.abs((middleX - a.x) * (b.y - a.y) -
+          (middle.y - a.y) * (endX - a.x)) / length;
+        assert.ok(displacement < 1e-12, `Insertion bent ${kind} edge by ${displacement} world units`);
+        const inserted = insertVertex(shape, edge.after, edge.position);
+        assert.ok("vertices" in inserted);
+        assert.deepEqual(inserted.vertices[edge.after + 1], edge.position);
+        assert.deepEqual(inserted.vertices.filter((_, index) => index !== edge.after + 1), vertices);
+      }
+    }
+  }
+});
 
 test("each kind's handles keep their order and moving to the current position keeps its definition", () => {
   for (const { shape, labels } of samples) {

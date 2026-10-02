@@ -108,6 +108,49 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
+  await run('Reliability drawing insertion handles preserve displayed edges', async () => {
+    const draw = createViewport({ container, basemap: style(), terrain: false,
+      camera: { center: [0, 60], zoom: 4 }, logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused', properties: {} }), submit: () => ({ accepted: true }) });
+    try {
+      for (const [kind, center, vertices] of [
+        ['line', [0, 60], [[-20, 60], [20, 60]]],
+        ['arrow', [179.8, 60], [[179, 60], [-179, 60]]],
+        ['polygon', [179.8, 60], [[179, 60], [-179, 60], [-179, 61], [179, 61]]],
+      ] as const) {
+        const shape = { kind, vertices: vertices.map(([longitude, latitude]): [number, number] => [longitude, latitude]) };
+        const feature: MapFeature = { type: 'Feature', id: `insert-${kind}`, properties: {}, geometry: shapeGeometry(shape),
+          drawing: { version: 1, shape, style: { color: '#008855', fillColor: '#008855', lineWidth: 3,
+            fillOpacity: .2, dashed: false, label: '' } } };
+        draw.upsert([feature]); draw.setCamera({ center: [...center], zoom: kind === 'line' ? 4 : 7 });
+        for (const projection of ['flat', 'globe'] as const) {
+          draw.configure({ projection });
+          await until(() => draw.map.getProjection()?.type === (projection === 'flat' ? 'mercator' : 'globe'), 'insertion projection');
+          editor.edit(feature.id);
+          const button = container.querySelector<HTMLButtonElement>('[aria-label="Insert vertex after 1"]');
+          if (!button) throw new Error('Insertion handle missing');
+          const box = button.getBoundingClientRect(), canvas = draw.map.getCanvas().getBoundingClientRect();
+          const screen = { x: box.x + box.width / 2 - canvas.x, y: box.y + box.height / 2 - canvas.y };
+          const expected = draw.map.project(kind === 'line' ? [0, 60] : [180, 60]);
+          check(Math.hypot(screen.x - expected.x, screen.y - expected.y) < 1,
+            `${kind}/${projection} insertion handle was displaced from the displayed edge`);
+          await until(() => draw.map.queryRenderedFeatures([[screen.x - 2, screen.y - 2], [screen.x + 2, screen.y + 2]],
+            { layers: ['rl:draft-line'] }).length > 0, 'displayed edge beneath insertion handle');
+          await browserClick('[aria-label="Insert vertex after 1"]');
+          const inserted = editor.getState().draft?.shape;
+          if (!inserted || !('vertices' in inserted)) throw new Error('Inserted geometry missing');
+          check(inserted.vertices.length === vertices.length + 1 &&
+            Math.abs(inserted.vertices[1]![1] - 60) < 1e-10, 'Insertion bent the existing edge');
+          const point = draw.map.project([kind === 'line' ? inserted.vertices[1]![0] : 180, inserted.vertices[1]![1]]);
+          check(Math.hypot(point.x - screen.x, point.y - screen.y) < 1, 'Activation inserted another coordinate');
+          check(JSON.stringify(inserted.vertices.filter((_, i) => i !== 1)) === JSON.stringify(vertices), 'Insertion changed original vertices');
+          editor.cancel();
+        }
+        draw.remove([feature.id]);
+      }
+    } finally { editor.destroy(); draw.destroy(); }
+  });
   await run('Reliability drawing snapping follows the pointer world copy at low zoom', async () => {
     container.style.width = '800px';
     const anchor: [number, number] = [-179, 0];
