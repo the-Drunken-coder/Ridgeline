@@ -1,5 +1,6 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Reliability entity nonsimple attachment polygons reject mixed batches before accepted or rendered changes',
   'Reliability publication retires styling when callbacks replace the basemap',
   'Reliability publication keeps updates made during icon registration',
   'Reliability publication keeps removals and scene changes made by later icon callbacks',
@@ -11,6 +12,7 @@ export const browserCases = [
   'Reliability content keeps a replacement menu alive when picker page disposal opens it',
   'Reliability content lets a picker replace a pending menu factory',
   'Reliability drawing callback ownership and interrupted acquisition',
+  'Reliability entity null buffer allocation diagnoses once and retry renders only current geometry',
   'Reliability entity date-line rendering and real picking agree across order pan and projection',
   'Reliability entity raster retry fetches repaired no-data and restores current camera pixels',
   'Reliability entity sampling failure clears completed plain and terrain coverage and retries current data',

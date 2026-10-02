@@ -69,11 +69,12 @@ export class EntityLayer implements CustomLayerInterface {
     this.map?.triggerRepaint();
   }
   onAdd(map: GLMap, gl: WebGL2RenderingContext) {
+    this.onRemove();
     this.map = map;
     this.gl = gl;
-    this.buffer = gl.createBuffer() ?? undefined;
     this.dirty = true;
     this.failed = false;
+    this.allocateBuffer();
   }
   onRemove() {
     if (this.gl) {
@@ -84,11 +85,25 @@ export class EntityLayer implements CustomLayerInterface {
     this.buffer = undefined;
     this.projection = undefined;
     this.map = undefined;
+    this.gl = undefined;
   }
   retry() {
+    if (!this.map) return;
     this.failed = false;
     this.dirty = true;
+    this.allocateBuffer();
     this.map?.triggerRepaint();
+  }
+  private allocateBuffer() {
+    if (this.buffer || !this.gl || !this.map) return;
+    try {
+      const buffer = this.gl.createBuffer();
+      if (!buffer) throw new Error('Cannot allocate entity vertex buffer.');
+      this.buffer = buffer;
+    } catch (cause) {
+      this.failed = true;
+      this.report(cause);
+    }
   }
   render(gl: WebGL2RenderingContext, input: CustomRenderMethodInput) {
     if (!this.buffer || !this.map || this.failed || !this.draws.length) return;

@@ -108,6 +108,44 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
+  await run('Reliability entity nonsimple attachment polygons reject mixed batches before accepted or rendered changes', async () => {
+    const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 },
+      elevationSampler: { sample: () => 0 }, logger: () => {} });
+    current = air; await air.ready;
+    const original: MapFeature = { ...point('accepted'), properties: { name: 'Original' } };
+    const valid: MapFeature = { ...point('valid-area', .002), entity: { attachments: [{ id: 'area', type: 'polygon',
+      vertices: [[0, 0], [100, 0], [100, 100], [0, 100]], color: '#ff0000',
+    }] } };
+    try {
+      air.upsert([original, valid]);
+      await until(() => air.map.queryRenderedFeatures(air.map.project([0, 0]), { layers: ['rl:points'] })
+        .some(hit => hit.properties._rl_feature_id === original.id), 'accepted point before invalid batch');
+      await until(() => air.map.queryRenderedFeatures(air.map.project([.0024, .0004]), { layers: ['rl:entity-ground-fill'] })
+        .some(hit => hit.properties.entityId === valid.id), 'valid attachment before invalid batch');
+      const before = air.getFeatures();
+      for (const vertices of [
+        [[0, 0], [200, 0], [100, 0], [200, 200], [0, 200]],
+        [[0, 0], [200, 0], [200, 200], [100, 0], [0, 200]],
+      ] satisfies [number, number][][]) {
+        const invalid: MapFeature = { ...point('invalid-area'), entity: { attachments: [{ id: 'area', type: 'polygon', vertices }] } };
+        let rejected = false;
+        try { air.upsert([{ ...original, properties: { name: 'Changed' }, geometry: { type: 'Point', coordinates: [.001, 0] } }, point('new'), invalid]); }
+        catch (error) { check(error instanceof RidgelineError && error.code === 'INVALID_FEATURE', 'Wrong polygon validation error'); rejected = true; }
+        check(rejected, 'Nonsimple attachment boundary was accepted');
+        check(JSON.stringify(air.getFeatures()) === JSON.stringify(before), 'Invalid mixed batch mutated accepted data');
+      }
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      const rendered = air.map.queryRenderedFeatures(undefined, { layers: ['rl:points'] });
+      check(air.map.queryRenderedFeatures(air.map.project([0, 0]), { layers: ['rl:points'] })
+        .some(hit => hit.properties._rl_feature_id === original.id), 'Invalid batch moved rendered accepted point');
+      check(!rendered.some(hit => hit.properties._rl_feature_id === 'new'), 'Invalid batch rendered a new feature');
+      const adjacent: MapFeature = { ...valid, entity: { attachments: [{ id: 'area', type: 'polygon',
+        vertices: [[0, 0], [50, 0], [100, 0], [100, 100], [0, 100]], color: '#ff0000',
+      }] } };
+      air.upsert([adjacent]);
+      check(air.getFeature(valid.id)?.entity?.attachments?.[0]?.type === 'polygon', 'Valid adjacent corners were rejected');
+    } finally { air.destroy(); }
+  });
   await run('Reliability publication retires styling when callbacks replace the basemap', async () => {
     for (const initial of [true, false]) {
       let replace = initial;
@@ -478,6 +516,53 @@ async function suite() {
       check(await remounted.finish(), 'Remounted drawing could not finish');
       check(draw.getInteractionOwner() === null && !!draw.getFeature('remounted'), 'Remount did not release ownership after acceptance');
     } finally { remounted.destroy(); draw.destroy(); }
+  });
+  await run('Reliability entity null buffer allocation diagnoses once and retry renders only current geometry', async () => {
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style('#ffffff'), camera: { center: [.001, 0], zoom: 17 },
+      style: () => ({ color: '#ff0000', radius: 10 }), elevationSampler: { sample: () => 0 },
+      logger: () => {}, onError: error => errors.push(error) });
+    current = air; await air.ready;
+    const gl = air.map.getCanvas().getContext('webgl2')!;
+    const createBuffer = gl.createBuffer.bind(gl), addLayer = air.map.addLayer.bind(air.map);
+    let failed = false, allocationCalls = 0;
+    const obsolete: MapFeature = { ...point('obsolete'), entity: { altitude: { meters: 1, reference: 'ground' } } };
+    const accepted: MapFeature = { ...point('current', .002), entity: { altitude: { meters: 1, reference: 'ground' } } };
+    let clicked: string[] = [];
+    air.on('click', event => { clicked = event.features.map(feature => feature.id); });
+    try {
+      air.upsert([obsolete]);
+      await untilPixel(air, [0, 0], true, 'initial entity');
+      air.map.addLayer = (layer, beforeId) => {
+        if (layer.id !== 'rl:entities' || failed) return addLayer(layer, beforeId);
+        failed = true;
+        Object.defineProperty(gl, 'createBuffer', { configurable: true, writable: true, value: () => { allocationCalls++; return null; } });
+        try { return addLayer(layer, beforeId); }
+        finally { gl.createBuffer = createBuffer; }
+      };
+      air.configure({ basemap: style('#fffffe') });
+      await until(() => failed, 'controlled entity allocation');
+      check(allocationCalls === 1, 'Fault did not reach entity allocation: ' + allocationCalls);
+      await until(() => errors.some(error => error.context.operation === 'entities' && error.code === 'UPDATE_FAILED'), 'entity allocation diagnostic');
+      check(allocationCalls === 1, 'Allocation failure was automatically retried');
+      check(errors.some(error => error.context.recoverable && error.cause instanceof Error && /entity.*buffer/i.test(error.cause.message)),
+        'Allocation diagnostic lost context or cause');
+      air.remove([obsolete.id]); air.upsert([accepted]);
+      await until(() => air.getEntityState(accepted.id)?.coverage === 'ready', 'current accepted entity');
+      await untilPixel(air, [.002, 0], false, 'failed buffer stays invisible');
+      let recoveryAllocations = 0;
+      gl.createBuffer = () => { recoveryAllocations++; return createBuffer(); };
+      air.retryUpdates();
+      await untilPixel(air, [.002, 0], true, 'current geometry after retry');
+      clicked = [];
+      await pointer('click', air.map.project([.002, 0]));
+      check(clicked.includes(accepted.id) && !clicked.includes(obsolete.id), 'Retry restored obsolete or unpickable geometry');
+      await untilPixel(air, [0, 0], false, 'removed geometry after retry');
+      await new Promise<void>(resolve => { air.map.once('idle', () => resolve()); air.map.triggerRepaint(); });
+      const settled = recoveryAllocations;
+      await new Promise(resolve => setTimeout(resolve, 200));
+      check(recoveryAllocations === settled, 'Idle scene kept allocating');
+    } finally { gl.createBuffer = createBuffer; air.map.addLayer = addLayer; air.destroy(); air.destroy(); }
   });
   await run('Reliability entity date-line rendering and real picking agree across order pan and projection', async () => {
     const air = createViewport({ container, basemap: style('#ffffff'), projection: 'flat',
