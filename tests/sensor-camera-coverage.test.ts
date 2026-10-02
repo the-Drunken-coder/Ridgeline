@@ -160,6 +160,30 @@ function latestRequest(adapter: ControlledAdapter, entityId = 'entity', cameraId
   return value;
 }
 
+test('failed required scene calculation clears plain and terrain coverage and rejects late GPU completion', () => {
+  const adapter = controlledAdapter();
+  const { coverage, elevation } = owner(adapter);
+  const value = input({ cameras: [camera(), { ...camera('plain'), terrainVisibility: false }] });
+  try {
+    update(coverage, value);
+    const completed = latestRequest(adapter);
+    assert.equal(adapter.complete(completed), true);
+    assert.equal(coverage.status(value.entityId), 'ready');
+    assert.ok(coverage.output(value.entityId).length);
+    coverage.unavailable(value.entityId);
+    coverage.flush();
+    assert.equal(coverage.status(value.entityId), 'unavailable');
+    assert.deepEqual(coverage.output(value.entityId), []);
+    assert.deepEqual(adapter.values(), []);
+    assert.equal(adapter.complete(completed), false);
+    coverage.retry();
+    update(coverage, { ...value, origin: [.01, 0, 100] });
+    assert.equal(adapter.complete(completed), false);
+    assert.equal(adapter.complete(latestRequest(adapter)), true);
+    assert.equal(coverage.status(value.entityId), 'ready');
+  } finally { coverage.destroy(); elevation.destroy(); }
+});
+
 test('publishes matching geometry and leaves initial coverage absent', () => {
   const adapter = controlledAdapter();
   const { coverage } = owner(adapter);

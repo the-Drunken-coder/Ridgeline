@@ -202,9 +202,24 @@ export function triangulate(vertices: readonly [number, number][]): number[] {
     return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
   };
   const n = vertices.length;
+  const onSegment = (a: number, b: number, p: number) => {
+    const start = vertices[a]!, end = vertices[b]!, point = vertices[p]!;
+    return Math.abs(cross(a, b, p)) < 1e-8 &&
+      point[0] >= Math.min(start[0], end[0]) && point[0] <= Math.max(start[0], end[0]) &&
+      point[1] >= Math.min(start[1], end[1]) && point[1] <= Math.max(start[1], end[1]);
+  };
+  for (let i = 0; i < n; i++) {
+    const previous = (i + n - 1) % n, next = (i + 1) % n;
+    const point = vertices[i]!, end = vertices[next]!;
+    if (point[0] === end[0] && point[1] === end[1]) return [];
+    // Adjacent edges may share their corner, but cannot double back over it.
+    if (onSegment(previous, i, next) || onSegment(i, next, previous)) return [];
+  }
   for (let i = 0; i < n; i++)
     for (let j = i + 2; j < n; j++) {
       if (i === 0 && j === n - 1) continue;
+      if (onSegment(i, (i + 1) % n, j) || onSegment(i, (i + 1) % n, (j + 1) % n) ||
+        onSegment(j, (j + 1) % n, i) || onSegment(j, (j + 1) % n, (i + 1) % n)) return [];
       if (
         cross(i, (i + 1) % n, j) * cross(i, (i + 1) % n, (j + 1) % n) < 0 &&
         cross(j, (j + 1) % n, i) * cross(j, (j + 1) % n, (i + 1) % n) < 0

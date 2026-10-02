@@ -22,8 +22,9 @@
     "check:tickets": "node scripts/check-tickets.mjs",
     "test": "node --import tsx --test tests/*.test.ts scripts/*.test.mjs && pnpm test:controls",
     "test:browser": "node scripts/test-browser.mjs",
+    "test:playground:browser": "playwright test -c playwright.playground.config.mjs",
     "test:controls:browser": "playwright test -c control-lab/playwright.config.ts",
-    "validate": "pnpm check && pnpm test && pnpm test:browser && pnpm test:controls:browser && pnpm build:playground && pnpm build:controls",
+    "validate": "pnpm check && pnpm test && pnpm test:browser && pnpm test:playground:browser && pnpm test:controls:browser && pnpm build:playground && pnpm build:controls",
     "measure": "node scripts/bundle-size.mjs"
   },
   "dependencies": { "maplibre-gl": "6.11.0", "@maplibre/maplibre-gl-style-spec": "26.4.4", "@types/geojson": "7946.0.16" },

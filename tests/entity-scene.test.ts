@@ -135,6 +135,47 @@ test('a failed entity style retains the last complete placement', () => {
   } finally { f.destroy(); }
 });
 
+test('a required sampling failure removes completed camera coverage while retaining placement and unrelated ground areas', () => {
+  const cause = new Error('Required elevation calculation failed');
+  let broken = false;
+  const f = sceneFixture(async () => {}, undefined, lng => {
+    if (broken && Math.abs(lng) < .5) throw cause;
+    return 0;
+  });
+  const camera: MapFeature = { ...entity(), entity: {
+    altitude: { meters: 100, reference: 'ground' }, attachments: [
+      { id: 'view', type: 'camera', range: 500, bearing: 0, elevation: -45, fovX: 60, fovY: 40 },
+      { id: 'area', type: 'circle', radius: 20 },
+    ],
+  } };
+  const other: MapFeature = { ...entity(1), id: 'other', entity: {
+    altitude: { meters: 100, reference: 'ground' }, attachments: [{ id: 'other-area', type: 'circle', radius: 20 }],
+  } };
+  const attachments = () => f.groundFeatures().map(feature => feature.properties?.attachmentId);
+  try {
+    f.scene.set([camera, other]);
+    f.frame();
+    assert.equal(f.scene.getState(camera.id)?.coverage, 'ready');
+    assert.ok(attachments().includes('view'));
+    broken = true;
+    f.scene.set([{ ...camera, geometry: { type: 'Point', coordinates: [.01, 0] } }]);
+    f.frame();
+    assert.equal(f.scene.getState(camera.id)?.coverage, 'unavailable');
+    assert.equal(f.scene.getState(camera.id)?.footprintTriangles, 0);
+    assert.equal(attachments().includes('view'), false);
+    assert.ok(attachments().includes('area'));
+    assert.ok(attachments().includes('other-area'));
+    assert.deepEqual(f.scene.marker(camera).position, [0, 0]);
+    assert.equal(f.diagnostics.at(-1)?.cause, cause);
+    broken = false;
+    f.scene.retry();
+    f.frame();
+    assert.equal(f.scene.getState(camera.id)?.coverage, 'ready');
+    assert.deepEqual(f.scene.marker(camera).position, [.01, 0]);
+    assert.ok(attachments().includes('view'));
+  } finally { f.destroy(); }
+});
+
 test('selection rebuilds only entities whose highlight changes', () => {
   let styles = 0;
   const f = sceneFixture(async () => {}, () => { styles++; return {}; });

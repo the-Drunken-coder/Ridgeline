@@ -12,7 +12,7 @@ export type Primitive = {
   size?: number;
   surface?: boolean;
 };
-type Draw = Primitive & { first: number; count: number };
+type Draw = Primitive & { first: number; count: number; origin: [number, number] };
 type Program = {
   program: WebGLProgram;
   position: number;
@@ -40,7 +40,6 @@ export class EntityLayer implements CustomLayerInterface {
   private programs = new Map<string, Program>();
   private draws: Draw[] = [];
   private dirty = true;
-  private origin: [number, number] = [0, 0];
   private projection?: CustomRenderMethodInput;
   private gl?: WebGL2RenderingContext;
   private failed = false;
@@ -51,9 +50,18 @@ export class EntityLayer implements CustomLayerInterface {
   }
   set(primitives: Primitive[], verticalScale: number) {
     this.verticalScale = verticalScale;
+    const origins = new Map<string, [number, number]>();
+    for (const primitive of primitives) {
+      const first = primitive.vertices[0];
+      if (first && (!origins.has(primitive.entityId) || primitive.mode === 'points')) {
+        const center = MercatorCoordinate.fromLngLat([first[0], first[1]]);
+        origins.set(primitive.entityId, [center.x, center.y]);
+      }
+    }
     let first = 0;
     this.draws = primitives.map((p) => {
-      const d = { ...p, first, count: p.mode === 'lines' ? p.vertices.length * 3 : p.vertices.length };
+      const d: Draw = { ...p, first, count: p.mode === 'lines' ? p.vertices.length * 3 : p.vertices.length,
+        origin: origins.get(p.entityId) ?? [0, 0] };
       first += d.count;
       return d;
     });
@@ -61,11 +69,12 @@ export class EntityLayer implements CustomLayerInterface {
     this.map?.triggerRepaint();
   }
   onAdd(map: GLMap, gl: WebGL2RenderingContext) {
+    this.onRemove();
     this.map = map;
     this.gl = gl;
-    this.buffer = gl.createBuffer() ?? undefined;
     this.dirty = true;
     this.failed = false;
+    this.allocateBuffer();
   }
   onRemove() {
     if (this.gl) {
@@ -76,11 +85,25 @@ export class EntityLayer implements CustomLayerInterface {
     this.buffer = undefined;
     this.projection = undefined;
     this.map = undefined;
+    this.gl = undefined;
   }
   retry() {
+    if (!this.map) return;
     this.failed = false;
     this.dirty = true;
+    this.allocateBuffer();
     this.map?.triggerRepaint();
+  }
+  private allocateBuffer() {
+    if (this.buffer || !this.gl || !this.map) return;
+    try {
+      const buffer = this.gl.createBuffer();
+      if (!buffer) throw new Error('Cannot allocate entity vertex buffer.');
+      this.buffer = buffer;
+    } catch (cause) {
+      this.failed = true;
+      this.report(cause);
+    }
   }
   render(gl: WebGL2RenderingContext, input: CustomRenderMethodInput) {
     if (!this.buffer || !this.map || this.failed || !this.draws.length) return;
@@ -94,27 +117,20 @@ export class EntityLayer implements CustomLayerInterface {
       gl.useProgram(program.program);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
       if (this.dirty) {
-        const first = this.draws[0]?.vertices[0];
-        const center = first
-          ? MercatorCoordinate.fromLngLat([first[0], first[1]])
-          : new MercatorCoordinate(0, 0, 0);
-        this.origin = [center.x, center.y];
         const values: number[] = [];
-        const position = (p: GeoPoint) => {
+        const position = (p: GeoPoint, origin: Draw['origin']) => {
           const m = MercatorCoordinate.fromLngLat([p[0], Math.max(-85.05112878, Math.min(85.05112878, p[1]))]);
-          let x = m.x - center.x;
-          if (x > .5) x--;
-          if (x < -.5) x++;
-          return [x, m.y - center.y, this.displayHeight(p[2]), m.meterInMercatorCoordinateUnits()];
+          const x = m.x - origin[0];
+          return [x - Math.round(x), m.y - origin[1], this.displayHeight(p[2]), m.meterInMercatorCoordinateUnits()];
         };
         for (const draw of this.draws) {
           if (draw.mode === 'lines') {
             for (let i = 0; i < draw.vertices.length; i += 2) {
-              const a = position(draw.vertices[i]!), b = position(draw.vertices[i + 1]!);
+              const a = position(draw.vertices[i]!, draw.origin), b = position(draw.vertices[i + 1]!, draw.origin);
               for (const [t, side] of [[0,-1],[1,-1],[0,1],[0,1],[1,-1],[1,1]])
                 values.push(...a, ...draw.color, ...b, t!, side!);
             }
-          } else for (const p of draw.vertices) values.push(...position(p), ...draw.color, 0,0,0,0,0,0);
+          } else for (const p of draw.vertices) values.push(...position(p, draw.origin), ...draw.color, 0,0,0,0,0,0);
         }
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(values), gl.DYNAMIC_DRAW);
         this.dirty = false;
@@ -122,21 +138,7 @@ export class EntityLayer implements CustomLayerInterface {
       const d = input.defaultProjectionData,
         globe = input.shaderData.define.includes('GLOBE');
       const uniform = (name: string) => gl.getUniformLocation(program.program, name);
-      const worldCopy = globe ? 0 : Math.round((this.map.getCenter().lng + 180) / 360 - this.origin[0]);
-      gl.uniformMatrix4fv(
-        uniform('u_projection_matrix'),
-        false,
-        globe
-          ? new Float32Array(d.mainMatrix)
-          : shifted(d.mainMatrix, this.origin[0] + worldCopy, this.origin[1]),
-      );
-      gl.uniformMatrix4fv(
-        uniform('u_flat'),
-        false,
-        shifted(d.fallbackMatrix, this.origin[0], this.origin[1]),
-      );
       gl.uniformMatrix4fv(uniform('u_projection_fallback_matrix'), false, new Float32Array(d.fallbackMatrix));
-      gl.uniform4f(uniform('u_projection_tile_mercator_coords'), this.origin[0], this.origin[1], 1, 1);
       gl.uniform4fv(uniform('u_projection_clipping_plane'), d.clippingPlane);
       gl.uniform1f(uniform('u_projection_transition'), 1);
       gl.uniform1f(uniform('u_blend'), d.projectionTransition);
@@ -157,6 +159,14 @@ export class EntityLayer implements CustomLayerInterface {
       gl.disable(gl.CULL_FACE);
       gl.depthMask(false);
       for (const draw of this.draws) {
+        // Each coherent entity uses its own nearby copy, including the flat
+        // component of a globe transition. Unrelated entities cannot shift it.
+        const [x, y] = draw.origin;
+        const worldCopy = Math.round((this.map.getCenter().lng + 180) / 360 - x);
+        gl.uniformMatrix4fv(uniform('u_projection_matrix'), false,
+          globe ? new Float32Array(d.mainMatrix) : shifted(d.mainMatrix, x + worldCopy, y));
+        gl.uniformMatrix4fv(uniform('u_flat'), false, shifted(d.fallbackMatrix, x + worldCopy, y));
+        gl.uniform4f(uniform('u_projection_tile_mercator_coords'), x, y, 1, 1);
         gl.uniform1f(uniform('u_line_width'), (draw.size ?? 1) * devicePixelRatio);
         gl.uniform1f(uniform('u_point_size'), (draw.size ?? 10) * devicePixelRatio);
         gl.uniform1i(uniform('u_point'), draw.mode === 'points' ? 1 : 0);
@@ -263,9 +273,9 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
         lat = (p[1] * Math.PI) / 180,
         r = 1 + height / 6371008.8;
       const sphere = [
-        -Math.sin(lon) * Math.cos(lat) * r,
+        Math.sin(lon) * Math.cos(lat) * r,
         Math.sin(lat) * r,
-        -Math.cos(lon) * Math.cos(lat) * r,
+        Math.cos(lon) * Math.cos(lat) * r,
         1,
       ];
       const front = sphere

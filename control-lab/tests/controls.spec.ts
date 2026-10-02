@@ -148,3 +148,37 @@ test('wheel zoom stays at the pointer, while Frame, Fit, and Reset restore navig
   expectNear(await center(alpha), initialAlpha);
   expectNear(await center(charlie), initialCharlie);
 });
+
+test('wheel over units keeps the pointer anchor and leaves application controls alone', async ({ page }) => {
+  const alpha = page.getByRole('button', { name: 'Select Alpha' });
+  const bravo = page.getByRole('button', { name: 'Select Bravo' });
+  const anchor = await center(alpha);
+  const other = await center(bravo);
+  await page.mouse.move(anchor.x, anchor.y);
+  await page.mouse.wheel(0, -300);
+  await expect(page.locator('.selection')).not.toContainText('100%');
+  expectNear(await center(alpha), anchor);
+  const zoomedOther = await center(bravo);
+  expect(Math.hypot(zoomedOther.x - anchor.x, zoomedOther.y - anchor.y))
+    .toBeGreaterThan(Math.hypot(other.x - anchor.x, other.y - anchor.y) + 20);
+
+  const zoom = await page.locator('.selection').textContent();
+  for (const control of [page.getByRole('button', { name: 'Move here' }), page.getByRole('button', { name: 'Zoom in', exact: true })]) {
+    const position = await center(control);
+    await page.mouse.move(position.x, position.y);
+    await page.mouse.wheel(0, -300);
+    // Consume a subsequent native input before checking that the wheel was ignored.
+    await page.keyboard.press('Tab');
+    await expect(page.locator('.selection')).toHaveText(zoom ?? '');
+    expectNear(await center(bravo), zoomedOther);
+  }
+
+  await page.getByRole('button', { name: 'Move here' }).click();
+  await page.mouse.move(anchor.x, anchor.y);
+  await page.mouse.wheel(0, 300);
+  await expect(page.locator('.selection')).toContainText('100%');
+  await expect(page.getByRole('button', { name: 'Click destination' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.trail')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('status')).toHaveText('Cancelled.');
+});

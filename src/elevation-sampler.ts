@@ -271,6 +271,9 @@ export class RasterElevationSampler {
     return 'loading';
   }
   retry() {
+    // Clearing the failure flag alone would resample the same cached missing
+    // pixels. Keep healthy tiles, but let implicated tiles fetch repaired data.
+    for (const key of this.noData.keys()) this.tiles.delete(key);
     this.failed.clear();
     this.noData.clear();
     if (!this.ready) {

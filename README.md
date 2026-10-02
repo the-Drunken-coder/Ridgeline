@@ -43,13 +43,14 @@ pnpm dev
 pnpm check
 pnpm test
 pnpm test:browser
+pnpm test:playground:browser
 pnpm test:controls:browser
 pnpm validate
 pnpm build:playground
 pnpm measure
 ```
 
-`pnpm test` runs the fast module and control-lab state tests. `pnpm validate` runs type checking, those tests, both browser suites, and the playground and control-lab builds. CI runs these checks in independent jobs on every pull request and push to `main`, and supports manual runs.
+`pnpm test` runs the fast module and control-lab state tests. `pnpm validate` runs type checking, those tests, all three browser suites, and the playground and control-lab builds. CI runs these checks in independent jobs on every pull request and push to `main`, and supports manual runs.
 
 `pnpm build` produces the importable ESM library and declarations in `dist`. `pnpm build:playground` also builds the playground against those exports, without development source aliases. This package is private and has not been published to npm. Install a local tarball in another application:
 
@@ -154,7 +155,7 @@ viewport.upsert([{
 
 Altitude is in meters above local ground (`ground`) or in the elevation provider's sea-level datum (`sea-level`). Bearing is clockwise from geographic north, independently of movement. Elevation is degrees from local level, positive upward. FOV angles must be strictly between 0° and 180°; range is maximum slant distance in meters. All attachments originate at the entity center and have unique IDs within that entity. Optional `name` and CSS `color` describe attachments.
 
-Ground zones support circles with a `radius` and simple polygons with open `vertices: [eastMeters, northMeters][]` boundaries. Airborne zones support spheres with a `radius` and cylinders with a `radius` and full `height`. Dimensions are meters. Attachments remain centered on their entity and are removed with it.
+Ground zones support circles with a `radius` and simple polygons with open `vertices: [eastMeters, northMeters][]` boundaries. Overlapping edges, adjacent edges that double back, and nonadjacent edge contacts reject the entire feature batch. Ordinary adjacent shared corners are valid. Airborne zones support spheres with a `radius` and cylinders with a `radius` and full `height`. Dimensions are meters. Attachments remain centered on their entity and are removed with it.
 
 A camera draws a four-sided directional overlay. Its corner rays project onto the horizontal plane at ground elevation beneath the asset, capped at maximum slant range. A corner above the horizon uses its range endpoint's horizontal position; a wholly skyward camera draws no ground overlay. MapLibre drapes the resulting polygon over displayed terrain. By default hills do not clip or block it. Set `terrainVisibility: true` to split the footprint into approximate visible and hill-blocked regions. GPU terrain visibility uses the finite camera frustum and range directly, so elevated terrain outside that flat projected quadrilateral can still be classified.
 
@@ -184,7 +185,7 @@ Feature rendering and disposal hooks may synchronously update features, close th
 
 If a feature's style callback throws while its picker is open, the choice remains available by name without an icon. If custom content throws, the choice uses default content. Other candidates still refresh. Custom content and name callback failures produce `CALLBACK_FAILED` diagnostics with the affected feature ID.
 
-Use `renderFeature(feature)` to supply custom name/icon markup. Use `contextMenu(interaction, close)` to supply application actions. Either hook can return an element or `{ element, dispose }`, for framework mounting and cleanup. The context hook may return `null`. Display names use text content by default. The playground demonstrates a consumer-owned right-click menu.
+Use `renderFeature(feature)` to supply custom name/icon markup. Use `contextMenu(interaction, close)` to supply application actions. Either hook can return an element or `{ element, dispose }`, for framework mounting and cleanup. The context hook may return `null`. Calling its `close` synchronously keeps that operation closed. Content returned after closure, replacement, or destruction is disposed once without mounting or taking focus. Display names use text content by default. The playground demonstrates a consumer-owned right-click menu.
 
 Override `--rl-surface`, `--rl-text`, `--rl-border`, `--rl-active`, and `--rl-muted` on `.rl-ui` to match your application. Native buttons retain keyboard operation. Current validation is for desktop; touch interaction and a complete accessibility audit remain future work.
 
@@ -225,11 +226,12 @@ Recoverable tile failures leave the rest of the map usable. The elevation-unavai
 
 ## Verification
 
-Focused Node tests cover replacement semantics, atomic invalid batches, snapshot ownership, geometry validation, diagnostics, and hillshade option validation. Install Chromium once, then run both browser suites:
+Focused Node tests cover replacement semantics, atomic invalid batches, snapshot ownership, geometry validation, diagnostics, and hillshade option validation. Install Chromium once, then run the browser suites:
 
 ```sh
 pnpm exec playwright install chromium
 pnpm test:browser
+pnpm test:playground:browser
 pnpm test:controls:browser
 ```
 
@@ -237,7 +239,9 @@ pnpm test:controls:browser
 
 `pnpm test:controls:browser` builds and previews the separate control lab and uses real mouse, keyboard, and wheel input. Its failure artifacts are in `control-lab/test-results/`. Run one case with `pnpm exec playwright test -c control-lab/playwright.config.ts -g 'dragging an armed map'`.
 
-`pnpm validate` runs both browser suites with type checking, module tests, and affected consumer builds. CI distributes the packaged browser suite across four runners, each installing and building its own packed consumer, with one browser worker per runner. See [CI and nightly validation](docs/ci-validation.md) for required jobs, reports, stress runs, and enforcement. Dependency and browser installation require network access on a fresh machine. Playwright is a development dependency only. Desktop Chromium with software WebGL does not establish Firefox, WebKit, touch behavior, complete accessibility, hardware GPU coverage, or long-session memory guarantees.
+`pnpm test:playground:browser` builds and previews the real playground against package exports. It verifies applied drawing selection, accepted drawings, clearing, and scenario changes with real input and deterministic map resources. Its failure screenshots and traces are in `.artifacts/playground-tests/`.
+
+`pnpm validate` runs all three browser suites with type checking, module tests, and affected consumer builds. CI distributes the packaged browser suite across four runners, each installing and building its own packed consumer, with one browser worker per runner. See [CI and nightly validation](docs/ci-validation.md) for required jobs, reports, stress runs, and enforcement. Dependency and browser installation require network access on a fresh machine. Playwright is a development dependency only. Desktop Chromium with software WebGL does not establish Firefox, WebKit, touch behavior, complete accessibility, hardware GPU coverage, or long-session memory guarantees.
 
 Add `--headed` to the targeted browser command to watch the case run. See [measured results](docs/performance.md) for bundle size, workload observations, and validation limits.
 
@@ -283,7 +287,7 @@ Drag the map or right-drag to rotate during placement. The ground target and pre
 
 The API supports lines, polygons, rectangles, circles, and single-headed arrows. Existing ordinary points, lines, and polygons can also be edited with `drawing.edit(id)`. Entity geometry and polygons with holes stay outside this editor. `tools`, `styleFields`, and `defaults` let consumers restrict creation and appearance controls. `createFeature` supplies only identity and properties before placement; `submit` receives the completed geometry. `canEdit` is consulted before editing actions and submission. New drawings are checked after the first point is placed, using their current, possibly incomplete geometry. Call `refreshPermissions()` when application permissions change while a draft is open.
 
-Click to add line or polygon vertices. Circles use a center and radius point. Rectangles use a center and a corner, then expose width, height, and bearing. Use Finish to submit and Cancel or Escape to discard. Drag handles to reshape, the central movement handle to move a line or polygon, and the center handle to move a circle or rectangle. Click a `+` handle to insert a vertex. Focused handles support arrow keys, Shift+arrows for a larger step, and Delete/Backspace for ordinary vertices. Hold Alt to bypass snapping while dragging or placing a point. Touch and pen drawing are not supported in this version; map navigation remains available.
+Click to add line or polygon vertices. Circles use a center and radius point. Rectangles use a center and a corner, then expose width, height, and bearing. Use Finish to submit and Cancel or Escape to discard. Drag handles to reshape, the central movement handle to move a line or polygon, and the center handle to move a circle or rectangle. Click a `+` handle to insert a vertex. Focused handles support arrow keys, Shift+arrows for a larger step, and Delete/Backspace for ordinary vertices. Hold Alt to bypass snapping during placement, dragging, or keyboard handle movement. Touch and pen drawing are not supported in this version; map navigation remains available.
 
 Screen-derived drawing edits require a valid ground target before applying a vertex snap. Eligible visible vertices within 12 CSS pixels take precedence over free placement; `canSnap` can exclude a feature, and Alt temporarily bypasses snapping. The snap ring and guide show the exact target when it differs from the screen pointer. An unavailable terrain target leaves the last valid draft geometry in place during a drag or keyboard step. Valid movement already made during the drag remains one undoable gesture. Explicit geographic edits through the drawing session continue to use the positions the consumer supplies. In the playground's **Drawing & editing** scenario, draw near **Snap anchor**, hold Alt at the same pointer position, and drag an existing drawing handle to see these behaviors. **No snap** demonstrates a consumer filter.
 

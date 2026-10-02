@@ -368,6 +368,350 @@ async function suite() {
     } finally { removeProtocol(protocol); }
     });
   }
+  await run('Reliability entity nonsimple attachment polygons reject mixed batches before accepted or rendered changes', async () => {
+    const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 },
+      elevationSampler: { sample: () => 0 }, logger: () => {} });
+    current = air; await air.ready;
+    const original: MapFeature = { ...point('accepted'), properties: { name: 'Original' } };
+    const valid: MapFeature = { ...point('valid-area', .002), entity: { attachments: [{ id: 'area', type: 'polygon',
+      vertices: [[0, 0], [100, 0], [100, 100], [0, 100]], color: '#ff0000',
+    }] } };
+    try {
+      air.upsert([original, valid]);
+      await until(() => air.map.queryRenderedFeatures(air.map.project([0, 0]), { layers: ['rl:points'] })
+        .some(hit => hit.properties._rl_feature_id === original.id), 'accepted point before invalid batch');
+      await until(() => air.map.queryRenderedFeatures(air.map.project([.0024, .0004]), { layers: ['rl:entity-ground-fill'] })
+        .some(hit => hit.properties.entityId === valid.id), 'valid attachment before invalid batch');
+      const before = air.getFeatures();
+      for (const vertices of [
+        [[0, 0], [200, 0], [100, 0], [200, 200], [0, 200]],
+        [[0, 0], [200, 0], [200, 200], [100, 0], [0, 200]],
+      ] satisfies [number, number][][]) {
+        const invalid: MapFeature = { ...point('invalid-area'), entity: { attachments: [{ id: 'area', type: 'polygon', vertices }] } };
+        let rejected = false;
+        try { air.upsert([{ ...original, properties: { name: 'Changed' }, geometry: { type: 'Point', coordinates: [.001, 0] } }, point('new'), invalid]); }
+        catch (error) { check(error instanceof RidgelineError && error.code === 'INVALID_FEATURE', 'Wrong polygon validation error'); rejected = true; }
+        check(rejected, 'Nonsimple attachment boundary was accepted');
+        check(JSON.stringify(air.getFeatures()) === JSON.stringify(before), 'Invalid mixed batch mutated accepted data');
+      }
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      const rendered = air.map.queryRenderedFeatures(undefined, { layers: ['rl:points'] });
+      check(air.map.queryRenderedFeatures(air.map.project([0, 0]), { layers: ['rl:points'] })
+        .some(hit => hit.properties._rl_feature_id === original.id), 'Invalid batch moved rendered accepted point');
+      check(!rendered.some(hit => hit.properties._rl_feature_id === 'new'), 'Invalid batch rendered a new feature');
+      const adjacent: MapFeature = { ...valid, entity: { attachments: [{ id: 'area', type: 'polygon',
+        vertices: [[0, 0], [50, 0], [100, 0], [100, 100], [0, 100]], color: '#ff0000',
+      }] } };
+      air.upsert([adjacent]);
+      check(air.getFeature(valid.id)?.entity?.attachments?.[0]?.type === 'polygon', 'Valid adjacent corners were rejected');
+    } finally { air.destroy(); }
+  });
+  await run('Reliability publication retires styling when callbacks replace the basemap', async () => {
+    for (const initial of [true, false]) {
+      let replace = initial;
+      let map: Viewport | undefined;
+      const diagnostics: RidgelineError[] = [];
+      map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+        features: [point('scene-current')], logger: () => {}, onError: error => diagnostics.push(error),
+        style: () => {
+          if (replace && map) {
+            replace = false;
+            map.configure({ basemap: style('#ccddee') });
+            map.upsert([point('scene-current', .03)]);
+            map.setSelection(['scene-current']);
+          }
+          return { color: '#ff0000' };
+        },
+      });
+      current = map;
+      try {
+        await map.ready;
+        if (!initial) { replace = true; map.configure({ basemap: style('#eedddd') }); }
+        const active = map;
+        await until(() => Boolean(active.map.getLayer('rl:points')) && active.map.queryRenderedFeatures({ layers: ['rl:points'] })
+          .some(hit => hit.properties._rl_feature_id === 'scene-current' && hit.geometry.type === 'Point' && hit.geometry.coordinates[0]! > .02),
+          `${initial ? 'initial' : 'later'} replacement renders current geometry`);
+        check(active.getSelection()[0] === 'scene-current', 'Basemap replacement lost current selection');
+        check(active.map.getFeatureState({ source: 'rl:features', id: 'rl:scene-current' }).selected === true, 'Replacement lost selection display');
+        check(!diagnostics.some(error => error.code === 'STYLE_FAILED'), 'Obsolete restoration reported a style failure');
+      } finally { map.destroy(); }
+    }
+  });
+
+  await run('Reliability publication keeps updates made during icon registration', async () => {
+    let replace = false;
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+      features: [point('icon-current')], logger: () => {}, style: () => {
+        if (replace) { replace = false; map.upsert([point('icon-current', .03)]); }
+        return { icon: 'callback-icon' };
+      },
+    });
+    current = map;
+    try {
+      await map.ready;
+      replace = true;
+      map.registerIcon('callback-icon', { image: new ImageData(1, 1) });
+      await until(() => map.map.queryRenderedFeatures({ layers: ['rl:points'] }).some(hit =>
+        hit.properties._rl_feature_id === 'icon-current' && hit.geometry.type === 'Point' && hit.geometry.coordinates[0]! > .02), 'icon refresh renders the accepted callback update');
+      const feature = map.getFeature('icon-current');
+      check(feature?.geometry.type === 'Point' && feature.geometry.coordinates[0] === .03, 'Icon callback update was not accepted');
+    } finally { map.destroy(); }
+  });
+  await run('Reliability publication keeps removals and scene changes made by later icon callbacks', async () => {
+    for (const action of ['remove', 'scene', 'destroy']) {
+      let armed = false, afterDestroy = 0;
+      const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+        features: [point('icon-earlier'), point('icon-trigger', -.03), point('icon-later', .06)], logger: () => {},
+        style: feature => {
+          if (armed && feature.id === 'icon-trigger') {
+            armed = false;
+            if (action === 'remove') map.remove(['icon-earlier']);
+            else if (action === 'scene') { map.configure({ basemap: style('#ccddee') }); map.upsert([point('icon-earlier', .03)]); }
+            else map.destroy();
+          } else if (action === 'destroy' && !map.getFeature('icon-trigger') && feature.id === 'icon-later') afterDestroy++;
+          return { icon: 'callback-icon' };
+        },
+      });
+      current = map;
+      try {
+        await map.ready;
+        armed = true;
+        map.registerIcon('callback-icon', { image: new ImageData(1, 1) });
+        if (action === 'destroy') { check(afterDestroy === 0, 'Styling continued after viewport destruction'); continue; }
+        await map.map.once('idle');
+        const hits = map.map.queryRenderedFeatures({ layers: ['rl:points'] });
+        if (action === 'remove') {
+          check(!map.getFeature('icon-earlier') && !hits.some(hit => hit.properties._rl_feature_id === 'icon-earlier'), 'A later icon callback restored a removed feature');
+        } else {
+          check(hits.some(hit => hit.properties._rl_feature_id === 'icon-earlier' && hit.geometry.type === 'Point' && hit.geometry.coordinates[0]! > .02), 'Icon refresh overwrote the replacement scene');
+        }
+      } finally { map.destroy(); }
+    }
+  });
+  await run('Reliability publication runs a requested reset after a held update settles', async () => {
+    const mount = document.createElement('div');
+    mount.style.cssText = 'width:320px;height:240px;position:absolute;left:0;top:0';
+    document.body.append(mount);
+    const onAdd = GeoJSONSource.prototype.onAdd;
+    let rejected = false, workerLoads = 0;
+    GeoJSONSource.prototype.onAdd = function(map) {
+      if (this.id === 'rl:features') {
+        this.actorPromise = this.actorPromise.then(actor => new Proxy(actor, {
+          get(target, property, receiver) {
+            if (property !== 'sendAsync') return Reflect.get(target, property, receiver);
+            const send = target.sendAsync.bind(target);
+            return new Proxy(send, { apply(fn, receiver, args) {
+              const message: unknown = args[0];
+              if (message && typeof message === 'object' && 'type' in message && message.type === 'LD') {
+                workerLoads++;
+                if (!rejected) {
+                  rejected = true;
+                  return Promise.reject(new Error('Injected GeoJSON worker load rejection'));
+                }
+              }
+              return Reflect.apply(fn, receiver, args);
+            } });
+          },
+        }));
+      }
+      onAdd.call(this, map);
+    };
+    let map: Viewport | undefined;
+    try {
+      map = createViewport({ container: mount, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+        features: [point('worker-latest'), point('worker-removed')], logger: () => {} });
+      const active = map;
+      const diagnostics: RidgelineError[] = [];
+      active.on('diagnostic', error => diagnostics.push(error));
+      await active.ready;
+      await until(() => rejected && diagnostics.some(error => error.code === 'UPDATE_FAILED' && error.context.sourceId === 'rl:features'),
+        'initial GeoJSON worker rejection reported');
+      const rendered = () => active.map.queryRenderedFeatures({ layers: ['rl:points'] });
+      check(!rendered().some(hit => hit.properties._rl_feature_id === 'worker-latest'), 'Failed initial load appeared before retry');
+      const source = active.map.getSource('rl:features');
+      if (!(source instanceof GeoJSONSource)) throw new Error('Missing feature source');
+      let settle: (() => void) | undefined;
+      source.updateData = () => new Promise<void>(resolve => { settle = resolve; });
+      active.upsert([{ ...point('worker-latest', .03), properties: { name: 'Latest' } }]);
+      active.remove(['worker-removed']);
+      await until(() => Boolean(settle), 'held publication began');
+      active.retryUpdates();
+      settle!();
+      await until(() => rendered().some(hit => hit.properties._rl_feature_id === 'worker-latest' &&
+        hit.geometry.type === 'Point' && hit.geometry.coordinates[0]! > .02) &&
+        !rendered().some(hit => hit.properties._rl_feature_id === 'worker-removed'), 'worker recovery with latest snapshot');
+      check(workerLoads >= 2, 'Retry did not reach the GeoJSON worker');
+    } finally {
+      map?.destroy();
+      GeoJSONSource.prototype.onAdd = onAdd;
+      mount.remove();
+    }
+  });
+  await run('Reliability content keeps a menu closed when its factory closes synchronously', async () => {
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 }, logger: () => {} });
+    current = map; await map.ready;
+    let disposed = 0, opened = 0;
+    const content = document.createElement('button'); content.textContent = 'Obsolete action';
+    const interactions = attachInteractions(map, { contextMenu: (_, close) => {
+      opened++; close(); return { element: content, dispose: () => { disposed++; } };
+    } });
+    try {
+      const canvas = map.map.getCanvas(); canvas.focus();
+      const rect = canvas.getBoundingClientRect();
+      if (!window.browserDrag) throw new Error('Browser input bridge unavailable');
+      await window.browserDrag(rect.left + 200, rect.top + 200, rect.left + 200, rect.top + 200, 'right');
+      check(opened === 1, 'Native right click did not reach the menu factory');
+      check(!container.querySelector('.rl-context') && !content.isConnected, 'Synchronous close reopened obsolete menu content');
+      check(disposed === 1, 'Synchronous close did not release returned content once');
+      check(document.activeElement === canvas, 'Closed content stole keyboard focus');
+      await browserKey('Escape');
+      interactions.destroy(); interactions.destroy();
+      check(disposed === 1, 'Repeated teardown disposed closed content twice');
+    } finally { interactions.destroy(); map.destroy(); }
+  });
+  await run('Reliability content keeps replacement focus when a menu disposer opens another menu', async () => {
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 }, logger: () => {} });
+    current = map; await map.ready;
+    const canvas = map.map.getCanvas();
+    let opened = 0, oldDisposed = 0, newDisposed = 0;
+    const replacement = document.createElement('button'); replacement.textContent = 'Replacement action';
+    const interactions = attachInteractions(map, { contextMenu: event => {
+      opened++;
+      if (opened > 1) return { element: replacement, dispose: () => { newDisposed++; } };
+      const original = document.createElement('button'); original.textContent = 'Original action';
+      return { element: original, dispose: () => {
+        oldDisposed++;
+        canvas.focus();
+        map.map.fire('contextmenu', { point: event.point, lngLat: event.lngLat, originalEvent: event.originalEvent });
+      } };
+    } });
+    try {
+      canvas.focus();
+      const rect = canvas.getBoundingClientRect();
+      if (!window.browserDrag) throw new Error('Browser input bridge unavailable');
+      await window.browserDrag(rect.left + 200, rect.top + 200, rect.left + 200, rect.top + 200, 'right');
+      check(opened === 1, 'Native right click did not open the original menu');
+      await browserKey('Escape');
+      check(opened === 2 && oldDisposed === 1 && newDisposed === 0, 'Closing the original menu disposed its replacement');
+      check(replacement.isConnected && document.activeElement === replacement, 'Obsolete close stole replacement focus');
+      await browserKey('Escape');
+      check(!replacement.isConnected && newDisposed === 1, 'Keyboard dismissal did not dispose replacement once');
+      check(document.activeElement === canvas, 'Replacement dismissal lost saved focus');
+      interactions.destroy(); interactions.destroy();
+      check(oldDisposed === 1 && newDisposed === 1, 'Repeated teardown repeated disposal');
+    } finally { interactions.destroy(); map.destroy(); }
+  });
+  await run('Reliability content releases menu results after helper or viewport destruction', async () => {
+    for (const destroyViewport of [false, true]) {
+      const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 }, logger: () => {} });
+      current = map; await map.ready;
+      let disposed = 0, opened = 0;
+      const content = document.createElement('button'); content.textContent = 'Destroyed action';
+      const interactions = attachInteractions(map, { contextMenu: () => {
+        opened++;
+        if (destroyViewport) map.destroy(); else interactions.destroy();
+        return { element: content, dispose: () => { disposed++; } };
+      } });
+      try {
+        const canvas = map.map.getCanvas(); canvas.focus();
+        const rect = canvas.getBoundingClientRect();
+        if (!window.browserDrag) throw new Error('Browser input bridge unavailable');
+        await window.browserDrag(rect.left + 200, rect.top + 200, rect.left + 200, rect.top + 200, 'right');
+        check(opened === 1 && disposed === 1, 'Destroyed menu factory leaked returned content');
+        check(!container.querySelector('.rl-context') && !content.isConnected && document.activeElement !== content, 'Destroyed menu result mounted or received focus');
+        await browserKey('Escape');
+        interactions.destroy(); interactions.destroy(); map.destroy(); map.destroy();
+        check(disposed === 1, 'Destroyed content was disposed repeatedly');
+      } finally { interactions.destroy(); map.destroy(); }
+    }
+  });
+  await run('Reliability content ignores obsolete factory results and close callbacks', async () => {
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 }, logger: () => {} });
+    current = map; await map.ready;
+    let opened = 0, oldDisposed = 0, newDisposed = 0;
+    let obsoleteClose: (() => void) | undefined;
+    const replacement = document.createElement('button'); replacement.textContent = 'Replacement action';
+    const obsolete = document.createElement('button'); obsolete.textContent = 'Obsolete action';
+    const interactions = attachInteractions(map, { contextMenu: (event, close) => {
+      opened++;
+      if (opened > 1) return { element: replacement, dispose: () => { newDisposed++; } };
+      obsoleteClose = close;
+      map.map.fire('contextmenu', { point: event.point, lngLat: event.lngLat, originalEvent: event.originalEvent });
+      return { element: obsolete, dispose: () => { oldDisposed++; close(); } };
+    } });
+    try {
+      const canvas = map.map.getCanvas(); canvas.focus();
+      const rect = canvas.getBoundingClientRect();
+      if (!window.browserDrag) throw new Error('Browser input bridge unavailable');
+      await window.browserDrag(rect.left + 200, rect.top + 200, rect.left + 200, rect.top + 200, 'right');
+      check(opened === 2 && oldDisposed === 1 && newDisposed === 0, 'Replaced factory result did not release exactly once');
+      check(!obsolete.isConnected && replacement.isConnected && document.activeElement === replacement, 'Obsolete factory result replaced current content or focus');
+      obsoleteClose?.();
+      check(replacement.isConnected && document.activeElement === replacement && newDisposed === 0, 'An obsolete close callback affected current content');
+      await browserKey('Escape');
+      check(!replacement.isConnected && newDisposed === 1 && document.activeElement === canvas, 'Keyboard dismissal lost current disposal or focus');
+      interactions.destroy(); interactions.destroy();
+      check(oldDisposed === 1 && newDisposed === 1, 'Repeated teardown repeated menu disposal');
+    } finally { interactions.destroy(); map.destroy(); }
+  });
+  await run('Reliability content keeps a replacement menu alive when picker page disposal opens it', async () => {
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+      features: Array.from({ length: 10 }, (_, index) => point(`page-${index}`)), logger: () => {} });
+    current = map; await map.ready;
+    let replace = false, menuDisposed = 0;
+    const replacement = document.createElement('button'); replacement.textContent = 'Replacement action';
+    const canvas = map.map.getCanvas();
+    const interactions = attachInteractions(map, {
+      contextMenu: () => ({ element: replacement, dispose: () => { menuDisposed++; } }),
+      renderFeature: feature => {
+        const element = document.createElement('span'); element.textContent = feature.id;
+        return { element, dispose: () => {
+          if (!replace) return;
+          replace = false;
+          canvas.focus();
+          map.map.fire('contextmenu', { point: { x: 200, y: 200 }, lngLat: map.map.unproject([200, 200]), originalEvent: new MouseEvent('contextmenu') });
+        } };
+      },
+    });
+    try {
+      await until(() => map.map.queryRenderedFeatures({ layers: ['rl:points'] }).length === 10, 'overlapping picker candidates render');
+      await pointer('click', map.map.project([0, 0]));
+      check(Boolean(container.querySelector('.rl-picker')), 'Native click did not open the picker');
+      replace = true;
+      await browserClick('.rl-picker-pages button[aria-label="Next candidates"]');
+      check(replacement.isConnected && document.activeElement === replacement && menuDisposed === 0, 'Obsolete picker page disposed replacement content or focus');
+      await browserKey('Escape');
+      check(!replacement.isConnected && menuDisposed === 1 && document.activeElement === canvas, 'Replacement menu dismissal lost disposal or focus');
+      interactions.destroy(); interactions.destroy();
+      check(menuDisposed === 1, 'Teardown disposed the replacement twice');
+    } finally { interactions.destroy(); map.destroy(); }
+  });
+  await run('Reliability content lets a picker replace a pending menu factory', async () => {
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+      features: [point('factory-a'), point('factory-b')], logger: () => {} });
+    current = map; await map.ready;
+    let disposed = 0, opened = 0;
+    const obsolete = document.createElement('button'); obsolete.textContent = 'Obsolete action';
+    const interactions = attachInteractions(map, { contextMenu: event => {
+      opened++;
+      map.map.fire('click', { point: event.point, lngLat: event.lngLat, originalEvent: event.originalEvent });
+      return { element: obsolete, dispose: () => { disposed++; } };
+    } });
+    try {
+      await until(() => map.map.queryRenderedFeatures({ layers: ['rl:points'] }).length === 2, 'factory replacement candidates render');
+      const canvas = map.map.getCanvas(); canvas.focus();
+      const rect = canvas.getBoundingClientRect(), location = map.map.project([0, 0]);
+      if (!window.browserDrag) throw new Error('Browser input bridge unavailable');
+      await window.browserDrag(rect.left + location.x, rect.top + location.y, rect.left + location.x, rect.top + location.y, 'right');
+      check(opened === 1 && disposed === 1 && !obsolete.isConnected && !container.querySelector('.rl-context'), 'Menu factory overwrote a replacement picker');
+      const picker = container.querySelector('.rl-picker');
+      check(picker?.contains(document.activeElement) && picker.querySelectorAll('.rl-sector').length === 2, 'Replacement picker lost choices or focus');
+      await browserKey('Escape');
+      check(!container.querySelector('.rl-picker') && document.activeElement === canvas, 'Replacement picker dismissal lost focus');
+      interactions.destroy(); interactions.destroy();
+      check(disposed === 1, 'Obsolete menu content was disposed repeatedly');
+    } finally { interactions.destroy(); map.destroy(); }
+  });
   await run('Reliability drawing callback ownership and interrupted acquisition', async () => {
     for (const action of ['replace', 'destroy', 'conflict', 'permission'] as const) {
       const draw = createViewport({ container, basemap: style(), terrain: false,
@@ -432,6 +776,189 @@ async function suite() {
       check(await remounted.finish(), 'Remounted drawing could not finish');
       check(draw.getInteractionOwner() === null && !!draw.getFeature('remounted'), 'Remount did not release ownership after acceptance');
     } finally { remounted.destroy(); draw.destroy(); }
+  });
+  await run('Reliability entity null buffer allocation diagnoses once and retry renders only current geometry', async () => {
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style('#ffffff'), camera: { center: [.001, 0], zoom: 17 },
+      style: () => ({ color: '#ff0000', radius: 10 }), elevationSampler: { sample: () => 0 },
+      logger: () => {}, onError: error => errors.push(error) });
+    current = air; await air.ready;
+    const gl = air.map.getCanvas().getContext('webgl2')!;
+    const createBuffer = gl.createBuffer.bind(gl), addLayer = air.map.addLayer.bind(air.map);
+    let failed = false, allocationCalls = 0;
+    const obsolete: MapFeature = { ...point('obsolete'), entity: { altitude: { meters: 1, reference: 'ground' } } };
+    const accepted: MapFeature = { ...point('current', .002), entity: { altitude: { meters: 1, reference: 'ground' } } };
+    let clicked: string[] = [];
+    air.on('click', event => { clicked = event.features.map(feature => feature.id); });
+    try {
+      air.upsert([obsolete]);
+      await untilPixel(air, [0, 0], true, 'initial entity');
+      air.map.addLayer = (layer, beforeId) => {
+        if (layer.id !== 'rl:entities' || failed) return addLayer(layer, beforeId);
+        failed = true;
+        Object.defineProperty(gl, 'createBuffer', { configurable: true, writable: true, value: () => { allocationCalls++; return null; } });
+        try { return addLayer(layer, beforeId); }
+        finally { gl.createBuffer = createBuffer; }
+      };
+      air.configure({ basemap: style('#fffffe') });
+      await until(() => failed, 'controlled entity allocation');
+      check(allocationCalls === 1, 'Fault did not reach entity allocation: ' + allocationCalls);
+      await until(() => errors.some(error => error.context.operation === 'entities' && error.code === 'UPDATE_FAILED'), 'entity allocation diagnostic');
+      check(allocationCalls === 1, 'Allocation failure was automatically retried');
+      check(errors.some(error => error.context.recoverable && error.cause instanceof Error && /entity.*buffer/i.test(error.cause.message)),
+        'Allocation diagnostic lost context or cause');
+      air.remove([obsolete.id]); air.upsert([accepted]);
+      await until(() => air.getEntityState(accepted.id)?.coverage === 'ready', 'current accepted entity');
+      await untilPixel(air, [.002, 0], false, 'failed buffer stays invisible');
+      let recoveryAllocations = 0;
+      gl.createBuffer = () => { recoveryAllocations++; return createBuffer(); };
+      air.retryUpdates();
+      await untilPixel(air, [.002, 0], true, 'current geometry after retry');
+      clicked = [];
+      await pointer('click', air.map.project([.002, 0]));
+      check(clicked.includes(accepted.id) && !clicked.includes(obsolete.id), 'Retry restored obsolete or unpickable geometry');
+      await untilPixel(air, [0, 0], false, 'removed geometry after retry');
+      await new Promise<void>(resolve => { air.map.once('idle', () => resolve()); air.map.triggerRepaint(); });
+      const settled = recoveryAllocations;
+      await new Promise(resolve => setTimeout(resolve, 200));
+      check(recoveryAllocations === settled, 'Idle scene kept allocating');
+    } finally { gl.createBuffer = createBuffer; air.map.addLayer = addLayer; air.destroy(); air.destroy(); }
+  });
+  await run('Reliability entity date-line rendering and real picking agree across order pan and projection', async () => {
+    const air = createViewport({ container, basemap: style('#ffffff'), projection: 'flat',
+      camera: { center: [179, 0], zoom: 6 }, elevationSampler: { sample: () => 30 },
+      style: () => ({ color: '#ff0000', radius: 10 }), logger: () => {} });
+    current = air; await air.ready;
+    const distant: MapFeature = { ...point('distant'), entity: { altitude: { meters: 1000, reference: 'ground' } } };
+    const nearby: MapFeature = { ...point('date-line', -179), entity: { altitude: { meters: 1000, reference: 'ground' },
+      attachments: [{ id: 'volume', type: 'sphere', radius: 20_000, color: '#ff0000' }] } };
+    let picked: string[] = [], attachments: string[] = [];
+    air.on('click', event => { picked = event.features.map(feature => feature.id); attachments = event.attachments.map(hit => hit.attachmentId); });
+    const nearbyLocation = (): [number, number] => [-179 + Math.round((air.map.getCenter().lng + 179) / 360) * 360, 0];
+    const assertShown = async (description: string) => {
+      const location = nearbyLocation();
+      await untilPixel(air, location, true, description + ' point pixels');
+      const pixel = await pixelAt(air, location, 8000, description);
+      check(pixel.red > pixel.green + 30 && pixel.red > pixel.blue + 30, description + ' point is not red');
+      picked = []; attachments = [];
+      await pointer('click', air.map.project(location));
+      check(picked.includes(nearby.id), description + ' point cannot be picked at ' + JSON.stringify({ location, screen: air.map.project(location), picked, attachments, projection: air.map.getProjection(), center: air.map.getCenter() }));
+      const face: [number, number] = [location[0] + .15, 0];
+      await untilPixel(air, face, true, description + ' volume pixels');
+      picked = []; attachments = [];
+      await pointer('click', air.map.project(face));
+      check(picked.includes(nearby.id) && attachments.includes('volume'), description + ' visible volume cannot be picked');
+      check(air.getEntityState(nearby.id)?.altitude === 1030, 'Rendering changed physical altitude');
+      const accepted = air.getFeature(nearby.id);
+      check(accepted?.geometry.type === 'Point' && accepted.geometry.coordinates[0] === -179, 'Rendering rewrote accepted longitude');
+    };
+    try {
+      for (const projection of ['flat', 'globe'] as const) {
+        air.configure({ projection });
+        for (const reverse of [false, true]) {
+          air.remove([distant.id, nearby.id]);
+          await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+          air.upsert(reverse ? [nearby, distant] : [distant, nearby]);
+          air.map.jumpTo({ center: [179, 0], zoom: 6 });
+          await until(() => air.getEntityState(nearby.id)?.placement === 'airborne', projection + ' placement');
+          await assertShown(projection + (reverse ? ' reversed' : ' original'));
+          air.map.jumpTo({ center: [-179, 0] });
+          await assertShown(projection + ' crossed date line');
+        }
+      }
+    } finally { air.destroy(); }
+  });
+  await run('Reliability entity raster retry fetches repaired no-data and restores current camera pixels', async () => {
+    const tile = document.createElement('canvas'); tile.width = tile.height = 256;
+    const context = tile.getContext('2d')!;
+    const prefix = 'https://raster-repair.test/';
+    let repaired = false, requests = 0;
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (!url.startsWith(prefix)) return originalFetch(input, init);
+      requests++;
+      context.clearRect(0, 0, 256, 256);
+      context.fillStyle = 'rgb(128,0,0)'; context.fillRect(0, 0, 256, 256);
+      if (!repaired) context.clearRect(125, 125, 6, 6);
+      return originalFetch(tile.toDataURL(), init);
+    };
+    const lng = 0, lat = 0;
+    const air = createViewport({ container, basemap: style('#ffffff'), camera: { center: [lng, lat], zoom: 16 },
+      terrain: false, hillshade: false, logger: () => {}, elevation: {
+        tiles: [prefix + '{z}/{x}/{y}.png'], encoding: 'terrarium', minzoom: 0, maxzoom: 0, tileSize: 256,
+      } });
+    current = air;
+    try {
+      await air.ready;
+      const feature: MapFeature = { ...point('raster-camera'), entity: { altitude: { meters: 100, reference: 'ground' },
+        attachments: [{ id: 'view', type: 'camera', terrainVisibility: true, range: 300, bearing: 0,
+          elevation: -90, fovX: 60, fovY: 40, color: '#ff0000', blockedColor: '#ff0000', fillOpacity: 1 }] } };
+      air.upsert([feature]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'unavailable', 'missing raster output');
+      const before = requests;
+      repaired = true;
+      const moved: MapFeature = { ...feature, geometry: { type: 'Point', coordinates: [.0001, 0] } };
+      air.upsert([moved]);
+      air.retryUpdates();
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'repaired raster camera');
+      check(requests > before, 'Retry never fetched repaired missing-data tile');
+      await untilPixel(air, [.0004, .0001], true, 'repaired current camera coverage');
+      const pixel = await pixelAt(air, [.0004, .0001], 8000, 'repaired current camera coverage');
+      check(pixel.red > pixel.green + 30 && pixel.red > pixel.blue + 30, 'Repaired camera coverage is not visible');
+      let clicked = false;
+      air.on('click', event => { clicked = event.attachments.some(hit => hit.entityId === feature.id && hit.attachmentId === 'view'); });
+      await pointer('click', air.map.project([.0004, .0001]));
+      check(clicked, 'Recovered raster camera could not be picked');
+      await new Promise<void>(resolve => { air.map.once('idle', () => resolve()); air.map.triggerRepaint(); });
+      const settled = requests;
+      await new Promise(resolve => setTimeout(resolve, 200));
+      check(requests === settled, 'Recovered raster kept fetching while idle');
+    } finally { air.destroy(); window.fetch = originalFetch; }
+  });
+  await run('Reliability entity sampling failure clears completed plain and terrain coverage and retries current data', async () => {
+    const failure = new Error('Required camera elevation failed');
+    let broken = false, samples = 0;
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style('#ffffff'), camera: { center: [0, 0], zoom: 16 },
+      logger: () => {}, onError: error => errors.push(error), elevationSampler: { sample: lng => {
+        samples++;
+        if (broken && Math.abs(lng) < .003) throw failure;
+        return 0;
+      } } });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'plain', type: 'camera', range: 300, bearing: 0,
+      elevation: -90, fovX: 60, fovY: 40, color: '#ff0000', fillOpacity: .8 };
+    const feature: MapFeature = { ...point('calculation'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [camera, { ...camera, id: 'terrain', terrainVisibility: true, bearing: 90 },
+        { id: 'zone', type: 'circle', radius: 30, color: '#00aa00' }] } };
+    const other: MapFeature = { ...point('unrelated', .004), entity: {
+      attachments: [{ id: 'other-zone', type: 'circle', radius: 40, color: '#0000ff' }] } };
+    const plainVisible = () => air.map.queryRenderedFeatures(air.map.project([.0002, 0]), { layers: ['rl:entity-ground-fill'] })
+      .some(hit => hit.properties.entityId === feature.id && hit.properties.attachmentId === 'plain');
+    const maskVisible = () => air.map.getStyle().layers.some(layer => layer.id.startsWith('rl:camera-mask:'));
+    const zoneVisible = (id: string, lng: number) => air.map.queryRenderedFeatures(air.map.project([lng, 0]), { layers: ['rl:entity-ground-fill'] })
+      .some(hit => hit.properties.entityId === id);
+    try {
+      air.upsert([feature, other]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready' && plainVisible() && maskVisible(), 'completed cameras');
+      broken = true;
+      const moved: MapFeature = { ...feature, geometry: { type: 'Point', coordinates: [.0005, 0] } };
+      air.upsert([moved]);
+      await until(() => errors.some(error => error.cause === failure), 'original sampling diagnostic');
+      await until(() => air.getEntityState(feature.id)?.coverage === 'unavailable' && !plainVisible() && !maskVisible(), 'failed coverage removed');
+      check(air.getEntityState(feature.id)?.placement === 'airborne', 'Failure erased valid entity placement');
+      check(zoneVisible(feature.id, 0) && zoneVisible(other.id, .004), 'Failure erased unrelated ground geometry');
+      const accepted = air.getFeature(feature.id);
+      check(accepted?.geometry.type === 'Point' && accepted.geometry.coordinates[0] === .0005, 'Failure changed accepted data');
+      broken = false;
+      air.retryUpdates();
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready' && maskVisible() && zoneVisible(feature.id, .0005), 'current coverage recovered');
+      await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+      const settled = samples;
+      await new Promise(resolve => setTimeout(resolve, 200));
+      check(samples === settled, 'Recovered scene kept sampling while idle');
+    } finally { air.destroy(); }
   });
   await run('Raw terrain and the installed renderer agree on nonzero TMS tile templates', async () => {
     const dem = document.createElement('canvas'); dem.width = dem.height = 256;
