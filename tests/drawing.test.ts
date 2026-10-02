@@ -619,6 +619,129 @@ test("External update during submission aborts and cannot overwrite the newer fe
   editor.restart();
   assert.deepEqual(editor.getState().draft?.shape, newer.drawing?.shape);
 });
+for (const action of ["cancel", "destroy", "replace"] as const) {
+  test(`Final drawing permission can ${action} without committing the obsolete draft`, async () => {
+    let settled = false, acted = false, nextId = 0;
+    const { editor, host, owner } = fixture({
+      createFeature: () => ({ id: `permission-${++nextId}`, properties: {} }),
+      submit: () => { settled = true; return { accepted: true }; },
+      canEdit: () => {
+        if (settled && !acted) {
+          acted = true;
+          if (action === "destroy") editor.destroy();
+          else {
+            editor.cancel();
+            if (action === "replace") line(editor);
+          }
+        }
+        return true;
+      },
+    });
+    try {
+      line(editor);
+      assert.equal(await editor.finish(), false);
+      assert.ok(acted);
+      assert.equal(host.getFeature("permission-1"), undefined);
+      assert.equal(editor.getState().phase, action === "replace" ? "editing" : "idle");
+      assert.equal(owner(), action === "replace" ? "drawing" : null);
+      if (action === "replace") {
+        assert.equal(editor.getState().draft?.feature.id, "permission-2");
+        assert.equal(await editor.finish(), true);
+        assert.ok(host.getFeature("permission-2"));
+      }
+    } finally { editor.destroy(); }
+  });
+}
+
+test("Final permission cannot clear a replacement submission started by that callback", async () => {
+  let submissions = 0, replaced = false, nextId = 0;
+  let decide: (value: DrawingDecision) => void = () => {};
+  let replacement: Promise<boolean> | undefined;
+  const { editor, host } = fixture({
+    createFeature: () => ({ id: `replacement-${++nextId}`, properties: {} }),
+    submit: () => {
+      if (++submissions === 1) return { accepted: true };
+      return new Promise(resolve => { decide = resolve; });
+    },
+    canEdit: () => {
+      if (submissions === 1 && !replaced) {
+        replaced = true;
+        editor.cancel();
+        line(editor);
+        replacement = editor.finish();
+      }
+      return true;
+    },
+  });
+  try {
+    line(editor);
+    assert.equal(await editor.finish(), false);
+    assert.equal(editor.getState().phase, "pending");
+    assert.equal(host.getFeature("replacement-1"), undefined);
+    decide({ accepted: true });
+    assert.equal(await replacement, true);
+    assert.ok(host.getFeature("replacement-2"));
+    assert.equal(editor.getState().phase, "idle");
+  } finally { editor.destroy(); }
+});
+
+for (const operation of ["update", "delete"] as const) {
+  test(`External update inside final ${operation} permission preserves the newer feature`, async () => {
+    let settled = false, updated = false, signal: AbortSignal | undefined;
+    const before = feature({ kind: "line", vertices: [[0, 0], [1, 0]] });
+    const newer = feature({ kind: "line", vertices: [[0, 0], [3, 0]] });
+    newer.properties.revision = 2;
+    const { editor, host } = fixture({
+      submit: (_change, currentSignal) => {
+        signal = currentSignal;
+        settled = true;
+        return { accepted: true };
+      },
+      canEdit: () => {
+        if (settled && !updated) { updated = true; host.upsert([newer]); }
+        return true;
+      },
+    });
+    try {
+      host.upsert([before]);
+      editor.edit(before.id);
+      editor.moveVertex(1, [2, 0]);
+      assert.equal(await (operation === "update" ? editor.finish() : editor.delete()), false);
+      assert.ok(updated && signal?.aborted);
+      assert.deepEqual(host.getFeature(before.id), newer);
+      assert.equal(editor.getState().phase, "conflict");
+    } finally { editor.destroy(); }
+  });
+}
+
+test("Final permission cannot commit geometry or style changed inside that callback", async () => {
+  for (const field of ["shape", "style"] as const) {
+    let settled = false, changed = false;
+    const { editor, host } = fixture({
+      submit: () => { settled = true; return { accepted: true }; },
+      canEdit: () => {
+        if (settled && !changed) {
+          changed = true;
+          if (field === "shape") editor.moveVertex(1, [3, 0]);
+          else editor.setStyle({ label: "New draft" });
+        }
+        return true;
+      },
+    });
+    try {
+      line(editor);
+      assert.equal(await editor.finish(), false);
+      assert.equal(host.getFeature("new"), undefined);
+      assert.equal(editor.getState().phase, "editing");
+      if (field === "shape") assert.deepEqual(editor.getState().draft?.shape, {
+        kind: "line", vertices: [[0, 0], [3, 0]],
+      });
+      else assert.equal(editor.getState().draft?.style.label, "New draft");
+      assert.equal(await editor.finish(), true);
+    } finally { editor.destroy(); }
+  }
+});
+
 test("Lost permission blocks acceptance and preserves the draft", async () => {
   let permitted = true,
     decide: (v: DrawingDecision) => void = () => {};
