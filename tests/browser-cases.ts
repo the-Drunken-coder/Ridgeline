@@ -1,5 +1,6 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Reliability entity null buffer allocation diagnoses once and retry renders only current geometry',
   'Reliability entity date-line rendering and real picking agree across order pan and projection',
   'Reliability entity raster retry fetches repaired no-data and restores current camera pixels',
   'Reliability entity sampling failure clears completed plain and terrain coverage and retries current data',
