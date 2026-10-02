@@ -21,6 +21,7 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
   const abort = new AbortController();
   const subscriptions: (() => void)[] = [];
   let disposed = false;
+  let operation = 0;
   let active: HTMLElement | null = null;
   let tooltip: HTMLElement | null = null;
   let tooltipFeatureId: string | null = null;
@@ -89,10 +90,15 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
     viewport.preview(null); element?.remove(); content?.destroy();
   }
   function close(restoreFocus = false) {
-    active?.remove(); active = null; candidates = [];
-    releaseChoices(); release(activeDisposers); hideTooltip();
-    if (restoreFocus && focusBeforeOpen?.isConnected) focusBeforeOpen.focus({ preventScroll: true });
-    focusBeforeOpen = null;
+    const version = ++operation;
+    const element = active, previousChoices = [...choices.values()], disposers = activeDisposers, focus = focusBeforeOpen;
+    active = null; candidates = []; choices.clear(); activeDisposers = []; focusBeforeOpen = null;
+    // Detach all old ownership before disposal can synchronously open replacement UI.
+    element?.remove(); hideTooltip();
+    for (const choice of previousChoices) choice.content.destroy();
+    release(disposers);
+    if (restoreFocus && !disposed && operation === version && focus?.isConnected) focus.focus({ preventScroll: true });
+    return version;
   }
   function position(element: HTMLElement, point: { x: number; y: number }, centered = false) {
     const width = element.offsetWidth, height = element.offsetHeight;
@@ -128,7 +134,8 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
   function drawPicker(focus = false) {
     const picker = active;
     if (!picker || disposed) return;
-    releaseChoices(); release(activeDisposers);
+    const disposers = activeDisposers; activeDisposers = [];
+    releaseChoices(); release(disposers);
     if (disposed || active !== picker) return;
     picker.replaceChildren();
     const size = Math.min(360, viewport.container.clientWidth - 12, viewport.container.clientHeight - 12);
@@ -194,6 +201,7 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
     if (disposed || viewport.getInteractionOwner()) return;
     clickedAttachments = event.attachments;
     if (event.features.length > 1 && options.picker !== false) {
+      operation++;
       candidates = event.features.map(feature => feature.id); anchor = event.point; page = 0;
       focusBeforeOpen = document.activeElement instanceof HTMLElement ? document.activeElement : viewport.map.getCanvas();
       active = document.createElement('div'); active.className = 'rl-picker'; active.setAttribute('role', 'group'); active.setAttribute('aria-label', 'Choose a feature');
@@ -209,16 +217,26 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
     if (feature) hover(feature, event.point); else hideTooltip();
   }));
   subscriptions.push(viewport.on('contextmenu', event => {
-    if (!options.contextMenu) return;
-    event.originalEvent.preventDefault(); close();
-    const custom = options.contextMenu(event, () => close(true));
-    if (!custom) return;
+    if (disposed || !options.contextMenu) return;
+    event.originalEvent.preventDefault();
+    const version = close();
+    const current = () => !disposed && operation === version;
+    if (!current()) return;
     focusBeforeOpen = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    active = document.createElement('div'); active.className = 'rl-context';
-    if (custom instanceof HTMLElement) active.append(custom);
-    else { active.append(custom.element); if (custom.dispose) activeDisposers.push(custom.dispose); }
-    root.append(active); position(active, event.point);
-    active.querySelector('button')?.focus({ preventScroll: true });
+    const custom = options.contextMenu(event, () => { if (current()) close(true); });
+    if (!current()) {
+      if (custom && !(custom instanceof HTMLElement) && custom.dispose) release([custom.dispose]);
+      return;
+    }
+    if (!custom) return;
+    const element = document.createElement('div'); element.className = 'rl-context';
+    active = element;
+    if (custom instanceof HTMLElement) element.append(custom);
+    else { element.append(custom.element); if (custom.dispose) activeDisposers.push(custom.dispose); }
+    root.append(element);
+    if (!current()) return;
+    position(element, event.point);
+    element.querySelector('button')?.focus({ preventScroll: true });
   }));
   subscriptions.push(viewport.on('datachange', event => {
     if (disposed) return;
