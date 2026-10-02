@@ -108,6 +108,101 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
+  await run('Reliability drawing keyboard movement excludes carried shape vertices', async () => {
+    const draw = createViewport({ container, basemap: style(), terrain: false,
+      camera: { center: [0, 0], zoom: 16 }, logger: () => {} });
+    current = draw; await draw.ready;
+    const origin = draw.map.project([0, 0]);
+    const circleShape = { kind: 'circle' as const, center: [0, 0] as [number, number], radius: 15 };
+    const circle: MapFeature = { type: 'Feature', id: 'carried-circle', properties: {}, geometry: shapeGeometry(circleShape),
+      drawing: { version: 1, shape: circleShape, style: { color: '#008855', fillColor: '#008855', lineWidth: 2,
+        fillOpacity: .2, dashed: false, label: '' } } };
+    const endpoints = [-16, 16].map(x => draw.map.unproject([origin.x + x, origin.y]).toArray());
+    const line: MapFeature = { type: 'Feature', id: 'carried-line', properties: {},
+      geometry: { type: 'LineString', coordinates: endpoints } };
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused', properties: {} }), submit: () => ({ accepted: true }) });
+    try {
+      for (const [feature, label] of [[circle, 'Center'], [line, 'Move drawing']] as const) {
+        draw.upsert([feature]); editor.edit(feature.id);
+        const handle = container.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`);
+        if (!handle) throw new Error(`${label} handle missing`);
+        handle.focus();
+        await browserKey('ArrowRight');
+        const shape = editor.getState().draft?.shape;
+        let center: [number, number];
+        if (shape?.kind === 'circle') {
+          check(shape.radius === 15, 'Center movement changed the circle radius');
+          center = shape.center;
+        } else if (shape?.kind === 'line') center = [(shape.vertices[0]![0] + shape.vertices[1]![0]) / 2,
+          (shape.vertices[0]![1] + shape.vertices[1]![1]) / 2];
+        else throw new Error('Carried shape missing');
+        const screen = draw.map.project(center);
+        check(Math.abs(screen.x - origin.x - 10) < 1 && Math.abs(screen.y - origin.y) < 1,
+          'Carried shape snapped to one of its own vertices');
+        check(document.activeElement === handle, 'Carried shape movement lost focus');
+        editor.cancel(); draw.remove([feature.id]);
+      }
+    } finally { editor.destroy(); draw.destroy(); }
+  });
+  await run('Reliability drawing keyboard snapping follows pointer policy', async () => {
+    const draw = createViewport({ container, basemap: style(), terrain: false,
+      camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+    current = draw; await draw.ready;
+    const origin = draw.map.project([0, 0]);
+    const target = draw.map.unproject([origin.x + 16, origin.y]).toArray();
+    const end = draw.map.unproject([origin.x + 60, origin.y + 60]).toArray();
+    const line: MapFeature = { type: 'Feature', id: 'keyboard-line', properties: {},
+      geometry: { type: 'LineString', coordinates: [[0, 0], end] } };
+    draw.upsert([line, { type: 'Feature', id: 'keyboard-anchor', properties: {},
+      geometry: { type: 'Point', coordinates: target } }]);
+    await until(() => draw.map.queryRenderedFeatures({ layers: ['rl:points'] })
+      .some(f => f.properties._rl_feature_id === 'keyboard-anchor'), 'keyboard anchor rendered');
+    let excluded = false;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused', properties: {} }),
+      canSnap: feature => feature.id !== 'keyboard-anchor' || !excluded, submit: () => ({ accepted: true }) });
+    const vertex = () => {
+      const shape = editor.getState().draft?.shape;
+      if (shape?.kind !== 'line') throw new Error('Keyboard line draft missing');
+      return shape.vertices[0]!;
+    };
+    const exact = () => JSON.stringify(vertex()) === JSON.stringify(target);
+    const freeStep = () => {
+      const screen = draw.map.project(vertex());
+      check(!exact() && Math.abs(screen.x - origin.x - 10) < 1 && Math.abs(screen.y - origin.y) < 1, 'Bypass did not make a free 10-pixel ground edit');
+    };
+    try {
+      editor.edit(line.id);
+      await browserClick('[aria-label="Vertex 1"]');
+      container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]')!.focus();
+      check(document.activeElement?.getAttribute('aria-label') === 'Vertex 1', 'Keyboard handle was not focused');
+      await browserKey('ArrowRight');
+      check(exact(), `Keyboard edit missed an eligible vertex: ${JSON.stringify({ actual: vertex(), target })}`);
+      check(document.activeElement?.getAttribute('aria-label') === 'Vertex 1', 'Snapping lost handle focus');
+      await browserKey('ControlOrMeta+z');
+      check(JSON.stringify(vertex()) === JSON.stringify([0, 0]), 'Undo did not restore the original keyboard vertex');
+      await browserKey('Alt+ArrowRight'); freeStep();
+      await browserKey('ControlOrMeta+z');
+      editor.setSnapping(false);
+      await browserKey('ArrowRight'); freeStep();
+      await browserKey('ControlOrMeta+z');
+      editor.setSnapping(true); excluded = true;
+      await browserKey('ArrowRight'); freeStep();
+      await browserKey('ControlOrMeta+z'); excluded = false;
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]')!;
+      const box = handle.getBoundingClientRect(), canvas = draw.map.getCanvas().getBoundingClientRect();
+      await browserDrag(box.x + box.width / 2, box.y + box.height / 2,
+        canvas.x + origin.x + 10, canvas.y + origin.y);
+      check(exact(), 'Pointer and keyboard edits disagreed on the same snap target');
+      await browserKey('ControlOrMeta+z');
+      const unchanged = JSON.stringify(editor.getState().draft?.shape);
+      draw.configure({ terrain: true, elevation: { tiles: ['/missing-keyboard-dem.png'], encoding: 'terrarium', maxzoom: 0 } });
+      await browserClick('[aria-label="Vertex 1"]');
+      container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]')!.focus();
+      await browserKey('Shift+ArrowRight');
+      check(JSON.stringify(editor.getState().draft?.shape) === unchanged, 'Unavailable ground changed the keyboard draft');
+      check(document.activeElement?.getAttribute('aria-label') === 'Vertex 1', 'Unavailable ground lost keyboard focus');
+    } finally { editor.destroy(); draw.destroy(); }
+  });
   for (const projection of ['flat', 'globe'] as const) for (const terrain of [false, true]) {
     await run(`Reliability drawing date-line storage snapping and reload ${projection} ${terrain ? 'with' : 'without'} terrain`, async () => {
     const dem = document.createElement('canvas'); dem.width = dem.height = 256;

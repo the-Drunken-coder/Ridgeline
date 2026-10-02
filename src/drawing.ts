@@ -435,7 +435,13 @@ export function attachDrawing<P extends Properties>(
               keyboardFeedbackTimer = setTimeout(() => feedback?.clear(), 800);
               return;
             }
-            const next = target.position;
+            const current = session.getState().draft,
+              currentHandle = index === undefined || !current
+                ? undefined
+                : shapeHandles(current.shape)[index];
+            const next = snap(target.position, point, e.altKey,
+              key === "move" || currentHandle?.carriesShape ? "draft" : index);
+            if (disposed || revision !== stateRevision || !editable()) return;
             feedback?.clear();
             if (key === "move")
               session.translate(position(marker.getLngLat().toArray()), next);
