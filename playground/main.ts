@@ -91,6 +91,7 @@ function renderSelection() {
   element('#selected-type', HTMLElement).textContent = feature?.properties.kind ?? 'None';
   locateButton.disabled = !feature; clearButton.disabled = !feature;
 }
+const offSelection = viewport.on('selectionchange', renderSelection);
 function locate(feature: MapFeature<Sample>) {
   if (feature.geometry.type === 'Point') {
     const [lng, lat] = feature.geometry.coordinates;
@@ -280,6 +281,6 @@ listen(measureButton, 'click', () => {
 });
 if(new URLSearchParams(location.search).get('scenario')==='drawing')scenario.value='drawing';
 void viewport.ready.then(loadScenario).catch(error => { notice.textContent = 'The map could not start. See the diagnostic for details.'; if (error instanceof Error) console.error(error); });
-function dispose() { drawingDemo?.destroy(); disposed = true; ++scenarioRevision; airborneInspector?.destroy(); sidcDemo?.destroy(); interactions?.destroy(); stopMotion(); lifetime.abort(); viewport.destroy(); }
+function dispose() { offSelection(); drawingDemo?.destroy(); disposed = true; ++scenarioRevision; airborneInspector?.destroy(); sidcDemo?.destroy(); interactions?.destroy(); stopMotion(); lifetime.abort(); viewport.destroy(); }
 window.addEventListener('pagehide', dispose, { once: true });
 if (import.meta.hot) import.meta.hot.dispose(dispose);

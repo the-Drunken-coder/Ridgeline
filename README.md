@@ -43,13 +43,14 @@ pnpm dev
 pnpm check
 pnpm test
 pnpm test:browser
+pnpm test:playground:browser
 pnpm test:controls:browser
 pnpm validate
 pnpm build:playground
 pnpm measure
 ```
 
-`pnpm test` runs the fast module and control-lab state tests. `pnpm validate` runs type checking, those tests, both browser suites, and the playground and control-lab builds. CI runs these checks in independent jobs on every pull request and push to `main`, and supports manual runs.
+`pnpm test` runs the fast module and control-lab state tests. `pnpm validate` runs type checking, those tests, all three browser suites, and the playground and control-lab builds. CI runs these checks in independent jobs on every pull request and push to `main`, and supports manual runs.
 
 `pnpm build` produces the importable ESM library and declarations in `dist`. `pnpm build:playground` also builds the playground against those exports, without development source aliases. This package is private and has not been published to npm. Install a local tarball in another application:
 
@@ -225,11 +226,12 @@ Recoverable tile failures leave the rest of the map usable. The elevation-unavai
 
 ## Verification
 
-Focused Node tests cover replacement semantics, atomic invalid batches, snapshot ownership, geometry validation, diagnostics, and hillshade option validation. Install Chromium once, then run both browser suites:
+Focused Node tests cover replacement semantics, atomic invalid batches, snapshot ownership, geometry validation, diagnostics, and hillshade option validation. Install Chromium once, then run the browser suites:
 
 ```sh
 pnpm exec playwright install chromium
 pnpm test:browser
+pnpm test:playground:browser
 pnpm test:controls:browser
 ```
 
@@ -237,7 +239,9 @@ pnpm test:controls:browser
 
 `pnpm test:controls:browser` builds and previews the separate control lab and uses real mouse, keyboard, and wheel input. Its failure artifacts are in `control-lab/test-results/`. Run one case with `pnpm exec playwright test -c control-lab/playwright.config.ts -g 'dragging an armed map'`.
 
-`pnpm validate` runs both browser suites with type checking, module tests, and affected consumer builds. CI distributes the packaged browser suite across four runners, each installing and building its own packed consumer, with one browser worker per runner. See [CI and nightly validation](docs/ci-validation.md) for required jobs, reports, stress runs, and enforcement. Dependency and browser installation require network access on a fresh machine. Playwright is a development dependency only. Desktop Chromium with software WebGL does not establish Firefox, WebKit, touch behavior, complete accessibility, hardware GPU coverage, or long-session memory guarantees.
+`pnpm test:playground:browser` builds and previews the real playground against package exports. It verifies applied drawing selection, accepted drawings, clearing, and scenario changes with real input and deterministic map resources. Its failure screenshots and traces are in `.artifacts/playground-tests/`.
+
+`pnpm validate` runs all three browser suites with type checking, module tests, and affected consumer builds. CI distributes the packaged browser suite across four runners, each installing and building its own packed consumer, with one browser worker per runner. See [CI and nightly validation](docs/ci-validation.md) for required jobs, reports, stress runs, and enforcement. Dependency and browser installation require network access on a fresh machine. Playwright is a development dependency only. Desktop Chromium with software WebGL does not establish Firefox, WebKit, touch behavior, complete accessibility, hardware GPU coverage, or long-session memory guarantees.
 
 Add `--headed` to the targeted browser command to watch the case run. See [measured results](docs/performance.md) for bundle size, workload observations, and validation limits.
 
