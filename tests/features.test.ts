@@ -21,6 +21,45 @@ test('a failed batch makes no partial changes', () => {
   assert.deepEqual(store.ids(), ['a']);
 });
 
+test('overlapping ground attachment boundaries reject the whole mixed feature batch', () => {
+  const store = new FeatureStore();
+  store.upsert([point('accepted', 'Original')]);
+  const invalid: MapFeature = { ...point('overlap'), entity: { attachments: [{ id: 'boundary', type: 'polygon',
+    vertices: [[0, 0], [4, 0], [2, 0], [4, 4], [0, 4]],
+  }] } };
+  const before = store.all();
+  assert.throws(() => store.upsert([point('accepted', 'Changed'), point('new'), invalid]), {
+    code: 'INVALID_FEATURE',
+  });
+  assert.deepEqual(store.all(), before);
+});
+
+test('ground attachment polygons reject nonadjacent contacts and retain ordinary corners', () => {
+  const store = new FeatureStore();
+  const polygon = (vertices: [number, number][]): MapFeature => ({ ...point('area'), entity: {
+    attachments: [{ id: 'boundary', type: 'polygon', vertices }],
+  } });
+  for (const vertices of [
+    [[0, 0], [4, 0], [4, 4], [2, 0], [0, 4]],
+    [[0, 0], [4, 0], [4, 4], [0, 4], [0, 1], [3, 1], [3, 0], [1, 0], [1, 2], [0, 2]],
+    [[0, 0], [4, 0], [4, 4], [0, 4], [0, 0], [1, 1]],
+    [[0, 0], [4, 0], [4, 4], [0, 4], [0, 4]],
+    [[0, 0], [4, 0], [4, 4], [0, 4], [0, 2], [0, 5]],
+  ] satisfies [number, number][][]) {
+    assert.throws(() => store.upsert([polygon(vertices)]), { code: 'INVALID_FEATURE' });
+    assert.deepEqual(store.all(), []);
+  }
+  for (const vertices of [
+    [[0, 0], [4, 0], [4, 4], [0, 4]],
+    [[0, 0], [2, 0], [4, 0], [4, 4], [2, 2], [0, 4]],
+    [[0, 0], [0, 4], [2, 2], [4, 4], [4, 0]],
+  ] satisfies [number, number][][]) {
+    const feature = polygon(vertices);
+    store.upsert([feature]);
+    assert.deepEqual(store.get(feature.id), feature);
+  }
+});
+
 test('data snapshots isolate callers and the last duplicate ID wins', () => {
   const store = new FeatureStore(); const input = point('a');
   store.upsert([input]); input.properties.name = 'Mutated';

@@ -108,6 +108,44 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
+  await run('Reliability entity nonsimple attachment polygons reject mixed batches before accepted or rendered changes', async () => {
+    const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 },
+      elevationSampler: { sample: () => 0 }, logger: () => {} });
+    current = air; await air.ready;
+    const original: MapFeature = { ...point('accepted'), properties: { name: 'Original' } };
+    const valid: MapFeature = { ...point('valid-area', .002), entity: { attachments: [{ id: 'area', type: 'polygon',
+      vertices: [[0, 0], [100, 0], [100, 100], [0, 100]], color: '#ff0000',
+    }] } };
+    try {
+      air.upsert([original, valid]);
+      await until(() => air.map.queryRenderedFeatures(air.map.project([0, 0]), { layers: ['rl:points'] })
+        .some(hit => hit.properties._rl_feature_id === original.id), 'accepted point before invalid batch');
+      await until(() => air.map.queryRenderedFeatures(air.map.project([.0024, .0004]), { layers: ['rl:entity-ground-fill'] })
+        .some(hit => hit.properties.entityId === valid.id), 'valid attachment before invalid batch');
+      const before = air.getFeatures();
+      for (const vertices of [
+        [[0, 0], [200, 0], [100, 0], [200, 200], [0, 200]],
+        [[0, 0], [200, 0], [200, 200], [100, 0], [0, 200]],
+      ] satisfies [number, number][][]) {
+        const invalid: MapFeature = { ...point('invalid-area'), entity: { attachments: [{ id: 'area', type: 'polygon', vertices }] } };
+        let rejected = false;
+        try { air.upsert([{ ...original, properties: { name: 'Changed' }, geometry: { type: 'Point', coordinates: [.001, 0] } }, point('new'), invalid]); }
+        catch (error) { check(error instanceof RidgelineError && error.code === 'INVALID_FEATURE', 'Wrong polygon validation error'); rejected = true; }
+        check(rejected, 'Nonsimple attachment boundary was accepted');
+        check(JSON.stringify(air.getFeatures()) === JSON.stringify(before), 'Invalid mixed batch mutated accepted data');
+      }
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      const rendered = air.map.queryRenderedFeatures(undefined, { layers: ['rl:points'] });
+      check(air.map.queryRenderedFeatures(air.map.project([0, 0]), { layers: ['rl:points'] })
+        .some(hit => hit.properties._rl_feature_id === original.id), 'Invalid batch moved rendered accepted point');
+      check(!rendered.some(hit => hit.properties._rl_feature_id === 'new'), 'Invalid batch rendered a new feature');
+      const adjacent: MapFeature = { ...valid, entity: { attachments: [{ id: 'area', type: 'polygon',
+        vertices: [[0, 0], [50, 0], [100, 0], [100, 100], [0, 100]], color: '#ff0000',
+      }] } };
+      air.upsert([adjacent]);
+      check(air.getFeature(valid.id)?.entity?.attachments?.[0]?.type === 'polygon', 'Valid adjacent corners were rejected');
+    } finally { air.destroy(); }
+  });
   await run('Reliability publication retires styling when callbacks replace the basemap', async () => {
     for (const initial of [true, false]) {
       let replace = initial;

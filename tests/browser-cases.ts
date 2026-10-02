@@ -1,5 +1,6 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Reliability entity nonsimple attachment polygons reject mixed batches before accepted or rendered changes',
   'Reliability publication retires styling when callbacks replace the basemap',
   'Reliability publication keeps updates made during icon registration',
   'Reliability publication keeps removals and scene changes made by later icon callbacks',
