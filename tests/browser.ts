@@ -3331,7 +3331,7 @@ async function suite() {
     const radiusInput = inspector.querySelector<HTMLInputElement>('[data-field="Radius (m)"]');
     if (!radiusInput || radiusInput.disabled) throw new Error('Rejected circle lost its editable radius field');
     await browserClick('[data-field="Radius (m)"]');
-    await browserKey('Control+A');
+    await browserKey('ControlOrMeta+A');
     for (const digit of '700') await browserKey(digit);
     await browserKey('Tab');
     const revisedShape = editor.getState().draft?.shape;
