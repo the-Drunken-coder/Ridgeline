@@ -766,6 +766,74 @@ async function suite() {
     ui.destroy(); ui.destroy(); check(live.size === 0 && disposals === renders, 'Custom UI content leaked or disposed twice');
     check(!container.querySelector('.rl-ui'), 'Overlay remains');
   });
+  await run('Feature content keeps the newest update from render and disposal callbacks', async () => {
+    for (const callback of ['render', 'dispose'] as const) {
+      const feature = (name: string): MapFeature => ({ ...point('content-target'), properties: { name } });
+      viewport.upsert([feature('Initial'), point('content-other')]);
+      await until(() => hits().some(hit => hit.properties._rl_feature_id === 'content-target'), 'content target rendered');
+      let armed = false, renders = 0, disposals = 0;
+      const live = new Set<number>();
+      const replace = () => { armed = false; viewport.upsert([feature('Newest')]); };
+      const ui = attachInteractions(viewport, {
+        hover: false,
+        renderFeature(current) {
+          const name = viewport.getName(current);
+          const element = document.createElement('span'); element.textContent = name;
+          const id = ++renders; live.add(id);
+          if (armed && callback === 'render' && current.id === 'content-target' && name === 'Intermediate') replace();
+          return { element, dispose() {
+            check(live.delete(id), 'Feature content disposed twice'); disposals++;
+            if (armed && callback === 'dispose' && current.id === 'content-target' && name === 'Initial') replace();
+          } };
+        },
+      });
+      try {
+        await pointer('click', viewport.map.project([0, 0]));
+        const choice = container.querySelector<HTMLButtonElement>('[data-feature-id="content-target"]');
+        check(choice, 'Missing content choice');
+        choice?.focus();
+        armed = true;
+        viewport.upsert([feature('Intermediate')]);
+        check(choice?.textContent === 'Newest', `${callback} callback restored obsolete content`);
+        check(choice?.getAttribute('aria-label') === 'Select Newest', `${callback} callback restored an obsolete accessible name`);
+        check(document.activeElement === choice, `${callback} callback lost focus`);
+      } finally {
+        armed = false;
+        ui.destroy(); ui.destroy();
+        check(live.size === 0 && disposals === renders, 'Nested content update leaked a result');
+        viewport.remove(['content-target', 'content-other']);
+      }
+    }
+  });
+  await run('Feature content returned after interaction destruction is disposed once', async () => {
+    for (const surface of ['picker', 'hover'] as const) {
+      const lng = surface === 'hover' ? .2 : 0;
+      viewport.upsert([point('destroy-content', lng), point('destroy-other', lng)]);
+      await until(() => hits().some(hit => hit.properties._rl_feature_id === 'destroy-content'), 'destruction target rendered');
+      let ui: ReturnType<typeof attachInteractions> | undefined;
+      let renders = 0, disposals = 0;
+      const failures: RidgelineError[] = [];
+      const off = viewport.on('diagnostic', error => { if (error.code === 'CALLBACK_FAILED') failures.push(error); });
+      ui = attachInteractions(viewport, {
+        hover: surface === 'hover',
+        renderFeature() {
+          const element = document.createElement('span'); element.textContent = 'Discarded content';
+          renders++;
+          ui?.destroy();
+          return { element, dispose() { disposals++; } };
+        },
+      });
+      try {
+        await pointer(surface === 'hover' ? 'move' : 'click', viewport.map.project([lng, 0]));
+        ui.destroy();
+        check(renders === 1 && disposals === renders, `${surface} retained content returned after destruction`);
+        check(!container.querySelector('.rl-ui, .rl-tooltip, .rl-picker'), `${surface} restored destroyed interaction UI`);
+        check(failures.length === 0, `${surface} continued using destroyed interaction state`);
+      } finally {
+        ui.destroy(); off(); viewport.remove(['destroy-content', 'destroy-other']);
+      }
+    }
+  });
   await run('Picker refreshes names, icons and availability without replacing buttons or focus', async () => {
     viewport.upsert([point('queued')]);
     await until(() => hits().some(hit => hit.properties._rl_feature_id === 'queued'), 'picker setup');
