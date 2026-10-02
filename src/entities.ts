@@ -256,10 +256,13 @@ export class EntityScene<P extends Properties> {
         { operation: 'style', recoverable: true, featureId: feature.id }, cause));
       return;
     }
+    if (this.destroyed || this.features.get(feature.id) !== feature) return;
     const input = { feature, configuration: this.options.configuration(), style, selected: this.selected.has(feature.id) };
     const placementKey = placementAreaKey(feature.id);
     const result = computeEntity(input, this.elevation.sampling(),
       (lng, lat) => this.elevation.failedAt(placementKey, lng, lat));
+    // A consumer sampler can remove or replace the entity during computation.
+    if (this.destroyed || this.features.get(feature.id) !== feature) return;
     if (result.state.coverage !== 'ready') {
       // A ground area can contain unknown samples between its preparation grid points.
       this.elevation.requirePreparation(placementKey);

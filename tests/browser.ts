@@ -1,6 +1,6 @@
 import { checkGpuVote } from './gpu-vote';
 import { browserCases } from './browser-cases';
-import { createViewport, attachInteractions, attachDrawing, attachDrawingControls, shapeGeometry, RidgelineError } from '@ridgeline/map';
+import { createViewport, createDrawingSession, attachInteractions, attachDrawing, attachDrawingControls, shapeGeometry, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
 import { MercatorCoordinate, GeoJSONSource, ErrorEvent as MapErrorEvent, setWorkerUrl, addProtocol, removeProtocol } from 'maplibre-gl';
 import type { CustomLayerInterface, ImageSource, StyleSpecification } from 'maplibre-gl';
@@ -285,6 +285,33 @@ async function suite() {
       check(!air.getEntityState('removed-in-preparation'), 'Removed entity retained computation state');
       check(!air.map.querySourceFeatures('rl:features').some(hit => hit.properties._rl_feature_id === 'removed-in-preparation'), 'Removed feature reached the source');
       check(!air.map.queryRenderedFeatures().some(hit => hit.properties._rl_feature_id === 'removed-in-preparation' || hit.properties.entityId === 'removed-in-preparation'), 'Removed entity left rendered geometry');
+    } finally { air.destroy(); }
+  });
+  await run('Removing an entity during elevation sampling clears its displayed camera', async () => {
+    let armed = false, removed = false;
+    const air = createViewport({ container, basemap: style(), camera: { center: [0, .0008], zoom: 16 }, logger: () => {},
+      elevationSampler: { sample: () => {
+        if (armed && !removed) { removed = true; air.remove(['sampled-camera']); }
+        return 0;
+      } } });
+    current = air;
+    try {
+      await air.ready;
+      const feature: MapFeature = { ...point('sampled-camera'), entity: {
+        altitude: { meters: 100, reference: 'ground' }, attachments: [
+          { id: 'view', type: 'camera', range: 300, bearing: 0, elevation: -45, fovX: 60, fovY: 40,
+            color: '#e02020', fillOpacity: 1, outline: false, volumeOpacity: 0 },
+        ],
+      } };
+      air.upsert([feature]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'initial sampled camera');
+      await untilPixel(air, [0, .0008], true, 'initial camera fill');
+      armed = true;
+      air.upsert([{ ...feature, properties: { revision: 2 } }]);
+      await until(() => removed && !air.getFeature(feature.id) && !air.getEntityState(feature.id), 'removal from sampling');
+      await untilPixel(air, [0, .0008], false, 'removed camera fill stays absent');
+      await until(() => !air.map.querySourceFeatures('rl:entity-ground').some(hit => hit.properties.entityId === feature.id), 'removed camera source output');
+      check(!air.map.queryRenderedFeatures().some(hit => hit.properties.entityId === feature.id), 'Sampling removal restored camera geometry');
     } finally { air.destroy(); }
   });
   await run('Destroying from a restoration diagnostic stops callbacks and resource creation', async () => {
@@ -1759,6 +1786,52 @@ async function suite() {
     check(pixels[1]! > 50, `Overlay incorrectly removed the far slope: ${pixels}`);
     air.destroy();
   });
+  await run('Final drawing permission cannot overwrite or revive consumer data', async () => {
+    const draw = createViewport({ container, basemap: style(), logger: () => {} });
+    current = draw;
+    try {
+      await draw.ready;
+      for (const action of ['cancel', 'replace', 'update', 'remove'] as const) {
+        draw.clear();
+        const original: MapFeature = { type: 'Feature', id: 'permission-line', properties: { revision: 1 },
+          geometry: { type: 'LineString', coordinates: [[0, 0], [.001, 0]] } };
+        const newer: MapFeature = { ...original, properties: { revision: 2 },
+          geometry: { type: 'LineString', coordinates: [[0, 0], [.003, 0]] } };
+        draw.upsert([original]);
+        let settled = false, acted = false, signal: AbortSignal | undefined;
+        const editor = createDrawingSession(draw, {
+          createFeature: () => ({ id: 'replacement', properties: {} }),
+          submit: (_change, currentSignal) => { signal = currentSignal; settled = true; return { accepted: true }; },
+          canEdit: () => {
+            if (settled && !acted) {
+              acted = true;
+              if (action === 'update') draw.upsert([newer]);
+              else if (action === 'remove') draw.remove([original.id]);
+              else {
+                editor.cancel();
+                if (action === 'replace') {
+                  editor.start('line'); editor.addPoint([1, 0]); editor.addPoint([1.001, 0]);
+                }
+              }
+            }
+            return true;
+          },
+        });
+        try {
+          editor.edit(original.id); editor.moveVertex(1, [.002, 0]);
+          check(await editor.finish() === false && acted, `${action} allowed stale drawing acceptance`);
+          const expected = action === 'update' ? newer : action === 'remove' ? undefined : original;
+          check(JSON.stringify(draw.getFeature(original.id)) === JSON.stringify(expected), `${action} lost consumer data`);
+          if (action === 'update' || action === 'remove') {
+            check(signal?.aborted && editor.getState().phase === 'conflict', `${action} lost its conflict or abort`);
+          } else if (action === 'replace') {
+            check(editor.getState().draft?.feature.id === 'replacement' && draw.getInteractionOwner() === 'drawing', 'Replacement lost its draft or ownership');
+            check(await editor.finish() && !!draw.getFeature('replacement'), 'Replacement draft could not finish');
+          } else check(editor.getState().phase === 'idle' && draw.getInteractionOwner() === null, 'Cancelled draft retained ownership');
+        } finally { editor.destroy(); }
+      }
+    } finally { draw.destroy(); }
+  });
   await run('Drawing creates accepted features, owns clicks, edits with keyboard and survives style reload', async () => {
     const draw = createViewport({ container, basemap: style(), camera: { center:[0,0], zoom:12 }, logger:()=>{} });
     current = draw;
@@ -1844,7 +1917,9 @@ async function suite() {
     let accepts = 0;
     const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused', properties: {} }), submit: () => { accepts++; return { accepted: true }; } });
     const tools = document.createElement('div'), inspector = document.createElement('div');
-    inspector.id = 'rectangle-inspector'; container.append(tools, inspector);
+    inspector.id = 'rectangle-inspector';
+    // Consumer controls sit outside the clipped MapLibre viewport.
+    document.body.append(tools, inspector);
     const controls = attachDrawingControls(draw, editor, { tools, inspector });
     const dimensions = (width: number, height: number, bearing: number) => {
       const current = editor.getState().draft?.shape;

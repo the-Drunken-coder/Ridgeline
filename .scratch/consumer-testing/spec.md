@@ -96,6 +96,6 @@ The review on 2026-09-29 found 87 registered packaged browser cases, four contro
 
 GitHub reported the repository as private during the review, despite the initial public-repository assumption. Standard GitHub-hosted runner usage is free for public repositories. Verify current visibility and plan capabilities during implementation without changing visibility.
 
-The project issue tracker is local Markdown. This document publishes the implementation spec there with the agreed ready-for-agent status. Future nightly failure issues are an explicitly authorized GitHub automation channel and do not move the project's general spec and ticket workflow to GitHub.
+Historical publication context: this spec initially used local Markdown for project tracking. The current [tracker guidance](../../docs/agents/issue-tracker.md) makes GitHub Issues authoritative for publication, ticket status, discussion, and dependencies. Approved requirements remain versioned in this file; nightly failure issues are a separate operational workflow in the same tracker.
 
 The testing boundaries and operational choices above synthesize the completed interview. No further testing-boundary interview is needed before implementing this spec.
