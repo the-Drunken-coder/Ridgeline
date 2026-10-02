@@ -108,6 +108,54 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
+  await run('Reliability entity raster retry fetches repaired no-data and restores current camera pixels', async () => {
+    const tile = document.createElement('canvas'); tile.width = tile.height = 256;
+    const context = tile.getContext('2d')!;
+    const prefix = 'https://raster-repair.test/';
+    let repaired = false, requests = 0;
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (!url.startsWith(prefix)) return originalFetch(input, init);
+      requests++;
+      context.clearRect(0, 0, 256, 256);
+      context.fillStyle = 'rgb(128,0,0)'; context.fillRect(0, 0, 256, 256);
+      if (!repaired) context.clearRect(125, 125, 6, 6);
+      return originalFetch(tile.toDataURL(), init);
+    };
+    const lng = 0, lat = 0;
+    const air = createViewport({ container, basemap: style('#ffffff'), camera: { center: [lng, lat], zoom: 16 },
+      terrain: false, hillshade: false, logger: () => {}, elevation: {
+        tiles: [prefix + '{z}/{x}/{y}.png'], encoding: 'terrarium', minzoom: 0, maxzoom: 0, tileSize: 256,
+      } });
+    current = air;
+    try {
+      await air.ready;
+      const feature: MapFeature = { ...point('raster-camera'), entity: { altitude: { meters: 100, reference: 'ground' },
+        attachments: [{ id: 'view', type: 'camera', terrainVisibility: true, range: 300, bearing: 0,
+          elevation: -90, fovX: 60, fovY: 40, color: '#ff0000', blockedColor: '#ff0000', fillOpacity: 1 }] } };
+      air.upsert([feature]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'unavailable', 'missing raster output');
+      const before = requests;
+      repaired = true;
+      const moved: MapFeature = { ...feature, geometry: { type: 'Point', coordinates: [.0001, 0] } };
+      air.upsert([moved]);
+      air.retryUpdates();
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'repaired raster camera');
+      check(requests > before, 'Retry never fetched repaired missing-data tile');
+      await untilPixel(air, [.0004, .0001], true, 'repaired current camera coverage');
+      const pixel = await pixelAt(air, [.0004, .0001], 8000, 'repaired current camera coverage');
+      check(pixel.red > pixel.green + 30 && pixel.red > pixel.blue + 30, 'Repaired camera coverage is not visible');
+      let clicked = false;
+      air.on('click', event => { clicked = event.attachments.some(hit => hit.entityId === feature.id && hit.attachmentId === 'view'); });
+      await pointer('click', air.map.project([.0004, .0001]));
+      check(clicked, 'Recovered raster camera could not be picked');
+      await new Promise<void>(resolve => { air.map.once('idle', () => resolve()); air.map.triggerRepaint(); });
+      const settled = requests;
+      await new Promise(resolve => setTimeout(resolve, 200));
+      check(requests === settled, 'Recovered raster kept fetching while idle');
+    } finally { air.destroy(); window.fetch = originalFetch; }
+  });
   await run('Reliability entity sampling failure clears completed plain and terrain coverage and retries current data', async () => {
     const failure = new Error('Required camera elevation failed');
     let broken = false, samples = 0;
