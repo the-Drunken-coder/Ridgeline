@@ -1,5 +1,9 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Reliability drawing date-line storage snapping and reload flat without terrain',
+  'Reliability drawing date-line storage snapping and reload flat with terrain',
+  'Reliability drawing date-line storage snapping and reload globe without terrain',
+  'Reliability drawing date-line storage snapping and reload globe with terrain',
   'Reliability drawing callback ownership and interrupted acquisition',
   'Raw terrain and the installed renderer agree on nonzero TMS tile templates',
   'An earlier pointer release cannot replace controls during a later native press',

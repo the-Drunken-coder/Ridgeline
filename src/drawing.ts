@@ -17,6 +17,7 @@ import { getViewportDrawingInternals } from "./viewport";
 import { createGroundTargetResolver } from "./ground-target";
 import type { ScreenPoint } from "./ground-target";
 import { createGroundFeedback } from "./ground-feedback";
+import { nearbyLongitude } from "./longitude";
 import {
   shapeGeometry,
   shapeHandles,
@@ -126,7 +127,7 @@ export function attachDrawing<P extends Properties>(
       chosen = point;
     for (const candidate of candidates) {
       const projected = map.project([
-        point[0] + wrapLongitude(candidate[0] - point[0]),
+        nearbyLongitude(candidate[0], map.getCenter().lng),
         candidate[1],
       ]);
       if (

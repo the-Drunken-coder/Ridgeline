@@ -108,6 +108,102 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
+  for (const projection of ['flat', 'globe'] as const) for (const terrain of [false, true]) {
+    await run(`Reliability drawing date-line storage snapping and reload ${projection} ${terrain ? 'with' : 'without'} terrain`, async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!;
+    context.fillStyle = 'rgb(128,100,0)'; context.fillRect(0, 0, 256, 256);
+    const image = await (await fetch(dem.toDataURL())).arrayBuffer();
+    const protocol = `reliable-world-${crypto.randomUUID()}`;
+    addProtocol(protocol, async () => ({ data: image.slice(0) }));
+    const anchor: [number, number] = [-179.65, 0];
+    const elevation = { tiles: [`${protocol}://dem/{z}/{x}/{y}.png`], encoding: 'terrarium' as const, maxzoom: 0 };
+    try {
+        const options = { container, basemap: style(), terrain, elevation, projection,
+          camera: { center: [179.8, 0] as [number, number], zoom: 7, pitch: projection === 'globe' ? 50 : 0 }, logger: () => {} };
+        let draw = createViewport({ ...options, features: [point('world-anchor', anchor[0])] });
+        current = draw; await draw.ready;
+        if (terrain) await until(() => draw.map.loaded() && Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - 100) < 1,
+          `${projection} date-line elevation loaded`);
+        let editor = attachDrawing(draw, { createFeature: () => ({ id: 'world-line', properties: {} }),
+          submit: () => ({ accepted: true }) });
+        try {
+          editor.start('line'); editor.setSnapping(false);
+          await pointer('click', draw.map.project([179.4, 0]));
+          const canonicalGlobeTerrain = projection === 'globe' && terrain;
+          if (canonicalGlobeTerrain) {
+            // The pinned globe renderer loads DEM samplers on its canonical
+            // side. Navigate across the seam before placing on western terrain.
+            const canvas = draw.map.getCanvas().getBoundingClientRect();
+            await browserDrag(canvas.x + 340, canvas.y + 250, canvas.x + 250, canvas.y + 250);
+            draw.setCamera({ center: [-179.8, 0] });
+            await until(() => draw.map.loaded() && Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - 100) < 1,
+              'western globe terrain loaded');
+          }
+          const across = draw.map.project(canonicalGlobeTerrain ? [-179.6, 0] : [180.4, 0]);
+          await pointer('move', across);
+          await until(() => !!container.querySelector('.rl-ground-crosshair:not([hidden])'), `${projection}/${terrain} date-line ground`);
+          const preview = editor.getPreview();
+          if (preview?.kind !== 'line') throw new Error('Date-line preview missing');
+          const next = preview.vertices.at(-1)!;
+          check(Math.abs(next[0]) <= 180 && Math.abs(next[1]) <= 90, `Date-line target is unbounded: ${next}`);
+          await pointer('click', across);
+          check(await editor.finish(), `${projection}/${terrain} date-line Finish failed`);
+          const saved = draw.getFeature('world-line');
+          if (!saved?.drawing || saved.geometry.type !== 'LineString') throw new Error('Saved date-line line missing');
+          check(saved.geometry.coordinates.every(p => Math.abs(p[0]!) <= 180) &&
+            saved.geometry.coordinates[0]![0]! > 0 && saved.geometry.coordinates[1]![0]! < 0, 'Crossing geometry was not bounded');
+          const restored: MapFeature = JSON.parse(JSON.stringify(saved));
+          editor.destroy(); draw.destroy();
+          draw = createViewport({ ...options, camera: { ...options.camera,
+            center: canonicalGlobeTerrain ? [-179.8, 0] : options.camera.center },
+            features: [restored, point('world-anchor', anchor[0])] });
+          current = draw; await draw.ready;
+          if (terrain) await until(() => draw.map.loaded() && Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - 100) < 1,
+            `${projection} reloaded date-line elevation`);
+          editor = attachDrawing(draw, { createFeature: () => ({ id: 'world-snap', properties: {} }),
+            canSnap: feature => feature.id === 'world-anchor', submit: () => ({ accepted: true }) });
+          editor.edit('world-line');
+          check(JSON.stringify(editor.getState().draft?.shape) === JSON.stringify(restored.drawing?.shape), 'Reload changed shape definition');
+          const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]');
+          if (!handle) throw new Error('Reloaded date-line handle missing');
+          const box = handle.getBoundingClientRect(), canvas = draw.map.getCanvas().getBoundingClientRect();
+          const visible = draw.map.project(canonicalGlobeTerrain ? [-179.6, 0] : [180.4, 0]);
+          check(Math.hypot(box.x + box.width / 2 - canvas.x - visible.x,
+            box.y + box.height / 2 - canvas.y - visible.y) < 2, 'Reloaded handle used another world copy');
+          check(await editor.finish(), 'Reloaded date-line edit could not finish');
+          await until(() => draw.map.queryRenderedFeatures({ layers: ['rl:points'] }).some(f => f.properties._rl_feature_id === 'world-anchor'), 'date-line snap anchor');
+          editor.start('line');
+          const screen = draw.map.project(canonicalGlobeTerrain ? anchor : [180.35, 0]);
+          await pointer('move', { x: screen.x + 5, y: screen.y + 3 });
+          const ring = container.querySelector<SVGCircleElement>('.rl-ground-snap-ring:not([hidden])');
+          check(!!ring && Math.hypot(Number(ring.getAttribute('cx')) - screen.x,
+            Number(ring.getAttribute('cy')) - screen.y) < 1, `Snap feedback projected a distant world copy: ${JSON.stringify({
+              projection, terrain, screen, ring: ring?.outerHTML, preview: editor.getPreview(),
+              hits: draw.map.queryRenderedFeatures([[screen.x - 12, screen.y - 12], [screen.x + 12, screen.y + 12]], { layers: ['rl:points', 'rl:line'] }).map(f => f.properties._rl_feature_id) })}`);
+          await pointer('click', { x: screen.x + 5, y: screen.y + 3 });
+          const snapped = editor.getState().draft?.shape;
+          check(snapped?.kind === 'line' && snapped.vertices[0]?.[0] === anchor[0] &&
+            snapped.vertices[0]?.[1] === anchor[1], 'Snap did not copy the stored vertex exactly');
+          await pointer('move', { x: screen.x + 5, y: screen.y + 3 });
+          draw.setCamera({ center: canonicalGlobeTerrain ? [-179.78, 0] : [179.82, 0] });
+          await until(() => {
+            const moved = draw.map.project(canonicalGlobeTerrain ? anchor : [180.35, 0]);
+            const currentRing = container.querySelector<SVGCircleElement>('.rl-ground-snap-ring:not([hidden])');
+            return !!currentRing && Math.hypot(Number(currentRing.getAttribute('cx')) - moved.x,
+              Number(currentRing.getAttribute('cy')) - moved.y) < 1;
+          }, 'stationary date-line snap feedback follows view');
+          if (terrain) {
+            const before = JSON.stringify(editor.getState().draft?.shape);
+            draw.configure({ elevation: { tiles: ['/missing-world-dem.png'], encoding: 'terrarium', maxzoom: 0 } });
+            await until(() => !!container.querySelector('.rl-ground-unavailable:not([hidden])'), 'date-line replacement retires old elevation');
+            await pointer('click', { x: screen.x + 5, y: screen.y + 3 });
+            check(JSON.stringify(editor.getState().draft?.shape) === before, 'Missing replacement elevation reused old globe coverage');
+          }
+        } finally { editor.destroy(); draw.destroy(); }
+    } finally { removeProtocol(protocol); }
+    });
+  }
   await run('Reliability drawing callback ownership and interrupted acquisition', async () => {
     for (const action of ['replace', 'destroy', 'conflict', 'permission'] as const) {
       const draw = createViewport({ container, basemap: style(), terrain: false,
