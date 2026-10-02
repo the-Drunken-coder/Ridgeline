@@ -108,6 +108,50 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
+  await run('Reliability entity date-line rendering and real picking agree across order pan and projection', async () => {
+    const air = createViewport({ container, basemap: style('#ffffff'), projection: 'flat',
+      camera: { center: [179, 0], zoom: 6 }, elevationSampler: { sample: () => 30 },
+      style: () => ({ color: '#ff0000', radius: 10 }), logger: () => {} });
+    current = air; await air.ready;
+    const distant: MapFeature = { ...point('distant'), entity: { altitude: { meters: 1000, reference: 'ground' } } };
+    const nearby: MapFeature = { ...point('date-line', -179), entity: { altitude: { meters: 1000, reference: 'ground' },
+      attachments: [{ id: 'volume', type: 'sphere', radius: 20_000, color: '#ff0000' }] } };
+    let picked: string[] = [], attachments: string[] = [];
+    air.on('click', event => { picked = event.features.map(feature => feature.id); attachments = event.attachments.map(hit => hit.attachmentId); });
+    const nearbyLocation = (): [number, number] => [-179 + Math.round((air.map.getCenter().lng + 179) / 360) * 360, 0];
+    const assertShown = async (description: string) => {
+      const location = nearbyLocation();
+      await untilPixel(air, location, true, description + ' point pixels');
+      const pixel = await pixelAt(air, location, 8000, description);
+      check(pixel.red > pixel.green + 30 && pixel.red > pixel.blue + 30, description + ' point is not red');
+      picked = []; attachments = [];
+      await pointer('click', air.map.project(location));
+      check(picked.includes(nearby.id), description + ' point cannot be picked at ' + JSON.stringify({ location, screen: air.map.project(location), picked, attachments, projection: air.map.getProjection(), center: air.map.getCenter() }));
+      const face: [number, number] = [location[0] + .15, 0];
+      await untilPixel(air, face, true, description + ' volume pixels');
+      picked = []; attachments = [];
+      await pointer('click', air.map.project(face));
+      check(picked.includes(nearby.id) && attachments.includes('volume'), description + ' visible volume cannot be picked');
+      check(air.getEntityState(nearby.id)?.altitude === 1030, 'Rendering changed physical altitude');
+      const accepted = air.getFeature(nearby.id);
+      check(accepted?.geometry.type === 'Point' && accepted.geometry.coordinates[0] === -179, 'Rendering rewrote accepted longitude');
+    };
+    try {
+      for (const projection of ['flat', 'globe'] as const) {
+        air.configure({ projection });
+        for (const reverse of [false, true]) {
+          air.remove([distant.id, nearby.id]);
+          await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+          air.upsert(reverse ? [nearby, distant] : [distant, nearby]);
+          air.map.jumpTo({ center: [179, 0], zoom: 6 });
+          await until(() => air.getEntityState(nearby.id)?.placement === 'airborne', projection + ' placement');
+          await assertShown(projection + (reverse ? ' reversed' : ' original'));
+          air.map.jumpTo({ center: [-179, 0] });
+          await assertShown(projection + ' crossed date line');
+        }
+      }
+    } finally { air.destroy(); }
+  });
   await run('Reliability entity raster retry fetches repaired no-data and restores current camera pixels', async () => {
     const tile = document.createElement('canvas'); tile.width = tile.height = 256;
     const context = tile.getContext('2d')!;
