@@ -256,17 +256,20 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
       for (const shader of shaders) gl.deleteShader(shader);
     }
   }
-  private clip(p: GeoPoint): number[] | null {
-    return this.clipDisplayed([p[0], p[1], this.displayHeight(p[2])]);
+  private clip(p: GeoPoint, origin?: Draw['origin']): number[] | null {
+    return this.clipDisplayed([p[0], p[1], this.displayHeight(p[2])], origin);
   }
-  private clipDisplayed(p: GeoPoint): number[] | null {
+  private clipDisplayed(p: GeoPoint, origin?: Draw['origin']): number[] | null {
     const data = this.projection;
     if (!data || !this.map) return null;
     const height = p[2];
     const m = MercatorCoordinate.fromLngLat([p[0], p[1]], height),
       d = data.defaultProjectionData;
     const globe = data.shaderData.define.includes('GLOBE');
-    const x = m.x + Math.round((this.map.getCenter().lng + 180) / 360 - m.x);
+    // Attachments retain the GPU's coherent origin; independent terrain probes
+    // choose the nearby copy of their own screen location.
+    const reference = origin?.[0] ?? m.x;
+    const x = m.x - Math.round(m.x - reference) + Math.round((this.map.getCenter().lng + 180) / 360 - reference);
     let clip = multiply(d.mainMatrix, [x, m.y, m.z, 1]);
     if (globe) {
       const lon = (p[0] * Math.PI) / 180,
@@ -307,8 +310,8 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
     if (!clip || clip[3]! <= 0 || Math.abs(clip[2]! / clip[3]!) > 1) return null;
     return this.screen(clip);
   }
-  private clippedTriangle(vertices: GeoPoint[]): ScreenPoint[] {
-    const polygon = vertices.map(point => this.clip(point));
+  private clippedTriangle(vertices: GeoPoint[], origin?: Draw['origin']): ScreenPoint[] {
+    const polygon = vertices.map(point => this.clip(point, origin));
     if (polygon.some(point => !point)) return [];
     let points = polygon.filter((point): point is number[] => point !== null);
     // The GPU clips faces against both depth planes before rasterization.
@@ -328,8 +331,8 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
     }
     return points.filter(point => point[3]! > 0).map(point => this.screen(point));
   }
-  private clippedSegment(a: GeoPoint, b: GeoPoint): [ScreenPoint, ScreenPoint] | null {
-    const clippedStart = this.clip(a), clippedEnd = this.clip(b);
+  private clippedSegment(a: GeoPoint, b: GeoPoint, origin: Draw['origin']): [ScreenPoint, ScreenPoint] | null {
+    const clippedStart = this.clip(a, origin), clippedEnd = this.clip(b, origin);
     if (!clippedStart || !clippedEnd) return null;
     let start = clippedStart, end = clippedEnd;
     for (const distance of [(p: number[]) => p[2]! + p[3]!, (p: number[]) => p[3]! - p[2]!]) {
@@ -358,7 +361,7 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
       if (draw.mode === 'lines' && !draw.attachmentId) continue;
       if (draw.mode === 'lines') {
         for (let i = 0; i < draw.vertices.length; i += 2) {
-          const segment = this.clippedSegment(draw.vertices[i]!, draw.vertices[i + 1]!);
+          const segment = this.clippedSegment(draw.vertices[i]!, draw.vertices[i + 1]!, draw.origin);
           if (!segment) continue;
           const [a, b] = segment;
           const dx = b.x - a.x, dy = b.y - a.y;
@@ -383,7 +386,7 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
         continue;
       }
       triangles: for (let i = 0; i < draw.vertices.length; i += 3) {
-        const clipped = this.clippedTriangle(draw.vertices.slice(i, i + 3));
+        const clipped = this.clippedTriangle(draw.vertices.slice(i, i + 3), draw.origin);
         for (let vertex = 1; vertex + 1 < clipped.length; vertex++) {
           const a = clipped[0], b = clipped[vertex], c = clipped[vertex + 1];
           if (!a || !b || !c) continue;

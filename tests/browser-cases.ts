@@ -1,5 +1,6 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Reliability entity coherent attachments reject empty space across the opposite world seam',
   'Reliability drawing insertion handles preserve displayed edges',
   'Reliability drawing snapping follows the pointer world copy at low zoom',
   'Reliability drawing keyboard movement excludes carried shape vertices',

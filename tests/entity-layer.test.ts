@@ -2,6 +2,61 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { CustomRenderMethodInput, Map as GLMap } from 'maplibre-gl';
 import { EntityLayer } from '../src/entity-layer';
+import type { Primitive } from '../src/entity-layer';
+
+for (const mode of ['triangles', 'lines'] as const) {
+  for (const globe of [false, true]) {
+    test(`${mode} picking keeps coherent geometry together in ${globe ? 'globe fallback' : 'flat'} projection`, () => {
+      const noop = () => {};
+      let longitude = 179;
+      const map = { getCanvas: () => ({ clientWidth: 1000, clientHeight: 1000 }), getCenter: () => ({ lng: longitude }),
+        getTerrain: () => null, unproject: () => ({ lng: longitude, lat: 0 }), triggerRepaint: noop } as unknown as GLMap;
+      const gl = {
+        createBuffer: () => ({}), createProgram: () => ({}), createShader: () => ({}),
+        getShaderParameter: () => true, getProgramParameter: () => true, getAttribLocation: () => 0, getUniformLocation: () => ({}),
+        shaderSource: noop, compileShader: noop, attachShader: noop, linkProgram: noop,
+        deleteShader: noop, deleteBuffer: noop, deleteProgram: noop, useProgram: noop, bindBuffer: noop, bufferData: noop,
+        uniformMatrix4fv: noop, uniform4f: noop, uniform4fv: noop, uniform1f: noop, uniform2f: noop, uniform1i: noop,
+        enableVertexAttribArray: noop, vertexAttribPointer: noop, enable: noop, blendFunc: noop, disable: noop,
+        depthMask: noop, drawArrays: noop, drawingBufferWidth: 1000, drawingBufferHeight: 1000,
+      } as unknown as WebGL2RenderingContext;
+      const layer = new EntityLayer(cause => { throw cause; });
+      const pixelRatio = Object.getOwnPropertyDescriptor(globalThis, 'devicePixelRatio');
+      Object.defineProperty(globalThis, 'devicePixelRatio', { configurable: true, value: 1 });
+      try {
+        layer.onAdd(map, gl);
+        const primitives: Primitive[] = [
+          { entityId: 'volume', mode: 'points', vertices: [[0, 0, 1_000_000]], color: [0, 0, 1, 1] },
+          { entityId: 'volume', attachmentId: 'face', mode, color: [1, 0, 0, 1],
+            vertices: mode === 'lines' ? [[-2, 0, 1_000_000], [2, 0, 1_000_000]]
+              : [[-2, -2, 1_000_000], [2, -2, 1_000_000], [2, 2, 1_000_000],
+                [-2, -2, 1_000_000], [2, 2, 1_000_000], [-2, 2, 1_000_000]] },
+          { entityId: 'other', mode: 'points', vertices: [[90, 20, 1_000_000]], color: [0, 0, 1, 1] },
+        ];
+        for (const reversed of [false, true]) {
+          layer.set(reversed ? [...primitives].reverse() : primitives, 1);
+          for (longitude of [179, -179]) {
+            const flat = [1.6, 0, 0, 0, 0, 2, 0, 0, 0, 0, -1, 0, -1.6 * (longitude + 180) / 360, -1, 0, 1];
+            const sphere = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+            const input = { shaderData: { variantName: globe ? 'globe' : 'flat', define: globe ? '#define GLOBE' : '', vertexShaderPrelude: '' },
+              defaultProjectionData: { mainMatrix: globe ? sphere : flat, fallbackMatrix: flat,
+                clippingPlane: [0, 0, 1, 1], projectionTransition: globe ? .25 : 0 },
+            } as unknown as CustomRenderMethodInput;
+            layer.render(gl, input);
+            assert.deepEqual(layer.pick(500, 500, 1), [], `Empty center must reject ${longitude}/${reversed}`);
+            const visible = layer.project([0, 0, 1_000_000]);
+            assert.ok(visible);
+            assert.ok(layer.pick(visible.x, visible.y, 1).some(hit => hit.attachmentId === 'face'), 'Visible coherent attachment must remain pickable');
+          }
+        }
+      } finally {
+        layer.onRemove();
+        if (pixelRatio) Object.defineProperty(globalThis, 'devicePixelRatio', pixelRatio);
+        else Reflect.deleteProperty(globalThis, 'devicePixelRatio');
+      }
+    });
+  }
+}
 
 test('null entity buffer allocation reports once and explicit retry renders only current geometry', () => {
   const noop = () => {};
