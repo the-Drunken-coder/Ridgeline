@@ -156,6 +156,8 @@ The IDs below are stable planning references, not separate tracker tickets. One 
 - [canSnap exception handling, #47](https://github.com/the-Drunken-coder/Ridgeline/issues/47) and [canEdit exception handling, #48](https://github.com/the-Drunken-coder/Ridgeline/issues/48) touch the same callback owners but require separate presentation and diagnostic policy decisions. This spec repairs operation ownership and existing snapping behavior without choosing those outstanding policies.
 - [macOS local validation, #50](https://github.com/the-Drunken-coder/Ridgeline/issues/50) is separate work.
 
+On 2026-10-03, [PR #69](https://github.com/the-Drunken-coder/Ridgeline/pull/69) delivered the approved #47/#48 callback policies and [PR #70](https://github.com/the-Drunken-coder/Ridgeline/pull/70) completed #50's documentation integration. Reliability repairs in [PR #68](https://github.com/the-Drunken-coder/Ridgeline/pull/68) incorporate those deliveries from main `8ea95019ce1e25a91d75b42f2a563f12bc17f74e`. The original scope and separate policy decisions remain unchanged.
+
 ### Authoritative context
 
 - [Public consumer contract](https://github.com/the-Drunken-coder/Ridgeline/blob/7b817c6411e53b6e3c5a9c61ac995ddadc2b51a5/README.md).

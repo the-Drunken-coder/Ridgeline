@@ -25,6 +25,8 @@ Keep useful coverage when runtime grows. Runs approaching fifteen minutes should
 
 Each packaged shard uploads `blob-packaged-N` and `results-packaged-N`. The control lab uploads `blob-control`; the playground uploads `blob-playground`. Failure screenshots and traces use separate `failures-packaged-N`, `failures-control`, and `failures-playground` artifacts. The `browser-reports` job combines available blobs into the downloadable `browser-report` HTML artifact even if a shard fails. It also compares Playwright discovery against all four execution reports, rejecting omitted, duplicated, skipped, or retried cases. The report job is required by `validate`.
 
+The unsharded suites name their blob archives `report-control.zip` and `report-playground.zip`. Distinct filenames preserve both archives when artifact downloads share a directory. The validation fixture generates real Playwright blobs and checks that merging retains both suite identities and their pass or fail results.
+
 ## Nightly stress and failure tracking
 
 The nightly workflow runs at 03:17 UTC and accepts manual runs on the default branch. It repeats four scenarios ten times each across two runners, with one browser worker per runner and zero retries. The scenarios cover pointer drawing, raster terrain recovery, destruction/remount, and terrain preparation completing after replacement. Scenario names and bounds live in [the nightly reporter](../scripts/ci/nightly-report.mjs). Browser jobs have a 25-minute limit; reporting has a 10-minute limit. Run either shard locally with `node scripts/ci/run-nightly.mjs 1` or `node scripts/ci/run-nightly.mjs 2`.

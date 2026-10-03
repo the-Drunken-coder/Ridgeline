@@ -6,7 +6,21 @@ Integration: [GitHub #55](https://github.com/the-Drunken-coder/Ridgeline/issues/
 Integration owner: coordinating Codex agent. Drawing, publication/content, entity/elevation, and consumer file ownership was assigned before parallel implementation. Each repair used a separate ticket worktree. A merger preserved the shared browser cases and their discovery order.
 Date: 2026-10-02.
 
-## Reviewed and exercised revisions
+## PR integration, 2026-10-03
+
+PR: [#68](https://github.com/the-Drunken-coder/Ridgeline/pull/68). Integration owner: coordinating Codex agent in the project-status thread. The owner merged current main `8ea95019ce1e25a91d75b42f2a563f12bc17f74e`, preserving its approved drawing callback policies alongside acquisition, bounded-coordinate, world-copy and insertion repairs. A retained packaged case verifies callback failure, stationary snapping recovery, visible world copies and unavailable terrain together.
+
+Full `pnpm validate` passed on clean `91fc3ba1c71e77af76e2d03a184cd90109132eac`: type checks, 263 library/automation tests, five control state tests, 151 packaged cases with zero retries, one production playground journey, five control-lab browser cases and all production builds. This is a checkpoint before the additional R07 correction below.
+
+Independent review then confirmed another R07 continuation defect. A tooltip disposer opened a context menu during a native overlapping-feature click; the obsolete click mounted a picker over it and left the menu orphaned after close. The retained packaged test failed with that exact ownership assertion at `eb49a8b`. Fix `0722921c2c922bc2d2e38912c16c73c1907fdfb9` checks the operation after tooltip disposal. All 15 packaged content, context-menu, tooltip and picker cases passed at that clean revision, including replacement focus, Escape cleanup and exactly-once disposal.
+
+The integration owner reviewed the combined diff against main `8ea95019ce1e25a91d75b42f2a563f12bc17f74e`. Independent Standards and Spec review found no outstanding findings at `0722921c2c922bc2d2e38912c16c73c1907fdfb9`; the original review exercised 22 focused modules at `91fc3ba`, and the correction review exercised its isolated content-ownership probe at `0722921`. After the source correction, `pnpm check` and `pnpm test` passed at clean `0722921`: 263 library/automation tests and five control state tests. The packaged content run also rebuilt, packed, installed, type-checked and built the consumer. Broader browser and production-consumer execution remains the earlier `91fc3ba` checkpoint until hosted results are recorded.
+
+The old PR reporting failure was independent of browser execution. Both unsharded suites uploaded `report.zip`; flattening those artifacts could overwrite one archive or combine incompatible ZIP metadata. Their archives now have distinct filenames. A real Playwright fixture verifies that both suite identities and their passing or failing results survive flattening and merging. Historical branch run `37057693969` passed its individual jobs and packaged completeness audit, but its combined report contained only five of the six expected archives. It does not prove combined report completeness.
+
+Current hosted verification, final reviewed and exercised revisions, and PR readiness are recorded in [integration issue #55](https://github.com/the-Drunken-coder/Ridgeline/issues/55). The historical records below remain pinned to their original revisions. Documentation after the runtime correction receives separate diff and link checks. Browser coverage remains desktop Chromium with software WebGL; no fresh macOS execution is claimed for this integration.
+
+## Historical reviewed and exercised revisions, 2026-10-02
 
 Review baseline: `7b817c6411e53b6e3c5a9c61ac995ddadc2b51a5`.
 Final reviewed revision: `7b817c6411e53b6e3c5a9c61ac995ddadc2b51a5...873f514e480c5e6ffddac1e08a88a9d78114b8ca`; integration owner reviewed the combined diff and independent Standards and Spec reviewers report no outstanding findings.
@@ -43,7 +57,7 @@ Every original finding was independently reproduced on its relevant pre-repair i
 
 Every row's regressions passed at the final reviewed and exercised revisions above. Earlier red/green implementation commits are historical evidence only. No new public exports, saved schema, renderer abstraction, or interface design was introduced. Public behavior clarifications are in [README.md](../../README.md).
 
-## Final local checks
+## Historical final local checks, 2026-10-02
 
 `pnpm validate` passed at exact `873f514`, including:
 
@@ -58,18 +72,18 @@ Every row's regressions passed at the final reviewed and exercised revisions abo
 | Production control-lab browser suite | 5 passed |
 | Package, playground and control-lab production builds | Passed |
 
-The hosted run independently passed the same checks. It verified all 140 packaged cases executed exactly once across four shards, produced the combined report, and passed the aggregate `validate` gate. The required playground job participated in that gate and report.
+The hosted run independently passed the same jobs. It verified all 140 packaged cases executed exactly once across four shards and passed the aggregate `validate` gate. The required playground job participated in that gate. The combined report was uploaded, but the later archive-collision investigation above established that one unsharded suite was omitted from it.
 
 The final evidence-only documentation commit follows runtime verification. It adds this closeout and the separate review report; the integration owner checks its local links and diff. Runtime files are unchanged from `873f514`, and this documentation is not attributed to the earlier runtime checkout. The tracker closeout records its commit separately. No broader runtime claim is inferred from documentation checks.
 
-## Independent review
+## Historical independent review, 2026-10-02
 
 Standards: zero documented violations and zero actionable smell findings. The original full review exercised 158 modules and 27 packaged cases at `cb50c52`; the correction review exercised six layer tests and three freshly packaged cases at `873f514`.
 Spec: one independently demonstrated R13 picking defect at `cb50c52`, resolved in `e884492` and merged as `873f514`. The final independent review exercised 176 modules, four packaged cases, and the original reproduction plus circle-copy control, with zero outstanding findings.
 
 The two reports remain separate in [review.md](review.md). Original callback, cache, recovery, completeness, and ownership histories were traced beyond changed files. The integration owner also reviewed the final correction and its pixel/input regression. All final review execution used exact `873f514`; historical results are labelled separately.
 
-## Remaining limits
+## Historical remaining limits, 2026-10-02
 
 - Browser execution establishes desktop Chromium with software WebGL. Safari, Firefox, physical GPU, full accessibility, throughput, and long-session memory guarantees were outside the spec.
 - The pinned renderer can expose a globe world copy whose western DEM sampler is unavailable. Strict ground resolution still rejects it. The terrain-enabled globe round trip pans to current loaded coverage between placements; direct same-view crossing is verified in flat terrain and globe without terrain. No unproject or zero-elevation fallback was introduced for ground validity.
