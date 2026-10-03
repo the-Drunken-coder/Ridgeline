@@ -7,7 +7,7 @@ Status: implementation complete and locally verified. Both acceptance deliveries
 
 ## Reviewed revision
 
-Reviewed on 2026-10-03: `7b817c6411e53b6e3c5a9c61ac995ddadc2b51a5...96743e66e47b182abbf11ab45a72002d1261f975` in `/home/ubuntu/.t3/worktrees/Ridgeline/triage-issue-48`, clean source checkout.
+Reviewed on 2026-10-03: `7b817c6411e53b6e3c5a9c61ac995ddadc2b51a5...a5f3c0f6efa8c29fe7b949ebdd99c744ecf86850` in `/home/ubuntu/.t3/worktrees/Ridgeline/triage-issue-48`, clean source checkout.
 
 The integration owner reviewed the combined diff, session permission/state/preview/history/submission callers, attachment input handlers, marker restoration, target invalidation, callback diagnostics, and public documentation. Diagnostic timestamps precede observer dispatch, are constant-memory, and survive recovery and replacement. Pending failure aborts before observers, preserves the lock through repair, and prevents late acceptance. Observer-driven reads and notifications preserve operation-specific permission behavior and current draft identity.
 
@@ -15,13 +15,13 @@ The #47 owner independently inspected the session and executed two concrete fail
 
 ## Local verification
 
-Executed latest repaired source revision: `96743e66e47b182abbf11ab45a72002d1261f975`, clean source checkout, Linux, Node `24.21.0`, pnpm `11.0.9`.
+Executed latest repaired source revision: `a5f3c0f6efa8c29fe7b949ebdd99c744ecf86850`, clean source checkout, Linux, Node `24.21.0`, pnpm `11.0.9`.
 
 - `pnpm check`: passed ticket checks, package TypeScript, and control-lab type checking.
-- `pnpm test`: passed 229 module/script tests and 5 control-lab state tests. The module run includes all 70 drawing-session tests.
+- `pnpm test`: passed 232 module/script tests and 5 control-lab state tests. The module run includes all 73 drawing-session tests.
 - `pnpm build:playground`: passed the package/declaration and playground production builds.
 - `pnpm test:browser -- --grep 'Permission|permission|Throwing snap|Snap observers|A snap diagnostic|Snap callback replacement|Ground feedback respects|Rejected drawing remains|Ordinary edits|Stationary target resumes'`: passed all 17 affected installed-package Chromium cases in 1.5 minutes, including all ten newly added workflows. The command rebuilt, packed, independently installed, typechecked, and built the consumer from the final source revision. No uncaught browser errors were observed by the suite.
-- `git diff --check 7b817c6..96743e6`: passed. Local Markdown links in README, canonical drawing spec, and this record resolve.
+- `git diff --check 7b817c6..a5f3c0f`: passed. Local Markdown links in README, canonical drawing spec, and this record resolve.
 
 Earlier clean `4a51398` passed type checking, 223 module/script plus five control tests, playground build and 15 affected packaged cases. Those results predate the PR review repairs below.
 
@@ -35,7 +35,7 @@ Earlier integration runs exercised uncommitted source and are investigation evid
 | --- | --- | --- |
 | #48 exception versus denial; original cause, operation and feature ID | `Permission exceptions retain geometry and history and differ from explicit denial`; native permission workflow checks `onError` and diagnostic events | Passed on final revision |
 | #48 retained draft, appearance, history and last permitted gesture geometry | Focused gesture undo/redo; native drag fails without explicit refresh, then real keyboard undo/redo | Passed on final revision |
-| #48 pending create/update/delete abort, repaired lock and ignored late acceptance | Three deferred session cases; native pending-save workflow, including Escape before and after settlement | Passed on final revision |
+| #48 pending create/update/delete abort, repaired lock and ignored late acceptance | Three deferred session cases plus three abort-aware rejection cases; native pending-save workflow checks both late acceptance and abort rejection, including Escape before and after settlement | Passed on final revision |
 | #48 recursive observer reads/refresh, cancel/destroy/replacement/repair/conflict | Focused action matrix; final-check replacement submission; unread replacement and independent permission cache regressions; public attachment observer workflow | Passed on final revision |
 | #48 bounded reporting and same-draft recovery | Controlled-clock session bound across permission kinds, success and replacement; native repair/recurrence checks | Passed on final revision |
 | #47 failed candidate excluded, healthy candidate or valid ground usable | `Throwing snap filters exclude candidates bound all diagnostics and recover with stationary input` checks preview, placement, all diagnostic channels, Alt, repair, recurrence and quiet interval | Passed on final revision |
@@ -57,6 +57,14 @@ The first scoped adapter guard also rejected ordinary notifications and blocked 
 
 The integration owner re-reviewed `c48fad6...96743e6`, including session callers, controls read order, gesture lifecycle, marker identity, callback guards and the changed tests. No remaining actionable finding was identified. #47’s file-only deliveries `3cbffab`, `75830e4` and `75a4806` are integrated as `70630fb`, `d91f65a` and `96743e6`. New hosted checks and review are required for the pushed repaired head; earlier green PR runs do not establish its readiness.
 
+## Abort-rejection follow-up
+
+Codex review of `af854b7` reported [discussion 4171819183](https://github.com/the-Drunken-coder/Ridgeline/pull/69#discussion_r4171819183): an abort-aware consumer rejection overwrote permission-check feedback after permissions were repaired while submission remained pending. Three public-session create/update/delete cases reproduced the loss. A catch-only repair still lost the message during healthy observer reads at settlement; the expanded native pending-save workflow reproduced that second path. `fbfd4a6` and `a5f3c0f` retain the failure reason through abort rejection and settlement. Explicit nonpending permission refresh or a draft correction clears it after recovery; repairing an unsettled request still retains the lock. All 73 session tests and the 17 affected packaged cases pass on clean `a5f3c0f`.
+
+The integration owner reviewed `af854b7...a5f3c0f` and the combined diff against main. The #47 owner independently traced the catch, recovery, pending lock, owner guards and coalesced refresh paths through `a5f3c0f`, with no actionable source finding. That is source review, separate from the integration owner's executions above. Adapter code is unchanged. Earlier clean `96743e6` passed 229 module/script tests, five control tests, 70 session tests, playground build and the same 17 affected browser cases; these are prior-revision results.
+
+[Hosted Validation run 37099132878](https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37099132878) passed for earlier PR head `af854b725e77831037b9767dbfa718500eb8c7ee`, exercised merge `b72f2ae7328aaecfdca2b9c52d4a455d1d388360`, on 2026-10-03. All jobs, strict required `validate`, and the full 125-case browser audit passed. CodeRabbit was clean; Codex completed and produced the verified abort-rejection finding above. Optional Macroscope remained unavailable because credits were exhausted. These results do not establish readiness for the follow-up head. Latest-head hosted and review results will be pinned in PR #69 and both tickets, linked to this shared record, without a documentation-only push after those results.
+
 ## PR preparation on 2026-10-03
 
 Latest `origin/main` remains `7b817c6411e53b6e3c5a9c61ac995ddadc2b51a5`; fetch and rebase were a no-op. The integration owner re-reviewed the combined production, tests, registration, spec and drawing README diff against that base. No runtime source or tests changed after exercised `4a51398`. Documentation-only `141bb32` removes the unrelated #50 runtime-policy README paragraph; isolated commit `d54aa00589b3ddd46ec321d3f014675011659e92` transfers that paragraph to the #50 owner. Drawing contract documentation remains. Diff checks passed; already passing runtime checks were not repeated for this documentation separation.
@@ -67,15 +75,15 @@ The #47 owner independently rechecked unchanged main and open PR #68 head `396b0
 
 [Combined PR #69](https://github.com/the-Drunken-coder/Ridgeline/pull/69) is ready for review and registered with the integration and #47 support threads. No merge is authorized. The earlier pre-PR combined review extended through `0dfcfdb1bc484676561d1aa943beb6900c0b8052` against base `7b817c6411e53b6e3c5a9c61ac995ddadc2b51a5`; runtime source/tests are identical to locally exercised `4a51398`.
 
-[Hosted Validation run 37097691688](https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37097691688) passed on 2026-10-03 for PR head `0dfcfdb1bc484676561d1aa943beb6900c0b8052`, checked out as merge `c781e4b7ac46e29ea85f189bec7d78121b831e10`. Type checking, module tests, consumer builds, control-browser, all four packaged-browser shards, browser report merging/completeness and `validate` succeeded. The report audit verified all 123 current packaged cases exactly once. This is complete current-source hosted evidence, separate from the earlier 122-case local artifacts. Main protection was read back as strict required `validate`.
+[Hosted Validation run 37097691688](https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37097691688) passed on 2026-10-03 for PR head `0dfcfdb1bc484676561d1aa943beb6900c0b8052`, checked out as merge `c781e4b7ac46e29ea85f189bec7d78121b831e10`. Type checking, module tests, consumer builds, control-browser, all four packaged-browser shards, browser report merging/completeness and `validate` succeeded. The report audit verified all 123 current packaged cases exactly once. This is complete earlier-source hosted evidence, separate from the earlier 122-case local artifacts. Main protection was read back as strict required `validate`.
 
-CodeRabbit completed for `0dfcfdb` with no actionable comments. Codex review was requested and is running at this record update. Optional Macroscope skipped because its credit balance is exhausted; the repository’s optional-bot policy does not block completion on that unavailable service. Vercel deployment and preview feedback checks passed. The documentation-only commit recording this evidence requires inspection of its own current-head CI/review before monitoring ends. Final-head results are retained in the PR and both issues, without attributing this earlier run to that later head.
+CodeRabbit completed for `0dfcfdb` with no actionable comments. Codex subsequently completed and reported the five verified findings described above. Optional Macroscope skipped because its credit balance is exhausted; the repository’s optional-bot policy does not block completion on that unavailable service. Vercel deployment and preview feedback checks passed. The documentation-only commit recording this evidence requires inspection of its own current-head CI/review before monitoring ends. Final-head results are retained in the PR and both issues, without attributing this earlier run to that later head.
 
 The former absence of hosted checks for locally tested `4a51398` remains historical evidence; it is superseded for hosted coverage by this PR run.
 
 Historical baseline evidence, inspected on 2026-10-03: [main Validation run](https://github.com/the-Drunken-coder/Ridgeline/actions/runs/36969816638) succeeded on 2026-10-02 for main `7b817c6411e53b6e3c5a9c61ac995ddadc2b51a5`, including `validate`, typecheck, module, control-browser, consumer-build and four packaged-browser jobs. This predates the callback repairs.
 
-Main was still `7b817c6` at the final review. Open [PR #68](https://github.com/the-Drunken-coder/Ridgeline/pull/68), head `396b0a0`, remains separate. Its current-owner/pre-submit permission guards and keyboard snap call overlap this delivery; the equivalent required guards were reconciled locally. Its unrelated geographic, rendering, interaction-acquisition and CI changes were not imported. Reconcile the overlap again against the chosen target before a future PR.
+Main was still `7b817c6` at the final review. Open [PR #68](https://github.com/the-Drunken-coder/Ridgeline/pull/68), head `396b0a0`, remains separate. Its current-owner/pre-submit permission guards and keyboard snap call overlap this delivery; the equivalent required guards were reconciled locally. Its unrelated geographic, rendering, interaction-acquisition and CI changes were not imported. Reconcile the overlap again if the target changes before merge.
 
 Preintegration #47 evidence on 2026-10-03: `6d2481e` passed type checking, build, 45 existing drawing-session tests, and five existing packaged cases; `af7c44a` passed type checking and seven existing packaged input cases. They are integrated as `a5a410b` and `68f6eaf`. Those runs did not exercise the combined permission implementation or new throwing-callback regressions.
 
