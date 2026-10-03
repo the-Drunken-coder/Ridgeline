@@ -74,7 +74,6 @@ export function attachDrawing<P extends Properties>(
       marker: Marker;
       button: HTMLButtonElement;
       position: DrawingPosition;
-      displayed: DrawingPosition;
       insert?: () => void;
     }
   >();
@@ -358,7 +357,7 @@ export function attachDrawing<P extends Properties>(
         })
           .setLngLat(displayed)
           .addTo(map);
-        item = { marker, button, position: p, displayed };
+        item = { marker, button, position: p };
         markers.set(key, item);
         let previous = p;
         let dragScreen: ScreenPoint | undefined;
@@ -423,7 +422,11 @@ export function attachDrawing<P extends Properties>(
         function restoreHandle() {
           const item = markers.get(key);
           if (!disposed && dragEpoch === draftEpoch && item?.marker === marker)
-            marker.setLngLat(item.displayed);
+            // Native camera movement can wrap the live marker between renders.
+            marker.setLngLat([
+              nearbyLongitude(item.position[0], marker.getLngLat().lng),
+              item.position[1],
+            ]);
         }
         function applyDrag(screen: ScreenPoint) {
           if (!currentDrag()) {
@@ -441,7 +444,7 @@ export function attachDrawing<P extends Properties>(
             return;
           }
           if (target.kind !== "available") {
-            marker.setLngLat(markers.get(key)?.displayed ?? previous);
+            restoreHandle();
             feedback?.show(screen, target, undefined);
             return;
           }
@@ -559,7 +562,6 @@ export function attachDrawing<P extends Properties>(
       if (actual.lng !== displayed[0] || actual.lat !== displayed[1])
         item.marker.setLngLat(displayed);
       item.position = p;
-      item.displayed = displayed;
       if (item.marker.isDraggable() !== (!locked && !insert))
         item.marker.setDraggable(!locked && !insert);
       item.button.disabled = locked;
