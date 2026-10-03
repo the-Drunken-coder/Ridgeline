@@ -2192,11 +2192,12 @@ async function suite() {
         geometry: { type: 'LineString', coordinates: [[0, 0], [.01, 0]] } };
       const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 13 }, features: [original], logger: () => {} });
       current = draw; await draw.ready;
-      let armed = false, acted = false;
+      let armed = false, acted = false, afterCallback: string | undefined;
       const editor = attachDrawing(draw, { createFeature: () => ({ id: 'permission-camera-new', properties: {} }),
         canEdit: () => { if (armed) { armed = false; acted = true;
           if (invalidation === 'camera') draw.setCamera({ center: [.02, 0] }, { duration: 500 });
-          else draw.upsert([point('permission-moved-candidate', .02)]); } return true; },
+          else draw.upsert([point('permission-moved-candidate', .02)]);
+          queueMicrotask(() => { afterCallback = JSON.stringify(editor.getState().draft); }); } return true; },
         submit: () => ({ accepted: true }) });
       try {
         if (input === 'placement') { editor.start('line'); await pointer('click', draw.map.project([0, 0])); }
@@ -2217,7 +2218,8 @@ async function suite() {
           await window.browserMouse('down', x, y); armed = true;
           await window.browserMouse('move', x + 25, y); await window.browserMouse('up', x + 25, y);
         }
-        check(acted && JSON.stringify(editor.getState().draft) === retained, `${input} committed an old camera target after permission callback`);
+        check(acted && afterCallback === retained && JSON.stringify(editor.getState().draft) === retained,
+          `${invalidation}/${input} changed obsolete input: ${JSON.stringify({ acted, immediate: afterCallback === retained, retained, afterCallback, current: editor.getState().draft })}`);
         await until(() => !draw.map.isMoving(), 'permission camera animation settled');
         if (input === 'placement') await pointer('click', draw.map.project([.02, 0]));
         else {
