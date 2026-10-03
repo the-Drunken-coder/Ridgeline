@@ -52,11 +52,14 @@ export function attachDrawing<P extends Properties>(
   const session = createDrawingSession(viewport, {
     ...options,
     canEdit: (feature, operation) => {
+      const revision = stateRevision,
+        nativeInput = inputRevision !== undefined;
       const permitted = options.canEdit?.(feature, operation) ?? true;
       // Native edits carry a screen target that callbacks can invalidate.
+      // Compare only this callback: normal edit notifications also render.
       // Direct coordinate operations do not depend on the camera.
-      return permitted && (inputRevision === undefined ||
-        (!disposed && inputRevision === stateRevision));
+      return permitted && (!nativeInput ||
+        (!disposed && revision === stateRevision));
     },
   }),
     map = viewport.map;
