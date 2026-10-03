@@ -62,6 +62,12 @@ export function createDrawingSession<P extends Properties>(
     controller: AbortController;
     kind: DrawingChange<P>["kind"];
   } | undefined;
+  const permissionFailures = new Set<DrawingChange<P>["kind"]>();
+  let lastPermissionReport = -Infinity;
+  let checkingPermission: DrawingDraft<P> | undefined;
+  let refreshAfterPermission = false;
+  let revision = 0;
+  const permissionFailureMessage = "Editing permission could not be checked. Your draft is preserved.";
   let initialStyle: DrawingStyle | undefined;
   let snapshot: DrawingState<P> | undefined;
   let gesture: DrawingDraft<P> | undefined;
@@ -85,19 +91,57 @@ export function createDrawingSession<P extends Properties>(
   function allowed(
     operation: DrawingChange<P>["kind"] = draft?.before ? "update" : "create",
   ) {
-    if (!draft) return false;
-    if (!draft.before && !draft.placed) return true;
+    const current = draft, checkedRevision = revision;
+    if (!current || disposed) return false;
+    if (!current.before && !current.placed) return true;
+    // A diagnostic observer can read or refresh the session synchronously.
+    // Block that nested check and defer an explicit refresh until this check ends.
+    if (checkingPermission === current) return false;
+    let notifyFailure = false;
     try {
-      return (
-        options.canEdit?.(
-          structuredClone(draft.before ?? { ...draft.feature, geometry: shapeGeometry(draft.shape) }),
-          operation,
-        ) ?? true
-      );
-    } catch {
+      const permitted = options.canEdit?.(
+        structuredClone(current.before ?? { ...current.feature, geometry: shapeGeometry(current.shape) }),
+        operation,
+      ) ?? true;
+      if (disposed || draft !== current || revision !== checkedRevision) return false;
+      permissionFailures.delete(operation);
+      if (!permissionFailures.size && !pending && reason === permissionFailureMessage)
+        reason = undefined;
+      return permitted;
+    } catch (cause) {
+      if (disposed || draft !== current || revision !== checkedRevision) return false;
+      checkingPermission = current;
+      notifyFailure = !permissionFailures.has(operation);
+      permissionFailures.add(operation);
+      reason = permissionFailureMessage;
+      snapshot = undefined;
+      if (submission?.kind === operation) submission.controller.abort();
+      if (gesture) {
+        if (!sameDraft(gesture, current)) {
+          pushPast(gesture);
+          future = [];
+        }
+        gesture = undefined;
+        gestureCancelled = true;
+      }
+      const now = Date.now();
+      if (now - lastPermissionReport >= 10_000) {
+        lastPermissionReport = now;
+        host.reportCallbackError(cause, "drawing.canEdit", current.feature.id);
+      }
       return false;
+    } finally {
+      if (checkingPermission === current) checkingPermission = undefined;
+      if (refreshAfterPermission) {
+        refreshAfterPermission = false;
+        refreshPermissions();
+      }
+      // Publish after the observer guard ends. A delete failure must not cache
+      // a provisional denial of an independently permitted update operation.
+      if (notifyFailure && !disposed && draft === current && revision === checkedRevision) notify();
     }
   }
+
   function phase(editable: boolean): DrawingState<P>["phase"] {
     return !draft
       ? "idle"
@@ -113,7 +157,13 @@ export function createDrawingSession<P extends Properties>(
   }
   function getState(): DrawingState<P> {
     if (snapshot) return structuredClone(snapshot);
-    const editable = allowed(), currentPhase = phase(editable);
+    const current = draft, checkedRevision = revision;
+    const editable = allowed();
+    // Observers may already have computed the replacement or refreshed state.
+    if (snapshot) return structuredClone(snapshot);
+    if (draft !== current || revision !== checkedRevision) return getState();
+    const currentPhase = phase(editable);
+    const operation = draft?.before ? "update" : "create";
     snapshot = {
       phase: currentPhase,
       draft,
@@ -121,7 +171,7 @@ export function createDrawingSession<P extends Properties>(
         currentPhase === "conflict"
           ? "This feature changed. Discard or restart with the latest feature."
           : currentPhase === "forbidden"
-            ? "Editing permission removed. Your draft is preserved."
+            ? permissionFailures.has(operation) ? permissionFailureMessage : "Editing permission removed. Your draft is preserved."
             : reason,
       validation: draft
         ? !draft.before && !draft.placed
@@ -135,11 +185,12 @@ export function createDrawingSession<P extends Properties>(
     return structuredClone(snapshot);
   }
   function getPreview(): DrawingShape | undefined {
-    if (!draft) return;
-    const candidate = { ...draft, shape: structuredClone(draft.shape) };
+    const state = getState();
+    if (!state.draft) return;
+    const candidate = { ...state.draft, shape: structuredClone(state.draft.shape) };
     if (
       candidate.placing && cursor &&
-      ["editing", "rejected"].includes(snapshot?.phase ?? phase(allowed())) &&
+      ["editing", "rejected"].includes(state.phase) &&
       ("vertices" in candidate.shape || candidate.placed)
     ) {
       const placed = placePoint(candidate.shape, candidate.placed, cursor);
@@ -165,6 +216,7 @@ export function createDrawingSession<P extends Properties>(
     emit(previewListeners, "drawing.onPreview");
   }
   function notify() {
+    revision++;
     cursor = undefined;
     snapshot = undefined;
     emit(listeners, "drawing.onChange");
@@ -182,9 +234,11 @@ export function createDrawingSession<P extends Properties>(
   }
   function requireDraft(operation?: DrawingChange<P>["kind"]) {
     if (disposed) throw new Error("Drawing session has been destroyed.");
-    if (!draft || pending || conflict || !allowed(operation))
+    const current = draft, checkedRevision = revision;
+    if (!current || pending || conflict || !allowed(operation) ||
+      disposed || draft !== current || revision !== checkedRevision || pending || conflict)
       throw new Error("This draft cannot be edited now.");
-    return draft;
+    return current;
   }
   function change(update: (current: DrawingDraft<P>) => void) {
     const current = requireDraft();
@@ -202,6 +256,7 @@ export function createDrawingSession<P extends Properties>(
     if (draft) throw new Error("Finish or cancel the current drawing first.");
     release = host.acquireInteraction("drawing");
     draft = next;
+    permissionFailures.clear();
     initialStyle = structuredClone(next.style);
     past = [];
     future = [];
@@ -215,6 +270,8 @@ export function createDrawingSession<P extends Properties>(
     const owned = release;
     release = undefined;
     draft = undefined;
+    permissionFailures.clear();
+    refreshAfterPermission = false;
     initialStyle = undefined;
     past = [];
     future = [];
@@ -418,6 +475,16 @@ export function createDrawingSession<P extends Properties>(
     submission = active;
     notify();
     try {
+      if (disposed || submission !== active || draft !== current) return false;
+      const mayStart = !conflict && !active.controller.signal.aborted && allowed(request.kind);
+      if (disposed || submission !== active || draft !== current) return false;
+      if (!mayStart || conflict || active.controller.signal.aborted ||
+        current.shape !== shape || current.style !== style) {
+        pending = false;
+        reason ??= "Permission changed while this request was pending. Review the draft and try again.";
+        notify();
+        return false;
+      }
       const decision = await options.submit(
         structuredClone(request),
         active.controller.signal,
@@ -479,9 +546,20 @@ export function createDrawingSession<P extends Properties>(
     notify();
   });
   function refreshPermissions() {
-    if (draft && submission && !allowed(submission.kind)) {
-      submission.controller.abort();
-      reason = "Permission changed while this request was pending. Review the draft and try again.";
+    if (disposed) return;
+    if (checkingPermission && checkingPermission === draft) {
+      refreshAfterPermission = true;
+      return;
+    }
+    const current = draft, active = submission, checkedRevision = revision;
+    if (current && active) {
+      const permitted = allowed(active.kind);
+      if (disposed || draft !== current || submission !== active || revision !== checkedRevision) return;
+      if (!permitted) {
+        reason = permissionFailures.has(active.kind) ? permissionFailureMessage
+          : "Permission changed while this request was pending. Review the draft and try again.";
+        active.controller.abort();
+      }
     }
     notify();
   }

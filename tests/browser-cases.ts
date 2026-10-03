@@ -1,5 +1,6 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+
   'Raw terrain and the installed renderer agree on nonzero TMS tile templates',
   'An earlier pointer release cannot replace controls during a later native press',
   'Inspector resumes updates after window blur or lost pointer capture',
@@ -62,6 +63,13 @@ export const browserCases = [
   'Exaggerated terrain keeps sphere and plain camera volume pickable',
   'Visible footprint stays filled when displayed terrain differs slightly from sampled terrain',
   'Camera overlay remains filled across a hill without testing occlusion',
+  'Permission failure during real dragging preserves history and locks a repaired pending save',
+  'Permission diagnostic observers cancel destroy replace and repair the public drawing attachment',
+  'Throwing snap filters exclude candidates bound all diagnostics and recover with stationary input',
+  'Throwing snap filters preserve real keyboard and handle edits and recover targets',
+  'Snap observers invalidate obsolete candidate iteration and placement across owner and scene changes',
+  'Permission failure discovered by native placement and keyboard blocks changes without escaping input',
+  'A snap diagnostic that changes settings restores the surviving dragged marker',
   'Final drawing permission cannot overwrite or revive consumer data',
   'Drawing creates accepted features, owns clicks, edits with keyboard and survives style reload',
   'Inspector label editing preserves Tab and the first real Finish click',

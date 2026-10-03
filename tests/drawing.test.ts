@@ -55,9 +55,9 @@ function fixture(overrides: Partial<DrawingOptions<Properties>> = {}) {
         owner = null;
       };
     },
-    reportCallbackError: (cause: unknown, operation: string) => {
+    reportCallbackError: (cause: unknown, operation: string, featureId?: string) => {
       diagnostics.push(new RidgelineError("CALLBACK_FAILED", "A consumer callback threw.",
-        { operation, recoverable: true }, cause));
+        { operation, recoverable: true, featureId }, cause));
     },
   };
   const requests: DrawingChange[] = [];
@@ -1116,4 +1116,227 @@ test("Pending, conflict, and forbidden phases show only committed geometry", asy
   assert.equal(conflicted.editor.getState().phase, "conflict");
   assert.deepEqual(conflicted.editor.getPreview(), conflicted.editor.getState().draft?.shape);
   conflicted.editor.destroy();
+});
+
+
+test("Permission exceptions retain geometry and history and differ from explicit denial", () => {
+  let mode: "allow" | "deny" | "throw" = "allow";
+  const cause = new Error("Permission service failed");
+  const { editor, diagnostics, host } = fixture({ canEdit: () => {
+    if (mode === "throw") throw cause;
+    return mode === "allow";
+  } });
+  line(editor);
+  editor.setStyle({ label: "Preserved" });
+  editor.beginGesture(); editor.moveVertex(1, [0.02, 0]);
+  const retained = editor.getState().draft;
+  mode = "throw"; editor.refreshPermissions();
+  assert.equal(editor.getState().phase, "forbidden");
+  assert.match(editor.getState().message!, /could not be checked/);
+  assert.deepEqual(editor.getState().draft, retained);
+  assert.throws(() => editor.moveVertex(1, [0.03, 0]), /cannot be edited/);
+  assert.equal(diagnostics.length, 1);
+  assert.equal(diagnostics[0]?.cause, cause);
+  assert.deepEqual(diagnostics[0]?.context, { operation: "drawing.canEdit", recoverable: true, featureId: "new" });
+  editor.endGesture();
+  mode = "deny"; editor.refreshPermissions();
+  assert.match(editor.getState().message!, /permission removed/);
+  assert.equal(diagnostics.length, 1);
+  mode = "allow"; editor.refreshPermissions();
+  assert.equal(editor.getState().phase, "editing");
+  editor.undo();
+  assert.deepEqual(editor.getState().draft?.shape, { kind: "line", vertices: [[0, 0], [0.01, 0]] });
+  assert.equal(editor.getState().draft?.style.label, "Preserved");
+  editor.redo(); assert.deepEqual(editor.getState().draft, retained);
+  editor.cancel(); assert.equal(host.getFeature("new"), undefined);
+});
+
+for (const operation of ["create", "update", "delete"] as const) {
+  test(`Failed pending ${operation} permission stays locked through repair and ignores late acceptance`, async () => {
+    let failed = false, signal: AbortSignal | undefined;
+    let decide: (value: DrawingDecision) => void = () => {};
+    const cause = new Error("Pending permission check failed");
+    const { editor, host, diagnostics } = fixture({
+      canEdit: (_feature, kind) => { if (failed && kind === operation) throw cause; return true; },
+      submit: (_change, currentSignal) => { signal = currentSignal; return new Promise(resolve => { decide = resolve; }); },
+    });
+    const original = feature({ kind: "line", vertices: [[0, 0], [0.01, 0]] });
+    if (operation === "create") line(editor);
+    else { host.upsert([original]); editor.edit(original.id); editor.moveVertex(1, [0.02, 0]); }
+    const retained = editor.getState().draft;
+    const request = operation === "delete" ? editor.delete() : editor.finish();
+    failed = true; editor.refreshPermissions();
+    assert.equal(signal?.aborted, true);
+    assert.equal(editor.getState().phase, "pending");
+    assert.match(editor.getState().message!, /could not be checked/);
+    assert.throws(() => editor.cancel(), /Wait/);
+    assert.throws(() => editor.undo(), /cannot be edited/);
+    await assert.rejects(editor.finish(), /cannot be edited/);
+    failed = false; editor.refreshPermissions();
+    assert.equal(editor.getState().phase, "pending");
+    assert.throws(() => editor.cancel(), /Wait/);
+    decide({ accepted: true });
+    assert.equal(await request, false);
+    assert.deepEqual(editor.getState().draft, retained);
+    assert.deepEqual(host.getFeature(original.id), operation === "create" ? undefined : original);
+    assert.equal(diagnostics[0]?.cause, cause);
+    editor.refreshPermissions();
+    assert.equal(editor.getState().phase, "editing");
+    if (operation !== "create") { editor.undo(); assert.deepEqual(editor.getState().draft?.shape, original.drawing?.shape); }
+    editor.cancel();
+  });
+}
+
+test("Permission reports have one fixed cooldown across operations, recovery and replacement", (t) => {
+  let now = 100_000, failed = false, nextId = 0;
+  t.mock.method(Date, "now", () => now);
+  const { editor, host, diagnostics } = fixture({
+    createFeature: () => ({ id: `bounded-${++nextId}`, properties: {} }),
+    canEdit: () => { if (failed) throw new Error("Unavailable"); return true; },
+  });
+  line(editor); failed = true;
+  for (let i = 0; i < 100; i++) { editor.refreshPermissions(); editor.getState(); editor.getPreview(); }
+  assert.equal(diagnostics.length, 1);
+  failed = false; editor.refreshPermissions(); editor.cancel();
+  host.upsert([feature({ kind: "point", position: [0, 0] })]); editor.edit("existing");
+  failed = true; editor.refreshPermissions(); editor.canDelete();
+  assert.equal(diagnostics.length, 1);
+  now += 9_999; editor.refreshPermissions(); assert.equal(diagnostics.length, 1);
+  now++; editor.canDelete(); assert.equal(diagnostics.length, 2);
+  editor.destroy();
+});
+
+for (const action of ["cancel", "destroy", "replace", "repair", "conflict"] as const) {
+  test(`Permission diagnostic can ${action} without mutating obsolete work`, () => {
+    let failed = false, nextId = 0;
+    const { editor, host, owner } = fixture({
+      createFeature: () => ({ id: `observer-${++nextId}`, properties: {} }),
+      canEdit: () => { if (failed) throw new Error("Observer permission failure"); return true; },
+    });
+    if (action === "conflict") {
+      host.upsert([feature({ kind: "line", vertices: [[0, 0], [1, 0]] })]); editor.edit("existing");
+    } else line(editor);
+    let reports = 0;
+    host.reportCallbackError = () => {
+      reports++;
+      editor.getState(); editor.getPreview(); editor.refreshPermissions();
+      if (action === "destroy") editor.destroy();
+      else if (action === "repair") { failed = false; editor.refreshPermissions(); }
+      else if (action === "conflict") host.upsert([feature({ kind: "line", vertices: [[0, 0], [2, 0]] })]);
+      else {
+        editor.cancel();
+        if (action === "replace") { failed = false; line(editor); }
+      }
+    };
+    failed = true;
+    assert.throws(() => editor.moveVertex(1, [3, 0]), /cannot be edited/);
+    assert.equal(reports, 1);
+    const state = editor.getState();
+    assert.equal(state.phase, action === "replace" || action === "repair" ? "editing" : action === "conflict" ? "conflict" : "idle");
+    if (action === "replace") {
+      assert.equal(state.draft?.feature.id, "observer-2");
+      assert.deepEqual(state.draft?.shape, { kind: "line", vertices: [[0, 0], [0.01, 0]] });
+    }
+    assert.equal(owner(), action === "cancel" || action === "destroy" ? null : "drawing");
+    editor.destroy();
+  });
+}
+
+test("A delete permission exception reports feedback while permitted update edits remain available", () => {
+  const { editor, host, diagnostics } = fixture({ canEdit: (_feature, kind) => {
+    if (kind === "delete") throw new Error("Delete permission unavailable");
+    return true;
+  } });
+  host.upsert([feature({ kind: "point", position: [0, 0] })]); editor.edit("existing");
+  editor.onChange(() => { editor.getState(); });
+  assert.equal(editor.canDelete(), false);
+  assert.equal(editor.getState().phase, "rejected");
+  assert.match(editor.getState().message!, /could not be checked/);
+  editor.setStyle({ label: "Update permitted" });
+  assert.equal(editor.getState().draft?.style.label, "Update permitted");
+  assert.equal(diagnostics.length, 1);
+  editor.destroy();
+});
+
+for (const action of ["cancel", "destroy", "replace", "repair"] as const) {
+  test(`Final permission failure diagnostic can ${action} without applying or clearing an obsolete save`, async () => {
+    let failed = false, nextId = 0, calls = 0;
+    const decisions: ((value: DrawingDecision) => void)[] = [];
+    const signals: AbortSignal[] = [];
+    const { editor, host, diagnostics } = fixture({
+      createFeature: () => ({ id: `final-failure-${++nextId}`, properties: {} }),
+      canEdit: () => { if (failed) throw new Error("Final permission failed"); return true; },
+      submit: (_change, signal) => { calls++; signals.push(signal); return new Promise(resolve => { decisions.push(resolve); }); },
+    });
+    const report = host.reportCallbackError;
+    let replacement: Promise<boolean> | undefined;
+    host.reportCallbackError = (cause, operation, featureId) => {
+      report(cause, operation, featureId);
+      if (action === "destroy") editor.destroy();
+      else if (action === "repair") { failed = false; editor.refreshPermissions(); }
+      else {
+        editor.cancel();
+        if (action === "replace") { failed = false; line(editor); replacement = editor.finish(); }
+      }
+    };
+    line(editor);
+    const request = editor.finish();
+    failed = true; decisions[0]!({ accepted: true });
+    assert.equal(await request, false);
+    assert.equal(host.getFeature("final-failure-1"), undefined);
+    assert.equal(signals[0]?.aborted, true);
+    assert.equal(diagnostics.length, 1);
+    if (action === "replace") {
+      assert.equal(calls, 2);
+      assert.equal(editor.getState().phase, "pending");
+      decisions[1]!({ accepted: true });
+      assert.equal(await replacement, true);
+      assert.ok(host.getFeature("final-failure-2"));
+    } else {
+      assert.equal(editor.getState().phase, action === "repair" ? "rejected" : "idle");
+      if (action === "repair") editor.moveVertex(1, [0.02, 0]);
+    }
+    editor.destroy();
+  });
+}
+
+
+test("A state read cannot cache failed old permission against an unread replacement draft", () => {
+  let failed = false, nextId = 0;
+  const { editor, host, diagnostics } = fixture({
+    createFeature: () => ({ id: `unread-replacement-${++nextId}`, properties: {} }),
+    canEdit: () => { if (failed) throw new Error("Replace without reading"); return true; },
+  });
+  host.upsert([feature({ kind: "line", vertices: [[0, 0], [0.01, 0]] })]); editor.edit("existing");
+  const report = host.reportCallbackError;
+  host.reportCallbackError = (cause, operation, featureId) => {
+    report(cause, operation, featureId);
+    editor.cancel(); editor.start("line");
+  };
+  failed = true;
+  const state = editor.getState();
+  assert.equal(state.phase, "editing");
+  assert.equal(state.draft?.feature.id, "unread-replacement-1");
+  assert.equal(state.draft?.placed, 0);
+  assert.equal(state.message, undefined);
+  assert.deepEqual(editor.getState(), state);
+  assert.equal(diagnostics.length, 1);
+  editor.destroy();
+});
+
+test("An update permission exception does not disable independently permitted deletion", async () => {
+  const { editor, host, diagnostics } = fixture({ canEdit: (_feature, operation) => {
+    if (operation === "update") throw new Error("Update check failed");
+    return true;
+  } });
+  host.upsert([feature({ kind: "point", position: [0, 0] })]);
+  editor.onChange(() => { editor.getState(); editor.canDelete(); });
+  editor.edit("existing");
+  assert.equal(editor.getState().phase, "forbidden");
+  assert.match(editor.getState().message!, /could not be checked/);
+  assert.equal(editor.canDelete(), true);
+  assert.equal(await editor.delete(), true);
+  assert.equal(host.getFeature("existing"), undefined);
+  assert.equal(diagnostics.length, 1);
+  editor.destroy();
 });
