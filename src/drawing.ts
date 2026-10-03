@@ -47,7 +47,22 @@ export function attachDrawing<P extends Properties>(
     throw new Error("Drawing requires a viewport created by createViewport.");
   const drawingInternals = internals;
   attached.add(viewport.map);
-  const session = createDrawingSession(viewport, options),
+  let disposed = false,
+    stateRevision = 0;
+  let inputRevision: number | undefined;
+  const session = createDrawingSession(viewport, {
+    ...options,
+    canEdit: (feature, operation) => {
+      const revision = stateRevision,
+        nativeInput = inputRevision !== undefined;
+      const permitted = options.canEdit?.(feature, operation) ?? true;
+      // Native edits carry a screen target that callbacks can invalidate.
+      // Compare only this callback: normal edit notifications also render.
+      // Direct coordinate operations do not depend on the camera.
+      return permitted && (!nativeInput ||
+        (!disposed && revision === stateRevision));
+    },
+  }),
     map = viewport.map;
   const resolveGround = createGroundTargetResolver(map, () => viewport.getConfiguration().terrain,
     cause => drawingInternals.reportTargetError(cause));
@@ -62,8 +77,7 @@ export function attachDrawing<P extends Properties>(
       insert?: () => void;
     }
   >();
-  let disposed = false,
-    active = false,
+  let active = false,
     navigating = false,
     suppressReleaseClick = false,
     restoreDoubleClick = false;
@@ -77,21 +91,57 @@ export function attachDrawing<P extends Properties>(
   let draggingHandle = false;
   let refreshDraggedHandle: (() => void) | undefined;
   let keyboardFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
-  let stateRevision = 0;
   let draftEpoch = 0;
+  let resolvingSnap = false;
+  let lastSnapError = -Infinity;
   const abort = new AbortController();
   function editable() {
     return ["editing", "rejected"].includes(session.getState().phase);
+  }
+  function editFromInput(update: () => void) {
+    const revision = stateRevision,
+      previousInputRevision = inputRevision;
+    inputRevision = revision;
+    try {
+      update();
+      return true;
+    } catch (cause) {
+      // A session operation rechecks permission after the adapter's cached read.
+      // Its diagnostic can lock or replace the draft before the operation throws.
+      if (disposed || revision !== stateRevision) return false;
+      if (editable() && !disposed && revision === stateRevision) throw cause;
+      return false;
+    } finally {
+      inputRevision = previousInputRevision;
+    }
   }
   function snap(
     point: DrawingPosition,
     screen: ScreenPoint,
     skip = false,
     except?: number | "draft",
-  ): DrawingPosition {
+  ): DrawingPosition | undefined {
     if (!snapEnabled || skip) return point;
+    // Observer-driven refresh can resolve again before the filter returns.
+    // Leave that refresh empty rather than recursively invoking consumer code.
+    if (resolvingSnap) return;
+    resolvingSnap = true;
+    try {
+      return resolveSnap(point, screen, except);
+    } finally {
+      resolvingSnap = false;
+    }
+  }
+  function resolveSnap(
+    point: DrawingPosition,
+    screen: ScreenPoint,
+    except?: number | "draft",
+  ): DrawingPosition | undefined {
+    const revision = stateRevision;
+    const current = () => !disposed && revision === stateRevision;
     const state = session.getState(),
       candidates: DrawingPosition[] = [];
+    if (!current()) return;
     const visible = new Set(
       map
         .queryRenderedFeatures([[screen.x - 12, screen.y - 12], [screen.x + 12, screen.y + 12]], {
@@ -102,10 +152,24 @@ export function attachDrawing<P extends Properties>(
         .flatMap((f) => typeof f.properties._rl_feature_id === "string" ? [f.properties._rl_feature_id] : []),
     );
     for (const id of visible) {
+      if (!current()) return;
       const feature = viewport.getFeature(id);
       if (!feature || feature.id === state.draft?.feature.id) continue;
-      const allowed = options.canSnap?.(feature);
-      if (disposed) return point;
+      let allowed: boolean | undefined;
+      try {
+        allowed = options.canSnap?.(feature);
+      } catch (cause) {
+        const now = Date.now();
+        if (!disposed && now - lastSnapError >= 10_000) {
+          // Bound every diagnostic channel, including reentrant observers.
+          // Success and draft replacement deliberately retain the cooldown.
+          lastSnapError = now;
+          viewport.reportCallbackError(cause, "drawing.canSnap", feature.id);
+        }
+        if (!current()) return;
+        continue;
+      }
+      if (!current()) return;
       if (allowed === false) continue;
       if (feature.entity) continue;
       const g = feature.geometry;
@@ -127,6 +191,7 @@ export function attachDrawing<P extends Properties>(
       chosen = point;
     const reference = map.unproject([screen.x, screen.y]).lng;
     for (const candidate of candidates) {
+      if (!current()) return;
       const projected = map.project([
         nearbyLongitude(candidate[0], reference),
         candidate[1],
@@ -144,7 +209,7 @@ export function attachDrawing<P extends Properties>(
         chosen = candidate;
       }
     }
-    return chosen;
+    return current() ? chosen : undefined;
   }
   function visibleGroundVertex(candidate: DrawingPosition, screen: ScreenPoint) {
     const hit = resolveGround(screen);
@@ -297,7 +362,7 @@ export function attachDrawing<P extends Properties>(
         let previous = p;
         let dragScreen: ScreenPoint | undefined;
         let dragEpoch = draftEpoch;
-        const currentDrag = (revision?: number) => !disposed && dragEpoch === draftEpoch &&
+        const currentDrag = (revision?: number) => draggingHandle && !disposed && dragEpoch === draftEpoch &&
           markers.get(key)?.marker === marker && editable() &&
           (revision === undefined || revision === stateRevision);
         button.addEventListener(
@@ -324,7 +389,7 @@ export function attachDrawing<P extends Properties>(
           (e) => {
             e.preventDefault();
             e.stopPropagation();
-            if (insert && editable()) markers.get(key)?.insert?.();
+            if (insert && editable()) editFromInput(() => markers.get(key)?.insert?.());
           },
           { signal: abort.signal },
         );
@@ -343,17 +408,37 @@ export function attachDrawing<P extends Properties>(
           previous =
             markers.get(key)?.position ??
             position(marker.getLngLat().toArray());
-          session.beginGesture();
+          if (!editFromInput(() => session.beginGesture())) {
+            // MapLibre can emit drag immediately after a rejected dragstart.
+            // Keep that native gesture inactive without touching a replacement.
+            if (!disposed && dragEpoch === draftEpoch && markers.get(key)?.marker === marker) {
+              draggingHandle = false;
+              dragScreen = undefined;
+              refreshDraggedHandle = undefined;
+            }
+            restoreHandle();
+          }
         });
+        function restoreHandle() {
+          const item = markers.get(key);
+          if (!disposed && dragEpoch === draftEpoch && item?.marker === marker)
+            marker.setLngLat(item.position);
+        }
         function applyDrag(screen: ScreenPoint) {
-          if (!currentDrag()) return;
+          if (!currentDrag()) {
+            restoreHandle();
+            return;
+          }
           const revision = stateRevision;
           const current = session.getState().draft,
             currentHandle = index === undefined || !current
               ? undefined
               : shapeHandles(current.shape)[index];
           const target = resolveGround(screen);
-          if (!currentDrag(revision)) return;
+          if (!currentDrag(revision)) {
+            restoreHandle();
+            return;
+          }
           if (target.kind !== "available") {
             marker.setLngLat(markers.get(key)?.position ?? previous);
             feedback?.show(screen, target, undefined);
@@ -365,17 +450,27 @@ export function attachDrawing<P extends Properties>(
             bypassSnap,
             key === "move" || currentHandle?.carriesShape ? "draft" : index,
           );
-          if (!currentDrag(revision)) return;
+          if (!next || !currentDrag(revision)) {
+            // MapLibre moves its marker before this handler. Retain the current
+            // draft position when a callback invalidates that movement.
+            restoreHandle();
+            return;
+          }
           feedback?.show(screen, target, next !== target.position ? next : undefined);
-          if (!currentDrag(revision)) return;
+          if (!currentDrag(revision)) {
+            restoreHandle();
+            return;
+          }
           const samePosition = (a: DrawingPosition, b: DrawingPosition) =>
             Math.abs(wrapLongitude(a[0] - b[0])) < 1e-10 && Math.abs(a[1] - b[1]) < 1e-10;
           if (key === "move") {
             if (!samePosition(previous, next)) {
-              session.translate(previous, next);
-              previous = next;
+              if (editFromInput(() => session.translate(previous, next))) previous = next;
+              else restoreHandle();
             }
-          } else if (!currentHandle || !samePosition(currentHandle.position, next)) move(next);
+          } else if (!currentHandle || !samePosition(currentHandle.position, next)) {
+            if (!editFromInput(() => move(next))) restoreHandle();
+          }
         }
         marker.on("drag", () => {
           dragScreen = map.project(marker.getLngLat());
@@ -383,11 +478,12 @@ export function attachDrawing<P extends Properties>(
         });
         marker.on("dragend", () => {
           if (dragEpoch !== draftEpoch) return;
+          const started = draggingHandle;
           draggingHandle = false;
           dragScreen = undefined;
           refreshDraggedHandle = undefined;
           feedback?.clear();
-          if (editable()) session.endGesture();
+          if (started && editable()) session.endGesture();
         });
         button.addEventListener(
           "keydown",
@@ -402,7 +498,9 @@ export function attachDrawing<P extends Properties>(
               ) {
                 e.preventDefault();
                 e.stopPropagation();
-                session.removeVertex(index);
+                const epoch = draftEpoch;
+                if (!editFromInput(() => session.removeVertex(index)) || disposed || epoch !== draftEpoch)
+                  return;
                 const remaining = session.getState().draft?.shape;
                 const count = remaining && "vertices" in remaining
                   ? remaining.vertices.length : 0;
@@ -446,11 +544,11 @@ export function attachDrawing<P extends Properties>(
                 : shapeHandles(current.shape)[index];
             const next = snap(target.position, point, e.altKey,
               key === "move" || currentHandle?.carriesShape ? "draft" : index);
-            if (disposed || revision !== stateRevision || !editable()) return;
+            if (!next || disposed || revision !== stateRevision || !editable()) return;
             feedback?.clear();
             if (key === "move")
-              session.translate(position(marker.getLngLat().toArray()), next);
-            else move(next);
+              editFromInput(() => session.translate(position(marker.getLngLat().toArray()), next));
+            else editFromInput(() => move(next));
           },
           { signal: abort.signal },
         );
@@ -550,8 +648,8 @@ export function attachDrawing<P extends Properties>(
       return;
     }
     const chosen = snap(target.position, event.point, event.originalEvent.altKey);
-    if (disposed || revision !== stateRevision) return;
-    session.addPoint(chosen);
+    if (!chosen || disposed || revision !== stateRevision) return;
+    editFromInput(() => session.addPoint(chosen));
   }
   function refreshPointer() {
     if (disposed || navigating || !pointer || !session.getState().draft?.placing || !editable()) return;
@@ -670,8 +768,8 @@ export function attachDrawing<P extends Properties>(
       ) {
         event.preventDefault();
         event.stopPropagation();
-        if (event.shiftKey) session.redo();
-        else session.undo();
+        if (event.shiftKey) editFromInput(() => session.redo());
+        else editFromInput(() => session.undo());
       }
       if (event.key === "Escape" && session.getState().phase !== "pending") {
         event.preventDefault();
@@ -706,12 +804,19 @@ export function attachDrawing<P extends Properties>(
   );
   const off = session.onChange(render);
   let offPrepared = () => {};
-  const offSceneChange = drawingInternals.onSceneChange(() => {
+  const invalidateTarget = () => {
     // Invalidate ground resolutions already in progress, including consumer snap callbacks.
     stateRevision++;
     feedback?.clear();
     session.setCursor(undefined);
-  });
+  };
+  const offSceneChange = drawingInternals.onSceneChange(invalidateTarget);
+  const offDataChange = viewport.on("datachange", invalidateTarget);
+  const offCameraChange = viewport.on("camerachange", invalidateTarget);
+  // Animated camera operations emit movestart before their first frame;
+  // completion-only viewport events arrive too late to stop callback work.
+  map.on("movestart", invalidateTarget);
+  map.on("move", invalidateTarget);
   const offPreview = session.onPreview(renderGeometry);
   let offDestroy = () => {};
   function destroy() {
@@ -723,6 +828,10 @@ export function attachDrawing<P extends Properties>(
     off();
     offPrepared();
     offSceneChange();
+    offDataChange();
+    offCameraChange();
+    map.off("movestart", invalidateTarget);
+    map.off("move", invalidateTarget);
     offPreview();
     offDestroy();
     abort.abort();
@@ -758,6 +867,7 @@ export function attachDrawing<P extends Properties>(
     ...session,
     destroy,
     setSnapping(value: boolean) {
+      stateRevision++;
       snapEnabled = value;
       refreshPointer();
       refreshDraggedHandle?.();
