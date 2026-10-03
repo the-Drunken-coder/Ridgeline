@@ -81,6 +81,16 @@ Expose one required validation result that succeeds only when all required check
 - Run relevant type checks, module tests, both browser suites, and consumer builds after implementation. Report hosted CI evidence separately from local results.
 - Do not pursue a numerical majority of end-to-end tests, arbitrary coverage percentages, or a five-minute runtime target. Around fifteen minutes is a signal to investigate bottlenecks and parallelism, not a reason to omit checks.
 
+## Local runtime and macOS validation policy
+
+Approved on 2026-10-03 for [issue #50](https://github.com/the-Drunken-coder/Ridgeline/issues/50).
+
+- Keep the documented Node 22.12+ minimum and pnpm 11. Node 24 is the reference runtime used by required Ubuntu CI; evidence for that runtime does not establish execution on every version allowed by the minimum.
+- Support macOS local validation with manual evidence. Do not add a required macOS CI job for this ticket or change the existing required Ubuntu suite.
+- Use the temporary-path and platform-aware keyboard fixes already merged through PR #49. Collect complete current-main macOS validation on Node 24 and focused Node 25.9 regression checks for the browser-lock fixture and rejected-drawing select-all workflow, without a temporary-directory workaround.
+- Record the exact tested revision, macOS version, architecture, Node/pnpm/Playwright versions, commands, results, and remaining limits. Historical PR #49 evidence and Linux execution do not replace fresh macOS evidence. Keep #50 open until its acceptance criteria and dependencies have supporting evidence.
+- Issue #50 owns validation evidence and closeout. Coordinate runtime documentation in README.md with the #48 integration owner. Investigate and report any remaining failure before expanding implementation scope.
+
 ## Out of Scope
 
 - Changing repository visibility, opening a pull request, or merging changes.

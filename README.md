@@ -37,6 +37,8 @@ SIDC Kit is a playground-only development dependency, loaded when that scenario 
 
 Use Node 22.12+ and pnpm 11.
 
+Node 24 is the reference runtime for required Ubuntu CI. macOS is supported for local validation using manual evidence; it is not an additional required CI job. [Issue #50](https://github.com/the-Drunken-coder/Ridgeline/issues/50) requires current-main macOS validation on Node 24 and focused Node 25.9 checks for temporary-path overlap and rejected-drawing keyboard input. The documented minimum remains Node 22.12+. Focused Node 25.9 checks do not certify every newer runtime.
+
 ```sh
 pnpm install
 pnpm dev
