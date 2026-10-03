@@ -227,6 +227,61 @@ async function suite() {
         box.y + box.height / 2 - canvas.y - screen.y) < 1, 'Placed handle used the other visible copy');
     } finally { editor.destroy(); draw.destroy(); container.style.width = ''; }
   });
+  await run('Reliability drawing snap failures recover on the visible world copy and respect unavailable terrain', async () => {
+    container.style.width = '800px';
+    const closest: [number, number] = [-179, 0], healthy: [number, number] = [-174, 0];
+    const diagnostics: RidgelineError[] = [], cause = new Error('Alternate world snap failure');
+    const draw = createViewport({ container, basemap: style(), terrain: false,
+      camera: { center: [0, 0], zoom: 0 }, features: [point('world-failed', closest[0]), point('world-healthy', healthy[0])],
+      onError: error => diagnostics.push(error), logger: () => {} });
+    current = draw; await draw.ready;
+    let failed = true, calls = 0;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'world-failure-draft', properties: {} }),
+      canSnap: feature => { calls++; if (failed && feature.id === 'world-failed') throw cause; return true; },
+      submit: () => ({ accepted: true }) });
+    const screen = draw.map.project([181, 0]), input = { x: screen.x + 2, y: screen.y + 2 };
+    function expectSnap(coordinate: [number, number]) {
+      const preview = editor.getPreview(), expected = draw.map.project([coordinate[0] + 360, coordinate[1]]);
+      check(preview?.kind === 'line' && JSON.stringify(preview.vertices[0]) === JSON.stringify(coordinate),
+        `Alternate world resolution chose the wrong stored vertex: ${JSON.stringify(preview)}`);
+      const ring = container.querySelector<SVGCircleElement>('.rl-ground-snap-ring:not([hidden])');
+      check(!!ring && Math.hypot(Number(ring.getAttribute('cx')) - expected.x,
+        Number(ring.getAttribute('cy')) - expected.y) < 1, 'Recovered snap ring used the other visible world copy');
+    }
+    try {
+      await until(() => {
+        const hits = draw.map.queryRenderedFeatures([[input.x - 12, input.y - 12], [input.x + 12, input.y + 12]],
+          { layers: ['rl:points'] }).map(feature => feature.properties._rl_feature_id);
+        return hits.includes('world-failed') && hits.includes('world-healthy');
+      }, 'both alternate world candidates rendered');
+      editor.start('line');
+      await pointer('move', input);
+      expectSnap(healthy);
+      check(diagnostics.length === 1 && diagnostics[0]?.cause === cause && diagnostics[0]?.code === 'CALLBACK_FAILED' &&
+        diagnostics[0]?.context.operation === 'drawing.canSnap' && diagnostics[0]?.context.featureId === 'world-failed',
+      'Alternate world filter failure lost its diagnostic context');
+      failed = false; editor.setSnapping(true);
+      expectSnap(closest);
+      draw.configure({ terrain: true, elevation: { tiles: ['/missing-world-failure-dem.png'], encoding: 'terrarium', maxzoom: 0 } });
+      await until(() => !!container.querySelector('.rl-ground-unavailable:not([hidden])'), 'alternate world terrain unavailable');
+      const before = JSON.stringify(editor.getState().draft?.shape), beforeCalls = calls;
+      await pointer('click', input);
+      check(JSON.stringify(editor.getState().draft?.shape) === before && calls === beforeCalls,
+        'An eligible recovered world-copy vertex bypassed unavailable terrain');
+      draw.configure({ terrain: false });
+      await until(() => !!container.querySelector('.rl-ground-snap-ring:not([hidden])'), 'alternate world valid ground recovered');
+      expectSnap(closest);
+      await pointer('click', input);
+      const placed = editor.getState().draft?.shape;
+      check(placed?.kind === 'line' && JSON.stringify(placed.vertices) === JSON.stringify([closest]),
+        'Recovered world-copy placement did not retain the exact bounded coordinate');
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]');
+      if (!handle) throw new Error('Recovered world-copy handle missing');
+      const box = handle.getBoundingClientRect(), canvas = draw.map.getCanvas().getBoundingClientRect();
+      check(Math.hypot(box.x + box.width / 2 - canvas.x - screen.x,
+        box.y + box.height / 2 - canvas.y - screen.y) < 1, 'Recovered world-copy handle moved to the other visible copy');
+    } finally { editor.destroy(); draw.destroy(); container.style.width = ''; }
+  });
   await run('Reliability drawing keyboard movement excludes carried shape vertices', async () => {
     const draw = createViewport({ container, basemap: style(), terrain: false,
       camera: { center: [0, 0], zoom: 16 }, logger: () => {} });

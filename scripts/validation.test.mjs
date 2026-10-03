@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { checkValidation, requiredJobs } from './check-validation.mjs';
 import { checkShards } from './check-shards.mjs';
@@ -85,7 +85,47 @@ test('actual Playwright shard reports cover every case and preserve failures', a
     const retried = structuredClone(reports);
     retried[0].suites[0].specs[0].tests[0].results.push({ status: 'passed', retry: 1 });
     assert.throws(() => checkShards(expected, retried), /exactly once/);
-    completed = true;
+
+    await t.test('unsharded consumer reports retain both suites and their results', async () => {
+      const consumerBlobs = `${directory}/consumer-blobs`;
+      await mkdir(consumerBlobs);
+      for (const name of ['control', 'playground']) {
+        const consumer = `${directory}/${name}`;
+        await mkdir(consumer);
+        await writeFile(`${consumer}/playwright.config.mjs`, `export default { testDir: '.', workers: 1, retries: 0, outputDir: './results' };`);
+        await writeFile(`${consumer}/consumer.spec.mjs`, `import { test, expect } from 'playwright/test';
+          test('${name} result', () => expect('${name}').toBe('control'));`);
+        const result = await run(name, ['test', '-c', `${consumer}/playwright.config.mjs`, '--reporter=blob'], {
+          PLAYWRIGHT_BLOB_OUTPUT_DIR: `${consumer}/blob-report`,
+          PLAYWRIGHT_BLOB_OUTPUT_NAME: `report-${name}.zip`,
+        });
+        assert.equal(result.status, name === 'control' ? 0 : 1, result.stderr);
+        await cp(`${consumer}/blob-report`, consumerBlobs, { recursive: true });
+      }
+      assert.deepEqual((await readdir(consumerBlobs)).sort(), ['report-control.zip', 'report-playground.zip']);
+
+      const mergeArgs = ['merge-reports', '--config', 'scripts/playwright-merge.config.mjs', consumerBlobs];
+      const htmlDirectory = `${directory}/consumer-html`;
+      const html = await run('consumer-html', mergeArgs, { PLAYWRIGHT_HTML_OUTPUT_DIR: htmlDirectory });
+      assert.equal(html.status, 0, html.stderr);
+      assert.ok((await readFile(`${htmlDirectory}/index.html`)).byteLength > 0);
+
+      const consumerJson = `${directory}/consumer-merged.json`;
+      const json = await run('consumer-json', [...mergeArgs, '--reporter=json'], { PLAYWRIGHT_JSON_OUTPUT_FILE: consumerJson });
+      assert.equal(json.status, 0, json.stderr);
+      const consumerReport = JSON.parse(await readFile(consumerJson, 'utf8'));
+      assert.equal(consumerReport.stats.expected, 1);
+      assert.equal(consumerReport.stats.unexpected, 1);
+      const results = consumerReport.suites.flatMap(suite => suite.specs).map(spec => ({
+        title: spec.title,
+        results: spec.tests.flatMap(test => test.results.map(result => result.status)),
+      }));
+      assert.deepEqual(results.sort((a, b) => a.title.localeCompare(b.title)), [
+        { title: 'control result', results: ['passed'] },
+        { title: 'playground result', results: ['failed'] },
+      ]);
+      completed = true;
+    });
   } finally {
     if (completed) await rm(directory, { recursive: true, force: true });
     else t.diagnostic(`Validation fixture and subprocess diagnostics retained at ${directory}`);
