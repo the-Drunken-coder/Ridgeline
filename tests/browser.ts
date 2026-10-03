@@ -2144,6 +2144,41 @@ async function suite() {
       check(editor.getState().phase === 'editing', 'Surviving drag did not remain editable');
     } finally { off(); editor.destroy(); draw.destroy(); }
   });
+  await run('Permission callbacks report failures from replaced owners without changing the new draft', async () => {
+    for (const action of ['replace', 'destroy'] as const) {
+      const diagnostics: RidgelineError[] = [];
+      const cause = new Error('Permission callback failed after replacing its owner');
+      const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 13 },
+        onError: error => diagnostics.push(error), logger: () => {} });
+      current = draw; await draw.ready;
+      let armed = false, nextId = 0;
+      const editor = attachDrawing(draw, { createFeature: () => ({ id: `self-permission-${++nextId}`, properties: {} }),
+        canEdit: () => {
+          if (armed) {
+            armed = false;
+            if (action === 'destroy') editor.destroy();
+            else { editor.cancel(); editor.start('line'); }
+            throw cause;
+          }
+          return true;
+        }, submit: () => ({ accepted: true }) });
+      try {
+        editor.start('line'); await pointer('click', draw.map.project([0, 0]));
+        armed = true; await pointer('click', draw.map.project([.005, 0]));
+        check(draw.getFeature('self-permission-1') === undefined, 'Obsolete permission action changed accepted data');
+        if (action === 'replace') {
+          check(diagnostics.length === 1 && diagnostics[0]?.cause === cause && diagnostics[0]?.context.featureId === 'self-permission-1' &&
+            diagnostics[0]?.context.operation === 'drawing.canEdit', 'Owner replacement swallowed original permission failure');
+          const state = editor.getState();
+          check(state.phase === 'editing' && state.draft?.feature.id === 'self-permission-2' && state.draft.placed === 0,
+            'Old permission failure locked or changed replacement draft');
+          await pointer('click', draw.map.project([.008, 0]));
+          check(editor.getState().draft?.placed === 1, 'Replacement did not remain usable');
+        } else check(diagnostics.length === 0 && draw.getInteractionOwner() === null && !container.querySelector('.rl-drawing-handle'),
+          'Destroyed permission owner emitted callbacks or retained input resources');
+      } finally { editor.destroy(); draw.destroy(); }
+    }
+  });
   await run('Final drawing permission cannot overwrite or revive consumer data', async () => {
     const draw = createViewport({ container, basemap: style(), logger: () => {} });
     current = draw;
