@@ -44,6 +44,28 @@ Behavior design agreed through questions 1 through 21. The user selected mock A 
 - Rectangles support rotation and exact width, height, and bearing. Arrows follow connected line segments with one arrowhead at the end and a Reverse direction action. Curved and double-headed arrows are deferred.
 - Optional snapping targets visible vertices on features the consumer permits, including the current draft. Provide a temporary keyboard override. Snapping copies a position without creating an attachment or following later feature movement.
 
+## Approved callback failure recovery
+
+Approved on 2026-10-03 for [#47](https://github.com/the-Drunken-coder/Ridgeline/issues/47) and [#48](https://github.com/the-Drunken-coder/Ridgeline/issues/48). The #48 thread is the integration owner for both deliveries and their shared [closeout record](callback-failures-closeout.md).
+
+- A throwing `canEdit` blocks the affected create, update, or delete operation. Preserve the draft, draft history, and last permitted geometry. Distinguish a failed permission check from an explicit denial in user feedback. Settle an interrupted gesture without applying later movement. Navigation remains available; cancellation remains available outside pending submission.
+- During a pending save, a failed permission check aborts the submission signal but retains the editing and cancellation lock until the consumer promise settles. Repair and `refreshPermissions()` must not unlock an unsettled request. Ignore its late acceptance, including after permission recovery. Preserve the draft for correction or cancellation after settlement. Immediate local cancellation is a separate contract decision; consumer persistence still needs atomic baseline/version checks.
+- A throwing `canSnap` excludes that feature from the current resolution. Continue with another permitted nearby target or valid unsnapped ground. Never bypass terrain validation. Apply the same behavior to preview, placement, handle dragging, and keyboard movement. Alt bypass does not invoke the filter.
+- Report through existing callback diagnostics with `CALLBACK_FAILED`, original cause, affected feature ID, and operation `drawing.canEdit` or `drawing.canSnap`. Each callback has one timestamp per session or attachment and reports at most once per 10,000 ms across all feature IDs and permission kinds. Record the timestamp before dispatch. Success, explicit denial, refresh, and draft replacement do not reset the timer. Keep constant diagnostic bookkeeping memory while still evaluating checks for recovery.
+- Recursive observer-driven refresh must not recursively invoke the same callback. After consumer callbacks and diagnostic observers, recheck ownership, draft changes, submission identity, and relevant scene/settings changes. Cancelled, destroyed, replaced, or obsolete work must not publish feedback, mutate a replacement draft, visit later candidates, or accept an old submission.
+- Recover the existing draft when the callback is repaired and current permissions or targets are refreshed. Unrelated accepted features and external-conflict rules retain their existing behavior.
+
+| Transition | Owner | Observable result | Verification |
+| --- | --- | --- | --- |
+| Permission exception or explicit denial | #48 drawing session | Both block affected changes; only exception reports cause and failure feedback | Focused create/update/delete state checks |
+| Permission failure during a gesture | #48 session, #47 attachment integration | Last permitted geometry and history retained; obsolete movement stops | Session checks and real handle input |
+| Permission failure during pending save, repair, settlement | #48 submission owner | Signal aborted, lock retained until settlement, late acceptance ignored | Deferred consumer submission through public drawing attachment |
+| Snap filter exception | #47 drawing attachment | Failed feature excluded; another eligible target or valid ground used | Real pointer, handle and keyboard input |
+| Observer refreshes, cancels, destroys, replaces, or changes scene | Current session/attachment owner | Bounded reporting and no obsolete feedback, geometry, or candidate iteration | Reentrant state checks and packaged browser workflows |
+| Callback repaired or snapping bypassed | Current drawing owner | Same draft recovers; terrain validation stays active | Continue real drawing workflow and observe a quiet reporting interval |
+
+#47 owns `src/drawing.ts` and its tracker issue. #48 owns this spec, `README.md`, `src/drawing-session.ts`, `src/drawing-types.ts` if needed, `tests/drawing.test.ts`, packaged browser regressions and registration, and the shared closeout record. Both tickets require the combined browser evidence before acceptance.
+
 ## Verified project context
 
 The initial design checkout at a8ac826 contained agent documentation only. The existing viewport implementation was inspected read-only at commit dd92590. Implementation was then based on main at 7698e95.
