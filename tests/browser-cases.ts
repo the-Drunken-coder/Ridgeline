@@ -4,6 +4,7 @@ export const browserCases = [
   'Reliability drawing insertion handles preserve displayed edges',
   'Reliability drawing snapping follows the pointer world copy at low zoom',
   'Reliability drawing snap failures recover on the visible world copy and respect unavailable terrain',
+  'Reliability drawing restores rejected handle edits on a third visible world copy',
   'Reliability drawing keyboard movement excludes carried shape vertices',
   'Reliability drawing keyboard snapping follows pointer policy',
   'Reliability drawing date-line storage snapping and reload flat without terrain',

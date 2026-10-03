@@ -282,6 +282,58 @@ async function suite() {
         box.y + box.height / 2 - canvas.y - screen.y) < 1, 'Recovered world-copy handle moved to the other visible copy');
     } finally { editor.destroy(); draw.destroy(); container.style.width = ''; }
   });
+  await run('Reliability drawing restores rejected handle edits on a third visible world copy', async () => {
+    container.style.width = '1600px';
+    const line: MapFeature = { type: 'Feature', id: 'third-copy-line', properties: {},
+      geometry: { type: 'LineString', coordinates: [[179, 0], [80, 40]] } };
+    const draw = createViewport({ container, basemap: style(), terrain: false, features: [line],
+      camera: { center: [0, 0], zoom: 0 }, logger: () => {} });
+    current = draw; await draw.ready;
+    draw.map.setCenter([-720, 0]);
+    check(draw.map.getCenter().lng === -720, 'Native renderer did not retain the unwrapped center');
+    let armed = false, callbacks = 0, permissionReads = 0;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'third-copy-edit', properties: {} }),
+      canEdit: () => { permissionReads++; return true; },
+      canSnap: feature => {
+        if (!armed || feature.id !== 'third-copy-anchor') return false;
+        callbacks++; editor.setSnapping(true); return true;
+      }, submit: () => ({ accepted: true }) });
+    try {
+      if (!window.browserMouse) throw new Error('Third-copy reentrant native bridge missing');
+      editor.setSnapping(false); editor.edit(line.id);
+      const original = draw.map.project([-541, 0]), canvas = draw.map.getCanvas().getBoundingClientRect();
+      const next = { x: original.x - 10, y: original.y + 10 };
+      const coordinate = draw.map.unproject([next.x, next.y]).wrap().toArray();
+      draw.upsert([{ ...point('third-copy-anchor'), geometry: { type: 'Point', coordinates: coordinate } }]);
+      await until(() => draw.map.queryRenderedFeatures([[next.x - 12, next.y - 12], [next.x + 12, next.y + 12]],
+        { layers: ['rl:points'] }).some(feature => feature.properties._rl_feature_id === 'third-copy-anchor'),
+      'third-copy reentrant anchor rendered');
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]');
+      if (!handle) throw new Error('Third-copy reentrant handle missing');
+      const initial = JSON.stringify(editor.getState().draft?.shape), box = handle.getBoundingClientRect();
+      check(Math.hypot(box.left + box.width / 2 - canvas.left - original.x,
+        box.top + box.height / 2 - canvas.top - original.y) < 2, 'Third-copy reentrant placement did not establish the original world copy');
+      check(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) === handle, 'Another handle obscures the third-copy vertex');
+      await window.browserMouse('down', box.left + box.width / 2, box.top + box.height / 2);
+      const readsBefore = permissionReads;
+      await window.browserMouse('move', canvas.left + original.x - 5, canvas.top + original.y);
+      check(permissionReads > readsBefore && JSON.stringify(editor.getState().draft?.shape) !== initial,
+        'Third-copy edit did not establish an active valid native gesture');
+      editor.setSnapping(true);
+      const before = JSON.stringify(editor.getState().draft?.shape), held = handle.getBoundingClientRect();
+      armed = true;
+      await window.browserMouse('move', canvas.left + next.x, canvas.top + next.y);
+      check(callbacks >= 1 && JSON.stringify(editor.getState().draft?.shape) === before,
+        'Reentrant snap settings did not invalidate movement without changing the draft');
+      const shown = handle.getBoundingClientRect();
+      check(Math.hypot(shown.left - held.left, shown.top - held.top) < 2,
+        `Reentrant snap restoration moved the handle to another visible world copy: ${JSON.stringify({ held: held.toJSON(), shown: shown.toJSON(), before })}`);
+      await window.browserMouse('up', canvas.left + next.x, canvas.top + next.y);
+      const settled = handle.getBoundingClientRect();
+      check(JSON.stringify(editor.getState().draft?.shape) === before && Math.hypot(settled.left - held.left, settled.top - held.top) < 2, 'Drag release changed the retained vertex or its world copy');
+      check(JSON.stringify(draw.getFeature(line.id)) === JSON.stringify(line), 'Rejected dragging changed the accepted feature');
+    } finally { armed = false; editor.destroy(); draw.destroy(); container.style.width = ''; }
+  });
   await run('Reliability drawing keyboard movement excludes carried shape vertices', async () => {
     const draw = createViewport({ container, basemap: style(), terrain: false,
       camera: { center: [0, 0], zoom: 16 }, logger: () => {} });

@@ -4,6 +4,8 @@ import { browserCases } from '../browser-cases';
 
 for (const name of browserCases) {
   test(name, async ({ page }, testInfo) => {
+    if (name === 'Reliability drawing restores rejected handle edits on a third visible world copy')
+      await page.setViewportSize({ width: 2000, height: 720 });
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.exposeFunction('drawingPointer', async (action: string, x: number, y: number) => {
