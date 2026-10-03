@@ -4,7 +4,8 @@ import { browserCases } from '../browser-cases';
 
 for (const name of browserCases) {
   test(name, async ({ page }, testInfo) => {
-    if (name === 'Reliability drawing restores rejected handle edits on a third visible world copy')
+    if (name === 'Reliability drawing restores rejected handle edits on a third visible world copy' ||
+      name === 'Reliability drawing preserves rejected handle edits after camera turns and reversal')
       await page.setViewportSize({ width: 2000, height: 720 });
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));

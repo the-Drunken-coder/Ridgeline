@@ -336,6 +336,65 @@ async function suite() {
       check(JSON.stringify(draw.getFeature(line.id)) === JSON.stringify(line), 'Rejected dragging changed the accepted feature');
     } finally { armed = false; editor.destroy(); draw.destroy(); container.style.width = ''; }
   });
+  await run('Reliability drawing preserves rejected handle edits after camera turns and reversal', async () => {
+    container.style.width = '1600px';
+    const line: MapFeature = { type: 'Feature', id: 'camera-copy-line', properties: {},
+      geometry: { type: 'LineString', coordinates: [[179, 0], [80, 40]] } };
+    const draw = createViewport({ container, basemap: style(), terrain: false, features: [line],
+      camera: { center: [0, 0], zoom: 0 }, logger: () => {} });
+    current = draw; await draw.ready;
+    let armed = false, callbacks = 0, permissionReads = 0;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused-camera-copy', properties: {} }),
+      canEdit: () => { permissionReads++; return true; },
+      canSnap: feature => {
+        if (!armed || feature.id !== 'camera-copy-anchor') return false;
+        callbacks++; editor.setSnapping(true); return true;
+      }, submit: () => ({ accepted: true }) });
+    try {
+      if (!window.browserMouse) throw new Error('Camera-copy native bridge missing');
+      editor.edit(line.id);
+      const before = JSON.stringify(editor.getState().draft?.shape);
+      // Camera movement wraps the live marker without rerendering the draft.
+      for (let longitude = 90; longitude <= 1440; longitude += 90)
+        draw.map.jumpTo({ center: [longitude, 0], zoom: 0 });
+      for (let longitude = 1350; longitude >= 720; longitude -= 90)
+        draw.map.jumpTo({ center: [longitude, 0], zoom: 0 });
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      check(draw.map.getCenter().lng === 720 && JSON.stringify(editor.getState().draft?.shape) === before,
+        'Camera turns changed the draft or lost the unwrapped renderer center');
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]');
+      if (!handle) throw new Error('Camera-copy handle missing');
+      const held = handle.getBoundingClientRect(), canvas = draw.map.getCanvas().getBoundingClientRect();
+      const original = { x: held.left + held.width / 2 - canvas.left, y: held.top + held.height / 2 - canvas.top };
+      const location = draw.map.unproject([original.x, original.y]);
+      const expected = draw.map.project([899, 0]);
+      check(Math.abs(location.lng) > 720 && Math.hypot(original.x - expected.x, original.y - expected.y) < 1,
+        `Camera turns did not establish a distant current marker copy: ${JSON.stringify({ longitude: location.lng, held: held.toJSON() })}`);
+      const hit = document.elementFromPoint(held.left + held.width / 2, held.top + held.height / 2);
+      check(hit === handle || !!hit && handle.contains(hit), 'Native camera-copy press would hit another handle');
+      const target = { x: original.x - 10, y: original.y + 10 };
+      draw.upsert([{ ...point('camera-copy-anchor'), geometry: { type: 'Point', coordinates: draw.map.unproject([target.x, target.y]).wrap().toArray() } }]);
+      await until(() => draw.map.queryRenderedFeatures([[target.x - 12, target.y - 12], [target.x + 12, target.y + 12]],
+        { layers: ['rl:points'] }).some(feature => feature.properties._rl_feature_id === 'camera-copy-anchor'),
+      'camera-copy snap anchor rendered');
+      editor.setSnapping(true);
+      await window.browserMouse('down', canvas.left + original.x, canvas.top + original.y);
+      const readsBefore = permissionReads;
+      armed = true;
+      await window.browserMouse('move', canvas.left + target.x, canvas.top + target.y);
+      check(permissionReads > readsBefore && callbacks >= 1 && JSON.stringify(editor.getState().draft?.shape) === before,
+        `Native camera-copy movement did not run its rejected gesture: ${JSON.stringify({ readsBefore, permissionReads, callbacks, before, after: editor.getState().draft?.shape })}`);
+      const shown = handle.getBoundingClientRect();
+      check(Math.hypot(shown.left - held.left, shown.top - held.top) < 2,
+        `Rejected editing restored a stale camera copy: ${JSON.stringify({ longitude: location.lng, held: held.toJSON(), shown: shown.toJSON() })}`);
+      await window.browserMouse('up', canvas.left + target.x, canvas.top + target.y);
+      armed = false;
+      const settled = handle.getBoundingClientRect();
+      check(JSON.stringify(editor.getState().draft?.shape) === before && Math.hypot(settled.left - held.left, settled.top - held.top) < 2,
+        'Settling rejected editing changed its draft or current marker copy');
+      check(JSON.stringify(draw.getFeature(line.id)) === JSON.stringify(line), 'Camera-copy editing changed accepted feature data');
+    } finally { armed = false; editor.destroy(); draw.destroy(); container.style.width = ''; }
+  });
   await run('Reliability drawing keyboard movement excludes carried shape vertices', async () => {
     const draw = createViewport({ container, basemap: style(), terrain: false,
       camera: { center: [0, 0], zoom: 16 }, logger: () => {} });
