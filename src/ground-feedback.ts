@@ -2,6 +2,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import type { DrawingPosition } from "./drawing-types";
 import type { GroundTarget, ScreenPoint } from "./ground-target";
 import { wrapLongitude } from "./drawing-geometry";
+import { nearbyLongitude } from "./longitude";
 
 /** The overlay owns only DOM feedback. The resolver remains authoritative for placement. */
 export function createGroundFeedback(
@@ -75,7 +76,10 @@ export function createGroundFeedback(
       return;
     }
     visible(unavailable, false);
-    const center = snapped ? map.project(snapped) : pointer;
+    const reference = map.unproject([pointer.x, pointer.y]).lng;
+    const displayed: DrawingPosition = [nearbyLongitude((snapped ?? target.position)[0], reference),
+      (snapped ?? target.position)[1]];
+    const center = snapped ? map.project(displayed) : pointer;
     visible(snapRing, Boolean(snapped));
     visible(snapGuide, Boolean(snapped) && Math.hypot(center.x - pointer.x, center.y - pointer.y) > 2);
     if (snapped) {
@@ -88,7 +92,7 @@ export function createGroundFeedback(
     outline.setAttribute("d", d);
     visible(crosshair, true);
     visible(outline, true);
-    const ring = footprintPath(snapped ?? target.position, map, resolve);
+    const ring = footprintPath(displayed, map, resolve);
     visible(footprint, Boolean(ring));
     visible(footprintAccent, Boolean(ring));
     if (ring) {
@@ -133,7 +137,7 @@ function footprintPath(
     const hit = resolve(pixel);
     if (hit.kind !== "available") return;
     const difference = Math.hypot(
-      (hit.position[0] - geographic[0]) * 111_320 * Math.cos(latitudeRadians),
+      wrapLongitude(hit.position[0] - geographic[0]) * 111_320 * Math.cos(latitudeRadians),
       (hit.position[1] - geographic[1]) * 111_320,
     );
     if (difference > radius * 0.3) return;

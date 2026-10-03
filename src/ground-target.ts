@@ -1,5 +1,6 @@
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { DrawingPosition } from "./drawing-types";
+import { position } from "./drawing-geometry";
 
 export type ScreenPoint = { x: number; y: number };
 type Hit = { x: number; y: number; toLngLat(): { lng: number; lat: number } };
@@ -38,8 +39,8 @@ export function createGroundTargetResolver(
       if (!terrainEnabled()) {
         if (!transform.isPointOnMapSurface(point)) return { kind: "unavailable", reason: "no-surface" };
         const location = map.unproject([point.x, point.y]);
-        return Number.isFinite(location.lng) && Number.isFinite(location.lat)
-          ? { kind: "available", position: [location.lng, location.lat] }
+        return Number.isFinite(location.lng) && Number.isFinite(location.lat) && Math.abs(location.lat) <= 90
+          ? { kind: "available", position: position([location.lng, location.lat]) }
           : { kind: "unavailable", reason: "no-surface" };
       }
       const terrain = renderer.terrain;
@@ -61,8 +62,8 @@ export function createGroundTargetResolver(
         if (!index.samplerPerTile.has(key)) continue;
         if (typeof index.samplerPerTile.get(key) !== "function") return { kind: "unavailable", reason: "no-elevation" };
         const location = hit.toLngLat();
-        return Number.isFinite(location.lng) && Number.isFinite(location.lat)
-          ? { kind: "available", position: [location.lng, location.lat] }
+        return Number.isFinite(location.lng) && Number.isFinite(location.lat) && Math.abs(location.lat) <= 90
+          ? { kind: "available", position: position([location.lng, location.lat]) }
           : capabilityMissing();
       }
       return { kind: "unavailable", reason: "no-elevation" };

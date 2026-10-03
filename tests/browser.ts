@@ -108,6 +108,1115 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
+  await run('Reliability entity coherent attachments reject empty space across the opposite world seam', async () => {
+    const air = createViewport({ container, basemap: style('#ffffff'), projection: 'flat',
+      camera: { center: [179, 0], zoom: 0 }, elevationSampler: { sample: () => 0 },
+      style: () => ({ color: '#0000ff', radius: 0 }), logger: () => {} });
+    current = air; await air.ready;
+    const feature: MapFeature = { ...point('seam-volume'), entity: { altitude: { meters: 1_000_000, reference: 'ground' },
+      attachments: [{ id: 'volume', type: 'sphere', radius: 300_000, color: '#ff0000' }] } };
+    const other: MapFeature = { ...point('unrelated'), geometry: { type: 'Point', coordinates: [90, 20] } };
+    let hits: string[] = [], attachments: string[] = [];
+    air.on('click', event => { hits = event.features.map(f => f.id); attachments = event.attachments.map(hit => hit.attachmentId); });
+    try {
+      for (const reversed of [false, true]) {
+        air.remove([feature.id, other.id]);
+        air.upsert(reversed ? [other, feature] : [feature, other]);
+        await until(() => air.getEntityState(feature.id)?.placement === 'airborne', 'seam volume placement');
+        for (const longitude of [179, -179]) {
+          air.setCamera({ center: [longitude, 0], zoom: 0 });
+          const visible = await new Promise<{ x: number; y: number } | undefined>((resolve, reject) => {
+            const timeout = window.setTimeout(() => reject(new Error('Timed out reading the sphere')), 8000);
+            air.map.once('render', () => {
+              window.clearTimeout(timeout);
+              const canvas = air.map.getCanvas(), gl = canvas.getContext('webgl2');
+              if (!gl) { reject(new Error('WebGL2 unavailable while reading the sphere')); return; }
+              const pixels = new Uint8Array(canvas.width * canvas.height * 4);
+              gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+              let strongest = 35, point: { x: number; y: number } | undefined;
+              const scale = canvas.width / canvas.clientWidth;
+              for (let index = 0; index < pixels.length; index += 4) {
+                const contrast = pixels[index]! - Math.max(pixels[index + 1]!, pixels[index + 2]!);
+                if (contrast <= strongest) continue;
+                strongest = contrast;
+                const pixel = index / 4;
+                point = { x: (pixel % canvas.width) / scale, y: (canvas.height - 1 - Math.floor(pixel / canvas.width)) / scale };
+              }
+              resolve(point);
+            });
+            air.map.triggerRepaint();
+          });
+          check(visible, 'Sphere control has no rendered red face');
+          const empty: [number, number] = [longitude, 0];
+          const pixel = await pixelAt(air, empty, 8000, 'empty viewport center');
+          await pointer('click', air.map.project(empty));
+          check(pixel.red === 255 && pixel.green === 255 && pixel.blue === 255 && hits.length === 0 && attachments.length === 0,
+            'Coherent attachment spans empty space ' + JSON.stringify({ pixel, hits, attachments, longitude, reversed }));
+          await pointer('click', visible!);
+          check(hits.includes(feature.id) && attachments.includes('volume'), 'Visible sphere face cannot be picked');
+        }
+      }
+    } finally { air.destroy(); }
+  });
+  await run('Reliability drawing insertion handles preserve displayed edges', async () => {
+    const draw = createViewport({ container, basemap: style(), terrain: false,
+      camera: { center: [0, 60], zoom: 4 }, logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused', properties: {} }), submit: () => ({ accepted: true }) });
+    try {
+      for (const [kind, center, vertices] of [
+        ['line', [0, 60], [[-20, 60], [20, 60]]],
+        ['arrow', [179.8, 60], [[179, 60], [-179, 60]]],
+        ['polygon', [179.8, 60], [[179, 60], [-179, 60], [-179, 61], [179, 61]]],
+      ] as const) {
+        const shape = { kind, vertices: vertices.map(([longitude, latitude]): [number, number] => [longitude, latitude]) };
+        const feature: MapFeature = { type: 'Feature', id: `insert-${kind}`, properties: {}, geometry: shapeGeometry(shape),
+          drawing: { version: 1, shape, style: { color: '#008855', fillColor: '#008855', lineWidth: 3,
+            fillOpacity: .2, dashed: false, label: '' } } };
+        draw.upsert([feature]); draw.setCamera({ center: [...center], zoom: kind === 'line' ? 4 : 7 });
+        for (const projection of ['flat', 'globe'] as const) {
+          draw.configure({ projection });
+          await until(() => draw.map.getProjection()?.type === (projection === 'flat' ? 'mercator' : 'globe'), 'insertion projection');
+          editor.edit(feature.id);
+          const button = container.querySelector<HTMLButtonElement>('[aria-label="Insert vertex after 1"]');
+          if (!button) throw new Error('Insertion handle missing');
+          const box = button.getBoundingClientRect(), canvas = draw.map.getCanvas().getBoundingClientRect();
+          const screen = { x: box.x + box.width / 2 - canvas.x, y: box.y + box.height / 2 - canvas.y };
+          const expected = draw.map.project(kind === 'line' ? [0, 60] : [180, 60]);
+          check(Math.hypot(screen.x - expected.x, screen.y - expected.y) < 1,
+            `${kind}/${projection} insertion handle was displaced from the displayed edge`);
+          await until(() => draw.map.queryRenderedFeatures([[screen.x - 2, screen.y - 2], [screen.x + 2, screen.y + 2]],
+            { layers: ['rl:draft-line'] }).length > 0, 'displayed edge beneath insertion handle');
+          await browserClick('[aria-label="Insert vertex after 1"]');
+          const inserted = editor.getState().draft?.shape;
+          if (!inserted || !('vertices' in inserted)) throw new Error('Inserted geometry missing');
+          check(inserted.vertices.length === vertices.length + 1 &&
+            Math.abs(inserted.vertices[1]![1] - 60) < 1e-10, 'Insertion bent the existing edge');
+          const point = draw.map.project([kind === 'line' ? inserted.vertices[1]![0] : 180, inserted.vertices[1]![1]]);
+          check(Math.hypot(point.x - screen.x, point.y - screen.y) < 1, 'Activation inserted another coordinate');
+          check(JSON.stringify(inserted.vertices.filter((_, i) => i !== 1)) === JSON.stringify(vertices), 'Insertion changed original vertices');
+          editor.cancel();
+        }
+        draw.remove([feature.id]);
+      }
+    } finally { editor.destroy(); draw.destroy(); }
+  });
+  await run('Reliability drawing snapping follows the pointer world copy at low zoom', async () => {
+    container.style.width = '800px';
+    const anchor: [number, number] = [-179, 0];
+    const draw = createViewport({ container, basemap: style(), terrain: false,
+      camera: { center: [0, 0], zoom: 0 }, features: [point('multi-world-anchor', anchor[0])], logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'multi-world-draft', properties: {} }), submit: () => ({ accepted: true }) });
+    try {
+      const screen = draw.map.project([181, 0]);
+      await until(() => draw.map.queryRenderedFeatures([[screen.x - 8, screen.y - 8], [screen.x + 8, screen.y + 8]],
+        { layers: ['rl:points'] }).some(f => f.properties._rl_feature_id === 'multi-world-anchor'), 'alternate visible world vertex');
+      editor.start('line');
+      await pointer('move', { x: screen.x + 4, y: screen.y + 3 });
+      const preview = editor.getPreview();
+      check(preview?.kind === 'line' && JSON.stringify(preview.vertices[0]) === JSON.stringify(anchor), 'Visible alternate world vertex was excluded from snapping');
+      const ring = container.querySelector<SVGCircleElement>('.rl-ground-snap-ring:not([hidden])');
+      check(!!ring && Math.hypot(Number(ring.getAttribute('cx')) - screen.x,
+        Number(ring.getAttribute('cy')) - screen.y) < 1, 'Low-zoom snap ring projected on the other visible copy');
+      await pointer('click', { x: screen.x + 4, y: screen.y + 3 });
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]');
+      if (!handle) throw new Error('Placed world-copy handle missing');
+      const box = handle.getBoundingClientRect(), canvas = draw.map.getCanvas().getBoundingClientRect();
+      check(Math.hypot(box.x + box.width / 2 - canvas.x - screen.x,
+        box.y + box.height / 2 - canvas.y - screen.y) < 1, 'Placed handle used the other visible copy');
+    } finally { editor.destroy(); draw.destroy(); container.style.width = ''; }
+  });
+  await run('Reliability drawing snap failures recover on the visible world copy and respect unavailable terrain', async () => {
+    container.style.width = '800px';
+    const closest: [number, number] = [-179, 0], healthy: [number, number] = [-174, 0];
+    const diagnostics: RidgelineError[] = [], cause = new Error('Alternate world snap failure');
+    const draw = createViewport({ container, basemap: style(), terrain: false,
+      camera: { center: [0, 0], zoom: 0 }, features: [point('world-failed', closest[0]), point('world-healthy', healthy[0])],
+      onError: error => diagnostics.push(error), logger: () => {} });
+    current = draw; await draw.ready;
+    let failed = true, calls = 0;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'world-failure-draft', properties: {} }),
+      canSnap: feature => { calls++; if (failed && feature.id === 'world-failed') throw cause; return true; },
+      submit: () => ({ accepted: true }) });
+    const screen = draw.map.project([181, 0]), input = { x: screen.x + 2, y: screen.y + 2 };
+    function expectSnap(coordinate: [number, number]) {
+      const preview = editor.getPreview(), expected = draw.map.project([coordinate[0] + 360, coordinate[1]]);
+      check(preview?.kind === 'line' && JSON.stringify(preview.vertices[0]) === JSON.stringify(coordinate),
+        `Alternate world resolution chose the wrong stored vertex: ${JSON.stringify(preview)}`);
+      const ring = container.querySelector<SVGCircleElement>('.rl-ground-snap-ring:not([hidden])');
+      check(!!ring && Math.hypot(Number(ring.getAttribute('cx')) - expected.x,
+        Number(ring.getAttribute('cy')) - expected.y) < 1, 'Recovered snap ring used the other visible world copy');
+    }
+    try {
+      await until(() => {
+        const hits = draw.map.queryRenderedFeatures([[input.x - 12, input.y - 12], [input.x + 12, input.y + 12]],
+          { layers: ['rl:points'] }).map(feature => feature.properties._rl_feature_id);
+        return hits.includes('world-failed') && hits.includes('world-healthy');
+      }, 'both alternate world candidates rendered');
+      editor.start('line');
+      await pointer('move', input);
+      expectSnap(healthy);
+      check(diagnostics.length === 1 && diagnostics[0]?.cause === cause && diagnostics[0]?.code === 'CALLBACK_FAILED' &&
+        diagnostics[0]?.context.operation === 'drawing.canSnap' && diagnostics[0]?.context.featureId === 'world-failed',
+      'Alternate world filter failure lost its diagnostic context');
+      failed = false; editor.setSnapping(true);
+      expectSnap(closest);
+      draw.configure({ terrain: true, elevation: { tiles: ['/missing-world-failure-dem.png'], encoding: 'terrarium', maxzoom: 0 } });
+      await until(() => !!container.querySelector('.rl-ground-unavailable:not([hidden])'), 'alternate world terrain unavailable');
+      const before = JSON.stringify(editor.getState().draft?.shape), beforeCalls = calls;
+      await pointer('click', input);
+      check(JSON.stringify(editor.getState().draft?.shape) === before && calls === beforeCalls,
+        'An eligible recovered world-copy vertex bypassed unavailable terrain');
+      draw.configure({ terrain: false });
+      await until(() => !!container.querySelector('.rl-ground-snap-ring:not([hidden])'), 'alternate world valid ground recovered');
+      expectSnap(closest);
+      await pointer('click', input);
+      const placed = editor.getState().draft?.shape;
+      check(placed?.kind === 'line' && JSON.stringify(placed.vertices) === JSON.stringify([closest]),
+        'Recovered world-copy placement did not retain the exact bounded coordinate');
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]');
+      if (!handle) throw new Error('Recovered world-copy handle missing');
+      const box = handle.getBoundingClientRect(), canvas = draw.map.getCanvas().getBoundingClientRect();
+      check(Math.hypot(box.x + box.width / 2 - canvas.x - screen.x,
+        box.y + box.height / 2 - canvas.y - screen.y) < 1, 'Recovered world-copy handle moved to the other visible copy');
+    } finally { editor.destroy(); draw.destroy(); container.style.width = ''; }
+  });
+  await run('Reliability drawing restores rejected handle edits on a third visible world copy', async () => {
+    container.style.width = '1600px';
+    const line: MapFeature = { type: 'Feature', id: 'third-copy-line', properties: {},
+      geometry: { type: 'LineString', coordinates: [[179, 0], [80, 40]] } };
+    const draw = createViewport({ container, basemap: style(), terrain: false, features: [line],
+      camera: { center: [0, 0], zoom: 0 }, logger: () => {} });
+    current = draw; await draw.ready;
+    // The public MapLibre camera extension keeps multiple longitude turns in
+    // view while accepted drawing coordinates remain bounded.
+    draw.map.setCenter([-720, 0]);
+    check(draw.map.getCenter().lng === -720, 'Native renderer did not retain the unwrapped center');
+    let armed = false, callbacks = 0, permissionReads = 0;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'third-copy-edit', properties: {} }),
+      canEdit: () => { permissionReads++; return true; },
+      canSnap: feature => {
+        if (!armed || feature.id !== 'third-copy-anchor') return false;
+        callbacks++; editor.setSnapping(true); return true;
+      }, submit: () => ({ accepted: true }) });
+    try {
+      if (!window.browserMouse) throw new Error('Third-copy reentrant native bridge missing');
+      editor.setSnapping(false); editor.edit(line.id);
+      const original = draw.map.project([-541, 0]), canvas = draw.map.getCanvas().getBoundingClientRect();
+      const next = { x: original.x - 10, y: original.y + 10 };
+      const coordinate = draw.map.unproject([next.x, next.y]).wrap().toArray();
+      draw.upsert([{ ...point('third-copy-anchor'), geometry: { type: 'Point', coordinates: coordinate } }]);
+      await until(() => draw.map.queryRenderedFeatures([[next.x - 12, next.y - 12], [next.x + 12, next.y + 12]],
+        { layers: ['rl:points'] }).some(feature => feature.properties._rl_feature_id === 'third-copy-anchor'),
+      'third-copy reentrant anchor rendered');
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]');
+      if (!handle) throw new Error('Third-copy reentrant handle missing');
+      const initial = JSON.stringify(editor.getState().draft?.shape), box = handle.getBoundingClientRect();
+      check(Math.hypot(box.left + box.width / 2 - canvas.left - original.x,
+        box.top + box.height / 2 - canvas.top - original.y) < 2, 'Third-copy reentrant placement did not establish the original world copy');
+      check(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) === handle, 'Another handle obscures the third-copy vertex');
+      await window.browserMouse('down', box.left + box.width / 2, box.top + box.height / 2);
+      const readsBefore = permissionReads;
+      await window.browserMouse('move', canvas.left + original.x - 5, canvas.top + original.y);
+      check(permissionReads > readsBefore && JSON.stringify(editor.getState().draft?.shape) !== initial,
+        'Third-copy edit did not establish an active valid native gesture');
+      editor.setSnapping(true);
+      const before = JSON.stringify(editor.getState().draft?.shape), held = handle.getBoundingClientRect();
+      armed = true;
+      await window.browserMouse('move', canvas.left + next.x, canvas.top + next.y);
+      check(callbacks >= 1 && JSON.stringify(editor.getState().draft?.shape) === before,
+        'Reentrant snap settings did not invalidate movement without changing the draft');
+      const shown = handle.getBoundingClientRect();
+      check(Math.hypot(shown.left - held.left, shown.top - held.top) < 2,
+        `Reentrant snap restoration moved the handle to another visible world copy: ${JSON.stringify({ held: held.toJSON(), shown: shown.toJSON(), before })}`);
+      await window.browserMouse('up', canvas.left + next.x, canvas.top + next.y);
+      const settled = handle.getBoundingClientRect();
+      check(JSON.stringify(editor.getState().draft?.shape) === before && Math.hypot(settled.left - held.left, settled.top - held.top) < 2, 'Drag release changed the retained vertex or its world copy');
+      check(JSON.stringify(draw.getFeature(line.id)) === JSON.stringify(line), 'Rejected dragging changed the accepted feature');
+    } finally { armed = false; editor.destroy(); draw.destroy(); container.style.width = ''; }
+  });
+  await run('Reliability drawing preserves rejected handle edits after camera turns and reversal', async () => {
+    container.style.width = '1600px';
+    const line: MapFeature = { type: 'Feature', id: 'camera-copy-line', properties: {},
+      geometry: { type: 'LineString', coordinates: [[179, 0], [80, 40]] } };
+    const draw = createViewport({ container, basemap: style(), terrain: false, features: [line],
+      camera: { center: [0, 0], zoom: 0 }, logger: () => {} });
+    current = draw; await draw.ready;
+    let armed = false, callbacks = 0, permissionReads = 0;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused-camera-copy', properties: {} }),
+      canEdit: () => { permissionReads++; return true; },
+      canSnap: feature => {
+        if (!armed || feature.id !== 'camera-copy-anchor') return false;
+        callbacks++; editor.setSnapping(true); return true;
+      }, submit: () => ({ accepted: true }) });
+    try {
+      if (!window.browserMouse) throw new Error('Camera-copy native bridge missing');
+      editor.edit(line.id);
+      const before = JSON.stringify(editor.getState().draft?.shape);
+      // Camera movement wraps the live marker without rerendering the draft.
+      for (let longitude = 90; longitude <= 1440; longitude += 90)
+        draw.map.jumpTo({ center: [longitude, 0], zoom: 0 });
+      for (let longitude = 1350; longitude >= 720; longitude -= 90)
+        draw.map.jumpTo({ center: [longitude, 0], zoom: 0 });
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      check(draw.map.getCenter().lng === 720 && JSON.stringify(editor.getState().draft?.shape) === before,
+        'Camera turns changed the draft or lost the unwrapped renderer center');
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]');
+      if (!handle) throw new Error('Camera-copy handle missing');
+      const held = handle.getBoundingClientRect(), canvas = draw.map.getCanvas().getBoundingClientRect();
+      const original = { x: held.left + held.width / 2 - canvas.left, y: held.top + held.height / 2 - canvas.top };
+      const location = draw.map.unproject([original.x, original.y]);
+      const expected = draw.map.project([899, 0]);
+      check(Math.abs(location.lng) > 720 && Math.hypot(original.x - expected.x, original.y - expected.y) < 1,
+        `Camera turns did not establish a distant current marker copy: ${JSON.stringify({ longitude: location.lng, held: held.toJSON() })}`);
+      const hit = document.elementFromPoint(held.left + held.width / 2, held.top + held.height / 2);
+      check(hit === handle || !!hit && handle.contains(hit), 'Native camera-copy press would hit another handle');
+      const target = { x: original.x - 10, y: original.y + 10 };
+      draw.upsert([{ ...point('camera-copy-anchor'), geometry: { type: 'Point', coordinates: draw.map.unproject([target.x, target.y]).wrap().toArray() } }]);
+      await until(() => draw.map.queryRenderedFeatures([[target.x - 12, target.y - 12], [target.x + 12, target.y + 12]],
+        { layers: ['rl:points'] }).some(feature => feature.properties._rl_feature_id === 'camera-copy-anchor'),
+      'camera-copy snap anchor rendered');
+      editor.setSnapping(true);
+      await window.browserMouse('down', canvas.left + original.x, canvas.top + original.y);
+      const readsBefore = permissionReads;
+      armed = true;
+      await window.browserMouse('move', canvas.left + target.x, canvas.top + target.y);
+      check(permissionReads > readsBefore && callbacks >= 1 && JSON.stringify(editor.getState().draft?.shape) === before,
+        `Native camera-copy movement did not run its rejected gesture: ${JSON.stringify({ readsBefore, permissionReads, callbacks, before, after: editor.getState().draft?.shape })}`);
+      const shown = handle.getBoundingClientRect();
+      check(Math.hypot(shown.left - held.left, shown.top - held.top) < 2,
+        `Rejected editing restored a stale camera copy: ${JSON.stringify({ longitude: location.lng, held: held.toJSON(), shown: shown.toJSON() })}`);
+      await window.browserMouse('up', canvas.left + target.x, canvas.top + target.y);
+      armed = false;
+      const settled = handle.getBoundingClientRect();
+      check(JSON.stringify(editor.getState().draft?.shape) === before && Math.hypot(settled.left - held.left, settled.top - held.top) < 2,
+        'Settling rejected editing changed its draft or current marker copy');
+      check(JSON.stringify(draw.getFeature(line.id)) === JSON.stringify(line), 'Camera-copy editing changed accepted feature data');
+    } finally { armed = false; editor.destroy(); draw.destroy(); container.style.width = ''; }
+  });
+  await run('Reliability drawing keyboard movement excludes carried shape vertices', async () => {
+    const draw = createViewport({ container, basemap: style(), terrain: false,
+      camera: { center: [0, 0], zoom: 16 }, logger: () => {} });
+    current = draw; await draw.ready;
+    const origin = draw.map.project([0, 0]);
+    const circleShape = { kind: 'circle' as const, center: [0, 0] as [number, number], radius: 15 };
+    const circle: MapFeature = { type: 'Feature', id: 'carried-circle', properties: {}, geometry: shapeGeometry(circleShape),
+      drawing: { version: 1, shape: circleShape, style: { color: '#008855', fillColor: '#008855', lineWidth: 2,
+        fillOpacity: .2, dashed: false, label: '' } } };
+    const endpoints = [-16, 16].map(x => draw.map.unproject([origin.x + x, origin.y]).toArray());
+    const line: MapFeature = { type: 'Feature', id: 'carried-line', properties: {},
+      geometry: { type: 'LineString', coordinates: endpoints } };
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused', properties: {} }), submit: () => ({ accepted: true }) });
+    try {
+      for (const [feature, label] of [[circle, 'Center'], [line, 'Move drawing']] as const) {
+        draw.upsert([feature]); editor.edit(feature.id);
+        const handle = container.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`);
+        if (!handle) throw new Error(`${label} handle missing`);
+        handle.focus();
+        await browserKey('ArrowRight');
+        const shape = editor.getState().draft?.shape;
+        let center: [number, number];
+        if (shape?.kind === 'circle') {
+          check(shape.radius === 15, 'Center movement changed the circle radius');
+          center = shape.center;
+        } else if (shape?.kind === 'line') center = [(shape.vertices[0]![0] + shape.vertices[1]![0]) / 2,
+          (shape.vertices[0]![1] + shape.vertices[1]![1]) / 2];
+        else throw new Error('Carried shape missing');
+        const screen = draw.map.project(center);
+        check(Math.abs(screen.x - origin.x - 10) < 1 && Math.abs(screen.y - origin.y) < 1,
+          'Carried shape snapped to one of its own vertices');
+        check(document.activeElement === handle, 'Carried shape movement lost focus');
+        editor.cancel(); draw.remove([feature.id]);
+      }
+    } finally { editor.destroy(); draw.destroy(); }
+  });
+  await run('Reliability drawing keyboard snapping follows pointer policy', async () => {
+    const draw = createViewport({ container, basemap: style(), terrain: false,
+      camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+    current = draw; await draw.ready;
+    const origin = draw.map.project([0, 0]);
+    const target = draw.map.unproject([origin.x + 16, origin.y]).toArray();
+    const end = draw.map.unproject([origin.x + 60, origin.y + 60]).toArray();
+    const line: MapFeature = { type: 'Feature', id: 'keyboard-line', properties: {},
+      geometry: { type: 'LineString', coordinates: [[0, 0], end] } };
+    draw.upsert([line, { type: 'Feature', id: 'keyboard-anchor', properties: {},
+      geometry: { type: 'Point', coordinates: target } }]);
+    await until(() => draw.map.queryRenderedFeatures({ layers: ['rl:points'] })
+      .some(f => f.properties._rl_feature_id === 'keyboard-anchor'), 'keyboard anchor rendered');
+    let excluded = false;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused', properties: {} }),
+      canSnap: feature => feature.id !== 'keyboard-anchor' || !excluded, submit: () => ({ accepted: true }) });
+    const vertex = () => {
+      const shape = editor.getState().draft?.shape;
+      if (shape?.kind !== 'line') throw new Error('Keyboard line draft missing');
+      return shape.vertices[0]!;
+    };
+    const exact = () => JSON.stringify(vertex()) === JSON.stringify(target);
+    const freeStep = () => {
+      const screen = draw.map.project(vertex());
+      check(!exact() && Math.abs(screen.x - origin.x - 10) < 1 && Math.abs(screen.y - origin.y) < 1, 'Bypass did not make a free 10-pixel ground edit');
+    };
+    try {
+      editor.edit(line.id);
+      await browserClick('[aria-label="Vertex 1"]');
+      container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]')!.focus();
+      check(document.activeElement?.getAttribute('aria-label') === 'Vertex 1', 'Keyboard handle was not focused');
+      await browserKey('ArrowRight');
+      check(exact(), `Keyboard edit missed an eligible vertex: ${JSON.stringify({ actual: vertex(), target })}`);
+      check(document.activeElement?.getAttribute('aria-label') === 'Vertex 1', 'Snapping lost handle focus');
+      await browserKey('ControlOrMeta+z');
+      check(JSON.stringify(vertex()) === JSON.stringify([0, 0]), 'Undo did not restore the original keyboard vertex');
+      await browserKey('Alt+ArrowRight'); freeStep();
+      await browserKey('ControlOrMeta+z');
+      editor.setSnapping(false);
+      await browserKey('ArrowRight'); freeStep();
+      await browserKey('ControlOrMeta+z');
+      editor.setSnapping(true); excluded = true;
+      await browserKey('ArrowRight'); freeStep();
+      await browserKey('ControlOrMeta+z'); excluded = false;
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]')!;
+      const box = handle.getBoundingClientRect(), canvas = draw.map.getCanvas().getBoundingClientRect();
+      await browserDrag(box.x + box.width / 2, box.y + box.height / 2,
+        canvas.x + origin.x + 10, canvas.y + origin.y);
+      check(exact(), 'Pointer and keyboard edits disagreed on the same snap target');
+      await browserKey('ControlOrMeta+z');
+      const unchanged = JSON.stringify(editor.getState().draft?.shape);
+      draw.configure({ terrain: true, elevation: { tiles: ['/missing-keyboard-dem.png'], encoding: 'terrarium', maxzoom: 0 } });
+      await browserClick('[aria-label="Vertex 1"]');
+      container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]')!.focus();
+      await browserKey('Shift+ArrowRight');
+      check(JSON.stringify(editor.getState().draft?.shape) === unchanged, 'Unavailable ground changed the keyboard draft');
+      check(document.activeElement?.getAttribute('aria-label') === 'Vertex 1', 'Unavailable ground lost keyboard focus');
+    } finally { editor.destroy(); draw.destroy(); }
+  });
+  for (const projection of ['flat', 'globe'] as const) for (const terrain of [false, true]) {
+    await run(`Reliability drawing date-line storage snapping and reload ${projection} ${terrain ? 'with' : 'without'} terrain`, async () => {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!;
+    context.fillStyle = 'rgb(128,100,0)'; context.fillRect(0, 0, 256, 256);
+    const image = await (await fetch(dem.toDataURL())).arrayBuffer();
+    const protocol = `reliable-world-${crypto.randomUUID()}`;
+    addProtocol(protocol, async () => ({ data: image.slice(0) }));
+    const anchor: [number, number] = [-179.65, 0];
+    const elevation = { tiles: [`${protocol}://dem/{z}/{x}/{y}.png`], encoding: 'terrarium' as const, maxzoom: 0 };
+    try {
+        const options = { container, basemap: style(), terrain, elevation, projection,
+          camera: { center: [179.8, 0] as [number, number], zoom: 7, pitch: projection === 'globe' ? 50 : 0 }, logger: () => {} };
+        let draw = createViewport({ ...options, features: [point('world-anchor', anchor[0])] });
+        current = draw; await draw.ready;
+        if (terrain) await until(() => draw.map.loaded() && Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - 100) < 1,
+          `${projection} date-line elevation loaded`);
+        let editor = attachDrawing(draw, { createFeature: () => ({ id: 'world-line', properties: {} }),
+          submit: () => ({ accepted: true }) });
+        try {
+          editor.start('line'); editor.setSnapping(false);
+          await pointer('click', draw.map.project([179.4, 0]));
+          const canonicalGlobeTerrain = projection === 'globe' && terrain;
+          if (canonicalGlobeTerrain) {
+            // The pinned globe renderer loads DEM samplers on its canonical
+            // side. Navigate across the seam before placing on western terrain.
+            const canvas = draw.map.getCanvas().getBoundingClientRect();
+            await browserDrag(canvas.x + 340, canvas.y + 250, canvas.x + 250, canvas.y + 250);
+            draw.setCamera({ center: [-179.8, 0] });
+            await until(() => draw.map.loaded() && Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - 100) < 1,
+              'western globe terrain loaded');
+          }
+          const across = draw.map.project(canonicalGlobeTerrain ? [-179.6, 0] : [180.4, 0]);
+          await pointer('move', across);
+          await until(() => !!container.querySelector('.rl-ground-crosshair:not([hidden])'), `${projection}/${terrain} date-line ground`);
+          const preview = editor.getPreview();
+          if (preview?.kind !== 'line') throw new Error('Date-line preview missing');
+          const next = preview.vertices.at(-1)!;
+          check(Math.abs(next[0]) <= 180 && Math.abs(next[1]) <= 90, `Date-line target is unbounded: ${next}`);
+          await pointer('click', across);
+          check(await editor.finish(), `${projection}/${terrain} date-line Finish failed`);
+          const saved = draw.getFeature('world-line');
+          if (!saved?.drawing || saved.geometry.type !== 'LineString') throw new Error('Saved date-line line missing');
+          check(saved.geometry.coordinates.every(p => Math.abs(p[0]!) <= 180) &&
+            saved.geometry.coordinates[0]![0]! > 0 && saved.geometry.coordinates[1]![0]! < 0, 'Crossing geometry was not bounded');
+          const restored: MapFeature = JSON.parse(JSON.stringify(saved));
+          editor.destroy(); draw.destroy();
+          draw = createViewport({ ...options, camera: { ...options.camera,
+            center: canonicalGlobeTerrain ? [-179.8, 0] : options.camera.center },
+            features: [restored, point('world-anchor', anchor[0])] });
+          current = draw; await draw.ready;
+          if (terrain) await until(() => draw.map.loaded() && Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - 100) < 1,
+            `${projection} reloaded date-line elevation`);
+          editor = attachDrawing(draw, { createFeature: () => ({ id: 'world-snap', properties: {} }),
+            canSnap: feature => feature.id === 'world-anchor', submit: () => ({ accepted: true }) });
+          editor.edit('world-line');
+          check(JSON.stringify(editor.getState().draft?.shape) === JSON.stringify(restored.drawing?.shape), 'Reload changed shape definition');
+          const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]');
+          if (!handle) throw new Error('Reloaded date-line handle missing');
+          const box = handle.getBoundingClientRect(), canvas = draw.map.getCanvas().getBoundingClientRect();
+          const visible = draw.map.project(canonicalGlobeTerrain ? [-179.6, 0] : [180.4, 0]);
+          check(Math.hypot(box.x + box.width / 2 - canvas.x - visible.x,
+            box.y + box.height / 2 - canvas.y - visible.y) < 2, 'Reloaded handle used another world copy');
+          check(await editor.finish(), 'Reloaded date-line edit could not finish');
+          await until(() => draw.map.queryRenderedFeatures({ layers: ['rl:points'] }).some(f => f.properties._rl_feature_id === 'world-anchor'), 'date-line snap anchor');
+          editor.start('line');
+          const screen = draw.map.project(canonicalGlobeTerrain ? anchor : [180.35, 0]);
+          await pointer('move', { x: screen.x + 5, y: screen.y + 3 });
+          const ring = container.querySelector<SVGCircleElement>('.rl-ground-snap-ring:not([hidden])');
+          check(!!ring && Math.hypot(Number(ring.getAttribute('cx')) - screen.x,
+            Number(ring.getAttribute('cy')) - screen.y) < 1, `Snap feedback projected a distant world copy: ${JSON.stringify({
+              projection, terrain, screen, ring: ring?.outerHTML, preview: editor.getPreview(),
+              hits: draw.map.queryRenderedFeatures([[screen.x - 12, screen.y - 12], [screen.x + 12, screen.y + 12]], { layers: ['rl:points', 'rl:line'] }).map(f => f.properties._rl_feature_id) })}`);
+          await pointer('click', { x: screen.x + 5, y: screen.y + 3 });
+          const snapped = editor.getState().draft?.shape;
+          check(snapped?.kind === 'line' && snapped.vertices[0]?.[0] === anchor[0] &&
+            snapped.vertices[0]?.[1] === anchor[1], 'Snap did not copy the stored vertex exactly');
+          await pointer('move', { x: screen.x + 5, y: screen.y + 3 });
+          draw.setCamera({ center: canonicalGlobeTerrain ? [-179.78, 0] : [179.82, 0] });
+          await until(() => {
+            const moved = draw.map.project(canonicalGlobeTerrain ? anchor : [180.35, 0]);
+            const currentRing = container.querySelector<SVGCircleElement>('.rl-ground-snap-ring:not([hidden])');
+            return !!currentRing && Math.hypot(Number(currentRing.getAttribute('cx')) - moved.x,
+              Number(currentRing.getAttribute('cy')) - moved.y) < 1;
+          }, 'stationary date-line snap feedback follows view');
+          if (terrain) {
+            const before = JSON.stringify(editor.getState().draft?.shape);
+            draw.configure({ elevation: { tiles: ['/missing-world-dem.png'], encoding: 'terrarium', maxzoom: 0 } });
+            await until(() => !!container.querySelector('.rl-ground-unavailable:not([hidden])'), 'date-line replacement retires old elevation');
+            await pointer('click', { x: screen.x + 5, y: screen.y + 3 });
+            check(JSON.stringify(editor.getState().draft?.shape) === before, 'Missing replacement elevation reused old globe coverage');
+          }
+        } finally { editor.destroy(); draw.destroy(); }
+    } finally { removeProtocol(protocol); }
+    });
+  }
+  await run('Reliability entity nonsimple attachment polygons reject mixed batches before accepted or rendered changes', async () => {
+    const air = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 },
+      elevationSampler: { sample: () => 0 }, logger: () => {} });
+    current = air; await air.ready;
+    const original: MapFeature = { ...point('accepted'), properties: { name: 'Original' } };
+    const valid: MapFeature = { ...point('valid-area', .002), entity: { attachments: [{ id: 'area', type: 'polygon',
+      vertices: [[0, 0], [100, 0], [100, 100], [0, 100]], color: '#ff0000',
+    }] } };
+    try {
+      air.upsert([original, valid]);
+      await until(() => air.map.queryRenderedFeatures(air.map.project([0, 0]), { layers: ['rl:points'] })
+        .some(hit => hit.properties._rl_feature_id === original.id), 'accepted point before invalid batch');
+      await until(() => air.map.queryRenderedFeatures(air.map.project([.0024, .0004]), { layers: ['rl:entity-ground-fill'] })
+        .some(hit => hit.properties.entityId === valid.id), 'valid attachment before invalid batch');
+      const before = air.getFeatures();
+      for (const vertices of [
+        [[0, 0], [200, 0], [100, 0], [200, 200], [0, 200]],
+        [[0, 0], [200, 0], [200, 200], [100, 0], [0, 200]],
+      ] satisfies [number, number][][]) {
+        const invalid: MapFeature = { ...point('invalid-area'), entity: { attachments: [{ id: 'area', type: 'polygon', vertices }] } };
+        let rejected = false;
+        try { air.upsert([{ ...original, properties: { name: 'Changed' }, geometry: { type: 'Point', coordinates: [.001, 0] } }, point('new'), invalid]); }
+        catch (error) { check(error instanceof RidgelineError && error.code === 'INVALID_FEATURE', 'Wrong polygon validation error'); rejected = true; }
+        check(rejected, 'Nonsimple attachment boundary was accepted');
+        check(JSON.stringify(air.getFeatures()) === JSON.stringify(before), 'Invalid mixed batch mutated accepted data');
+      }
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      const rendered = air.map.queryRenderedFeatures(undefined, { layers: ['rl:points'] });
+      check(air.map.queryRenderedFeatures(air.map.project([0, 0]), { layers: ['rl:points'] })
+        .some(hit => hit.properties._rl_feature_id === original.id), 'Invalid batch moved rendered accepted point');
+      check(!rendered.some(hit => hit.properties._rl_feature_id === 'new'), 'Invalid batch rendered a new feature');
+      const adjacent: MapFeature = { ...valid, entity: { attachments: [{ id: 'area', type: 'polygon',
+        vertices: [[0, 0], [50, 0], [100, 0], [100, 100], [0, 100]], color: '#ff0000',
+      }] } };
+      air.upsert([adjacent]);
+      check(air.getFeature(valid.id)?.entity?.attachments?.[0]?.type === 'polygon', 'Valid adjacent corners were rejected');
+    } finally { air.destroy(); }
+  });
+  await run('Reliability publication retires styling when callbacks replace the basemap', async () => {
+    for (const initial of [true, false]) {
+      let replace = initial;
+      let map: Viewport | undefined;
+      const diagnostics: RidgelineError[] = [];
+      map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+        features: [point('scene-current')], logger: () => {}, onError: error => diagnostics.push(error),
+        style: () => {
+          if (replace && map) {
+            replace = false;
+            map.configure({ basemap: style('#ccddee') });
+            map.upsert([point('scene-current', .03)]);
+            map.setSelection(['scene-current']);
+          }
+          return { color: '#ff0000' };
+        },
+      });
+      current = map;
+      try {
+        await map.ready;
+        if (!initial) { replace = true; map.configure({ basemap: style('#eedddd') }); }
+        const active = map;
+        await until(() => Boolean(active.map.getLayer('rl:points')) && active.map.queryRenderedFeatures({ layers: ['rl:points'] })
+          .some(hit => hit.properties._rl_feature_id === 'scene-current' && hit.geometry.type === 'Point' && hit.geometry.coordinates[0]! > .02),
+          `${initial ? 'initial' : 'later'} replacement renders current geometry`);
+        check(active.getSelection()[0] === 'scene-current', 'Basemap replacement lost current selection');
+        check(active.map.getFeatureState({ source: 'rl:features', id: 'rl:scene-current' }).selected === true, 'Replacement lost selection display');
+        check(!diagnostics.some(error => error.code === 'STYLE_FAILED'), 'Obsolete restoration reported a style failure');
+      } finally { map.destroy(); }
+    }
+  });
+
+  await run('Reliability publication keeps updates made during icon registration', async () => {
+    let replace = false;
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+      features: [point('icon-current')], logger: () => {}, style: () => {
+        if (replace) { replace = false; map.upsert([point('icon-current', .03)]); }
+        return { icon: 'callback-icon' };
+      },
+    });
+    current = map;
+    try {
+      await map.ready;
+      replace = true;
+      map.registerIcon('callback-icon', { image: new ImageData(1, 1) });
+      await until(() => map.map.queryRenderedFeatures({ layers: ['rl:points'] }).some(hit =>
+        hit.properties._rl_feature_id === 'icon-current' && hit.geometry.type === 'Point' && hit.geometry.coordinates[0]! > .02), 'icon refresh renders the accepted callback update');
+      const feature = map.getFeature('icon-current');
+      check(feature?.geometry.type === 'Point' && feature.geometry.coordinates[0] === .03, 'Icon callback update was not accepted');
+    } finally { map.destroy(); }
+  });
+  await run('Reliability publication keeps removals and scene changes made by later icon callbacks', async () => {
+    for (const action of ['remove', 'scene', 'destroy']) {
+      let armed = false, afterDestroy = 0;
+      const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+        features: [point('icon-earlier'), point('icon-trigger', -.03), point('icon-later', .06)], logger: () => {},
+        style: feature => {
+          if (armed && feature.id === 'icon-trigger') {
+            armed = false;
+            if (action === 'remove') map.remove(['icon-earlier']);
+            else if (action === 'scene') { map.configure({ basemap: style('#ccddee') }); map.upsert([point('icon-earlier', .03)]); }
+            else map.destroy();
+          } else if (action === 'destroy' && !map.getFeature('icon-trigger') && feature.id === 'icon-later') afterDestroy++;
+          return { icon: 'callback-icon' };
+        },
+      });
+      current = map;
+      try {
+        await map.ready;
+        armed = true;
+        map.registerIcon('callback-icon', { image: new ImageData(1, 1) });
+        if (action === 'destroy') { check(afterDestroy === 0, 'Styling continued after viewport destruction'); continue; }
+        await map.map.once('idle');
+        const hits = map.map.queryRenderedFeatures({ layers: ['rl:points'] });
+        if (action === 'remove') {
+          check(!map.getFeature('icon-earlier') && !hits.some(hit => hit.properties._rl_feature_id === 'icon-earlier'), 'A later icon callback restored a removed feature');
+        } else {
+          check(hits.some(hit => hit.properties._rl_feature_id === 'icon-earlier' && hit.geometry.type === 'Point' && hit.geometry.coordinates[0]! > .02), 'Icon refresh overwrote the replacement scene');
+        }
+      } finally { map.destroy(); }
+    }
+  });
+  await run('Reliability publication runs a requested reset after a held update settles', async () => {
+    const mount = document.createElement('div');
+    mount.style.cssText = 'width:320px;height:240px;position:absolute;left:0;top:0';
+    document.body.append(mount);
+    const onAdd = GeoJSONSource.prototype.onAdd;
+    let rejected = false, workerLoads = 0;
+    GeoJSONSource.prototype.onAdd = function(map) {
+      if (this.id === 'rl:features') {
+        this.actorPromise = this.actorPromise.then(actor => new Proxy(actor, {
+          get(target, property, receiver) {
+            if (property !== 'sendAsync') return Reflect.get(target, property, receiver);
+            const send = target.sendAsync.bind(target);
+            return new Proxy(send, { apply(fn, receiver, args) {
+              const message: unknown = args[0];
+              if (message && typeof message === 'object' && 'type' in message && message.type === 'LD') {
+                workerLoads++;
+                if (!rejected) {
+                  rejected = true;
+                  return Promise.reject(new Error('Injected GeoJSON worker load rejection'));
+                }
+              }
+              return Reflect.apply(fn, receiver, args);
+            } });
+          },
+        }));
+      }
+      onAdd.call(this, map);
+    };
+    let map: Viewport | undefined;
+    try {
+      map = createViewport({ container: mount, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+        features: [point('worker-latest'), point('worker-removed')], logger: () => {} });
+      const active = map;
+      const diagnostics: RidgelineError[] = [];
+      active.on('diagnostic', error => diagnostics.push(error));
+      await active.ready;
+      await until(() => rejected && diagnostics.some(error => error.code === 'UPDATE_FAILED' && error.context.sourceId === 'rl:features'),
+        'initial GeoJSON worker rejection reported');
+      const rendered = () => active.map.queryRenderedFeatures({ layers: ['rl:points'] });
+      check(!rendered().some(hit => hit.properties._rl_feature_id === 'worker-latest'), 'Failed initial load appeared before retry');
+      const source = active.map.getSource('rl:features');
+      if (!(source instanceof GeoJSONSource)) throw new Error('Missing feature source');
+      let settle: (() => void) | undefined;
+      source.updateData = () => new Promise<void>(resolve => { settle = resolve; });
+      active.upsert([{ ...point('worker-latest', .03), properties: { name: 'Latest' } }]);
+      active.remove(['worker-removed']);
+      await until(() => Boolean(settle), 'held publication began');
+      active.retryUpdates();
+      settle!();
+      await until(() => rendered().some(hit => hit.properties._rl_feature_id === 'worker-latest' &&
+        hit.geometry.type === 'Point' && hit.geometry.coordinates[0]! > .02) &&
+        !rendered().some(hit => hit.properties._rl_feature_id === 'worker-removed'), 'worker recovery with latest snapshot');
+      check(workerLoads >= 2, 'Retry did not reach the GeoJSON worker');
+    } finally {
+      map?.destroy();
+      GeoJSONSource.prototype.onAdd = onAdd;
+      mount.remove();
+    }
+  });
+  await run('Reliability content keeps a menu closed when its factory closes synchronously', async () => {
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 }, logger: () => {} });
+    current = map; await map.ready;
+    let disposed = 0, opened = 0;
+    const content = document.createElement('button'); content.textContent = 'Obsolete action';
+    const interactions = attachInteractions(map, { contextMenu: (_, close) => {
+      opened++; close(); return { element: content, dispose: () => { disposed++; } };
+    } });
+    try {
+      const canvas = map.map.getCanvas(); canvas.focus();
+      const rect = canvas.getBoundingClientRect();
+      if (!window.browserDrag) throw new Error('Browser input bridge unavailable');
+      await window.browserDrag(rect.left + 200, rect.top + 200, rect.left + 200, rect.top + 200, 'right');
+      check(opened === 1, 'Native right click did not reach the menu factory');
+      check(!container.querySelector('.rl-context') && !content.isConnected, 'Synchronous close reopened obsolete menu content');
+      check(disposed === 1, 'Synchronous close did not release returned content once');
+      check(document.activeElement === canvas, 'Closed content stole keyboard focus');
+      await browserKey('Escape');
+      interactions.destroy(); interactions.destroy();
+      check(disposed === 1, 'Repeated teardown disposed closed content twice');
+    } finally { interactions.destroy(); map.destroy(); }
+  });
+  await run('Reliability content keeps a menu opened by tooltip disposal during a native picker click', async () => {
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+      features: [point('tooltip-replacement-a'), point('tooltip-replacement-b')], logger: () => {} });
+    current = map; await map.ready;
+    const canvas = map.map.getCanvas(), location = map.map.project([0, 0]);
+    const replacement = document.createElement('button'); replacement.textContent = 'Replacement action';
+    let replace = false, tooltipDisposed = 0, opened = 0, menuDisposed = 0;
+    const interactions = attachInteractions(map, {
+      renderFeature: feature => {
+        const element = document.createElement('span'); element.textContent = feature.id;
+        return { element, dispose: () => {
+          if (!replace) return;
+          replace = false; tooltipDisposed++;
+          // Only the consumer disposer introduces a nested interaction; hover
+          // and the outer picker request use native browser input.
+          map.map.fire('contextmenu', { point: location, lngLat: map.map.unproject(location), originalEvent: new MouseEvent('contextmenu') });
+        } };
+      },
+      contextMenu: () => { opened++; return { element: replacement, dispose: () => { menuDisposed++; } }; },
+    });
+    try {
+      await until(() => map.map.queryRenderedFeatures({ layers: ['rl:points'] }).length === 2, 'tooltip replacement candidates render');
+      canvas.focus();
+      await pointer('move', location);
+      await until(() => !!container.querySelector('.rl-tooltip'), 'native hover mounted disposable tooltip');
+      replace = true;
+      await pointer('click', location);
+      check(tooltipDisposed === 1 && opened === 1, 'Native click did not exercise replacement from tooltip disposal');
+      check(replacement.isConnected && !!container.querySelector('.rl-context'), 'Tooltip disposal replacement menu did not mount');
+      check(!container.querySelector('.rl-picker'), 'Obsolete native click mounted a picker over the replacement menu');
+      check(document.activeElement === replacement && menuDisposed === 0, 'Obsolete native click changed replacement focus or lifetime');
+      await browserKey('Escape');
+      check(!container.querySelector('.rl-context, .rl-picker') && !replacement.isConnected && menuDisposed === 1,
+        'Keyboard dismissal left replacement content mounted or disposed it incorrectly');
+      check(document.activeElement === canvas, 'Replacement dismissal did not restore canvas focus');
+      interactions.destroy(); interactions.destroy();
+      check(tooltipDisposed === 1 && menuDisposed === 1, 'Repeated teardown repeated replacement disposal');
+    } finally { replace = false; interactions.destroy(); map.destroy(); }
+  });
+  await run('Reliability content keeps replacement focus when a menu disposer opens another menu', async () => {
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 }, logger: () => {} });
+    current = map; await map.ready;
+    const canvas = map.map.getCanvas();
+    let opened = 0, oldDisposed = 0, newDisposed = 0;
+    const replacement = document.createElement('button'); replacement.textContent = 'Replacement action';
+    const interactions = attachInteractions(map, { contextMenu: event => {
+      opened++;
+      if (opened > 1) return { element: replacement, dispose: () => { newDisposed++; } };
+      const original = document.createElement('button'); original.textContent = 'Original action';
+      return { element: original, dispose: () => {
+        oldDisposed++;
+        canvas.focus();
+        map.map.fire('contextmenu', { point: event.point, lngLat: event.lngLat, originalEvent: event.originalEvent });
+      } };
+    } });
+    try {
+      canvas.focus();
+      const rect = canvas.getBoundingClientRect();
+      if (!window.browserDrag) throw new Error('Browser input bridge unavailable');
+      await window.browserDrag(rect.left + 200, rect.top + 200, rect.left + 200, rect.top + 200, 'right');
+      check(opened === 1, 'Native right click did not open the original menu');
+      await browserKey('Escape');
+      check(opened === 2 && oldDisposed === 1 && newDisposed === 0, 'Closing the original menu disposed its replacement');
+      check(replacement.isConnected && document.activeElement === replacement, 'Obsolete close stole replacement focus');
+      await browserKey('Escape');
+      check(!replacement.isConnected && newDisposed === 1, 'Keyboard dismissal did not dispose replacement once');
+      check(document.activeElement === canvas, 'Replacement dismissal lost saved focus');
+      interactions.destroy(); interactions.destroy();
+      check(oldDisposed === 1 && newDisposed === 1, 'Repeated teardown repeated disposal');
+    } finally { interactions.destroy(); map.destroy(); }
+  });
+  await run('Reliability content releases menu results after helper or viewport destruction', async () => {
+    for (const destroyViewport of [false, true]) {
+      const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 }, logger: () => {} });
+      current = map; await map.ready;
+      let disposed = 0, opened = 0;
+      const content = document.createElement('button'); content.textContent = 'Destroyed action';
+      const interactions = attachInteractions(map, { contextMenu: () => {
+        opened++;
+        if (destroyViewport) map.destroy(); else interactions.destroy();
+        return { element: content, dispose: () => { disposed++; } };
+      } });
+      try {
+        const canvas = map.map.getCanvas(); canvas.focus();
+        const rect = canvas.getBoundingClientRect();
+        if (!window.browserDrag) throw new Error('Browser input bridge unavailable');
+        await window.browserDrag(rect.left + 200, rect.top + 200, rect.left + 200, rect.top + 200, 'right');
+        check(opened === 1 && disposed === 1, 'Destroyed menu factory leaked returned content');
+        check(!container.querySelector('.rl-context') && !content.isConnected && document.activeElement !== content, 'Destroyed menu result mounted or received focus');
+        await browserKey('Escape');
+        interactions.destroy(); interactions.destroy(); map.destroy(); map.destroy();
+        check(disposed === 1, 'Destroyed content was disposed repeatedly');
+      } finally { interactions.destroy(); map.destroy(); }
+    }
+  });
+  await run('Reliability content ignores obsolete factory results and close callbacks', async () => {
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 }, logger: () => {} });
+    current = map; await map.ready;
+    let opened = 0, oldDisposed = 0, newDisposed = 0;
+    let obsoleteClose: (() => void) | undefined;
+    const replacement = document.createElement('button'); replacement.textContent = 'Replacement action';
+    const obsolete = document.createElement('button'); obsolete.textContent = 'Obsolete action';
+    const interactions = attachInteractions(map, { contextMenu: (event, close) => {
+      opened++;
+      if (opened > 1) return { element: replacement, dispose: () => { newDisposed++; } };
+      obsoleteClose = close;
+      map.map.fire('contextmenu', { point: event.point, lngLat: event.lngLat, originalEvent: event.originalEvent });
+      return { element: obsolete, dispose: () => { oldDisposed++; close(); } };
+    } });
+    try {
+      const canvas = map.map.getCanvas(); canvas.focus();
+      const rect = canvas.getBoundingClientRect();
+      if (!window.browserDrag) throw new Error('Browser input bridge unavailable');
+      await window.browserDrag(rect.left + 200, rect.top + 200, rect.left + 200, rect.top + 200, 'right');
+      check(opened === 2 && oldDisposed === 1 && newDisposed === 0, 'Replaced factory result did not release exactly once');
+      check(!obsolete.isConnected && replacement.isConnected && document.activeElement === replacement, 'Obsolete factory result replaced current content or focus');
+      obsoleteClose?.();
+      check(replacement.isConnected && document.activeElement === replacement && newDisposed === 0, 'An obsolete close callback affected current content');
+      await browserKey('Escape');
+      check(!replacement.isConnected && newDisposed === 1 && document.activeElement === canvas, 'Keyboard dismissal lost current disposal or focus');
+      interactions.destroy(); interactions.destroy();
+      check(oldDisposed === 1 && newDisposed === 1, 'Repeated teardown repeated menu disposal');
+    } finally { interactions.destroy(); map.destroy(); }
+  });
+  await run('Reliability content keeps a replacement menu alive when picker page disposal opens it', async () => {
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+      features: Array.from({ length: 10 }, (_, index) => point(`page-${index}`)), logger: () => {} });
+    current = map; await map.ready;
+    let replace = false, menuDisposed = 0;
+    const replacement = document.createElement('button'); replacement.textContent = 'Replacement action';
+    const canvas = map.map.getCanvas();
+    const interactions = attachInteractions(map, {
+      contextMenu: () => ({ element: replacement, dispose: () => { menuDisposed++; } }),
+      renderFeature: feature => {
+        const element = document.createElement('span'); element.textContent = feature.id;
+        return { element, dispose: () => {
+          if (!replace) return;
+          replace = false;
+          canvas.focus();
+          map.map.fire('contextmenu', { point: { x: 200, y: 200 }, lngLat: map.map.unproject([200, 200]), originalEvent: new MouseEvent('contextmenu') });
+        } };
+      },
+    });
+    try {
+      await until(() => map.map.queryRenderedFeatures({ layers: ['rl:points'] }).length === 10, 'overlapping picker candidates render');
+      await pointer('click', map.map.project([0, 0]));
+      check(Boolean(container.querySelector('.rl-picker')), 'Native click did not open the picker');
+      replace = true;
+      await browserClick('.rl-picker-pages button[aria-label="Next candidates"]');
+      check(replacement.isConnected && document.activeElement === replacement && menuDisposed === 0, 'Obsolete picker page disposed replacement content or focus');
+      await browserKey('Escape');
+      check(!replacement.isConnected && menuDisposed === 1 && document.activeElement === canvas, 'Replacement menu dismissal lost disposal or focus');
+      interactions.destroy(); interactions.destroy();
+      check(menuDisposed === 1, 'Teardown disposed the replacement twice');
+    } finally { interactions.destroy(); map.destroy(); }
+  });
+  await run('Reliability content lets a picker replace a pending menu factory', async () => {
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+      features: [point('factory-a'), point('factory-b')], logger: () => {} });
+    current = map; await map.ready;
+    let disposed = 0, opened = 0;
+    const obsolete = document.createElement('button'); obsolete.textContent = 'Obsolete action';
+    const interactions = attachInteractions(map, { contextMenu: event => {
+      opened++;
+      map.map.fire('click', { point: event.point, lngLat: event.lngLat, originalEvent: event.originalEvent });
+      return { element: obsolete, dispose: () => { disposed++; } };
+    } });
+    try {
+      await until(() => map.map.queryRenderedFeatures({ layers: ['rl:points'] }).length === 2, 'factory replacement candidates render');
+      const canvas = map.map.getCanvas(); canvas.focus();
+      const rect = canvas.getBoundingClientRect(), location = map.map.project([0, 0]);
+      if (!window.browserDrag) throw new Error('Browser input bridge unavailable');
+      await window.browserDrag(rect.left + location.x, rect.top + location.y, rect.left + location.x, rect.top + location.y, 'right');
+      check(opened === 1 && disposed === 1 && !obsolete.isConnected && !container.querySelector('.rl-context'), 'Menu factory overwrote a replacement picker');
+      const picker = container.querySelector('.rl-picker');
+      check(picker?.contains(document.activeElement) && picker.querySelectorAll('.rl-sector').length === 2, 'Replacement picker lost choices or focus');
+      await browserKey('Escape');
+      check(!container.querySelector('.rl-picker') && document.activeElement === canvas, 'Replacement picker dismissal lost focus');
+      interactions.destroy(); interactions.destroy();
+      check(disposed === 1, 'Obsolete menu content was disposed repeatedly');
+    } finally { interactions.destroy(); map.destroy(); }
+  });
+  await run('Reliability drawing callback ownership and interrupted acquisition', async () => {
+    for (const action of ['replace', 'destroy', 'conflict', 'permission'] as const) {
+      const draw = createViewport({ container, basemap: style(), terrain: false,
+        camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+      current = draw; await draw.ready;
+      let armed = false, permitted = true, submissions = 0, nextId = 0;
+      const editor = attachDrawing(draw, {
+        createFeature: () => ({ id: `owner-${++nextId}`, properties: {} }),
+        submit: () => { submissions++; return { accepted: true }; },
+        canEdit: () => {
+          if (armed && action === 'replace') {
+            armed = false;
+            editor.cancel(); editor.start('line');
+            editor.addPoint([0, 0]); editor.addPoint([.01, 0]);
+          }
+          return permitted;
+        },
+      });
+      const tools = document.createElement('div'), inspector = document.createElement('div');
+      container.after(tools, inspector);
+      const controls = attachDrawingControls(draw, editor, { tools, inspector });
+      try {
+        await browserClick('[data-field="action:Line"]');
+        await pointer('click', draw.map.project([0, 0]));
+        await pointer('click', draw.map.project([.015, 0]));
+        const original = editor.getState().draft?.feature;
+        if (!original) throw new Error('Original draft missing');
+        editor.onChange(() => {
+          if (!armed || action === 'replace' || editor.getState().phase !== 'pending') return;
+          armed = false;
+          if (action === 'destroy') editor.destroy();
+          else if (action === 'conflict') draw.upsert([{ ...original,
+            geometry: { type: 'LineString', coordinates: [[0, 0], [.025, 0]] } }]);
+          else { permitted = false; editor.refreshPermissions(); }
+        });
+        armed = true;
+        await browserClick('[data-field="action:Finish"]');
+        check(!armed, `${action} callback was not exercised`);
+        check(submissions === 0, `${action} started obsolete persistence`);
+        if (action === 'replace') {
+          const draft = editor.getState().draft;
+          check(draft?.feature.id === 'owner-2' && draft.shape.kind === 'line' &&
+            JSON.stringify(draft.shape.vertices) === JSON.stringify([[0, 0], [.01, 0]]), 'Finish changed replacement draft');
+        } else if (action === 'destroy') check(draw.getInteractionOwner() === null, 'Destroyed session retained ownership');
+        else check(editor.getState().phase === (action === 'conflict' ? 'conflict' : 'forbidden'), 'Invalidated draft was not retained');
+      } finally { controls.destroy(); editor.destroy(); draw.destroy(); tools.remove(); inspector.remove(); }
+    }
+    const draw = createViewport({ container, basemap: style(), terrain: false,
+      camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
+    current = draw; await draw.ready;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'acquisition', properties: {} }),
+      submit: () => ({ accepted: true }) });
+    const off = draw.on('interactionchange', ({ owner }) => { if (owner === 'drawing') editor.destroy(); });
+    editor.start('line'); off();
+    check(draw.getInteractionOwner() === null && editor.getState().phase === 'idle', 'Acquisition resurrected destroyed session');
+    const remounted = attachDrawing(draw, { createFeature: () => ({ id: 'remounted', properties: {} }),
+      submit: () => ({ accepted: true }) });
+    try {
+      remounted.start('line');
+      await pointer('click', draw.map.project([0, 0]));
+      await pointer('click', draw.map.project([.01, 0]));
+      check(await remounted.finish(), 'Remounted drawing could not finish');
+      check(draw.getInteractionOwner() === null && !!draw.getFeature('remounted'), 'Remount did not release ownership after acceptance');
+    } finally { remounted.destroy(); draw.destroy(); }
+  });
+  await run('Reliability entity null buffer allocation diagnoses once and retry renders only current geometry', async () => {
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style('#ffffff'), camera: { center: [.001, 0], zoom: 17 },
+      style: () => ({ color: '#ff0000', radius: 10 }), elevationSampler: { sample: () => 0 },
+      logger: () => {}, onError: error => errors.push(error) });
+    current = air; await air.ready;
+    const gl = air.map.getCanvas().getContext('webgl2')!;
+    const createBuffer = gl.createBuffer.bind(gl), addLayer = air.map.addLayer.bind(air.map);
+    let failed = false, allocationCalls = 0;
+    const obsolete: MapFeature = { ...point('obsolete'), entity: { altitude: { meters: 1, reference: 'ground' } } };
+    const accepted: MapFeature = { ...point('current', .002), entity: { altitude: { meters: 1, reference: 'ground' } } };
+    let clicked: string[] = [];
+    air.on('click', event => { clicked = event.features.map(feature => feature.id); });
+    try {
+      air.upsert([obsolete]);
+      await untilPixel(air, [0, 0], true, 'initial entity');
+      air.map.addLayer = (layer, beforeId) => {
+        if (layer.id !== 'rl:entities' || failed) return addLayer(layer, beforeId);
+        failed = true;
+        Object.defineProperty(gl, 'createBuffer', { configurable: true, writable: true, value: () => { allocationCalls++; return null; } });
+        try { return addLayer(layer, beforeId); }
+        finally { gl.createBuffer = createBuffer; }
+      };
+      air.configure({ basemap: style('#fffffe') });
+      await until(() => failed, 'controlled entity allocation');
+      check(allocationCalls === 1, 'Fault did not reach entity allocation: ' + allocationCalls);
+      await until(() => errors.some(error => error.context.operation === 'entities' && error.code === 'UPDATE_FAILED'), 'entity allocation diagnostic');
+      check(allocationCalls === 1, 'Allocation failure was automatically retried');
+      check(errors.some(error => error.context.recoverable && error.cause instanceof Error && /entity.*buffer/i.test(error.cause.message)),
+        'Allocation diagnostic lost context or cause');
+      air.remove([obsolete.id]); air.upsert([accepted]);
+      await until(() => air.getEntityState(accepted.id)?.coverage === 'ready', 'current accepted entity');
+      await untilPixel(air, [.002, 0], false, 'failed buffer stays invisible');
+      let recoveryAllocations = 0;
+      gl.createBuffer = () => { recoveryAllocations++; return createBuffer(); };
+      air.retryUpdates();
+      await untilPixel(air, [.002, 0], true, 'current geometry after retry');
+      clicked = [];
+      await pointer('click', air.map.project([.002, 0]));
+      check(clicked.includes(accepted.id) && !clicked.includes(obsolete.id), 'Retry restored obsolete or unpickable geometry');
+      await untilPixel(air, [0, 0], false, 'removed geometry after retry');
+      await new Promise<void>(resolve => { air.map.once('idle', () => resolve()); air.map.triggerRepaint(); });
+      const settled = recoveryAllocations;
+      await new Promise(resolve => setTimeout(resolve, 200));
+      check(recoveryAllocations === settled, 'Idle scene kept allocating');
+    } finally { gl.createBuffer = createBuffer; air.map.addLayer = addLayer; air.destroy(); air.destroy(); }
+  });
+  await run('Reliability entity date-line rendering and real picking agree across order pan and projection', async () => {
+    const air = createViewport({ container, basemap: style('#ffffff'), projection: 'flat',
+      camera: { center: [179, 0], zoom: 6 }, elevationSampler: { sample: () => 30 },
+      style: () => ({ color: '#ff0000', radius: 10 }), logger: () => {} });
+    current = air; await air.ready;
+    const distant: MapFeature = { ...point('distant'), entity: { altitude: { meters: 1000, reference: 'ground' } } };
+    const nearby: MapFeature = { ...point('date-line', -179), entity: { altitude: { meters: 1000, reference: 'ground' },
+      attachments: [{ id: 'volume', type: 'sphere', radius: 20_000, color: '#ff0000' }] } };
+    let picked: string[] = [], attachments: string[] = [];
+    air.on('click', event => { picked = event.features.map(feature => feature.id); attachments = event.attachments.map(hit => hit.attachmentId); });
+    const nearbyLocation = (): [number, number] => [-179 + Math.round((air.map.getCenter().lng + 179) / 360) * 360, 0];
+    const assertShown = async (description: string) => {
+      const location = nearbyLocation();
+      await untilPixel(air, location, true, description + ' point pixels');
+      const pixel = await pixelAt(air, location, 8000, description);
+      check(pixel.red > pixel.green + 30 && pixel.red > pixel.blue + 30, description + ' point is not red');
+      picked = []; attachments = [];
+      await pointer('click', air.map.project(location));
+      check(picked.includes(nearby.id), description + ' point cannot be picked at ' + JSON.stringify({ location, screen: air.map.project(location), picked, attachments, projection: air.map.getProjection(), center: air.map.getCenter() }));
+      const face: [number, number] = [location[0] + .15, 0];
+      await untilPixel(air, face, true, description + ' volume pixels');
+      picked = []; attachments = [];
+      await pointer('click', air.map.project(face));
+      check(picked.includes(nearby.id) && attachments.includes('volume'), description + ' visible volume cannot be picked');
+      check(air.getEntityState(nearby.id)?.altitude === 1030, 'Rendering changed physical altitude');
+      const accepted = air.getFeature(nearby.id);
+      check(accepted?.geometry.type === 'Point' && accepted.geometry.coordinates[0] === -179, 'Rendering rewrote accepted longitude');
+    };
+    try {
+      for (const projection of ['flat', 'globe'] as const) {
+        air.configure({ projection });
+        for (const reverse of [false, true]) {
+          air.remove([distant.id, nearby.id]);
+          await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+          air.upsert(reverse ? [nearby, distant] : [distant, nearby]);
+          air.map.jumpTo({ center: [179, 0], zoom: 6 });
+          await until(() => air.getEntityState(nearby.id)?.placement === 'airborne', projection + ' placement');
+          await assertShown(projection + (reverse ? ' reversed' : ' original'));
+          air.map.jumpTo({ center: [-179, 0] });
+          await assertShown(projection + ' crossed date line');
+        }
+      }
+    } finally { air.destroy(); }
+  });
+  await run('Reliability entity raster retry fetches repaired no-data and restores current camera pixels', async () => {
+    const tile = document.createElement('canvas'); tile.width = tile.height = 256;
+    const context = tile.getContext('2d')!;
+    const prefix = 'https://raster-repair.test/';
+    let repaired = false, requests = 0;
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (!url.startsWith(prefix)) return originalFetch(input, init);
+      requests++;
+      context.clearRect(0, 0, 256, 256);
+      context.fillStyle = 'rgb(128,0,0)'; context.fillRect(0, 0, 256, 256);
+      if (!repaired) context.clearRect(125, 125, 6, 6);
+      return originalFetch(tile.toDataURL(), init);
+    };
+    const lng = 0, lat = 0;
+    const air = createViewport({ container, basemap: style('#ffffff'), camera: { center: [lng, lat], zoom: 16 },
+      terrain: false, hillshade: false, logger: () => {}, elevation: {
+        tiles: [prefix + '{z}/{x}/{y}.png'], encoding: 'terrarium', minzoom: 0, maxzoom: 0, tileSize: 256,
+      } });
+    current = air;
+    try {
+      await air.ready;
+      const feature: MapFeature = { ...point('raster-camera'), entity: { altitude: { meters: 100, reference: 'ground' },
+        attachments: [{ id: 'view', type: 'camera', terrainVisibility: true, range: 300, bearing: 0,
+          elevation: -90, fovX: 60, fovY: 40, color: '#ff0000', blockedColor: '#ff0000', fillOpacity: 1 }] } };
+      air.upsert([feature]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'unavailable', 'missing raster output');
+      const before = requests;
+      repaired = true;
+      const moved: MapFeature = { ...feature, geometry: { type: 'Point', coordinates: [.0001, 0] } };
+      air.upsert([moved]);
+      air.retryUpdates();
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'repaired raster camera');
+      check(requests > before, 'Retry never fetched repaired missing-data tile');
+      await untilPixel(air, [.0004, .0001], true, 'repaired current camera coverage');
+      const pixel = await pixelAt(air, [.0004, .0001], 8000, 'repaired current camera coverage');
+      check(pixel.red > pixel.green + 30 && pixel.red > pixel.blue + 30, 'Repaired camera coverage is not visible');
+      let clicked = false;
+      air.on('click', event => { clicked = event.attachments.some(hit => hit.entityId === feature.id && hit.attachmentId === 'view'); });
+      await pointer('click', air.map.project([.0004, .0001]));
+      check(clicked, 'Recovered raster camera could not be picked');
+      await new Promise<void>(resolve => { air.map.once('idle', () => resolve()); air.map.triggerRepaint(); });
+      const settled = requests;
+      await new Promise(resolve => setTimeout(resolve, 200));
+      check(requests === settled, 'Recovered raster kept fetching while idle');
+    } finally { air.destroy(); window.fetch = originalFetch; }
+  });
+  await run('Reliability entity sampling failure clears completed plain and terrain coverage and retries current data', async () => {
+    const failure = new Error('Required camera elevation failed');
+    let broken = false, samples = 0;
+    const errors: RidgelineError[] = [];
+    const air = createViewport({ container, basemap: style('#ffffff'), camera: { center: [0, 0], zoom: 16 },
+      logger: () => {}, onError: error => errors.push(error), elevationSampler: { sample: lng => {
+        samples++;
+        if (broken && Math.abs(lng) < .003) throw failure;
+        return 0;
+      } } });
+    current = air; await air.ready;
+    const camera: CameraAttachment = { id: 'plain', type: 'camera', range: 300, bearing: 0,
+      elevation: -90, fovX: 60, fovY: 40, color: '#ff0000', fillOpacity: .8 };
+    const feature: MapFeature = { ...point('calculation'), entity: { altitude: { meters: 100, reference: 'ground' },
+      attachments: [camera, { ...camera, id: 'terrain', terrainVisibility: true, bearing: 90 },
+        { id: 'zone', type: 'circle', radius: 30, color: '#00aa00' }] } };
+    const other: MapFeature = { ...point('unrelated', .004), entity: {
+      attachments: [{ id: 'other-zone', type: 'circle', radius: 40, color: '#0000ff' }] } };
+    const plainVisible = () => air.map.queryRenderedFeatures(air.map.project([.0002, 0]), { layers: ['rl:entity-ground-fill'] })
+      .some(hit => hit.properties.entityId === feature.id && hit.properties.attachmentId === 'plain');
+    const maskVisible = () => air.map.getStyle().layers.some(layer => layer.id.startsWith('rl:camera-mask:'));
+    const zoneVisible = (id: string, lng: number) => air.map.queryRenderedFeatures(air.map.project([lng, 0]), { layers: ['rl:entity-ground-fill'] })
+      .some(hit => hit.properties.entityId === id);
+    try {
+      air.upsert([feature, other]);
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready' && plainVisible() && maskVisible(), 'completed cameras');
+      broken = true;
+      const moved: MapFeature = { ...feature, geometry: { type: 'Point', coordinates: [.0005, 0] } };
+      air.upsert([moved]);
+      await until(() => errors.some(error => error.cause === failure), 'original sampling diagnostic');
+      await until(() => air.getEntityState(feature.id)?.coverage === 'unavailable' && !plainVisible() && !maskVisible(), 'failed coverage removed');
+      check(air.getEntityState(feature.id)?.placement === 'airborne', 'Failure erased valid entity placement');
+      check(zoneVisible(feature.id, 0) && zoneVisible(other.id, .004), 'Failure erased unrelated ground geometry');
+      const accepted = air.getFeature(feature.id);
+      check(accepted?.geometry.type === 'Point' && accepted.geometry.coordinates[0] === .0005, 'Failure changed accepted data');
+      broken = false;
+      air.retryUpdates();
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready' && maskVisible() && zoneVisible(feature.id, .0005), 'current coverage recovered');
+      await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
+      const settled = samples;
+      await new Promise(resolve => setTimeout(resolve, 200));
+      check(samples === settled, 'Recovered scene kept sampling while idle');
+    } finally { air.destroy(); }
+  });
   await run('Raw terrain and the installed renderer agree on nonzero TMS tile templates', async () => {
     const dem = document.createElement('canvas'); dem.width = dem.height = 256;
     const context = dem.getContext('2d')!;

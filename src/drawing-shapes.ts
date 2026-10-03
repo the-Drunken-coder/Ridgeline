@@ -232,9 +232,15 @@ export function shapeInsertHandles(shape: DrawingShape): { after: number; positi
   const edges = definitions[shape.kind].closed ? unrolled.length : unrolled.length - 1;
   return Array.from({ length: Math.max(0, edges) }, (_, after) => {
     const a = unrolled[after]!, b = unrolled[(after + 1) % unrolled.length]!;
+    // Ordinary edges are straight in Mercator. A great-circle midpoint
+    // moves off the displayed edge at high latitude.
+    const northing = (latitude: number) => Math.log(Math.tan(Math.PI / 4 + latitude * rad / 2));
     return {
       after,
-      position: destination(a, distance(a, b) / 2, bearing(a, b)),
+      position: [
+        wrapLongitude(a[0] + wrapLongitude(b[0] - a[0]) / 2),
+        a[1] === b[1] ? a[1] : (2 * Math.atan(Math.exp((northing(a[1]) + northing(b[1])) / 2)) - Math.PI / 2) / rad,
+      ],
       label: `Insert vertex after ${after + 1}`,
     };
   });

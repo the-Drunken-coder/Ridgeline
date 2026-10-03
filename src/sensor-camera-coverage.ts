@@ -236,6 +236,18 @@ export class SensorCameraCoverage {
     this.adapterDirty = true;
   }
 
+  /** A failed required scene calculation invalidates completed and queued coverage. */
+  unavailable(entityId: string) {
+    const entity = this.entities.get(entityId);
+    if (!entity || this.destroyed) return;
+    entity.terrain.clear();
+    for (const camera of entity.cameras.values()) {
+      camera.lifecycle = ++this.lifecycleSequence;
+      camera.phase = markUnavailable();
+    }
+    this.adapterDirty = true;
+  }
+
   output(entityId: string): Primitive[] {
     const entity = this.entities.get(entityId);
     return entity ? [...entity.cameras.values()].flatMap(camera => camera.phase.kind === 'plain'

@@ -1,6 +1,6 @@
 # CI and nightly validation
 
-Every pull request and push to `main` runs the complete ordinary suite. Manual execution is also available. There are no path filters. Independent jobs run type checking, module tests, packaged browser cases, control-lab browser cases, and consumer production builds. A failed job does not cancel its siblings. A newer run for the same pull request cancels the superseded run.
+Every pull request and push to `main` runs the complete ordinary suite. Manual execution is also available. There are no path filters. Independent jobs run type checking, module tests, packaged browser cases, playground browser cases, control-lab browser cases, and consumer production builds. A failed job does not cancel its siblings. A newer run for the same pull request cancels the superseded run.
 
 The `validate` job requires successful results from all required jobs. Failure, cancellation, missing results, and unexpected skips fail the gate. Browser retries remain disabled. CI uses four packaged-browser shards with one worker each to avoid competing software-WebGL workloads on a runner. Each shard builds and packs the exact checkout, installs it into a separate consumer, checks declarations, and builds that consumer before testing.
 
@@ -13,7 +13,7 @@ pnpm validate
 pnpm test:browser -- --shard=1/4
 ```
 
-`pnpm validate` runs local checks sequentially. CI distributes the same checks across jobs. `pnpm test` includes executable validation-automation tests as well as the library and control-lab module tests. Both browser suites use production consumer builds. The packaged suite retains a fresh page per case even when cases are distributed across shards.
+`pnpm validate` runs local checks sequentially. CI distributes the same checks across jobs. `pnpm test` includes executable validation-automation tests as well as the library and control-lab module tests. All three browser suites use production consumer builds. The packaged suite retains a fresh page per case even when cases are distributed across shards. `pnpm test:playground:browser` exercises the playground's selection journey with deterministic basemap and DEM responses while retaining the real application and viewport.
 
 Packaged browser runs, including nightly shards, acquire `.artifacts/browser-run.lock` before building or replacing the consumer. Run local shards sequentially in a checkout; an overlapping invocation fails immediately. Normal completion and ordinary command failures release the lock. Timeouts and signal termination retain it because child processes may still be writing. After an interrupted run, stop any remaining build, browser, and preview processes before removing the lock directory. Its `owner` file records the parent PID for diagnosis. Hosted shards use separate checkouts and runners.
 
@@ -23,7 +23,9 @@ Keep useful coverage when runtime grows. Runs approaching fifteen minutes should
 
 ## Browser reports
 
-Each packaged shard uploads `blob-packaged-N` and `results-packaged-N`. The control lab uploads `blob-control`. Failure screenshots and traces use separate `failures-packaged-N` and `failures-control` artifacts. The `browser-reports` job combines available blobs into the downloadable `browser-report` HTML artifact even if a shard fails. It also compares Playwright discovery against all four execution reports, rejecting omitted, duplicated, skipped, or retried cases. The report job is required by `validate`.
+Each packaged shard uploads `blob-packaged-N` and `results-packaged-N`. The control lab uploads `blob-control`; the playground uploads `blob-playground`. Failure screenshots and traces use separate `failures-packaged-N`, `failures-control`, and `failures-playground` artifacts. The `browser-reports` job combines available blobs into the downloadable `browser-report` HTML artifact even if a shard fails. It also compares Playwright discovery against all four execution reports, rejecting omitted, duplicated, skipped, or retried cases. The report job is required by `validate`.
+
+The unsharded suites name their blob archives `report-control.zip` and `report-playground.zip`. Distinct filenames preserve both archives when artifact downloads share a directory. The validation fixture generates real Playwright blobs and checks that merging retains both suite identities and their pass or fail results.
 
 ## Nightly stress and failure tracking
 

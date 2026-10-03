@@ -121,6 +121,7 @@ jobs:
       - run: pnpm test:controls:browser --reporter=list,blob
         env:
           PLAYWRIGHT_BLOB_OUTPUT_DIR: blob-report
+          PLAYWRIGHT_BLOB_OUTPUT_NAME: report-control.zip
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -134,9 +135,40 @@ jobs:
           path: control-lab/test-results/
           if-no-files-found: warn
 
+  playground-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.9
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:playground:browser --reporter=list,blob
+        env:
+          PLAYWRIGHT_BLOB_OUTPUT_DIR: blob-report
+          PLAYWRIGHT_BLOB_OUTPUT_NAME: report-playground.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blob-playground
+          path: blob-report/
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: failures-playground
+          path: .artifacts/playground-tests/
+          include-hidden-files: true
+          if-no-files-found: warn
+
   browser-reports:
     if: ${{ !cancelled() }}
-    needs: [packaged-browser, control-browser]
+    needs: [packaged-browser, control-browser, playground-browser]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -179,7 +211,7 @@ jobs:
     # A skipped required job permits merging. Always evaluate the short gate,
     # including cancelled prerequisites, instead of skipping it on cancellation.
     if: always()
-    needs: [typecheck, module-tests, packaged-browser, control-browser, consumer-builds, browser-reports]
+    needs: [typecheck, module-tests, packaged-browser, control-browser, playground-browser, consumer-builds, browser-reports]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

@@ -58,6 +58,7 @@ export function createDrawingSession<P extends Properties>(
     disposed = false,
     applying = false;
   let reason: string | undefined, release: (() => void) | undefined;
+  let acquisition: object | undefined;
   let submission: {
     controller: AbortController;
     kind: DrawingChange<P>["kind"];
@@ -277,7 +278,21 @@ export function createDrawingSession<P extends Properties>(
   function open(next: DrawingDraft<P>) {
     if (disposed) throw new Error("Drawing session has been destroyed.");
     if (draft) throw new Error("Finish or cancel the current drawing first.");
-    release = host.acquireInteraction("drawing");
+    const active = {};
+    acquisition = active;
+    let owned: () => void;
+    try {
+      owned = host.acquireInteraction("drawing");
+    } catch (error) {
+      if (acquisition === active) acquisition = undefined;
+      throw error;
+    }
+    if (disposed || acquisition !== active || draft) {
+      owned();
+      return;
+    }
+    acquisition = undefined;
+    release = owned;
     draft = next;
     permissionFailures.clear();
     permissionResults.clear();
@@ -291,6 +306,7 @@ export function createDrawingSession<P extends Properties>(
   function cancel() {
     if (pending)
       throw new Error("Wait for the application to decide before cancelling.");
+    acquisition = undefined;
     const owned = release;
     release = undefined;
     draft = undefined;

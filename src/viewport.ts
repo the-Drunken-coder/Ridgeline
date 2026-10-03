@@ -48,6 +48,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   let interactionOwner: string | null = null;
   let destroyed = false;
   let prepared = false;
+  let sceneGeneration = 0;
   let readySettled = false;
   let hovered = '';
   let configuration: MapConfiguration = {
@@ -209,17 +210,19 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
 
   function prepareStyle() {
     if (destroyed) return;
+    const generation = sceneGeneration;
+    const current = () => !destroyed && sceneGeneration === generation;
     try {
       prepared = true;
       map.setProjection({ type: configuration.projection === 'flat' ? 'mercator' : 'globe' });
-      if (destroyed) return;
+      if (!current()) return;
       for (const [id, icon] of icons) {
-        if (destroyed) return;
+        if (!current()) return;
         if (!map.hasImage(`rl:icon:${id}`)) map.addImage(`rl:icon:${id}`, icon.image, { pixelRatio: icon.pixelRatio ?? 1 });
       }
-      if (destroyed) return;
+      if (!current()) return;
       publication.restore();
-      if (destroyed) return;
+      if (!current()) return;
       const layers: LayerSpecification[] = [
         { id: 'rl:fill', type: 'fill', source: SOURCE, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': ['get', '_rl_fill'], 'fill-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, ['boolean', ['feature-state', 'selected'], false], 0.45, ['get', '_rl_opacity']] } },
         { id: 'rl:line', type: 'line', source: SOURCE, filter: ['all', ['in', '$type', 'LineString', 'Polygon'], ['!=', '_rl_dashed', true]], paint: { 'line-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', ['get', '_rl_color']], 'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 5, ['get', '_rl_width']] } },
@@ -228,19 +231,23 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         { id: 'rl:icons', type: 'symbol', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_icon', ''], ['!=', '_rl_hidden', true]], layout: { 'icon-image': ['get', '_rl_icon'], 'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-height-offset': ['get', '_rl_height'] }, paint: { 'icon-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1] } },
         { id: 'rl:labels', type: 'symbol', source: SOURCE, filter: ['!=', '_rl_hidden', true], layout: { 'text-field': ['get', '_rl_label'], 'text-font': ['Noto Sans Regular'], 'text-size': 12, 'text-offset': [0, 1.8], 'text-anchor': 'top', 'symbol-height-offset': ['get', '_rl_height'] }, paint: { 'text-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'text-color': '#203b32', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } },
       ];
-      for (const layer of layers) { if (destroyed) return; if (!map.getLayer(layer.id)) map.addLayer(layer); }
+      for (const layer of layers) { if (!current()) return; if (!map.getLayer(layer.id)) map.addLayer(layer); }
       syncArrows();
-      if (destroyed) return;
+      if (!current()) return;
       applyElevation();
-      if (destroyed) return;
+      if (!current()) return;
       entities.attach();
-      if (destroyed) return;
+      if (!current()) return;
       for (const id of selected) synchronizeState(id);
       if (previewId) synchronizeState(previewId);
       if (editingId) synchronizeState(editingId);
       if (!readySettled) { readySettled = true; clearTimeout(timer); resolveReady(); }
-      for (const listener of preparedListeners) notifyDrawingListener(listener, 'style');
+      for (const listener of preparedListeners) {
+        if (!current()) return;
+        notifyDrawingListener(listener, 'style');
+      }
     } catch (cause) {
+      if (!current()) return;
       prepared = false;
       publication.retire();
       failReady(new RidgelineError('STYLE_FAILED', 'Unable to initialize Ridgeline map layers.', { operation: 'style', recoverable: readySettled }, cause));
@@ -370,14 +377,21 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       const key = `rl:icon:${id}`;
       if (prepared) {
         if (map.hasImage(key)) map.removeImage(key);
+        if (destroyed) return;
         map.addImage(key, definition.image, { pixelRatio: definition.pixelRatio ?? 1 });
+        if (destroyed) return;
       }
       icons.set(id, definition);
-      const affected: MapFeature<P>[] = [];
+      const affectedIds: string[] = [];
       for (const feature of store.all()) {
-        try { if (getStyle(feature).icon === id) affected.push(feature); }
-        catch { affected.push(feature); } // Publication reports and retains failed work for retry.
+        let usesIcon = true;
+        try { usesIcon = getStyle(feature).icon === id; }
+        catch { /* Publication reports and retains failed work for retry. */ }
+        if (destroyed) return;
+        if (usesIcon) affectedIds.push(feature.id);
       }
+      // Any callback can change an ID examined earlier in the registration.
+      const affected = affectedIds.flatMap(id => { const feature = store.get(id); return feature ? [feature] : []; });
       publication.update(affected);
       if (affected.length) emit('datachange', { ids: affected.map(feature => feature.id), removed: [] });
     },
@@ -424,8 +438,11 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         for (const listener of sceneListeners) notifyDrawingListener(listener, 'configure');
         if (destroyed || configuration !== configuredScene) return;
       }
+      if (styleChanged) { sceneGeneration++; prepared = false; publication.retire(); }
+      const configuredScene = configuration;
       entities.configure(next.elevation !== undefined);
-      if (styleChanged) { prepared = false; publication.retire(); map.setStyle(structuredClone(configuration.basemap), { diff: false }); }
+      if (destroyed || configuration !== configuredScene) return;
+      if (styleChanged) map.setStyle(structuredClone(configuration.basemap), { diff: false });
       else if (prepared) {
         map.setProjection({ type: configuration.projection === 'flat' ? 'mercator' : 'globe' });
         applyElevation(next.elevation !== undefined);

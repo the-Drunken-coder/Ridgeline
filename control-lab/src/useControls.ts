@@ -3,7 +3,7 @@ import { toWorld, zoomAt, type Action, type Camera, type Point, type Scene, type
 
 type Gesture = { pointer: number; start: Point; camera: Camera; moved: boolean };
 
-/** The map surface owns pan and destination gestures. Unit buttons own selection. */
+/** The stage owns map navigation. Unit buttons own selection. */
 export function useControls(
   stageRef: RefObject<HTMLDivElement | null>, surfaceRef: RefObject<HTMLButtonElement | null>,
   scene: Scene, dispatch: Dispatch<Action>, viewport: Viewport,
@@ -66,7 +66,8 @@ export function useControls(
     }, options);
     stage.addEventListener('pointercancel', cancelInterrupted, options);
     surface.addEventListener('lostpointercapture', () => { if (gesture) cancelInterrupted(); }, options);
-    surface.addEventListener('wheel', event => {
+    stage.addEventListener('wheel', event => {
+      if (!(event.target instanceof Element) || !event.target.closest('.map-surface, [data-unit]')) return;
       event.preventDefault();
       if (gesture) return;
       const pixels = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.height : 1);
