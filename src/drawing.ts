@@ -78,6 +78,8 @@ export function attachDrawing<P extends Properties>(
   let keyboardFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
   let stateRevision = 0;
   let draftEpoch = 0;
+  let resolvingSnap = false;
+  let lastSnapError = -Infinity;
   const abort = new AbortController();
   function editable() {
     return ["editing", "rejected"].includes(session.getState().phase);
@@ -87,10 +89,28 @@ export function attachDrawing<P extends Properties>(
     screen: ScreenPoint,
     skip = false,
     except?: number | "draft",
-  ): DrawingPosition {
+  ): DrawingPosition | undefined {
     if (!snapEnabled || skip) return point;
+    // Observer-driven refresh can resolve again before the filter returns.
+    // Leave that refresh empty rather than recursively invoking consumer code.
+    if (resolvingSnap) return;
+    resolvingSnap = true;
+    try {
+      return resolveSnap(point, screen, except);
+    } finally {
+      resolvingSnap = false;
+    }
+  }
+  function resolveSnap(
+    point: DrawingPosition,
+    screen: ScreenPoint,
+    except?: number | "draft",
+  ): DrawingPosition | undefined {
+    const revision = stateRevision;
+    const current = () => !disposed && revision === stateRevision;
     const state = session.getState(),
       candidates: DrawingPosition[] = [];
+    if (!current()) return;
     const visible = new Set(
       map
         .queryRenderedFeatures([[screen.x - 12, screen.y - 12], [screen.x + 12, screen.y + 12]], {
@@ -101,10 +121,24 @@ export function attachDrawing<P extends Properties>(
         .flatMap((f) => typeof f.properties._rl_feature_id === "string" ? [f.properties._rl_feature_id] : []),
     );
     for (const id of visible) {
+      if (!current()) return;
       const feature = viewport.getFeature(id);
       if (!feature || feature.id === state.draft?.feature.id) continue;
-      const allowed = options.canSnap?.(feature);
-      if (disposed) return point;
+      let allowed: boolean | undefined;
+      try {
+        allowed = options.canSnap?.(feature);
+      } catch (cause) {
+        const now = Date.now();
+        if (!disposed && now - lastSnapError >= 10_000) {
+          // Bound every diagnostic channel, including reentrant observers.
+          // Success and draft replacement deliberately retain the cooldown.
+          lastSnapError = now;
+          viewport.reportCallbackError(cause, "drawing.canSnap", feature.id);
+        }
+        if (!current()) return;
+        continue;
+      }
+      if (!current()) return;
       if (allowed === false) continue;
       if (feature.entity) continue;
       const g = feature.geometry;
@@ -125,6 +159,7 @@ export function attachDrawing<P extends Properties>(
     let best = 12,
       chosen = point;
     for (const candidate of candidates) {
+      if (!current()) return;
       const projected = map.project([
         point[0] + wrapLongitude(candidate[0] - point[0]),
         candidate[1],
@@ -142,7 +177,7 @@ export function attachDrawing<P extends Properties>(
         chosen = candidate;
       }
     }
-    return chosen;
+    return current() ? chosen : undefined;
   }
   function visibleGroundVertex(candidate: DrawingPosition, screen: ScreenPoint) {
     const hit = resolveGround(screen);
@@ -359,7 +394,7 @@ export function attachDrawing<P extends Properties>(
             bypassSnap,
             key === "move" || currentHandle?.carriesShape ? "draft" : index,
           );
-          if (!currentDrag(revision)) return;
+          if (!next || !currentDrag(revision)) return;
           feedback?.show(screen, target, next !== target.position ? next : undefined);
           if (!currentDrag(revision)) return;
           const samePosition = (a: DrawingPosition, b: DrawingPosition) =>
@@ -434,7 +469,13 @@ export function attachDrawing<P extends Properties>(
               keyboardFeedbackTimer = setTimeout(() => feedback?.clear(), 800);
               return;
             }
-            const next = target.position;
+            const current = session.getState().draft,
+              currentHandle = index === undefined || !current
+                ? undefined
+                : shapeHandles(current.shape)[index];
+            const next = snap(target.position, point, e.altKey,
+              key === "move" || currentHandle?.carriesShape ? "draft" : index);
+            if (!next || disposed || revision !== stateRevision || !editable()) return;
             feedback?.clear();
             if (key === "move")
               session.translate(position(marker.getLngLat().toArray()), next);
@@ -538,7 +579,7 @@ export function attachDrawing<P extends Properties>(
       return;
     }
     const chosen = snap(target.position, event.point, event.originalEvent.altKey);
-    if (disposed || revision !== stateRevision) return;
+    if (!chosen || disposed || revision !== stateRevision) return;
     session.addPoint(chosen);
   }
   function refreshPointer() {
@@ -694,12 +735,15 @@ export function attachDrawing<P extends Properties>(
   );
   const off = session.onChange(render);
   let offPrepared = () => {};
-  const offSceneChange = drawingInternals.onSceneChange(() => {
+  const invalidateTarget = () => {
     // Invalidate ground resolutions already in progress, including consumer snap callbacks.
     stateRevision++;
     feedback?.clear();
     session.setCursor(undefined);
-  });
+  };
+  const offSceneChange = drawingInternals.onSceneChange(invalidateTarget);
+  const offDataChange = viewport.on("datachange", invalidateTarget);
+  const offCameraChange = viewport.on("camerachange", invalidateTarget);
   const offPreview = session.onPreview(renderGeometry);
   let offDestroy = () => {};
   function destroy() {
@@ -711,6 +755,8 @@ export function attachDrawing<P extends Properties>(
     off();
     offPrepared();
     offSceneChange();
+    offDataChange();
+    offCameraChange();
     offPreview();
     offDestroy();
     abort.abort();
@@ -746,6 +792,7 @@ export function attachDrawing<P extends Properties>(
     ...session,
     destroy,
     setSnapping(value: boolean) {
+      stateRevision++;
       snapEnabled = value;
       refreshPointer();
       refreshDraggedHandle?.();
