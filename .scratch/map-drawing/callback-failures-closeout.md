@@ -3,7 +3,7 @@
 Spec: [Map drawing and editing](spec.md)
 Integration owner: Codex in the #48 thread, coordinating [#47](https://github.com/the-Drunken-coder/Ridgeline/issues/47) and [#48](https://github.com/the-Drunken-coder/Ridgeline/issues/48).
 
-Status: implementation complete and locally verified. Both acceptance deliveries are integrated on `triage/issue-48`; both issues remain open pending integration into main. No PR creation or merge is authorized.
+Status: implementation complete and locally verified. Both acceptance deliveries are integrated on `triage/issue-48`; both issues remain open pending integration into main. The user authorized one combined ready-for-review PR and monitoring on 2026-10-03. Merge remains unauthorized.
 
 ## Reviewed revision
 
@@ -41,9 +41,15 @@ Earlier integration runs exercised uncommitted source and are investigation evid
 | #47 successful and throwing callback/observer invalidation | `Snap observers invalidate obsolete candidate iteration and placement across owner and scene changes`, 16 combinations of cancel/destroy/replacement/remove/update/camera/settings/terrain with synchronous obsolete-candidate counting | Passed on final revision |
 | Both tickets: native permission rejection isolated; surviving marker restored after obsolete snap resolution | Native placement/keyboard and real drag permission failures; recursive settings/diagnostic marker-restoration workflow | Passed on final revision |
 
+## PR preparation on 2026-10-03
+
+Latest `origin/main` remains `7b817c6411e53b6e3c5a9c61ac995ddadc2b51a5`; fetch and rebase were a no-op. The integration owner re-reviewed the combined production, tests, registration, spec and drawing README diff against that base. No runtime source or tests changed after exercised `4a51398`. Documentation-only `141bb32` removes the unrelated #50 runtime-policy README paragraph; isolated commit `d54aa00589b3ddd46ec321d3f014675011659e92` transfers that paragraph to the #50 owner. Drawing contract documentation remains. Diff checks passed; already passing runtime checks were not repeated for this documentation separation.
+
+The #47 owner independently rechecked unchanged main and open PR #68 head `396b0a0`. Keyboard snapping remains covered by the combined adapter guards. Its longitude changes remain separate; no additional adapter repair was needed. This is source comparison evidence, not a fresh runtime run.
+
 ## Hosted verification and integration limits
 
-No PR exists for this delivery. The GitHub check-runs API returned zero checks for published `4a51398` on 2026-10-03. Hosted required-check evidence is unavailable for this delivery; local verification does not establish merge readiness.
+At the earlier local closeout, no PR existed for this delivery. The GitHub check-runs API returned zero checks for published `4a51398` on 2026-10-03. Hosted required-check evidence is unavailable for this delivery; local verification does not establish merge readiness.
 
 Historical baseline evidence, inspected on 2026-10-03: [main Validation run](https://github.com/the-Drunken-coder/Ridgeline/actions/runs/36969816638) succeeded on 2026-10-02 for main `7b817c6411e53b6e3c5a9c61ac995ddadc2b51a5`, including `validate`, typecheck, module, control-browser, consumer-build and four packaged-browser jobs. This predates the callback repairs.
 
@@ -51,4 +57,4 @@ Main was still `7b817c6` at the final review. Open [PR #68](https://github.com/t
 
 Preintegration #47 evidence on 2026-10-03: `6d2481e` passed type checking, build, 45 existing drawing-session tests, and five existing packaged cases; `af7c44a` passed type checking and seven existing packaged input cases. They are integrated as `a5a410b` and `68f6eaf`. Those runs did not exercise the combined permission implementation or new throwing-callback regressions.
 
-Remaining limits: changes are published on `triage/issue-48` but are not integrated into main; hosted checks unavailable for this branch; desktop Chromium with software WebGL only. No new macOS, Node 25.9, Firefox/WebKit, physical-GPU, touch/pen or complete accessibility evidence. [#50](https://github.com/the-Drunken-coder/Ridgeline/issues/50) still tracks manual macOS evidence; README records its approved policy without claiming execution. Immediate local cancellation of an unsettled submission remains a separate contract decision.
+Remaining limits: changes are published on `triage/issue-48` but are not integrated into main; hosted checks unavailable for this branch; desktop Chromium with software WebGL only. No new macOS, Node 25.9, Firefox/WebKit, physical-GPU, touch/pen or complete accessibility evidence. [#50](https://github.com/the-Drunken-coder/Ridgeline/issues/50) still tracks manual macOS evidence; The runtime-policy README paragraph is handed off to that ticket’s separate documentation delivery; this drawing branch claims no macOS execution. Immediate local cancellation of an unsettled submission remains a separate contract decision.
