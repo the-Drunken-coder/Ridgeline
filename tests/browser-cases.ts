@@ -70,6 +70,8 @@ export const browserCases = [
   'Snap observers invalidate obsolete candidate iteration and placement across owner and scene changes',
   'Permission failure discovered by native placement and keyboard blocks changes without escaping input',
   'A snap diagnostic that changes settings restores the surviving dragged marker',
+  'Permission controls handle callback reads refreshes and one-step delete recovery',
+  'Permission callbacks that animate the camera stop native edits and recover after settlement',
   'Permission callbacks report failures from replaced owners without changing the new draft',
   'Final drawing permission cannot overwrite or revive consumer data',
   'Drawing creates accepted features, owns clicks, edits with keyboard and survives style reload',

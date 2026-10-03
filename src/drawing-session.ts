@@ -63,9 +63,11 @@ export function createDrawingSession<P extends Properties>(
     kind: DrawingChange<P>["kind"];
   } | undefined;
   const permissionFailures = new Set<DrawingChange<P>["kind"]>();
+  const permissionResults = new Map<DrawingChange<P>["kind"], boolean>();
   let lastPermissionReport = -Infinity;
   let checkingPermission: DrawingDraft<P> | undefined;
   let refreshAfterPermission = false;
+  let refreshingPermission = false;
   let revision = 0;
   const permissionFailureMessage = "Editing permission could not be checked. Your draft is preserved.";
   let initialStyle: DrawingStyle | undefined;
@@ -102,18 +104,25 @@ export function createDrawingSession<P extends Properties>(
     if (!current || disposed) return false;
     if (!current.before && !current.placed) return true;
     // A diagnostic observer can read or refresh the session synchronously.
-    // Block that nested check and defer an explicit refresh until this check ends.
-    if (checkingPermission === current) return false;
+    // Reuse the last result for nested checks, or block an unchecked operation.
+    // Defer explicit refresh until this check ends.
+    if (checkingPermission === current) return permissionResults.get(operation) ?? false;
     let notifyFailure = false;
+    checkingPermission = current;
     try {
       const permitted = options.canEdit?.(
         structuredClone(current.before ?? { ...current.feature, geometry: shapeGeometry(current.shape) }),
         operation,
       ) ?? true;
       if (disposed || draft !== current || revision !== checkedRevision) return false;
+      permissionResults.set(operation, permitted);
       permissionFailures.delete(operation);
-      if (!permissionFailures.size && !pending && reason === permissionFailureMessage)
+      // Nested observer reads may have cached a provisional denial.
+      snapshot = undefined;
+      if (!permissionFailures.size && !pending && reason === permissionFailureMessage) {
         reason = undefined;
+        notifyFailure = true;
+      }
       return permitted;
     } catch (cause) {
       if (disposed) return false;
@@ -122,8 +131,8 @@ export function createDrawingSession<P extends Properties>(
         reportPermissionError(cause, current.feature.id);
         return false;
       }
-      checkingPermission = current;
       notifyFailure = !permissionFailures.has(operation);
+      permissionResults.set(operation, false);
       permissionFailures.add(operation);
       reason = permissionFailureMessage;
       snapshot = undefined;
@@ -142,7 +151,15 @@ export function createDrawingSession<P extends Properties>(
       if (checkingPermission === current) checkingPermission = undefined;
       if (refreshAfterPermission) {
         refreshAfterPermission = false;
-        refreshPermissions();
+        refreshingPermission = true;
+        try {
+          refreshPermissions();
+          // Complete one deferred refresh. Its observer reads must not schedule
+          // another refresh or leave a provisional snapshot behind.
+          getState();
+        } finally {
+          refreshingPermission = false;
+        }
       }
       // Publish after the observer guard ends. A delete failure must not cache
       // a provisional denial of an independently permitted update operation.
@@ -265,6 +282,7 @@ export function createDrawingSession<P extends Properties>(
     release = host.acquireInteraction("drawing");
     draft = next;
     permissionFailures.clear();
+    permissionResults.clear();
     initialStyle = structuredClone(next.style);
     past = [];
     future = [];
@@ -279,6 +297,7 @@ export function createDrawingSession<P extends Properties>(
     release = undefined;
     draft = undefined;
     permissionFailures.clear();
+    permissionResults.clear();
     refreshAfterPermission = false;
     initialStyle = undefined;
     past = [];
@@ -556,7 +575,7 @@ export function createDrawingSession<P extends Properties>(
   function refreshPermissions() {
     if (disposed) return;
     if (checkingPermission && checkingPermission === draft) {
-      refreshAfterPermission = true;
+      if (!refreshingPermission) refreshAfterPermission = true;
       return;
     }
     const current = draft, active = submission, checkedRevision = revision;

@@ -2023,7 +2023,7 @@ async function suite() {
     } finally { editor.destroy(); draw.destroy(); }
   });
   await run('Snap observers invalidate obsolete candidate iteration and placement across owner and scene changes', async () => {
-    for (const throwing of [false, true]) for (const action of ['cancel', 'destroy', 'replace', 'remove', 'update', 'camera', 'settings', 'terrain'] as const) {
+    for (const throwing of [false, true]) for (const action of ['cancel', 'destroy', 'replace', 'remove', 'update', 'camera', 'animated-camera', 'fit-bounds', 'settings', 'terrain'] as const) {
       const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 13 },
         features: [point('observer-snap-a'), point('observer-snap-b', .0006)], logger: () => {} });
       current = draw; await draw.ready;
@@ -2037,6 +2037,8 @@ async function suite() {
         else if (action === 'remove') draw.remove(['observer-snap-a', 'observer-snap-b']);
         else if (action === 'update') draw.upsert([point('observer-snap-a', .02), point('observer-snap-b', .021)]);
         else if (action === 'camera') draw.setCamera({ center: [.02, 0] });
+        else if (action === 'animated-camera') draw.setCamera({ center: [.02, 0] }, { duration: 500 });
+        else if (action === 'fit-bounds') draw.fitBounds([[.015, -.005], [.025, .005]], { duration: 500 });
         else if (action === 'settings') editor.setSnapping(true);
         else draw.configure({ terrain: true, elevation: { tiles: ['data:image/png;base64,invalid'], maxzoom: 0 } });
       };
@@ -2072,6 +2074,11 @@ async function suite() {
           check(editor.getState().draft?.placed === 0, 'Snap exception bypassed unavailable terrain');
         }
         check(obsoleteVisits === 0, `${action}/${throwing} visited a later obsolete candidate`);
+        if (action === 'animated-camera' || action === 'fit-bounds') {
+          await until(() => !draw.map.isMoving(), 'observer animation settled');
+          await pointer('click', draw.map.project([.02, 0]));
+          check(editor.getState().draft?.placed === 1, 'Drawing did not recover after animated camera change');
+        }
       } finally { off(); editor.destroy(); draw.destroy(); }
     }
   });
@@ -2178,6 +2185,82 @@ async function suite() {
           'Destroyed permission owner emitted callbacks or retained input resources');
       } finally { editor.destroy(); draw.destroy(); }
     }
+  });
+  await run('Permission callbacks that animate the camera stop native edits and recover after settlement', async () => {
+    for (const input of ['placement', 'keyboard', 'drag'] as const) {
+      const original: MapFeature = { type: 'Feature', id: 'permission-camera', properties: {},
+        geometry: { type: 'LineString', coordinates: [[0, 0], [.01, 0]] } };
+      const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 13 }, features: [original], logger: () => {} });
+      current = draw; await draw.ready;
+      let armed = false, acted = false;
+      const editor = attachDrawing(draw, { createFeature: () => ({ id: 'permission-camera-new', properties: {} }),
+        canEdit: () => { if (armed) { armed = false; acted = true; draw.setCamera({ center: [.02, 0] }, { duration: 500 }); } return true; },
+        submit: () => ({ accepted: true }) });
+      try {
+        if (input === 'placement') { editor.start('line'); await pointer('click', draw.map.project([0, 0])); }
+        else editor.edit(original.id);
+        await until(() => draw.map.loaded(), 'permission camera input ready');
+        const retained = JSON.stringify(editor.getState().draft);
+        const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]');
+        if (input === 'placement') {
+          await pointer('move', draw.map.project([.005, 0]));
+          armed = true;
+          if (!window.browserStationaryClick) throw new Error('Camera placement bridge missing');
+          await window.browserStationaryClick();
+        } else if (input === 'keyboard') {
+          handle!.focus(); armed = true; await browserKey('ArrowRight');
+        } else {
+          if (!window.browserMouse) throw new Error('Camera drag bridge missing');
+          const box = handle!.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2;
+          await window.browserMouse('down', x, y); armed = true;
+          await window.browserMouse('move', x + 25, y); await window.browserMouse('up', x + 25, y);
+        }
+        check(acted && JSON.stringify(editor.getState().draft) === retained, `${input} committed an old camera target after permission callback`);
+        await until(() => !draw.map.isMoving(), 'permission camera animation settled');
+        if (input === 'placement') await pointer('click', draw.map.project([.02, 0]));
+        else {
+          const recovered = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]')!;
+          recovered.focus(); await browserKey('ArrowRight');
+        }
+        check(JSON.stringify(editor.getState().draft) !== retained, `${input} failed to recover after camera movement`);
+        check(JSON.stringify(draw.getFeature(original.id)) === JSON.stringify(original), 'Camera permission callback changed accepted data');
+      } finally { editor.destroy(); draw.destroy(); }
+    }
+  });
+  await run('Permission controls handle callback reads refreshes and one-step delete recovery', async () => {
+    const original: MapFeature = { type: 'Feature', id: 'permission-controls', properties: {},
+      geometry: { type: 'LineString', coordinates: [[0, 0], [.01, 0]] } };
+    const diagnostics: RidgelineError[] = [];
+    const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 13 },
+      features: [original], onError: error => diagnostics.push(error), logger: () => {} });
+    current = draw; await draw.ready;
+    let onCheck = () => {}, failed = true, depth = 0, maxDepth = 0;
+    const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused-controls', properties: {} }),
+      canEdit: (_feature, operation) => {
+        depth++; maxDepth = Math.max(maxDepth, depth);
+        try { onCheck(); if (failed && operation === 'delete') throw new Error('Controls delete check failed'); return true; }
+        finally { depth--; }
+      }, submit: () => ({ accepted: true }) });
+    const tools = document.createElement('div'), inspector = document.createElement('div');
+    container.append(tools, inspector);
+    const controls = attachDrawingControls(draw, editor, { tools, inspector });
+    try {
+      editor.edit(original.id);
+      check(editor.getState().message?.includes('could not be checked') && inspector.textContent?.includes('could not be checked'),
+        'Delete permission exception did not reach controls');
+      failed = false; editor.refreshPermissions();
+      check(editor.getState().phase === 'editing' && !inspector.textContent?.includes('could not be checked'),
+        'One permission refresh did not clear controls failure feedback');
+      onCheck = () => { editor.getState(); editor.getPreview(); editor.refreshPermissions(); };
+      editor.refreshPermissions();
+      check(editor.getState().phase === 'editing' && maxDepth === 1 && diagnostics.length === 1,
+        'Controls permission callback recursively invoked itself or cached denial');
+      onCheck = () => {};
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]')!;
+      handle.focus(); const retained = JSON.stringify(editor.getState().draft);
+      await browserKey('ArrowRight');
+      check(JSON.stringify(editor.getState().draft) !== retained, 'Permission observer recovery blocked keyboard edit');
+    } finally { controls.destroy(); editor.destroy(); tools.remove(); inspector.remove(); draw.destroy(); }
   });
   await run('Final drawing permission cannot overwrite or revive consumer data', async () => {
     const draw = createViewport({ container, basemap: style(), logger: () => {} });

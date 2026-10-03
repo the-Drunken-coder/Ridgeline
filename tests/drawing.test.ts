@@ -1373,3 +1373,45 @@ for (const action of ["replace", "destroy"] as const) {
     editor.destroy();
   });
 }
+
+for (const observer of [false, true]) for (const action of ['read', 'refresh'] as const) {
+  test(`Permission callback ${action} is bounded with observer ${observer}`, () => {
+    let check = () => {}, depth = 0, maxDepth = 0;
+    const { editor, diagnostics } = fixture({ canEdit: () => {
+      depth++; maxDepth = Math.max(maxDepth, depth);
+      try {
+        if (depth > 12) throw new Error('Recursive permission check');
+        check(); return true;
+      } finally { depth--; }
+    } });
+    line(editor);
+    if (observer) editor.onChange(() => { editor.getState(); });
+    check = () => { if (action === 'read') { editor.getState(); editor.getPreview(); } else editor.refreshPermissions(); };
+    editor.refreshPermissions();
+    assert.equal(editor.getState().phase, 'editing');
+    assert.equal(maxDepth, 1);
+    assert.equal(diagnostics.length, 0);
+    check = () => {};
+    editor.moveVertex(1, [.02, 0]);
+    assert.deepEqual(editor.getState().draft?.shape, { kind: 'line', vertices: [[0, 0], [.02, 0]] });
+    editor.destroy();
+  });
+}
+
+test('One refresh clears recovered delete feedback for state-before-button readers', () => {
+  let failed = true;
+  const { editor, host } = fixture({ canEdit: (_feature, kind) => {
+    if (failed && kind === 'delete') throw new Error('Delete check unavailable');
+    return true;
+  } });
+  host.upsert([feature({ kind: 'point', position: [0, 0] })]); editor.edit('existing');
+  const messages: (string | undefined)[] = [];
+  editor.onChange(() => { messages.push(editor.getState().message); editor.canDelete(); });
+  assert.equal(editor.canDelete(), false);
+  assert.match(editor.getState().message!, /could not be checked/);
+  failed = false; editor.refreshPermissions();
+  assert.equal(editor.getState().phase, 'editing');
+  assert.equal(editor.getState().message, undefined);
+  assert.equal(messages.at(-1), undefined);
+  editor.destroy();
+});
