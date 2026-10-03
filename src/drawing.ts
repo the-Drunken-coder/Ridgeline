@@ -356,7 +356,7 @@ export function attachDrawing<P extends Properties>(
         let previous = p;
         let dragScreen: ScreenPoint | undefined;
         let dragEpoch = draftEpoch;
-        const currentDrag = (revision?: number) => !disposed && dragEpoch === draftEpoch &&
+        const currentDrag = (revision?: number) => draggingHandle && !disposed && dragEpoch === draftEpoch &&
           markers.get(key)?.marker === marker && editable() &&
           (revision === undefined || revision === stateRevision);
         button.addEventListener(
@@ -402,7 +402,16 @@ export function attachDrawing<P extends Properties>(
           previous =
             markers.get(key)?.position ??
             position(marker.getLngLat().toArray());
-          editFromInput(() => session.beginGesture());
+          if (!editFromInput(() => session.beginGesture())) {
+            // MapLibre can emit drag immediately after a rejected dragstart.
+            // Keep that native gesture inactive without touching a replacement.
+            if (!disposed && dragEpoch === draftEpoch && markers.get(key)?.marker === marker) {
+              draggingHandle = false;
+              dragScreen = undefined;
+              refreshDraggedHandle = undefined;
+            }
+            restoreHandle();
+          }
         });
         function restoreHandle() {
           const item = markers.get(key);
@@ -410,7 +419,10 @@ export function attachDrawing<P extends Properties>(
             marker.setLngLat(item.position);
         }
         function applyDrag(screen: ScreenPoint) {
-          if (!currentDrag()) return;
+          if (!currentDrag()) {
+            restoreHandle();
+            return;
+          }
           const revision = stateRevision;
           const current = session.getState().draft,
             currentHandle = index === undefined || !current
@@ -460,11 +472,12 @@ export function attachDrawing<P extends Properties>(
         });
         marker.on("dragend", () => {
           if (dragEpoch !== draftEpoch) return;
+          const started = draggingHandle;
           draggingHandle = false;
           dragScreen = undefined;
           refreshDraggedHandle = undefined;
           feedback?.clear();
-          if (editable()) session.endGesture();
+          if (started && editable()) session.endGesture();
         });
         button.addEventListener(
           "keydown",
