@@ -119,10 +119,6 @@ export function createDrawingSession<P extends Properties>(
       notifyFailure = permissionFailures.delete(operation);
       // Nested observer reads may have cached a provisional denial.
       snapshot = undefined;
-      if (!permissionFailures.size && !pending && reason === permissionFailureMessage) {
-        reason = undefined;
-        notifyFailure = true;
-      }
       return permitted;
     } catch (cause) {
       if (disposed) return false;
@@ -592,6 +588,12 @@ export function createDrawingSession<P extends Properties>(
         active.controller.abort();
       }
     }
+    if (current && !active) {
+      allowed();
+      if (disposed || draft !== current) return;
+    }
+    if (!pending && !permissionFailures.size && reason === permissionFailureMessage)
+      reason = undefined;
     notify();
   }
   function restart() {
