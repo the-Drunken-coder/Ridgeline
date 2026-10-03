@@ -674,6 +674,45 @@ async function suite() {
       check(disposed === 1, 'Repeated teardown disposed closed content twice');
     } finally { interactions.destroy(); map.destroy(); }
   });
+  await run('Reliability content keeps a menu opened by tooltip disposal during a native picker click', async () => {
+    const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+      features: [point('tooltip-replacement-a'), point('tooltip-replacement-b')], logger: () => {} });
+    current = map; await map.ready;
+    const canvas = map.map.getCanvas(), location = map.map.project([0, 0]);
+    const replacement = document.createElement('button'); replacement.textContent = 'Replacement action';
+    let replace = false, tooltipDisposed = 0, opened = 0, menuDisposed = 0;
+    const interactions = attachInteractions(map, {
+      renderFeature: feature => {
+        const element = document.createElement('span'); element.textContent = feature.id;
+        return { element, dispose: () => {
+          if (!replace) return;
+          replace = false; tooltipDisposed++;
+          // Only the consumer disposer introduces a nested interaction; hover
+          // and the outer picker request use native browser input.
+          map.map.fire('contextmenu', { point: location, lngLat: map.map.unproject(location), originalEvent: new MouseEvent('contextmenu') });
+        } };
+      },
+      contextMenu: () => { opened++; return { element: replacement, dispose: () => { menuDisposed++; } }; },
+    });
+    try {
+      await until(() => map.map.queryRenderedFeatures({ layers: ['rl:points'] }).length === 2, 'tooltip replacement candidates render');
+      canvas.focus();
+      await pointer('move', location);
+      await until(() => !!container.querySelector('.rl-tooltip'), 'native hover mounted disposable tooltip');
+      replace = true;
+      await pointer('click', location);
+      check(tooltipDisposed === 1 && opened === 1, 'Native click did not exercise replacement from tooltip disposal');
+      check(replacement.isConnected && !!container.querySelector('.rl-context'), 'Tooltip disposal replacement menu did not mount');
+      check(!container.querySelector('.rl-picker'), 'Obsolete native click mounted a picker over the replacement menu');
+      check(document.activeElement === replacement && menuDisposed === 0, 'Obsolete native click changed replacement focus or lifetime');
+      await browserKey('Escape');
+      check(!container.querySelector('.rl-context, .rl-picker') && !replacement.isConnected && menuDisposed === 1,
+        'Keyboard dismissal left replacement content mounted or disposed it incorrectly');
+      check(document.activeElement === canvas, 'Replacement dismissal did not restore canvas focus');
+      interactions.destroy(); interactions.destroy();
+      check(tooltipDisposed === 1 && menuDisposed === 1, 'Repeated teardown repeated replacement disposal');
+    } finally { replace = false; interactions.destroy(); map.destroy(); }
+  });
   await run('Reliability content keeps replacement focus when a menu disposer opens another menu', async () => {
     const map = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 }, logger: () => {} });
     current = map; await map.ready;

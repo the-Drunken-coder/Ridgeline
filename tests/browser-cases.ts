@@ -16,6 +16,7 @@ export const browserCases = [
   'Reliability publication keeps removals and scene changes made by later icon callbacks',
   'Reliability publication runs a requested reset after a held update settles',
   'Reliability content keeps a menu closed when its factory closes synchronously',
+  'Reliability content keeps a menu opened by tooltip disposal during a native picker click',
   'Reliability content keeps replacement focus when a menu disposer opens another menu',
   'Reliability content releases menu results after helper or viewport destruction',
   'Reliability content ignores obsolete factory results and close callbacks',
