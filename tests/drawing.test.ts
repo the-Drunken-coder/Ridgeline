@@ -1432,3 +1432,30 @@ test('Delete permission failure and repair retain the consumer rejection until a
   editor.moveVertex(1, [.02, 0]); assert.equal(editor.getState().phase, 'editing');
   editor.destroy();
 });
+
+for (const operation of ['create', 'update', 'delete'] as const) {
+  test(`Abort-aware ${operation} rejection retains permission failure after pending repair`, async () => {
+    let failed = false;
+    const cause = new Error('Permission check failed before abort rejection');
+    const { editor, host, diagnostics } = fixture({
+      canEdit: (_feature, kind) => { if (failed && kind === operation) throw cause; return true; },
+      submit: (_change, signal) => new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new DOMException('Remote request aborted', 'AbortError')), { once: true });
+      }),
+    });
+    if (operation === 'create') line(editor);
+    else { host.upsert([feature({ kind: 'line', vertices: [[0, 0], [.01, 0]] })]); editor.edit('existing'); }
+    const retained = editor.getState().draft;
+    const request = operation === 'delete' ? editor.delete() : editor.finish();
+    failed = true; editor.refreshPermissions();
+    failed = false; editor.refreshPermissions();
+    assert.equal(editor.getState().phase, 'pending');
+    assert.equal(await request, false);
+    assert.equal(editor.getState().phase, 'rejected');
+    assert.match(editor.getState().message!, /could not be checked/);
+    assert.deepEqual(editor.getState().draft, retained);
+    assert.equal(diagnostics[0]?.cause, cause);
+    editor.refreshPermissions(); assert.equal(editor.getState().phase, 'editing');
+    editor.cancel();
+  });
+}

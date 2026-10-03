@@ -546,8 +546,10 @@ export function createDrawingSession<P extends Properties>(
     } catch (error) {
       if (!disposed && submission === active && draft === current) {
         pending = false;
-        reason =
-          error instanceof Error
+        // An abort-aware consumer may reject because our permission check failed.
+        // Keep that actionable feedback through settlement, including after repair.
+        if (!active.controller.signal.aborted || reason !== permissionFailureMessage)
+          reason = error instanceof Error
             ? error.message
             : "The application could not accept the change.";
         notify();

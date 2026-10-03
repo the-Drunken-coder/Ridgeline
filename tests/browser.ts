@@ -1863,11 +1863,14 @@ async function suite() {
       features: [original], onError: error => diagnostics.push(error), logger: () => {} });
     current = draw; await draw.ready;
     draw.on('diagnostic', error => observed.push(error));
-    let fail = false, signal: AbortSignal | undefined;
+    let fail = false, abortAware = false, signal: AbortSignal | undefined;
     let decide: (value: { accepted: true }) => void = () => {};
     const editor = attachDrawing(draw, { createFeature: () => ({ id: 'unused-failure', properties: {} }),
       canEdit: () => { if (fail) throw cause; return true; },
-      submit: (_change, requestSignal) => { signal = requestSignal; return new Promise(resolve => { decide = resolve; }); } });
+      submit: (_change, requestSignal) => { signal = requestSignal; return new Promise((resolve, reject) => {
+        decide = resolve;
+        if (abortAware) requestSignal.addEventListener('abort', () => reject(new DOMException('Remote request aborted', 'AbortError')), { once: true });
+      }); } });
     try {
       editor.edit(original.id);
       const initialShape = JSON.stringify(editor.getState().draft?.shape);
@@ -1904,6 +1907,13 @@ async function suite() {
       check(await pending === false && JSON.stringify(draw.getFeature(original.id)) === JSON.stringify(original), 'Late save changed accepted data');
       editor.refreshPermissions();
       check(editor.getState().phase === 'editing', 'Settled draft did not recover');
+      abortAware = true;
+      const aborting = editor.finish(); fail = true; editor.refreshPermissions();
+      fail = false; editor.refreshPermissions();
+      check(editor.getState().phase === 'pending', 'Repair unlocked abort-aware request before settlement');
+      check(await aborting === false && editor.getState().message?.includes('could not be checked') &&
+        JSON.stringify(editor.getState().draft) === retained, 'Abort rejection lost permission feedback or draft');
+      editor.refreshPermissions();
       await browserKey('Escape');
       check(editor.getState().phase === 'idle' && draw.getInteractionOwner() === null, 'Recovered cancellation retained draft/lease');
       check(diagnostics.length === 1 && observed.length === 1, 'Repair and recurrent failure reset diagnostic bound');
