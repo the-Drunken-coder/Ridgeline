@@ -2187,14 +2187,16 @@ async function suite() {
     }
   });
   await run('Permission callbacks that animate the camera stop native edits and recover after settlement', async () => {
-    for (const input of ['placement', 'keyboard', 'drag'] as const) {
+    for (const invalidation of ['camera', 'data'] as const) for (const input of ['placement', 'keyboard', 'drag'] as const) {
       const original: MapFeature = { type: 'Feature', id: 'permission-camera', properties: {},
         geometry: { type: 'LineString', coordinates: [[0, 0], [.01, 0]] } };
       const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 13 }, features: [original], logger: () => {} });
       current = draw; await draw.ready;
       let armed = false, acted = false;
       const editor = attachDrawing(draw, { createFeature: () => ({ id: 'permission-camera-new', properties: {} }),
-        canEdit: () => { if (armed) { armed = false; acted = true; draw.setCamera({ center: [.02, 0] }, { duration: 500 }); } return true; },
+        canEdit: () => { if (armed) { armed = false; acted = true;
+          if (invalidation === 'camera') draw.setCamera({ center: [.02, 0] }, { duration: 500 });
+          else draw.upsert([point('permission-moved-candidate', .02)]); } return true; },
         submit: () => ({ accepted: true }) });
       try {
         if (input === 'placement') { editor.start('line'); await pointer('click', draw.map.project([0, 0])); }

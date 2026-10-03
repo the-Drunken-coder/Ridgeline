@@ -116,7 +116,7 @@ export function createDrawingSession<P extends Properties>(
       ) ?? true;
       if (disposed || draft !== current || revision !== checkedRevision) return false;
       permissionResults.set(operation, permitted);
-      permissionFailures.delete(operation);
+      notifyFailure = permissionFailures.delete(operation);
       // Nested observer reads may have cached a provisional denial.
       snapshot = undefined;
       if (!permissionFailures.size && !pending && reason === permissionFailureMessage) {
@@ -134,9 +134,11 @@ export function createDrawingSession<P extends Properties>(
       notifyFailure = !permissionFailures.has(operation);
       permissionResults.set(operation, false);
       permissionFailures.add(operation);
-      reason = permissionFailureMessage;
       snapshot = undefined;
-      if (submission?.kind === operation) submission.controller.abort();
+      if (submission?.kind === operation) {
+        reason = permissionFailureMessage;
+        submission.controller.abort();
+      }
       if (gesture) {
         if (!sameDraft(gesture, current)) {
           pushPast(gesture);
@@ -176,7 +178,7 @@ export function createDrawingSession<P extends Properties>(
           ? "conflict"
           : !editable
             ? "forbidden"
-            : reason
+            : reason || permissionFailures.size
               ? "rejected"
               : "editing";
   }
@@ -197,7 +199,7 @@ export function createDrawingSession<P extends Properties>(
           ? "This feature changed. Discard or restart with the latest feature."
           : currentPhase === "forbidden"
             ? permissionFailures.has(operation) ? permissionFailureMessage : "Editing permission removed. Your draft is preserved."
-            : reason,
+            : permissionFailures.size ? permissionFailureMessage : reason,
       validation: draft
         ? !draft.before && !draft.placed
           ? "Click the map to place the drawing."

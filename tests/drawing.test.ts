@@ -1415,3 +1415,20 @@ test('One refresh clears recovered delete feedback for state-before-button reade
   assert.equal(messages.at(-1), undefined);
   editor.destroy();
 });
+
+test('Delete permission failure and repair retain the consumer rejection until a correction', async () => {
+  let failed = false;
+  const { editor, host } = fixture({
+    canEdit: (_feature, operation) => { if (failed && operation === 'delete') throw new Error('Delete temporarily unavailable'); return true; },
+    submit: () => ({ accepted: false, reason: 'Application requires a corrected route' }),
+  });
+  host.upsert([feature({ kind: 'line', vertices: [[0, 0], [.01, 0]] })]); editor.edit('existing');
+  assert.equal(await editor.finish(), false);
+  failed = true; assert.equal(editor.canDelete(), false);
+  assert.match(editor.getState().message!, /could not be checked/);
+  failed = false; editor.canDelete();
+  assert.equal(editor.getState().phase, 'rejected');
+  assert.equal(editor.getState().message, 'Application requires a corrected route');
+  editor.moveVertex(1, [.02, 0]); assert.equal(editor.getState().phase, 'editing');
+  editor.destroy();
+});
