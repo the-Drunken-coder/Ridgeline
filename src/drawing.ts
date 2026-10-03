@@ -46,7 +46,19 @@ export function attachDrawing<P extends Properties>(
     throw new Error("Drawing requires a viewport created by createViewport.");
   const drawingInternals = internals;
   attached.add(viewport.map);
-  const session = createDrawingSession(viewport, options),
+  let disposed = false,
+    stateRevision = 0;
+  let inputRevision: number | undefined;
+  const session = createDrawingSession(viewport, {
+    ...options,
+    canEdit: (feature, operation) => {
+      const permitted = options.canEdit?.(feature, operation) ?? true;
+      // Native edits carry a screen target that callbacks can invalidate.
+      // Direct coordinate operations do not depend on the camera.
+      return permitted && (inputRevision === undefined ||
+        (!disposed && inputRevision === stateRevision));
+    },
+  }),
     map = viewport.map;
   const resolveGround = createGroundTargetResolver(map, () => viewport.getConfiguration().terrain,
     cause => drawingInternals.reportTargetError(cause));
@@ -61,8 +73,7 @@ export function attachDrawing<P extends Properties>(
       insert?: () => void;
     }
   >();
-  let disposed = false,
-    active = false,
+  let active = false,
     navigating = false,
     suppressReleaseClick = false,
     restoreDoubleClick = false;
@@ -76,7 +87,6 @@ export function attachDrawing<P extends Properties>(
   let draggingHandle = false;
   let refreshDraggedHandle: (() => void) | undefined;
   let keyboardFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
-  let stateRevision = 0;
   let draftEpoch = 0;
   let resolvingSnap = false;
   let lastSnapError = -Infinity;
@@ -85,7 +95,9 @@ export function attachDrawing<P extends Properties>(
     return ["editing", "rejected"].includes(session.getState().phase);
   }
   function editFromInput(update: () => void) {
-    const revision = stateRevision;
+    const revision = stateRevision,
+      previousInputRevision = inputRevision;
+    inputRevision = revision;
     try {
       update();
       return true;
@@ -95,6 +107,8 @@ export function attachDrawing<P extends Properties>(
       if (disposed || revision !== stateRevision) return false;
       if (editable() && !disposed && revision === stateRevision) throw cause;
       return false;
+    } finally {
+      inputRevision = previousInputRevision;
     }
   }
   function snap(
@@ -777,6 +791,10 @@ export function attachDrawing<P extends Properties>(
   const offSceneChange = drawingInternals.onSceneChange(invalidateTarget);
   const offDataChange = viewport.on("datachange", invalidateTarget);
   const offCameraChange = viewport.on("camerachange", invalidateTarget);
+  // Animated camera operations emit movestart before their first frame;
+  // completion-only viewport events arrive too late to stop callback work.
+  map.on("movestart", invalidateTarget);
+  map.on("move", invalidateTarget);
   const offPreview = session.onPreview(renderGeometry);
   let offDestroy = () => {};
   function destroy() {
@@ -790,6 +808,8 @@ export function attachDrawing<P extends Properties>(
     offSceneChange();
     offDataChange();
     offCameraChange();
+    map.off("movestart", invalidateTarget);
+    map.off("move", invalidateTarget);
     offPreview();
     offDestroy();
     abort.abort();
