@@ -84,6 +84,19 @@ export function attachDrawing<P extends Properties>(
   function editable() {
     return ["editing", "rejected"].includes(session.getState().phase);
   }
+  function editFromInput(update: () => void) {
+    const revision = stateRevision;
+    try {
+      update();
+      return true;
+    } catch (cause) {
+      // A session operation rechecks permission after the adapter's cached read.
+      // Its diagnostic can lock or replace the draft before the operation throws.
+      if (disposed || revision !== stateRevision) return false;
+      if (editable() && !disposed && revision === stateRevision) throw cause;
+      return false;
+    }
+  }
   function snap(
     point: DrawingPosition,
     screen: ScreenPoint,
@@ -353,7 +366,7 @@ export function attachDrawing<P extends Properties>(
           (e) => {
             e.preventDefault();
             e.stopPropagation();
-            if (insert && editable()) markers.get(key)?.insert?.();
+            if (insert && editable()) editFromInput(() => markers.get(key)?.insert?.());
           },
           { signal: abort.signal },
         );
@@ -372,8 +385,13 @@ export function attachDrawing<P extends Properties>(
           previous =
             markers.get(key)?.position ??
             position(marker.getLngLat().toArray());
-          session.beginGesture();
+          editFromInput(() => session.beginGesture());
         });
+        function restoreHandle() {
+          const item = markers.get(key);
+          if (!disposed && dragEpoch === draftEpoch && item?.marker === marker)
+            marker.setLngLat(item.position);
+        }
         function applyDrag(screen: ScreenPoint) {
           if (!currentDrag()) return;
           const revision = stateRevision;
@@ -382,7 +400,10 @@ export function attachDrawing<P extends Properties>(
               ? undefined
               : shapeHandles(current.shape)[index];
           const target = resolveGround(screen);
-          if (!currentDrag(revision)) return;
+          if (!currentDrag(revision)) {
+            restoreHandle();
+            return;
+          }
           if (target.kind !== "available") {
             marker.setLngLat(markers.get(key)?.position ?? previous);
             feedback?.show(screen, target, undefined);
@@ -394,17 +415,27 @@ export function attachDrawing<P extends Properties>(
             bypassSnap,
             key === "move" || currentHandle?.carriesShape ? "draft" : index,
           );
-          if (!next || !currentDrag(revision)) return;
+          if (!next || !currentDrag(revision)) {
+            // MapLibre moves its marker before this handler. Retain the current
+            // draft position when a callback invalidates that movement.
+            restoreHandle();
+            return;
+          }
           feedback?.show(screen, target, next !== target.position ? next : undefined);
-          if (!currentDrag(revision)) return;
+          if (!currentDrag(revision)) {
+            restoreHandle();
+            return;
+          }
           const samePosition = (a: DrawingPosition, b: DrawingPosition) =>
             Math.abs(wrapLongitude(a[0] - b[0])) < 1e-10 && Math.abs(a[1] - b[1]) < 1e-10;
           if (key === "move") {
             if (!samePosition(previous, next)) {
-              session.translate(previous, next);
-              previous = next;
+              if (editFromInput(() => session.translate(previous, next))) previous = next;
+              else restoreHandle();
             }
-          } else if (!currentHandle || !samePosition(currentHandle.position, next)) move(next);
+          } else if (!currentHandle || !samePosition(currentHandle.position, next)) {
+            if (!editFromInput(() => move(next))) restoreHandle();
+          }
         }
         marker.on("drag", () => {
           dragScreen = map.project(marker.getLngLat());
@@ -431,7 +462,9 @@ export function attachDrawing<P extends Properties>(
               ) {
                 e.preventDefault();
                 e.stopPropagation();
-                session.removeVertex(index);
+                const epoch = draftEpoch;
+                if (!editFromInput(() => session.removeVertex(index)) || disposed || epoch !== draftEpoch)
+                  return;
                 const remaining = session.getState().draft?.shape;
                 const count = remaining && "vertices" in remaining
                   ? remaining.vertices.length : 0;
@@ -478,8 +511,8 @@ export function attachDrawing<P extends Properties>(
             if (!next || disposed || revision !== stateRevision || !editable()) return;
             feedback?.clear();
             if (key === "move")
-              session.translate(position(marker.getLngLat().toArray()), next);
-            else move(next);
+              editFromInput(() => session.translate(position(marker.getLngLat().toArray()), next));
+            else editFromInput(() => move(next));
           },
           { signal: abort.signal },
         );
@@ -580,7 +613,7 @@ export function attachDrawing<P extends Properties>(
     }
     const chosen = snap(target.position, event.point, event.originalEvent.altKey);
     if (!chosen || disposed || revision !== stateRevision) return;
-    session.addPoint(chosen);
+    editFromInput(() => session.addPoint(chosen));
   }
   function refreshPointer() {
     if (disposed || navigating || !pointer || !session.getState().draft?.placing || !editable()) return;
@@ -699,8 +732,8 @@ export function attachDrawing<P extends Properties>(
       ) {
         event.preventDefault();
         event.stopPropagation();
-        if (event.shiftKey) session.redo();
-        else session.undo();
+        if (event.shiftKey) editFromInput(() => session.redo());
+        else editFromInput(() => session.undo());
       }
       if (event.key === "Escape" && session.getState().phase !== "pending") {
         event.preventDefault();
