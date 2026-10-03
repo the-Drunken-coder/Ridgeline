@@ -74,6 +74,7 @@ export function attachDrawing<P extends Properties>(
       marker: Marker;
       button: HTMLButtonElement;
       position: DrawingPosition;
+      displayed: DrawingPosition;
       insert?: () => void;
     }
   >();
@@ -357,7 +358,7 @@ export function attachDrawing<P extends Properties>(
         })
           .setLngLat(displayed)
           .addTo(map);
-        item = { marker, button, position: p };
+        item = { marker, button, position: p, displayed };
         markers.set(key, item);
         let previous = p;
         let dragScreen: ScreenPoint | undefined;
@@ -422,7 +423,7 @@ export function attachDrawing<P extends Properties>(
         function restoreHandle() {
           const item = markers.get(key);
           if (!disposed && dragEpoch === draftEpoch && item?.marker === marker)
-            marker.setLngLat(item.position);
+            marker.setLngLat(item.displayed);
         }
         function applyDrag(screen: ScreenPoint) {
           if (!currentDrag()) {
@@ -440,7 +441,7 @@ export function attachDrawing<P extends Properties>(
             return;
           }
           if (target.kind !== "available") {
-            marker.setLngLat(markers.get(key)?.position ?? previous);
+            marker.setLngLat(markers.get(key)?.displayed ?? previous);
             feedback?.show(screen, target, undefined);
             return;
           }
@@ -558,6 +559,7 @@ export function attachDrawing<P extends Properties>(
       if (actual.lng !== displayed[0] || actual.lat !== displayed[1])
         item.marker.setLngLat(displayed);
       item.position = p;
+      item.displayed = displayed;
       if (item.marker.isDraggable() !== (!locked && !insert))
         item.marker.setDraggable(!locked && !insert);
       item.button.disabled = locked;

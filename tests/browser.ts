@@ -289,6 +289,8 @@ async function suite() {
     const draw = createViewport({ container, basemap: style(), terrain: false, features: [line],
       camera: { center: [0, 0], zoom: 0 }, logger: () => {} });
     current = draw; await draw.ready;
+    // The public MapLibre camera extension keeps multiple longitude turns in
+    // view while accepted drawing coordinates remain bounded.
     draw.map.setCenter([-720, 0]);
     check(draw.map.getCenter().lng === -720, 'Native renderer did not retain the unwrapped center');
     let armed = false, callbacks = 0, permissionReads = 0;
