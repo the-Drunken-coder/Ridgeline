@@ -197,8 +197,9 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
   subscriptions.push(viewport.on('click', event => {
     if (disposed) return;
     if (active) { close(); return; }
+    const version = operation;
     hideTooltip();
-    if (disposed || viewport.getInteractionOwner()) return;
+    if (disposed || operation !== version || viewport.getInteractionOwner()) return;
     clickedAttachments = event.attachments;
     if (event.features.length > 1 && options.picker !== false) {
       operation++;
