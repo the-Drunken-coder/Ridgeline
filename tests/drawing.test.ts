@@ -1340,3 +1340,36 @@ test("An update permission exception does not disable independently permitted de
   assert.equal(diagnostics.length, 1);
   editor.destroy();
 });
+
+
+for (const action of ["replace", "destroy"] as const) {
+  test(`A permission callback that ${action}s its draft before throwing retains the original failure context`, () => {
+    let armed = false, nextId = 0;
+    const cause = new Error("Old permission callback failed after changing its owner");
+    const { editor, host, diagnostics, owner } = fixture({
+      createFeature: () => ({ id: `callback-owner-${++nextId}`, properties: {} }),
+      canEdit: () => {
+        if (armed) {
+          armed = false;
+          if (action === "destroy") editor.destroy();
+          else { editor.cancel(); editor.start("line"); }
+          throw cause;
+        }
+        return true;
+      },
+    });
+    line(editor); armed = true;
+    assert.throws(() => editor.moveVertex(1, [0.02, 0]));
+    assert.equal(host.getFeature("callback-owner-1"), undefined);
+    assert.equal(diagnostics.length, action === "destroy" ? 0 : 1);
+    if (action === "replace") {
+      assert.equal(diagnostics[0]?.cause, cause);
+      assert.equal(diagnostics[0]?.context.featureId, "callback-owner-1");
+      assert.equal(diagnostics[0]?.context.operation, "drawing.canEdit");
+      assert.equal(editor.getState().phase, "editing");
+      assert.equal(editor.getState().draft?.feature.id, "callback-owner-2");
+      assert.equal(editor.getState().draft?.placed, 0);
+    } else assert.equal(owner(), null);
+    editor.destroy();
+  });
+}

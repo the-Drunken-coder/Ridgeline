@@ -88,6 +88,13 @@ export function createDrawingSession<P extends Properties>(
   const styleFields =
     options.styleFields ??
     (Object.keys(DEFAULT_DRAWING_STYLE) as (keyof DrawingStyle)[]);
+  function reportPermissionError(cause: unknown, featureId: string) {
+    if (disposed) return;
+    const now = Date.now();
+    if (now - lastPermissionReport < 10_000) return;
+    lastPermissionReport = now;
+    host.reportCallbackError(cause, "drawing.canEdit", featureId);
+  }
   function allowed(
     operation: DrawingChange<P>["kind"] = draft?.before ? "update" : "create",
   ) {
@@ -109,7 +116,12 @@ export function createDrawingSession<P extends Properties>(
         reason = undefined;
       return permitted;
     } catch (cause) {
-      if (disposed || draft !== current || revision !== checkedRevision) return false;
+      if (disposed) return false;
+      if (draft !== current || revision !== checkedRevision) {
+        // Report the callback that failed, without marking its replacement draft.
+        reportPermissionError(cause, current.feature.id);
+        return false;
+      }
       checkingPermission = current;
       notifyFailure = !permissionFailures.has(operation);
       permissionFailures.add(operation);
@@ -124,11 +136,7 @@ export function createDrawingSession<P extends Properties>(
         gesture = undefined;
         gestureCancelled = true;
       }
-      const now = Date.now();
-      if (now - lastPermissionReport >= 10_000) {
-        lastPermissionReport = now;
-        host.reportCallbackError(cause, "drawing.canEdit", current.feature.id);
-      }
+      reportPermissionError(cause, current.feature.id);
       return false;
     } finally {
       if (checkingPermission === current) checkingPermission = undefined;
