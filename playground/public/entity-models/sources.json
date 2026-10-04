@@ -1,0 +1,43 @@
+{
+  "acquired": "2026-10-04T00:32:23.140Z",
+  "sources": [
+    {
+      "name": "drone",
+      "author": "NateGazzard",
+      "page": "https://poly.pizza/m/DNbUoMtG3H",
+      "url": "https://static.poly.pizza/4eb88feb-cb2d-46c3-980d-3e704868361c.glb",
+      "bytes": 259676,
+      "license": "CC BY 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/3.0/"
+    },
+    {
+      "name": "tank",
+      "author": "KolosStudios",
+      "page": "https://poly.pizza/m/egcLMSGiuA",
+      "url": "https://static.poly.pizza/ba4513d6-e5c6-4a4b-a027-2eb7097d6516.glb",
+      "bytes": 44716,
+      "license": "CC BY 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/3.0/"
+    },
+    {
+      "name": "plane",
+      "author": "jeremy",
+      "page": "https://poly.pizza/m/6fyLMORhgGK",
+      "url": "https://static.poly.pizza/19d58465-dafb-4df0-a3b8-b0500bd9ed4b.glb",
+      "bytes": 77620,
+      "license": "CC BY 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/3.0/"
+    },
+    {
+      "name": "boat",
+      "author": "Kenney",
+      "page": "https://kenney.nl/assets/watercraft-kit",
+      "url": "https://kenney.nl/media/pages/assets/watercraft-kit/a335cfed49-1713519620/kenney_watercraft-pack.zip",
+      "sourceBytes": 16520,
+      "bytes": 25084,
+      "license": "CC0 1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "modification": "One gltf-transform copy pass to embed colormap.png"
+    }
+  ]
+}
