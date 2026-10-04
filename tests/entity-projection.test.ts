@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { EntityProjection } from '../src/entity-projection';
+import { EntityProjection, entityVertex, offsetEntityVertex, entityVertexPosition } from '../src/entity-projection';
+import { MercatorCoordinate } from 'maplibre-gl';
 
 const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 function input(mainMatrix: number[], fallbackMatrix = mainMatrix, transition = 0): ConstructorParameters<typeof EntityProjection>[0] {
@@ -59,4 +60,19 @@ test('globe blending preserves local up and the back-of-globe clipping boundary'
   assert.ok(Math.abs(up[0]! - 2) < 1e-12);
   assert.equal(up[1], 0);
   assert.ok(Math.abs(up[2]!) < 1e-12);
+});
+
+test('local meter offsets use the exact renderer coordinates and one world copy', () => {
+  const m = MercatorCoordinate.fromLngLat([179.99999, 46]);
+  const origin = [m.x, m.y] as const, units = m.meterInMercatorCoordinateUnits();
+  const anchor = entityVertex([179.99999, 46, 100], origin);
+  const vertex = offsetEntityVertex(anchor, [100, 50, 20]);
+  assert.deepEqual(vertex, [100 * units, -50 * units, 120, units]);
+  const frame = new EntityProjection(input(identity), -180.1, 1000, 1000);
+  assert.deepEqual(frame.clipVertex(vertex, origin), [m.x + 100 * units - 1, m.y - 50 * units, 120 * units, 1]);
+  const point = entityVertexPosition(vertex, origin);
+  assert.ok(point[0] < -179.99 && point[0] > -180);
+  assert.ok(point[1] > 46);
+  assert.equal(point[2], 120);
+  assert.deepEqual(anchor, [0, 0, 100, units]);
 });
