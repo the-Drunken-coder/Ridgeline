@@ -136,7 +136,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (frameMarkers.get(feature.id) === key) { availableMarkers.set(feature.id, key); return true; }
       return false;
     },
-    commitVisibility: hidden => modelVisibility.commit(hidden),
+    commitVisibility: (hidden, current) => modelVisibility.commit(hidden, current),
     representationChanged: ids => { if (!destroyed) emit('entitychange', { ids }); },
     changed: ids => {
       publication.update(ids.flatMap(id => { const feature = store.get(id); return feature ? [feature] : []; }));

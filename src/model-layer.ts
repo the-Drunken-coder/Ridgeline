@@ -51,14 +51,14 @@ export class ModelLayer implements CustomLayerInterface {
     try {
       if (!this.failed) { this.renderer.initialize(input); this.initialized = true; this.registry.renderer(this.renderer); }
       if (this.map !== map || !this.renderer) return;
-      let frame = this.options.prepare(this.projection, !this.failed);
-      // A preparation callback can replace the current input before committing any visibility.
-      if (!frame?.current()) frame = this.options.prepare(this.projection, !this.failed);
-      if (!frame?.current()) return;
-      if (!this.failed) this.prepared = this.renderer.prepareFrame(input, this.projection, frame.draws);
-      if (!frame.current()) { this.prepared = undefined; return; }
-      if (frame.commit() && frame.current()) this.frame = frame;
-      else this.prepared = undefined;
+      for (let attempt = 0; attempt < 2 && this.map === map && this.renderer; attempt++) {
+        const frame = this.options.prepare(this.projection, !this.failed);
+        // Preparation or source callbacks may replace input before any model is submitted.
+        if (!frame?.current()) continue;
+        if (!this.failed) this.prepared = this.renderer.prepareFrame(input, this.projection, frame.draws);
+        if (frame.current() && frame.commit() && frame.current()) { this.frame = frame; return; }
+        this.prepared = undefined;
+      }
     } catch (cause) { this.fallback(cause); }
   }
   render() {

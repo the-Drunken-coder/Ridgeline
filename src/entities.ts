@@ -8,7 +8,7 @@ import { modelChoice } from './model-switching';
 import type { ModelChoice } from './model-switching';
 import { wrapLongitude } from './longitude';
 import type { ModelDraw, ModelGpu } from './model-renderer';
-import type { ModelRegistry } from './models';
+import type { ModelRegistry, RegisteredModel } from './models';
 import { DEFAULT_ENTITY_MODELS, modelAppearance, modelSettings } from './model-settings';
 import type { Map as GLMap } from 'maplibre-gl';
 import { EntityLayer } from './entity-layer';
@@ -48,7 +48,7 @@ type SceneOptions<P extends Properties> = {
   models?: ModelRegistry<ModelGpu>;
   beginNativeFrame?(): void;
   nativeAvailable?(feature: MapFeature<P>, style: FeatureStyle): boolean;
-  commitVisibility?(hidden: ReadonlyMap<string, boolean>): boolean;
+  commitVisibility?(hidden: ReadonlyMap<string, boolean>, current: () => boolean): boolean;
   representationChanged?(ids: string[]): void;
 };
 
@@ -235,7 +235,7 @@ export class EntityScene<P extends Properties> {
     if (this.options.models?.status(modelId).status === 'unavailable') for (const id of ids) { this.choices.delete(id); this.elevation.release(modelAreaKey(id)); }
     for (const id of ids) this.dirty.add(id);
     if (ids.length) { this.schedule(); (this.options.representationChanged ?? this.options.changed)(ids); }
-    this.options.map.triggerRepaint();
+    if (!this.destroyed) this.options.map.triggerRepaint();
   }
   pickAbove(x: number, y: number, tolerance: number) {
     return [...this.layer.pick(x, y, tolerance), ...this.coverage.pick(x, y)];
@@ -299,9 +299,11 @@ export class EntityScene<P extends Properties> {
         );
       }
     }
+    if (this.destroyed) return;
     this.coverage.flush();
+    if (this.destroyed) return;
     this.render();
-    if (ids.length) this.options.changed(ids);
+    if (ids.length && !this.destroyed) this.options.changed(ids.filter(id => this.features.has(id)));
   }
   private build(feature: MapFeature<P>) {
     const revision = this.revision;
@@ -370,7 +372,9 @@ export class EntityScene<P extends Properties> {
     const current = () => !this.destroyed && this.revision === revision && this.options.configuration() === configuration;
     this.options.beginNativeFrame?.();
     const choices = new Map<string, ModelChoice>(), representations = new Map<string, EntityState['representation']>();
-    const draws: ModelDraw[] = [];
+    const grouped = new Map<RegisteredModel<ModelGpu>, ModelDraw>();
+    const center = this.options.map.getCenter(), frameOrigin = MercatorCoordinate.fromLngLat([wrapLongitude(center.lng), center.lat]);
+    const origin: [number, number] = [frameOrigin.x, frameOrigin.y];
     const transform = this.options.map._camera.transform;
     const camera = MercatorCoordinate.fromLngLat(transform.getCameraLngLat());
     const cameraHeight = transform.getCameraAltitude();
@@ -381,13 +385,13 @@ export class EntityScene<P extends Properties> {
       const status = reference ? registry?.status(reference.id).status ?? 'unavailable' : 'unavailable';
       const point = MercatorCoordinate.fromLngLat([wrapLongitude(feature.geometry.coordinates[0]!),
         Math.max(-85.05112878, Math.min(85.05112878, feature.geometry.coordinates[1]!))]);
-      const origin: [number, number] = [point.x, point.y];
       const height = (state.altitude ?? 0) * verticalScale(configuration), unit = point.meterInMercatorCoordinateUnits(), dx = point.x - camera.x;
       const distance = Math.hypot((dx - Math.round(dx)) / unit, (point.y - camera.y) / unit, height - cameraHeight);
       const settings = modelSettings(configuration.entityModels ?? DEFAULT_ENTITY_MODELS, reference);
       const eligible = Boolean(rendererAvailable && asset && state.ground !== undefined && (state.placement === 'ground' || state.placement === 'airborne'));
       const choice = modelChoice(this.choices.get(id), { modelId: reference?.id, heading: entity.heading, status, eligible, distance, settings });
       if (choice) choices.set(id, choice);
+      if (!choice?.model) this.elevation.release(modelAreaKey(id));
       let representation: EntityState['representation'] = state.placement === 'withheld' ? 'withheld' :
         this.options.nativeAvailable?.(feature, style) !== false || state.placement === 'airborne' ? 'icon' : 'withheld';
       if (choice?.model && eligible && asset && entity.heading !== undefined) {
@@ -398,9 +402,11 @@ export class EntityScene<P extends Properties> {
         const physical = modelPlacement(input, this.elevation.sampling());
         if (!current()) return;
         let placement = physical;
-        if (physical.status === 'ready') {
-          const scale = modelFloorScale(projection, physical, origin, settings.minimumSizePixels);
-          if (scale > 1) placement = modelPlacement({ ...input, displayScale: scale }, this.elevation.sampling());
+        for (let refinement = 0; refinement < 4 && placement.status === 'ready'; refinement++) {
+          const factor = modelFloorScale(projection, placement, origin, settings.minimumSizePixels);
+          if (factor <= 1) break;
+          placement = modelPlacement({ ...input, displayScale: placement.displayScale * factor }, this.elevation.sampling());
+          if (!current()) return;
         }
         if (!current()) return;
         if (placement.status !== 'ineligible') {
@@ -411,19 +417,21 @@ export class EntityScene<P extends Properties> {
         }
         if (!current()) return;
         if (placement.status === 'ready') {
-          draws.push({ asset, origin, instances: [{ basis: placement.basis, anchor: entityVertex(placement.position, origin),
-            appearance: style.modelAppearance && { ...style.modelAppearance } }] });
+          const draw = grouped.get(asset) ?? { asset, origin, instances: [] };
+          draw.instances.push({ basis: placement.basis, anchor: entityVertex(placement.position, origin),
+            appearance: style.modelAppearance && { ...style.modelAppearance } });
+          grouped.set(asset, draw);
           representation = 'model';
         }
       }
       representations.set(id, representation);
     }
     if (!current()) return;
-    return { draws, current,
+    return { draws: [...grouped.values()], current,
       commit: () => {
         if (!current()) return false;
         const hidden = new Map([...representations].map(([id, representation]) => [id, representation !== 'icon']));
-        if (this.options.commitVisibility?.(hidden) === false || !current()) return false;
+        if (this.options.commitVisibility?.(hidden, current) === false || !current()) return false;
         this.layer.suppressPoints(new Set([...hidden].filter(([, hide]) => hide).map(([id]) => id)));
         return true;
       },

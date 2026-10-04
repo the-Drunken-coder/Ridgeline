@@ -8,11 +8,11 @@ const check = (value: unknown, message: string) => { if (!value) throw new Error
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const feature = (modelId = 'box'): MapFeature => ({ type: 'Feature', id: 'entity', properties: {},
   geometry: { type: 'Point', coordinates: [0, 0] }, entity: { heading: 0, model: { id: modelId, minimumSizePixels: 40 } } });
-function create(context: Context, sampler: ElevationSampler = { sample: () => 0 }, errors: RidgelineError[] = []) {
+function create(context: Context, sampler: ElevationSampler = { sample: () => 0 }, errors: RidgelineError[] = [], icon = false) {
   const viewport = createViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
     { id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
     camera: { center: [0, 0], zoom: 14, pitch: 0, bearing: 0 }, features: [feature()], elevationSampler: sampler,
-    style: () => ({ color: '#0000ff', radius: 8 }), logger: () => {}, onError: error => errors.push(error) });
+    style: () => ({ color: '#0000ff', radius: icon ? 0 : 8, icon: icon ? 'blue-model-icon' : undefined }), logger: () => {}, onError: error => errors.push(error) });
   context.setCurrent(viewport); return viewport;
 }
 function distance(viewport: Viewport) { return viewport.map._camera.transform.getCameraAltitude(); }
@@ -81,6 +81,19 @@ export const modelSwitchingCases: readonly { name: string; run(context: Context)
       try { viewport.configure({ entityModels: { switchDistanceMeters: 1000, deadZoneMeters: 2000, minimumSizePixels: 40 } }); }
       catch (error) { invalid = error instanceof RidgelineError && error.code === 'INVALID_CONFIGURATION'; }
       check(invalid && viewport.getConfiguration().entityModels.deadZoneMeters === 0, 'Invalid configuration changed accepted settings');
+      const combined = feature(); combined.entity!.model!.deadZoneMeters = 1500;
+      viewport.upsert([combined]);
+      let combinedRejected = false;
+      try { viewport.configure({ entityModels: { switchDistanceMeters: 500, deadZoneMeters: 0, minimumSizePixels: 40 } }); }
+      catch (error) { combinedRejected = error instanceof RidgelineError && error.code === 'INVALID_CONFIGURATION'; }
+      check(combinedRejected && viewport.getConfiguration().entityModels.switchDistanceMeters === 1000 &&
+        viewport.getFeature('entity')?.entity?.model?.deadZoneMeters === 1500, 'Invalid combined defaults changed accepted state');
+      const invalidEntity = feature(); invalidEntity.entity!.model!.deadZoneMeters = 2000;
+      let entityRejected = false;
+      try { viewport.upsert([invalidEntity]); } catch (error) { entityRejected = error instanceof RidgelineError; }
+      check(entityRejected && viewport.getFeature('entity')?.entity?.model?.deadZoneMeters === 1500, 'Invalid combined entity override changed stored data');
+      const inherited = feature(); inherited.entity!.model!.switchDistanceMeters = undefined; inherited.entity!.model!.deadZoneMeters = undefined;
+      only(await frame(viewport, () => viewport.upsert([inherited])), 'icon', 'undefined entity fields inherit viewport settings');
       const override = feature(); override.entity!.model!.switchDistanceMeters = 3000;
       viewport.upsert([override]);
       only(await frame(viewport), 'model', 'entity override enters');
@@ -88,7 +101,45 @@ export const modelSwitchingCases: readonly { name: string; run(context: Context)
       await viewport.registerModel('box', { bytes: solidGlb(), metersPerUnit: 2 });
       only(await frame(viewport), 'model', 'replacement draws current revision immediately');
       only(await frame(viewport, () => viewport.unregisterModel('box')), 'icon', 'unregister fallback');
+      await viewport.registerModel('box', { bytes: solidGlb() });
+      viewport.remove(['entity']);
+      const shared = Array.from({ length: 20 }, (_, index) => {
+        const value = feature(); value.id = `shared-${index}`;
+        value.entity!.model!.switchDistanceMeters = 3000; return value;
+      });
+      viewport.upsert(shared);
+      const gl = viewport.map.getCanvas().getContext('webgl2'); if (!gl) throw new Error('WebGL2 unavailable');
+      const draw = gl.drawElementsInstanced, counts: number[] = [];
+      gl.drawElementsInstanced = function (mode, count, type, offset, instances) {
+        if (count === 36) counts.push(instances);
+        draw.call(this, mode, count, type, offset, instances);
+      };
+      try { await frame(viewport); } finally { gl.drawElementsInstanced = draw; }
+      check(counts.length === 1 && counts[0] === 20, `Shared solid material was not instanced: ${counts.join(',')}`);
     } finally { viewport.destroy(); }
+    for (const icon of [true, false]) {
+      const airborne = create(context, undefined, [], icon);
+      try {
+        await ready(context, airborne, 2000);
+        if (icon) {
+          const image = new ImageData(24, 24);
+          for (let i = 0; i < image.data.length; i += 4) { image.data[i + 2] = 255; image.data[i + 3] = 255; }
+          airborne.registerIcon('blue-model-icon', { image });
+        }
+        const value = feature(); value.entity!.altitude = { meters: 50, reference: 'ground' };
+        airborne.upsert([value]);
+        await context.until(() => airborne.map.isSourceLoaded('rl:features') && airborne.getEntityState('entity')?.placement === 'airborne', 'airborne native representation');
+        let blend = 0;
+        airborne.map.addLayer({ id: 'switch-projection-reference', type: 'custom', render(_gl, input) { blend = input.defaultProjectionData.projectionTransition; } });
+        for (const [projection, zoom, expectedBlend] of [['flat', 14, 0], ['globe', 5, 1], ['globe', 11.5, .5]] as const) {
+          await frame(airborne, () => { airborne.configure({ projection }); airborne.map.jumpTo({ zoom }); });
+          const at = distance(airborne);
+          only(await frame(airborne, () => airborne.configure({ entityModels: { switchDistanceMeters: at * 2, deadZoneMeters: 0, minimumSizePixels: 40 } })), 'model', `${icon ? 'symbol' : 'dot'} ${projection} ${zoom} model`);
+          only(await frame(airborne, () => airborne.configure({ entityModels: { switchDistanceMeters: at / 2, deadZoneMeters: 0, minimumSizePixels: 40 } })), 'icon', `${icon ? 'symbol' : 'dot'} ${projection} ${zoom} fallback`);
+          check(Math.abs(blend - expectedBlend) < .01, `Expected blend ${expectedBlend}, received ${blend}`);
+        }
+      } finally { airborne.destroy(); }
+    }
   } },
   { name: 'Model switching preserves choices through temporary terrain and asset readiness', async run(context) {
     let known = true, finish: (() => void) | undefined;
@@ -112,9 +163,25 @@ export const modelSwitchingCases: readonly { name: string; run(context: Context)
       await viewport.registerModel('other', { bytes: solidGlb() });
       only(await frame(viewport, () => viewport.upsert([feature('other')])), 'icon', 'reference change resets');
     } finally { viewport.destroy(); }
+    const pending: AbortSignal[] = [];
+    const footprint = create(context, { sample: (lng, lat) => lng === 0 && lat === 0 ? 0 : null,
+      prepare: (_positions, signal) => { pending.push(signal); return new Promise<void>(() => {}); } });
+    try {
+      await ready(context, footprint, 2000);
+      const tile = document.createElement('canvas'); tile.width = 16; tile.height = 16;
+      const paint = tile.getContext('2d'); if (!paint) throw new Error('Terrain fixture needs a canvas');
+      paint.fillStyle = 'rgb(128,0,0)'; paint.fillRect(0, 0, 16, 16);
+      footprint.configure({ terrain: true, elevation: { tiles: [tile.toDataURL()], encoding: 'terrarium', tileSize: 16, maxzoom: 0 } });
+      only(await frame(footprint, () => move(footprint, 1800)), 'icon', 'unknown footprint keeps fallback');
+      await context.until(() => pending.some(signal => !signal.aborted), 'pending exact model footprint');
+      only(await frame(footprint, () => move(footprint, 2200)), 'icon', 'far switch retires footprint');
+      check(pending.every(signal => signal.aborted), 'Far icon retained irrelevant model preparation');
+    } finally { footprint.destroy(); }
   } },
   { name: 'Model switching preflights failures and rejects reentrant stale frames', async run(context) {
-    const errors: RidgelineError[] = [], viewport = create(context, undefined, errors);
+    let onSample: (() => void) | undefined;
+    const sampler: ElevationSampler = { sample: () => { const action = onSample; onSample = undefined; action?.(); return 0; } };
+    const errors: RidgelineError[] = [], viewport = create(context, sampler, errors);
     try {
       await ready(context, viewport, 1800);
       only(await frame(viewport), 'model', 'initial model');
@@ -135,6 +202,10 @@ export const modelSwitchingCases: readonly { name: string; run(context: Context)
       try { only(await frame(viewport), 'icon', 'draw failure reveals later native fallback'); }
       finally { gl.drawElementsInstanced = draw; }
       only(await frame(viewport, () => viewport.retryUpdates()), 'model', 'draw recovery');
+      onSample = () => viewport.configure({ entityModels: { switchDistanceMeters: 1000, deadZoneMeters: 0, minimumSizePixels: 40 } });
+      only(await frame(viewport, () => viewport.retryUpdates()), 'icon', 'sampling callback replaces current settings');
+      only(await frame(viewport, () => viewport.configure({ entityModels: { switchDistanceMeters: 2000, deadZoneMeters: 200, minimumSizePixels: 40 } })), 'icon', 'latest settings keep the reset choice inside band');
+      only(await frame(viewport, () => move(viewport, 1800)), 'model', 'fresh entrance after callback');
       let replace = true;
       viewport.on('entitychange', () => {
         if (replace && viewport.getEntityState('entity')?.representation === 'icon') { replace = false; viewport.remove(['entity']); viewport.upsert([feature('missing')]); }
@@ -143,6 +214,21 @@ export const modelSwitchingCases: readonly { name: string; run(context: Context)
       await context.until(() => viewport.getEntityState('entity')?.model?.status === 'unavailable', 'replacement callback owns current entity');
       only(await frame(viewport), 'icon', 'discarded frame cannot restore old model');
     } finally { viewport.destroy(); }
+    const disposed = create(context);
+    try {
+      await ready(context, disposed, 1800);
+      let cancelled = false, followups = 0;
+      const repaint = disposed.map.triggerRepaint;
+      disposed.map.triggerRepaint = function () { if (cancelled) followups++; return repaint.call(this); };
+      disposed.on('entitychange', () => {
+        if (disposed.getEntityState('entity')?.model?.replacementPending) { disposed.destroy(); cancelled = true; }
+      });
+      let rejected = false;
+      try { await disposed.registerModel('box', { bytes: solidGlb() }); }
+      catch (error) { rejected = error instanceof RidgelineError && error.code === 'MODEL_LOAD_CANCELLED'; }
+      await pause(50);
+      check(cancelled && rejected && followups === 0, 'Destroyed registration callback retained later render work');
+    } finally { disposed.destroy(); }
   } },
   { name: 'Model size floors use the rendered projected box and settle without idle frames', async run(context) {
     const viewport = create(context);
