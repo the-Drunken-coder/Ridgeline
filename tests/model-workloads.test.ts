@@ -46,6 +46,17 @@ test('workload variants subdivide actual triangles without changing shape or win
   assert.equal(quarter.vertices, 6, 'shared edge midpoints need only three additional vertices');
 });
 
+test('normalized output omits empty optional glTF arrays', () => {
+  const normalized = createModelWorkloads(triangle()).find(variant => variant.variant === 'normalized');
+  assert.ok(normalized);
+  const length = new DataView(normalized.data).getUint32(12, true);
+  const json: unknown = JSON.parse(new TextDecoder().decode(new Uint8Array(normalized.data, 20, length)));
+  assert.ok(json && typeof json === 'object');
+  for (const [name, value] of Object.entries(json)) {
+    if (Array.isArray(value)) assert.ok(value.length > 0, `glTF forbids empty ${name}`);
+  }
+});
+
 test('generated GLBs retain embedded images, independent samplers, material alpha and source attributes', () => {
   const source = materialGlb([
     { image: 'alpha', alphaMode: 'MASK', alphaCutoff: 0.7, unlit: true, vertexColor: [0.2, 0.4, 0.6, 0.5],
