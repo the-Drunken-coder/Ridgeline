@@ -1,6 +1,8 @@
 import { MercatorCoordinate } from 'maplibre-gl';
 import type { CustomLayerInterface, CustomRenderMethodInput, Map as GLMap } from 'maplibre-gl';
 import type { GeoPoint } from './entity-geometry';
+import { EntityProjection, entityProjectionShader, entityVertex } from './entity-projection';
+import type { ProjectionOrigin, ScreenPoint } from './entity-projection';
 
 export type Primitive = {
   entityId: string;
@@ -12,24 +14,13 @@ export type Primitive = {
   size?: number;
   surface?: boolean;
 };
-type Draw = Primitive & { first: number; count: number; origin: [number, number] };
+type Draw = Primitive & { first: number; count: number; origin: ProjectionOrigin };
 type Program = {
   program: WebGLProgram;
   position: number;
   color: number;
   scale: number;
 };
-type ScreenPoint = { x: number; y: number; depth: number };
-const multiply = (m: ArrayLike<number>, v: number[]) =>
-  [0, 1, 2, 3].map(
-    (row) => m[row]! * v[0]! + m[row + 4]! * v[1]! + m[row + 8]! * v[2]! + m[row + 12]! * v[3]!,
-  );
-function shifted(matrix: ArrayLike<number>, x: number, y: number) {
-  const m = Float64Array.from(matrix);
-  for (let i = 0; i < 4; i++) m[12 + i] = matrix[12 + i]! + matrix[i]! * x + matrix[i + 4]! * y;
-  return new Float32Array(m);
-}
-
 /** Shared-depth 3D geometry using MapLibre's projection shader contract. No continuous repaint loop. */
 export class EntityLayer implements CustomLayerInterface {
   readonly id = 'rl:entities';
@@ -40,7 +31,7 @@ export class EntityLayer implements CustomLayerInterface {
   private programs = new Map<string, Program>();
   private draws: Draw[] = [];
   private dirty = true;
-  private projection?: CustomRenderMethodInput;
+  private projection?: EntityProjection;
   private gl?: WebGL2RenderingContext;
   private failed = false;
   private verticalScale = 1;
@@ -107,7 +98,8 @@ export class EntityLayer implements CustomLayerInterface {
   }
   render(gl: WebGL2RenderingContext, input: CustomRenderMethodInput) {
     if (!this.buffer || !this.map || this.failed || !this.draws.length) return;
-    this.projection = input;
+    const canvas = this.map.getCanvas();
+    this.projection = new EntityProjection(input, this.map.getCenter().lng, canvas.clientWidth, canvas.clientHeight);
     try {
       let program = this.programs.get(input.shaderData.variantName);
       if (!program) {
@@ -118,11 +110,8 @@ export class EntityLayer implements CustomLayerInterface {
       gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
       if (this.dirty) {
         const values: number[] = [];
-        const position = (p: GeoPoint, origin: Draw['origin']) => {
-          const m = MercatorCoordinate.fromLngLat([p[0], Math.max(-85.05112878, Math.min(85.05112878, p[1]))]);
-          const x = m.x - origin[0];
-          return [x - Math.round(x), m.y - origin[1], this.displayHeight(p[2]), m.meterInMercatorCoordinateUnits()];
-        };
+        const position = (p: GeoPoint, origin: ProjectionOrigin) =>
+          entityVertex([p[0], p[1], this.displayHeight(p[2])], origin);
         for (const draw of this.draws) {
           if (draw.mode === 'lines') {
             for (let i = 0; i < draw.vertices.length; i += 2) {
@@ -135,13 +124,8 @@ export class EntityLayer implements CustomLayerInterface {
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(values), gl.DYNAMIC_DRAW);
         this.dirty = false;
       }
-      const d = input.defaultProjectionData,
-        globe = input.shaderData.define.includes('GLOBE');
       const uniform = (name: string) => gl.getUniformLocation(program.program, name);
-      gl.uniformMatrix4fv(uniform('u_projection_fallback_matrix'), false, new Float32Array(d.fallbackMatrix));
-      gl.uniform4fv(uniform('u_projection_clipping_plane'), d.clippingPlane);
-      gl.uniform1f(uniform('u_projection_transition'), 1);
-      gl.uniform1f(uniform('u_blend'), d.projectionTransition);
+      this.projection.bindFrame(gl, program.program);
       gl.uniform2f(uniform('u_viewport'), gl.drawingBufferWidth, gl.drawingBufferHeight);
       for (const [location, size, offset] of [
         [program.position, 3, 0],
@@ -159,14 +143,7 @@ export class EntityLayer implements CustomLayerInterface {
       gl.disable(gl.CULL_FACE);
       gl.depthMask(false);
       for (const draw of this.draws) {
-        // Each coherent entity uses its own nearby copy, including the flat
-        // component of a globe transition. Unrelated entities cannot shift it.
-        const [x, y] = draw.origin;
-        const worldCopy = Math.round((this.map.getCenter().lng + 180) / 360 - x);
-        gl.uniformMatrix4fv(uniform('u_projection_matrix'), false,
-          globe ? new Float32Array(d.mainMatrix) : shifted(d.mainMatrix, x + worldCopy, y));
-        gl.uniformMatrix4fv(uniform('u_flat'), false, shifted(d.fallbackMatrix, x + worldCopy, y));
-        gl.uniform4f(uniform('u_projection_tile_mercator_coords'), x, y, 1, 1);
+        this.projection.bindOrigin(gl, program.program, draw.origin);
         gl.uniform1f(uniform('u_line_width'), (draw.size ?? 1) * devicePixelRatio);
         gl.uniform1f(uniform('u_point_size'), (draw.size ?? 10) * devicePixelRatio);
         gl.uniform1i(uniform('u_point'), draw.mode === 'points' ? 1 : 0);
@@ -190,17 +167,9 @@ ${input.shaderData.vertexShaderPrelude}
 ${input.shaderData.define}
 in vec3 a_position; in float a_scale; in vec4 a_color; in vec4 a_end; in vec2 a_line;
 uniform vec2 u_viewport; uniform float u_line_width;
-uniform mat4 u_flat; uniform float u_blend; uniform float u_point_size;
+uniform float u_point_size;
 out vec4 v_color;
-vec4 projectPosition(vec3 position,float scale){
-#ifdef GLOBE
-  vec4 sphere=projectTileFor3D(position.xy,position.z);
-  vec4 flatPosition=u_flat*vec4(position.xy,position.z*scale,1.0);
-  return mix(flatPosition,sphere,u_blend);
-#else
-  return projectTileFor3D(position.xy,position.z*scale);
-#endif
-}
+${entityProjectionShader}
 void main(){
   vec4 start=projectPosition(a_position,a_scale);
   gl_Position=start;
@@ -256,96 +225,22 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
       for (const shader of shaders) gl.deleteShader(shader);
     }
   }
-  private clip(p: GeoPoint, origin?: Draw['origin']): number[] | null {
-    return this.clipDisplayed([p[0], p[1], this.displayHeight(p[2])], origin);
+  project(p: GeoPoint, origin?: ProjectionOrigin) {
+    return this.projection?.project([p[0], p[1], this.displayHeight(p[2])], origin) ?? null;
   }
-  private clipDisplayed(p: GeoPoint, origin?: Draw['origin']): number[] | null {
-    const data = this.projection;
-    if (!data || !this.map) return null;
-    const height = p[2];
-    const m = MercatorCoordinate.fromLngLat([p[0], p[1]], height),
-      d = data.defaultProjectionData;
-    const globe = data.shaderData.define.includes('GLOBE');
-    // Attachments retain the GPU's coherent origin; independent terrain probes
-    // choose the nearby copy of their own screen location.
-    const reference = origin?.[0] ?? m.x;
-    const x = m.x - Math.round(m.x - reference) + Math.round((this.map.getCenter().lng + 180) / 360 - reference);
-    let clip = multiply(d.mainMatrix, [x, m.y, m.z, 1]);
-    if (globe) {
-      const lon = (p[0] * Math.PI) / 180,
-        lat = (p[1] * Math.PI) / 180,
-        r = 1 + height / 6371008.8;
-      const sphere = [
-        Math.sin(lon) * Math.cos(lat) * r,
-        Math.sin(lat) * r,
-        Math.cos(lon) * Math.cos(lat) * r,
-        1,
-      ];
-      const front = sphere
-        .slice(0, 3)
-        .reduce((sum, v, i) => sum + v * d.clippingPlane[i]!, d.clippingPlane[3]);
-      if (d.projectionTransition > 0.99 && front < 0) return null;
-      const g = multiply(d.mainMatrix, sphere),
-        f = multiply(d.fallbackMatrix, [x, m.y, m.z, 1]);
-      clip = g.map((v, i) => v * d.projectionTransition + f[i]! * (1 - d.projectionTransition));
-    }
-    return clip;
-  }
-  private screen(clip: number[]): ScreenPoint {
-    const map = this.map;
-    if (!map) throw new Error('Entity layer is not attached.');
-    return {
-      x: ((clip[0]! / clip[3]! + 1) / 2) * map.getCanvas().clientWidth,
-      y: ((1 - clip[1]! / clip[3]!) / 2) * map.getCanvas().clientHeight,
-      depth: clip[2]! / clip[3]!,
-    };
-  }
-  private projectDisplayed(p: GeoPoint): ScreenPoint | null {
-    const clip = this.clipDisplayed(p);
-    if (!clip || clip[3]! <= 0 || Math.abs(clip[2]! / clip[3]!) > 1) return null;
-    return this.screen(clip);
-  }
-  project(p: GeoPoint): ScreenPoint | null {
-    const clip = this.clip(p);
-    if (!clip || clip[3]! <= 0 || Math.abs(clip[2]! / clip[3]!) > 1) return null;
-    return this.screen(clip);
-  }
-  private clippedTriangle(vertices: GeoPoint[], origin?: Draw['origin']): ScreenPoint[] {
-    const polygon = vertices.map(point => this.clip(point, origin));
+  private clippedTriangle(vertices: GeoPoint[], origin: ProjectionOrigin) {
+    const projection = this.projection;
+    if (!projection) return [];
+    const polygon = vertices.map(p => projection.clip([p[0], p[1], this.displayHeight(p[2])], origin));
     if (polygon.some(point => !point)) return [];
-    let points = polygon.filter((point): point is number[] => point !== null);
-    // The GPU clips faces against both depth planes before rasterization.
-    for (const distance of [(p: number[]) => p[2]! + p[3]!, (p: number[]) => p[3]! - p[2]!]) {
-      const next: number[][] = [];
-      for (let i = 0; i < points.length; i++) {
-        const a = points[i]!, b = points[(i + 1) % points.length]!;
-        const da = distance(a), db = distance(b);
-        if (da >= 0) next.push(a);
-        if ((da < 0 && db > 0) || (da > 0 && db < 0)) {
-          const t = da / (da - db);
-          next.push(a.map((value, index) => value + t * (b[index]! - value)));
-        }
-      }
-      points = next;
-      if (points.length < 3) return [];
-    }
-    return points.filter(point => point[3]! > 0).map(point => this.screen(point));
+    return projection.clippedPolygon(polygon.filter((point): point is number[] => point !== null));
   }
-  private clippedSegment(a: GeoPoint, b: GeoPoint, origin: Draw['origin']): [ScreenPoint, ScreenPoint] | null {
-    const clippedStart = this.clip(a, origin), clippedEnd = this.clip(b, origin);
-    if (!clippedStart || !clippedEnd) return null;
-    let start = clippedStart, end = clippedEnd;
-    for (const distance of [(p: number[]) => p[2]! + p[3]!, (p: number[]) => p[3]! - p[2]!]) {
-      const first = distance(start), last = distance(end);
-      if (first < 0 && last < 0) return null;
-      if (first < 0 || last < 0) {
-        const t = first / (first - last);
-        const intersection = start.map((value, index) => value + t * (end[index]! - value));
-        if (first < 0) start = intersection;
-        else end = intersection;
-      }
-    }
-    return start[3]! > 0 && end[3]! > 0 ? [this.screen(start), this.screen(end)] : null;
+  private clippedSegment(a: GeoPoint, b: GeoPoint, origin: ProjectionOrigin) {
+    const projection = this.projection;
+    if (!projection) return null;
+    const start = projection.clip([a[0], a[1], this.displayHeight(a[2])], origin);
+    const end = projection.clip([b[0], b[1], this.displayHeight(b[2])], origin);
+    return start && end ? projection.clippedSegment(start, end) : null;
   }
   pick(x: number, y: number, tolerance: number) {
     const hits: { entityId: string; attachmentId?: string; depth: number }[] = [];
@@ -354,7 +249,7 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
       const location = this.map.unproject([x, y]);
       const height = this.map.getTerrain() ? this.map.queryTerrainElevation(location) : 0;
       // MapLibre's terrain query returns a height that already includes exaggeration.
-      if (height !== null) terrainDepth = this.projectDisplayed([location.lng, location.lat, height])?.depth;
+      if (height !== null) terrainDepth = this.projection.project([location.lng, location.lat, height])?.depth;
     }
     const visible = (depth: number) => terrainDepth === undefined || depth <= terrainDepth + 1e-6;
     for (const draw of this.draws) {
@@ -376,7 +271,7 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
         continue;
       }
       if (draw.mode === 'points') {
-        const p = this.project(draw.vertices[0]!);
+        const p = this.project(draw.vertices[0]!, draw.origin);
         if (
           p &&
           visible(p.depth) &&
