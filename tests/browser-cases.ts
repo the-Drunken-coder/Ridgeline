@@ -1,5 +1,8 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Model feedback preserves appearance and follows model altitude',
+  'Model labels wait for current collision layout beyond enlarged bounds',
+  'Model enlargement preserves physical attachments and quiet presentation',
   'Model heading pitch roll and authored offset preserve physical axes',
   'Ground models follow planar terrain at real and enlarged size',
   'Model placement recovers from unknown terrain without moving entities',
