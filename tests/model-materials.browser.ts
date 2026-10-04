@@ -67,7 +67,12 @@ export const modelMaterialCases: readonly { name: string; run(context: Context):
         check(count(captured, red, 'right') > 100, 'Updating a shared instance damaged original textures');
         appearances.set('first', { mode: 'color', color: 'rgba(255, 0, 255, .2)' }); viewport.upsert([feature('first', -.0002)]);
       }
+      appearances.set('first', { mode: 'original' }); viewport.upsert([feature('first', -.0002)]);
+      const restored = await pixels(viewport);
+      check(count(restored, red, 'left') > 100 && count(restored, blue, 'left') > 100, 'Switching an assigned instance back to original did not restore its texture');
       appearances.delete('first'); viewport.upsert([feature('first', -.0002)]);
+      check(count(await pixels(viewport), (r, g, b) => r < 10 && g > 245 && b > 245, 'left') > 100,
+        'Absent per-entity appearance did not inherit the registered model color');
       await viewport.registerModel('material', { bytes: materialGlb(), metersPerUnit: 10 });
       check(count(await pixels(viewport), magenta, 'left') > 100, 'Generic style.color replaced the magenta model fallback');
     } finally { viewport.destroy(); }

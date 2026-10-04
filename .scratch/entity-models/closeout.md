@@ -18,9 +18,11 @@ Approved test boundaries are the packaged public viewport workflow and focused p
 
 ## Verification record
 
-Reviewed: `47750f2ebc36669c88e5376896782ac51de457e9`...`180bebbc694433a7501d2b1fe77e4c330c08b7d4`, shared projection implementation reviewed by the integration owner on 2026-10-04. The integrated tree equals the reviewed worker tree at `0f24d275099b83c999e3afa949f638959e589f16` (tree `4d7a67c840f503cbc5d78c5f69fc0add3d64343c`). Registration and later slices are still in progress.
+Reviewed: `819e4e3`...`cf7d4bb89448776a1d0c599413d36588716942c1`, material rendering, asynchronous registration ownership, settings fixes and public workflows reviewed by the integration owner on 2026-10-04. The integration tree equals reviewed worker `c40d78b6a84b6b6dbcb5a2a8ab0f907be22bf1ab` (tree `f7d1b98303c851a71e6557ffd0f1fface9db6da5`). Placement and switching remain in progress. Earlier projection/registration review evidence is below.
 
-Local verification: at `180bebbc694433a7501d2b1fe77e4c330c08b7d4`, `pnpm check` and `node --import tsx --test tests/entity-projection.test.ts tests/entity-layer.test.ts tests/entities.test.ts tests/entity-scene.test.ts` passed (31 focused tests). Historical packaged browser evidence and its revision limits are recorded below.
+Local verification: `pnpm check` and `node --import tsx --test tests/model-glb.test.ts tests/models.test.ts tests/features.test.ts tests/entities.test.ts tests/entity-scene.test.ts` pass at `cf7d4bb89448776a1d0c599413d36588716942c1` (55 tests). Seven affected packaged model cases pass on material implementation `05aa922`; the final five-line appearance-precedence test addition passes at `c40d78b`. Runtime source is identical across those material revisions. Documentation changes after these checks do not change runtime source.
+
+Historical full regression: at `7bcb9b7`, runtime source `d5f860c900dda3cb9c7f06c4a739aa7991f47a75`, full `pnpm test:browser` passed all 159 cases in 10.1 minutes on 2026-10-04. This included packaged build/install, consumer type checking/build, projection precision, registration, existing interactions, terrain, attachments and recovery. [Complete log](evidence/checks/registration-projection-browser.log). Evidence-only commit `57c6862` landed while that command ran and changed no inputs. This full run predates material completion; current affected checks are recorded above.
 
 Hosted verification: unavailable, no PR authorized or created.
 
@@ -53,4 +55,47 @@ Observed approximation limit: a visible outer edge pixel of a 6 m screen-facing 
 
 ## #83: registration and solid models
 
-Status: in progress. The parser worker owns `src/model-glb.ts`, `tests/model-glb.test.ts` and `tests/model-fixtures.ts`. The core worker owns model resources/rendering, viewport/scene/API integration, registration browser cases and relevant documentation. The coordinator supplied the browser harness wiring in the core worktree and remains the owner of combined verification. Worker evidence is not yet integrated acceptance.
+Status: resolved for the scoped solid-model path. Integrated at `d5f860c900dda3cb9c7f06c4a739aa7991f47a75`. The parser and core workers had separate file ownership; the coordinator supplied shared browser wiring and reviewed their combined behavior.
+
+| Acceptance criterion | Evidence |
+| --- | --- |
+| Public contracts, snapshots and atomic validation | `types.ts`, `model-settings.ts`, registry and viewport integration implement registration/removal, entity references/orientation and settings. Focused and packaged tests mutate supplied bytes/settings/state snapshots and reject invalid registrations/effective configurations without changing accepted state. |
+| Pure static GLB parser | `model-glb.ts` validates consumed static geometry, transforms, buffers, supported accessor semantics, node ownership and material metadata. Eighteen parser cases cover quantization, tiny scales, mirrored transforms, finite upload arrays, malformed containers, named subset rejection and copied images. All four sample GLBs also parsed at `9a88db97392fdedfc5e5aba92d54915ac275c3ee`. |
+| Shared solid rendering and projection | The instanced model layer sits directly below entity attachments and uses shared EntityProjection. Packaged tests observe each of two spatially separate instances, retain the second after removing the first and exercise the explicit zero-floor near path. A single-sided asymmetric upward face proves correct axis handedness and culling. |
+| Readiness and atomic installation | Registry tests exercise registration before renderer readiness, readiness failure with each model's context, successful upload before resolution and retained old resources on failed replacement. Viewport readiness does not wait for registrations. |
+| Copied model status and missing-heading fallback | Public cases observe loading/ready/failed/unavailable and replacementPending, mutate detached status reads and verify missing-heading diagnostics with icon fallback. Final frame-publication semantics remain assigned to #86. |
+| Newest revision, removal and shared lifetime | Focused tests verify only the newest queued revision uploads. Public tests verify failed replacement retains pixels, unregister retains feature/selection, unknown unregister is harmless and removing one entity leaves another drawn. |
+| Cancellation, partial cleanup and callbacks | Focused tests remove during upload and cancel on destruction. Packaged tests cancel from entitychange, destroy from an error callback and inject a real WebGL buffer allocation failure, checking buffer/VAO cleanup and the retained working model. Intentional cancellation has no asset-failure diagnostic. |
+| Existing diagnostic channels and isolation | Errors include model ID/operation and retained cause; logging keys include the resource. Public failure cases retain the working model and unrelated accepted data. No triangle advisory was added. |
+| Public workflow tests and documentation | README documents the delivered solid path and explicitly identifies later slices. Three packaged cases, 52 focused checks and root type/ticket checks pass on the source/integration revisions above. |
+
+Historical checks, collected on 2026-10-04: before the final renderer extraction and axis correction, the uncommitted core checkout passed `pnpm check`, 291 root tests and 5 control tests. Its exact checkout revision is not attributed to the final commit. After extraction and correction, focused and packaged checks passed; a final packaged recheck at committed `53593a6b0608ae60f281831832527c11277fca3c` passed all three cases in 5.1 seconds. The merger and root confirmed the same tree at `d5f860c900dda3cb9c7f06c4a739aa7991f47a75`, clean status and whitespace checks.
+
+The asymmetric rendering test failed with the original reflected axis mapping, despite the cube tests passing. The corrected rotation sends authored +X west, +Y up and +Z north and preserves CCW outward faces. Complete heading-offset/pitch/roll composition and slope contact are assigned to #85.
+
+Parser limits: this is the approved static subset, not a full glTF schema validator. Ignored animation/camera/light internals and unused extension payloads are not validated. Image bytes are copied here; actual PNG/JPEG decoding and material completion belong to #84. Context rebuild, exact frame switching, model picking, readable feedback and final consumer/performance tooling are still pending. The parent spec remains open.
+
+## #84: materials and independent appearance
+
+Status: resolved for the scoped material implementation and local checks. Integrated at `cf7d4bb89448776a1d0c599413d36588716942c1`; source and merge trees match exactly. The coordinator reviewed the final five-line appearance test addition separately from the runtime diff.
+
+| Acceptance criterion | Evidence |
+| --- | --- |
+| Approved material subset and named rejection | Existing parser metadata supplies UV0, vertex RGBA, texture transforms, PNG/JPEG, factors, alpha modes/cutoff, double-sided, emissive and unlit materials. Eighteen parser tests preserve the static subset and rejection rules. The parser was unchanged by this slice. |
+| Appearance precedence and RGB replacement | Public pixel cases exercise per-entity color/original, registered color inheritance, magenta fallback, original restoration, CSS rgba/named colors and independent updates of shared instances. Imported texture/base/vertex/emissive RGB is replaced; source alpha and lighting remain. |
+| Alpha, lighting, shared resources and ordered passes | Actual PNG/JPEG decode, multiplied alpha, two cutoffs, blended pixels, back-face culling/double-sidedness, unlit and emission have pixel assertions. One image uploads once with independent repeat/clamp samplers and UV transforms. Opaque geometry draws before translucent surfaces. |
+| Atomic installation and failure cleanup | Real decode of one valid image followed by a malformed image and partial sampler allocation both retain previous pixels and release new resources. Registration resolves after complete upload. |
+| Current revision and callback cancellation | Held delivery of native decoded bitmaps exercises superseding registration, unregister, entitychange cancellation and destruction. Cancellation rejects before late delivery, closes abandoned bitmaps and emits no asset-failure diagnostic. Native texture allocation reentrancy releases its newly returned handle. Focused tests cover detaching/replacing the renderer during an asynchronous attempt. |
+| Tests and delivered documentation | Root type/ticket/control checks and 55 focused tests pass at the integrated revision. Seven affected packaged workflows and the final appearance-precedence case pass on the source revisions above. README documents the subset, precedence, alpha semantics, cancellation and unsorted translucency. |
+
+Additional reviewed fixes: exported model defaults are readonly and frozen; explicitly undefined optional overrides inherit accepted defaults. Both have focused behavior checks.
+
+Artifacts: [seven-case browser log](evidence/materials/material-browser-all.log), [final precedence check](evidence/materials/material-browser-precedence.log), [shared assigned/original appearance](evidence/materials/material-shared-original-assigned.png), [alpha mask](evidence/materials/material-alpha-mask.png), [alpha blend](evidence/materials/material-alpha-blend.png). Screenshots were captured from the real passing browser canvas at 640 x 360, DPR 1, on the runtime/test content committed as `05aa922`. Root visually checked the shared appearance capture. Browser: Chromium 153.0.8010.12 on Linux with ANGLE SwiftShader, 2026-10-04.
+
+Limits: fixed entity-local directional lighting is intentional. Translucency has no depth writes and is unsorted; overlapping translucent geometry may composite in draw order. Same-frame switching, model picking/highlight and context restoration remain their later slices. Software WebGL establishes no target-browser hardware or performance acceptance.
+
+## Next implementation ownership
+
+- #85 placement: pure placement geometry, shared projection helpers, elevation preparation and placement tests. Enlarged-size acceptance depends on #86 integration.
+- #86 switching: ModelLayer, EntityScene, viewport/frame coordination and switching tests; integrates the placement worker's interface. It does not edit the registry or GPU renderer.
+- Root: shared browser harness, README integration, merged diff review, exact-revision verification and this closeout record.
