@@ -1,7 +1,8 @@
+import { ModelLabels } from './model-labels';
 import { ModelVisibility } from './model-visibility';
 import { shapeGeometry } from './drawing-shapes';
 import { createArrowheads } from './arrowheads';
-import { Map as GLMap } from 'maplibre-gl';
+import { Map as GLMap, GPUInitializationError } from 'maplibre-gl';
 import type { LayerSpecification, MapMouseEvent, ErrorEvent as GLErrorEvent } from 'maplibre-gl';
 import { createReporter, RidgelineError } from './errors';
 import { FeatureStore } from './features';
@@ -52,6 +53,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   let interactionOwner: string | null = null;
   let destroyed = false;
   let prepared = false;
+  let contextLost = false;
+  let interactionRevision = 0;
   let sceneGeneration = 0;
   let readySettled = false;
   let hovered = '';
@@ -76,8 +79,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     try { options.onError?.(error); } catch { /* Keep diagnostic observers isolated. */ }
     emit('diagnostic', error);
   }
-  function emit<K extends keyof ViewportEvents<P>>(event: K, value: ViewportEvents<P>[K]) {
+  function emit<K extends keyof ViewportEvents<P>>(event: K, value: ViewportEvents<P>[K], current?: () => boolean) {
     for (const listener of listeners[event]) {
+      if (current && !current()) break;
       try { listener(value); } catch (cause) {
         const error = new RidgelineError('CALLBACK_FAILED', `A ${event} listener threw.`, { operation: event, recoverable: true }, cause);
         if (event === 'diagnostic') report(error); else diagnostic(error);
@@ -113,6 +117,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     throw error;
   }
   const modelVisibility = new ModelVisibility(map);
+  const modelLabels = new ModelLabels(map, ids => publication.update(ids.flatMap(id => { const feature = store.get(id); return feature ? [feature] : []; })));
   const preparedMarkerKeys = new WeakMap<MapFeature<P>, string>();
   const publishedMarkerKeys = new Map<string, string>();
   let nativeSource: unknown;
@@ -120,6 +125,12 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   let frameMarkers: Map<string, string> | undefined;
   const models = new ModelRegistry<ModelGpu>({ diagnostic, changed: id => entities.modelsChanged(id) });
   const entities = new EntityScene<P>({ models, map, configuration: () => configuration, style: getStyle, sampler: options.elevationSampler, diagnostic,
+    contextLost: () => {
+      contextLost = true; prepared = false; sceneGeneration++; interactionRevision++;
+      publication.retire(); modelVisibility.invalidate(); modelLabels.invalidate();
+      scheduleHover();
+    },
+    contextRestored: () => { contextLost = false; },
     beginNativeFrame: () => { frameMarkers = undefined; },
     nativeAvailable: (feature, style) => {
       const source = map.getSource(SOURCE);
@@ -136,6 +147,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (frameMarkers.get(feature.id) === key) { availableMarkers.set(feature.id, key); return true; }
       return false;
     },
+    commitPresentation: (records, current) => modelLabels.commit(records, current),
     commitVisibility: (hidden, current) => modelVisibility.commit(hidden, current),
     representationChanged: ids => { if (!destroyed) emit('entitychange', { ids }); },
     changed: ids => {
@@ -189,6 +201,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       geometry: feature.drawing ? shapeGeometry(feature.drawing.shape, true)
         : marker.position ? { type: 'Point', coordinates: marker.position } : feature.geometry,
       properties: {
+        ...modelLabels.properties(feature.id),
         _rl_id: sourceFeatureId(feature.id), _rl_feature_id: feature.id, ...(key ? { _rl_marker: key } : {}),
         _rl_color: style.color ?? '#216e5b', _rl_fill: style.fillColor ?? style.color ?? '#216e5b', _rl_dashed: style.dashed ?? false, _rl_radius: style.radius ?? 6,
         _rl_width: style.lineWidth ?? 3, _rl_opacity: style.fillOpacity ?? 0.2,
@@ -272,7 +285,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         { id: 'rl:dashed', type: 'line', source: SOURCE, filter: ['all', ['in', '$type', 'LineString', 'Polygon'], ['==', '_rl_dashed', true]], paint: { 'line-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', ['get', '_rl_color']], 'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 5, ['get', '_rl_width']], 'line-dasharray': [3, 2] } },
         { id: 'rl:points', type: 'circle', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_airborne', true], ['!=', '_rl_hidden', true]], paint: { 'circle-opacity': ['case', ['any', ['boolean', ['feature-state', 'editing'], false], ['boolean', ['feature-state', 'model'], false]], 0, 1], 'circle-stroke-opacity': ['case', ['any', ['boolean', ['feature-state', 'editing'], false], ['boolean', ['feature-state', 'model'], false]], 0, 1], 'circle-radius': ['case', ['boolean', ['feature-state', 'hover'], false], 12, ['get', '_rl_radius']], 'circle-color': ['get', '_rl_color'], 'circle-stroke-width': ['case', ['boolean', ['feature-state', 'selected'], false], 4, 2], 'circle-stroke-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', '#ffffff'] } },
         { id: 'rl:icons', type: 'symbol', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_icon', ''], ['!=', '_rl_hidden', true]], layout: { 'icon-image': ['get', '_rl_icon'], 'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-height-offset': ['get', '_rl_height'] }, paint: { 'icon-opacity': ['case', ['any', ['boolean', ['feature-state', 'editing'], false], ['boolean', ['feature-state', 'model'], false]], 0, 1] } },
-        { id: 'rl:labels', type: 'symbol', source: SOURCE, filter: ['!=', '_rl_hidden', true], layout: { 'text-field': ['get', '_rl_label'], 'text-font': ['Noto Sans Regular'], 'text-size': 12, 'text-offset': [0, 1.8], 'text-anchor': 'top', 'symbol-height-offset': ['get', '_rl_height'] }, paint: { 'text-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'text-color': '#203b32', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } },
+        { id: 'rl:labels', type: 'symbol', source: SOURCE, filter: ['!=', '_rl_hidden', true], layout: { 'text-field': ['get', '_rl_label'], 'text-font': ['Noto Sans Regular'], 'text-size': 12, 'text-offset': ['coalesce', ['get', '_rl_label_offset'], ['literal', [0, 1.8]]], 'text-anchor': 'top', 'symbol-height-offset': ['get', '_rl_height'] }, paint: { 'text-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, ['==', ['coalesce', ['get', '_rl_label_stamp'], ''], ['coalesce', ['feature-state', 'labelStamp'], '']], 1, 0], 'text-color': '#203b32', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } },
       ];
       for (const layer of layers) { if (!current()) return; if (!map.getLayer(layer.id)) map.addLayer(layer); }
       syncArrows();
@@ -282,7 +295,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       entities.attach();
       // Fallbacks draw after models, so a detected model draw failure can expose them in this frame.
       for (const id of ['rl:points', 'rl:icons', 'rl:labels']) map.moveLayer(id);
-      modelVisibility.invalidate();
+      modelVisibility.invalidate(); modelLabels.invalidate();
       if (!current()) return;
       for (const id of selected) synchronizeState(id);
       if (previewId) synchronizeState(previewId);
@@ -316,18 +329,25 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
           if (!seenAttachments.has(key)) { seenAttachments.add(key); attachments.push({ entityId: feature.id, attachmentId: hit.attachmentId }); }
         }
       } };
-      addEntityHits(entities.pickAbove(x, y, tolerance));
-      for (const hit of hits) {
+      const addNativeHits = (native: typeof hits) => { for (const hit of native) {
         const id = hit.properties?._rl_feature_id;
-        if (typeof id !== 'string' || seen.has(id) || entities.getState(id)?.representation === 'model') continue;
+        if (typeof id !== 'string' || seen.has(id)) continue;
+        if (hit.layer.id === 'rl:labels' && !modelLabels.acceptsHit(id, hit.properties?._rl_label_stamp)) continue;
+        if ((hit.layer.id === 'rl:points' || hit.layer.id === 'rl:icons') && entities.getState(id)?.representation !== 'icon' && store.get(id)?.entity) continue;
         const feature = store.get(id);
         if (feature) { seen.add(id); features.push(feature); }
-      }
+      } };
+      const overlay = (id: string) => id === 'rl:labels' || id === 'rl:icons' || id === 'rl:points';
+      addNativeHits(hits.filter(hit => overlay(hit.layer.id)));
+      addEntityHits(entities.pickAbove(x, y, tolerance));
+      addNativeHits(hits.filter(hit => !overlay(hit.layer.id)));
       addEntityHits(entities.pickGround(x, y, tolerance));
     }
     return { features, attachments, point: { x: event.point.x, y: event.point.y }, lngLat: { lng: event.lngLat.lng, lat: event.lngLat.lat }, originalEvent: event.originalEvent };
   }
   function onError(event: GLErrorEvent) {
+    if (contextLost && event.error instanceof GPUInitializationError) models.readinessFailed(new RidgelineError('MODEL_RENDERER_FAILED', 'The restored map could not create its rendering context.',
+      { operation: 'restoreModel', recoverable: true }, event.error));
     const sourceId = 'sourceId' in event && typeof event.sourceId === 'string' ? event.sourceId : undefined;
     const elevation = sourceId === TERRAIN || sourceId === SHADE;
     const error = new RidgelineError(elevation ? 'ELEVATION_UNAVAILABLE' : prepared ? 'ASSET_FAILED' : 'STYLE_FAILED',
@@ -337,13 +357,16 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   }
   map.on('style.load', prepareStyle);
   map.on('error', onError);
-  map.on('click', event => { if (!interactionOwner) emit('click', interaction(event, 12)); });
-  map.on('contextmenu', event => { if (!interactionOwner) emit('contextmenu', interaction(event, 6)); });
+  map.on('webglcontextlost', () => entities.contextLost());
+  map.on('webglcontextrestored', () => { contextLost = false; });
+  const interactionCurrent = (revision: number) => () => !destroyed && !interactionOwner && interactionRevision === revision;
+  map.on('click', event => { if (!interactionOwner) emit('click', interaction(event, 12), interactionCurrent(interactionRevision)); });
+  map.on('contextmenu', event => { if (!interactionOwner) emit('contextmenu', interaction(event, 6), interactionCurrent(interactionRevision)); });
   let lastPointer: Pick<MapMouseEvent, 'point' | 'originalEvent'> | undefined;
   function updateHover(event: Pick<MapMouseEvent, 'point' | 'lngLat' | 'originalEvent'>) {
     const value = interaction(event, 3);
     const id = value.features[0]?.id ?? '';
-    if (id !== hovered) { hovered = id; emit('hover', value); }
+    if (id !== hovered) { hovered = id; emit('hover', value, interactionCurrent(interactionRevision)); }
   }
   function refreshHover() {
     if (destroyed || interactionOwner || !lastPointer) return;
@@ -354,6 +377,14 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     if (interactionOwner) return;
     updateHover(event);
   });
+  let hoverQueued = false;
+  function scheduleHover() {
+    if (hoverQueued || destroyed) return;
+    hoverQueued = true;
+    queueMicrotask(() => { hoverQueued = false; refreshHover(); });
+  }
+  // Run after every completed draw, including camera motion, without scheduling a new frame.
+  map.on('render', scheduleHover);
   // Feature publication and camera changes can alter the pick under a still pointer.
   map.on('idle', refreshHover);
   map.on('moveend', () => {
@@ -376,7 +407,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       assertActive();
       if (interactionOwner) throw new Error(`Map interaction is owned by ${interactionOwner}.`);
       if (!owner.trim()) throw new Error('An interaction owner needs a name.');
-      interactionOwner = owner; hovered = ''; viewport.preview(null); emit('interactionchange', { owner });
+      interactionRevision++; interactionOwner = owner; hovered = ''; viewport.preview(null); emit('interactionchange', { owner });
       let released = false;
       return () => {
         if (released) return;
@@ -393,6 +424,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       try {
         for (const feature of features) if (feature.entity?.model) modelSettings(configuration.entityModels, feature.entity.model);
         const changed = store.upsert(features);
+        interactionRevision++;
         entities.set(changed);
         if (destroyed) return;
         const current = changed.flatMap(feature => { const latest = store.get(feature.id); return latest ? [latest] : []; });
@@ -404,7 +436,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       }
     },
     remove(ids) {
-      assertActive(); const accepted = store.remove(ids);
+      assertActive(); const accepted = store.remove(ids); interactionRevision++;
       entities.set([], accepted);
       if (destroyed) return;
       const removed = accepted.filter(id => !store.has(id));
@@ -414,7 +446,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       for (const id of removed) { availableMarkers.delete(id); publishedMarkerKeys.delete(id); }
       if (removed.length) entities.selection([...selected]);
       emit('datachange', { ids: [], removed });
-      if (removed.includes(hovered)) refreshHover();
+      if (removed.includes(hovered)) scheduleHover();
     },
     clear() { viewport.remove(store.ids()); },
     retryUpdates() {
@@ -460,6 +492,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     preview(id) {
       if (destroyed) return;
       const previous = previewId; previewId = id && store.has(id) ? id : null;
+      entities.preview(previewId);
       if (previous) synchronizeState(previous); if (previewId) synchronizeState(previewId);
     },
     requestSelection(ids, attachments = []) {
@@ -518,11 +551,11 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     on(event, listener) { assertActive(); listeners[event].add(listener); return () => listeners[event].delete(listener); },
     destroy() {
       if (destroyed) return;
-      destroyed = true; prepared = false; emit('destroy', undefined);
+      interactionRevision++; destroyed = true; prepared = false; emit('destroy', undefined);
       publication.destroy();
       if (!readySettled) { readySettled = true; rejectReady(new RidgelineError('DESTROYED', 'Viewport was destroyed before initialization completed.', { operation: 'initialize', recoverable: false })); }
       clearTimeout(timer); resize.disconnect();
-      entities.destroy(); models.destroy();
+      entities.destroy(); models.destroy(); modelLabels.destroy();
       arrowheads.remove(); preparedListeners.clear(); sceneListeners.clear(); drawingInternals.delete(map);
       map.getCanvas().removeEventListener('mouseleave', onLeave);
       map.remove(); icons.clear(); selected.clear(); publishedMarkerKeys.clear(); availableMarkers.clear(); store.remove(store.ids());

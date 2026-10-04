@@ -6,6 +6,7 @@ await mkdir(directory, { recursive: true });
 await copyFile('tests/browser.html', `${directory}/index.html`);
 await copyFile('tests/browser.ts', `${directory}/main.ts`);
 await copyFile('tests/browser-cases.ts', `${directory}/browser-cases.ts`);
+await copyFile('tests/model-picking.browser.ts', `${directory}/model-picking.browser.ts`);
 await copyFile('tests/model-registration.browser.ts', `${directory}/model-registration.browser.ts`);
 await copyFile('tests/model-placement.browser.ts', `${directory}/model-placement.browser.ts`);
 await copyFile('tests/model-placement-fixtures.ts', `${directory}/model-placement-fixtures.ts`);
