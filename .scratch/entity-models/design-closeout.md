@@ -2,6 +2,8 @@
 
 Spec: [Entity models and representation switching](spec.md).
 
+Published spec: [Implement entity models and representation switching](https://github.com/the-Drunken-coder/Ridgeline/issues/81), pointing to canonical requirements at `21805ecb7543098f8c9820c476725654e20b31ec`.
+
 Status: Design decisions approved for implementation. Production implementation and hardware verification are pending. The user asked to settle all remaining questions in this chat and accepted all seven recommendations together.
 
 Resolution records:
