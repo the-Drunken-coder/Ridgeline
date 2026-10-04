@@ -234,7 +234,7 @@ test('unsupported model features reject by name with no partial result', () => {
     [{ ...json, extensionsRequired: ['KHR_draco_mesh_compression'] }, 'GLB_UNSUPPORTED_REQUIRED_EXTENSION:KHR_draco_mesh_compression'],
     [{ ...json, extensionsRequired: ['EXT_meshopt_compression'] }, 'GLB_UNSUPPORTED_REQUIRED_EXTENSION:EXT_meshopt_compression'],
     [{ ...json, extensionsRequired: ['KHR_texture_basisu'] }, 'GLB_UNSUPPORTED_REQUIRED_EXTENSION:KHR_texture_basisu'],
-    [{ ...json, buffers: [{ byteLength: binary.length, uri: 'https://example.test/model.bin' }] }, 'GLB_EXTERNAL_OR_MULTIPLE_BUFFERS'],
+    [{ ...json, buffers: [{ byteLength: binary.length, uri: 'https://example.test/model.bin' }] }, 'GLB_EXTERNAL_OR_MULTIPLE_BUFFERS_UNSUPPORTED'],
     [{ ...json, images: [{ uri: 'texture.png' }] }, 'GLB_EXTERNAL_IMAGES_UNSUPPORTED'],
     [{ ...json, skins: [{}] }, 'GLB_SKINS_UNSUPPORTED'],
     [{ ...json, nodes: [{ mesh: 0, skin: 0 }] }, 'GLB_SKINS_UNSUPPORTED'],
@@ -259,4 +259,80 @@ test('primitive restart values never become triangle vertices', () => {
       { bufferView: 1, componentType: 5121, type: 'SCALAR', count: 3 }],
     meshes: [{ primitives: [{ attributes: { POSITION: 0 }, indices: 1 }] }],
   }, binary)), /GLB_INDEX_OUT_OF_BOUNDS/);
+});
+
+test('authored normals survive tiny scales and flattening node transforms', () => {
+  const { json } = triangleFixture();
+  const data = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1]);
+  for (const scale of [[1e-5, 1e-5, 1e-5], [1, 1, 0]]) {
+    const model = parseGlb(encodeGlb({ ...json,
+      buffers: [{ byteLength: data.byteLength }],
+      bufferViews: [...json.bufferViews, { buffer: 0, byteOffset: 36, byteLength: 36 }],
+      accessors: [...json.accessors, { bufferView: 1, componentType: 5126, count: 3, type: 'VEC3' }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 } }] }], nodes: [{ mesh: 0, scale }],
+    }, new Uint8Array(data.buffer)));
+    assert.deepEqual(Array.from(model.batches[0]?.normals ?? []).slice(0, 3), [0, 0, 1]);
+  }
+});
+
+test('material metadata retains alpha and emission while ignored texture channels allocate no images', () => {
+  const { json, binary } = triangleFixture();
+  const model = parseGlb(encodeGlb({ ...json,
+    images: [{ bufferView: 0, mimeType: 'image/png' }], textures: [{ source: 0 }],
+    materials: [{ pbrMetallicRoughness: { baseColorFactor: [0.2, 0.3, 0.4, 0.5] },
+      emissiveFactor: [0.8, 0.1, 0], alphaMode: 'MASK', alphaCutoff: 0.3, doubleSided: true,
+      extensions: { KHR_materials_unlit: {} }, normalTexture: { index: 0 } }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0 }, material: 0 }] }],
+  }, binary));
+  assert.deepEqual(model.images, []);
+  const material = model.batches[0]?.material;
+  assert.deepEqual(material?.baseColor, [0.2, 0.3, 0.4, 0.5]);
+  assert.deepEqual(material?.emissive, [0.8, 0.1, 0]);
+  assert.equal(material?.alphaMode, 'MASK');
+  assert.equal(material?.alphaCutoff, 0.3);
+  assert.equal(material?.doubleSided, true);
+  assert.equal(material?.unlit, true);
+});
+
+test('base images are copied and shared while texture transforms and samplers remain independent', () => {
+  const { json, binary } = triangleFixture();
+  const document = { ...json,
+    images: [{ bufferView: 0, mimeType: 'image/webp' }, { bufferView: 0, mimeType: 'image/png' }],
+    textures: [{ source: 1, sampler: 0 }, { source: 1, sampler: 1 }],
+    samplers: [{ wrapS: 33071, wrapT: 33648, magFilter: 9728, minFilter: 9984 }, { wrapS: 10497 }],
+    accessors: [...json.accessors, { componentType: 5126, count: 3, type: 'VEC2' }],
+    materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0, texCoord: 1,
+      extensions: { KHR_texture_transform: { texCoord: 0, offset: [0.2, 0.3], scale: [2, 3], rotation: 0.4 } } } } },
+      { pbrMetallicRoughness: { baseColorTexture: { index: 1 } } }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0, TEXCOORD_0: 1 }, material: 0 },
+      { attributes: { POSITION: 0, TEXCOORD_0: 1 }, material: 1 }] }],
+  };
+  const glb = encodeGlb(document, binary);
+  const model = parseGlb(glb);
+  assert.equal(model.images.length, 1);
+  assert.equal(model.images[0]?.mimeType, 'image/png');
+  assert.deepEqual(model.images[0]?.bytes, binary);
+  assert.equal(model.batches[0]?.material.texture, 0);
+  assert.equal(model.batches[1]?.material.texture, 0);
+  assert.deepEqual(model.batches[0]?.material.uvTransform, { offset: [0.2, 0.3], scale: [2, 3], rotation: 0.4 });
+  assert.deepEqual(model.batches[0]?.material.sampler, { wrapS: 33071, wrapT: 33648, magFilter: 9728, minFilter: 9984 });
+  assert.equal(model.batches[1]?.material.sampler?.wrapS, 10497);
+  new Uint8Array(glb).fill(0);
+  assert.deepEqual(model.images[0]?.bytes, binary);
+});
+
+test('malformed used materials reject without defaulting their invalid values', () => {
+  const { json, binary } = triangleFixture();
+  for (const material of [
+    { pbrMetallicRoughness: { baseColorFactor: [-1, 2, 0, 3] } },
+    { emissiveFactor: [-1, 0, 0] }, { alphaCutoff: -1 }, { alphaMode: null }, { doubleSided: 'true' },
+    { extensions: { KHR_materials_unlit: null } },
+  ]) assert.throws(() => parseGlb(encodeGlb({ ...json, materials: [material],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0 }, material: 0 }] }],
+  }, binary)), /GLB_INVALID_/);
+  assert.throws(() => parseGlb(encodeGlb({ ...json,
+    images: [{ bufferView: 0, mimeType: 'image/png' }], textures: [{ source: 0 }],
+    materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } } }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0 }, material: 0 }] }],
+  }, binary)), /GLB_MISSING_TEXCOORD_0/);
 });

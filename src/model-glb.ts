@@ -6,6 +6,7 @@ type Vec4 = [number, number, number, number];
 export interface ModelMaterial {
   baseColor: Vec4;
   texture?: number;
+  sampler?: { magFilter: number; minFilter: number; wrapS: number; wrapT: number };
   doubleSided: boolean;
   alphaMode: 'OPAQUE' | 'MASK' | 'BLEND';
   alphaCutoff: number;
@@ -119,11 +120,11 @@ function determinant3(m: number[]): number {
     - n(m, 4) * (n(m, 1) * n(m, 10) - n(m, 9) * n(m, 2))
     + n(m, 8) * (n(m, 1) * n(m, 6) - n(m, 5) * n(m, 2));
 }
-function normalMatrix(m: number[]): number[] {
+function normalMatrix(m: number[]): number[] | undefined {
   const a = n(m, 0), b = n(m, 4), c = n(m, 8), d = n(m, 1), e = n(m, 5), f = n(m, 9);
   const g = n(m, 2), h = n(m, 6), i = n(m, 10);
   const determinant = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
-  if (determinant === 0) throw new Error('GLB_SINGULAR_NODE_TRANSFORM');
+  if (determinant === 0) return undefined;
   return [(e * i - f * h) / determinant, (c * h - b * i) / determinant, (b * f - c * e) / determinant,
     (f * g - d * i) / determinant, (a * i - c * g) / determinant, (c * d - a * f) / determinant,
     (d * h - e * g) / determinant, (b * g - a * h) / determinant, (a * e - b * d) / determinant];
@@ -170,7 +171,7 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
     }
   }
   const buffers = list(root.buffers).map(object);
-  if (buffers.length !== 1 || buffers[0]?.uri !== undefined) throw new Error('GLB_EXTERNAL_OR_MULTIPLE_BUFFERS');
+  if (buffers.length !== 1 || buffers[0]?.uri !== undefined) throw new Error('GLB_EXTERNAL_OR_MULTIPLE_BUFFERS_UNSUPPORTED');
   const bufferLength = integer(buffers[0]?.byteLength);
   if (!bufferLength || bufferLength > bin.byteLength || bin.byteLength - bufferLength > 3) throw new Error('GLB_INVALID_BUFFER_LENGTH');
   for (let i = bufferLength; i < bin.byteLength; i++) if (bin[i] !== 0) throw new Error('GLB_INVALID_BUFFER_PADDING');
@@ -251,38 +252,55 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
     }
     return { count, width, component, values: Array.from({ length: count * width }, (_, i) => read(start + Math.floor(i / width) * stride + (i % width) * size)) };
   }
-  const images = list(root.images).map((entry) => {
-    const image = object(entry);
-    if (image.uri !== undefined) throw new Error('GLB_EXTERNAL_IMAGES_UNSUPPORTED');
-    if (image.mimeType !== 'image/png' && image.mimeType !== 'image/jpeg') throw new Error(`GLB_IMAGE_FORMAT_UNSUPPORTED:${String(image.mimeType)}`);
-    return { bytes: viewBytes(integer(image.bufferView)).slice(), mimeType: image.mimeType };
-  });
-  const textures = list(root.textures).map(object);
+  const imageSources = list(root.images).map(object);
+  for (const image of imageSources) if (image.uri !== undefined) throw new Error('GLB_EXTERNAL_IMAGES_UNSUPPORTED');
+  const images: ParsedModel['images'] = [];
+  const imageIndices = new Map<number, number>();
+  function imageFor(index: number): number {
+    const existing = imageIndices.get(index);
+    if (existing !== undefined) return existing;
+    const source = imageSources[index];
+    if (!source) throw new Error('GLB_INVALID_TEXTURE_IMAGE');
+    if (source.mimeType !== 'image/png' && source.mimeType !== 'image/jpeg') throw new Error(`GLB_IMAGE_FORMAT_UNSUPPORTED:${String(source.mimeType)}`);
+    const result = images.length;
+    images.push({ bytes: viewBytes(integer(source.bufferView)).slice(), mimeType: source.mimeType });
+    imageIndices.set(index, result);
+    return result;
+  }
+  const textures = list(root.textures).map(object), samplers = list(root.samplers).map(object);
   function materialFor(entry: unknown): ModelMaterial {
     const source = entry === undefined ? {} : object(entry);
     const pbr = source.pbrMetallicRoughness === undefined ? {} : object(source.pbrMetallicRoughness);
     const extensions = source.extensions === undefined ? {} : object(source.extensions);
-    const alphaMode = source.alphaMode ?? 'OPAQUE';
+    const alphaMode = source.alphaMode === undefined ? 'OPAQUE' : source.alphaMode;
     if (alphaMode !== 'OPAQUE' && alphaMode !== 'MASK' && alphaMode !== 'BLEND') throw new Error('GLB_INVALID_ALPHA_MODE');
+    if (extensions.KHR_materials_unlit !== undefined) object(extensions.KHR_materials_unlit);
     const result: ModelMaterial = {
-      baseColor: vec4(vector(pbr.baseColorFactor, [1, 1, 1, 1])), doubleSided: source.doubleSided === true,
+      baseColor: vec4(vector(pbr.baseColorFactor, [1, 1, 1, 1])), doubleSided: boolean(source.doubleSided),
       alphaMode, alphaCutoff: number(source.alphaCutoff, 0.5), emissive: vec3(vector(source.emissiveFactor, [0, 0, 0])),
       unlit: extensions.KHR_materials_unlit !== undefined,
     };
+    if ([...result.baseColor, ...result.emissive].some(value => value < 0 || value > 1) || result.alphaCutoff < 0) throw new Error('GLB_INVALID_MATERIAL_FACTOR');
     if (pbr.baseColorTexture !== undefined) {
       const info = object(pbr.baseColorTexture), texture = textures[integer(info.index)];
       if (!texture) throw new Error('GLB_INVALID_TEXTURE');
-      const imageIndex = integer(texture.source);
-      if (!images[imageIndex]) throw new Error('GLB_INVALID_TEXTURE_IMAGE');
+      const imageIndex = imageFor(integer(texture.source));
       const textureExtensions = info.extensions === undefined ? {} : object(info.extensions);
       const transform = textureExtensions.KHR_texture_transform === undefined ? {} : object(textureExtensions.KHR_texture_transform);
       if (integer(transform.texCoord, integer(info.texCoord, 0)) !== 0) throw new Error('GLB_TEXCOORD_1_UNSUPPORTED');
       result.texture = imageIndex;
+      const sampler = texture.sampler === undefined ? {} : samplers[integer(texture.sampler)];
+      if (!sampler) throw new Error('GLB_INVALID_SAMPLER');
+      const magFilter = integer(sampler.magFilter, 9729), minFilter = integer(sampler.minFilter, 9987);
+      const wrapS = integer(sampler.wrapS, 10497), wrapT = integer(sampler.wrapT, 10497);
+      if (![9728, 9729].includes(magFilter) || ![9728, 9729, 9984, 9985, 9986, 9987].includes(minFilter)
+        || ![33071, 33648, 10497].includes(wrapS) || ![33071, 33648, 10497].includes(wrapT)) throw new Error('GLB_INVALID_SAMPLER');
+      result.sampler = { magFilter, minFilter, wrapS, wrapT };
       result.uvTransform = { offset: vec2(vector(transform.offset, [0, 0])), scale: vec2(vector(transform.scale, [1, 1])), rotation: number(transform.rotation, 0) };
     }
     return result;
   }
-  const materials = list(root.materials).map(materialFor), defaultMaterial = materialFor(undefined);
+  const materials = list(root.materials).map(object), defaultMaterial = materialFor(undefined);
   const grouped = new Map<number, { positions: number[]; normals: number[]; uvs: number[]; colors: number[]; indices: number[]; material: ModelMaterial }>();
   const bounds: ParsedModel['bounds'] = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
   let triangles = 0;
@@ -314,10 +332,15 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
           indices[i + 2] = second;
         }
         const materialIndex = primitive.material === undefined ? -1 : integer(primitive.material);
-        const material = materialIndex === -1 ? defaultMaterial : materials[materialIndex];
-        if (!material) throw new Error('GLB_INVALID_MATERIAL');
         let batch = grouped.get(materialIndex);
-        if (!batch) { batch = { positions: [], normals: [], uvs: [], colors: [], indices: [], material }; grouped.set(materialIndex, batch); }
+        if (!batch) {
+          const source = materials[materialIndex];
+          if (materialIndex !== -1 && !source) throw new Error('GLB_INVALID_MATERIAL');
+          const material = materialIndex === -1 ? defaultMaterial : materialFor(source);
+          batch = { positions: [], normals: [], uvs: [], colors: [], indices: [], material };
+          grouped.set(materialIndex, batch);
+        }
+        if (batch.material.texture !== undefined && !uvs) throw new Error('GLB_MISSING_TEXCOORD_0');
         const transformed = Array.from({ length: positions.count }, (_, i) => point(matrix, n(positions.values, i * 3), n(positions.values, i * 3 + 1), n(positions.values, i * 3 + 2)));
         const nm = normals ? normalMatrix(matrix) : undefined;
         function append(vertex: number, faceNormal?: Vec3): number {
@@ -334,7 +357,7 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
           batch.colors.push(colors ? n(colors.values, vertex * colors.width) : 1, colors ? n(colors.values, vertex * colors.width + 1) : 1, colors ? n(colors.values, vertex * colors.width + 2) : 1, colors?.width === 4 ? n(colors.values, vertex * 4 + 3) : 1);
           return outputIndex;
         }
-        if (normals) {
+        if (normals && nm) {
           const vertices = new Map<number, number>();
           for (const value of indices) {
             let output = vertices.get(value);
@@ -342,7 +365,7 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
             batch.indices.push(output);
           }
         } else {
-          // Missing normals need separate triangle corners to retain flat faces.
+          // Missing normals and singular transforms use the surviving faces, with separate corners.
           for (let i = 0; i < indices.length; i += 3) {
             const a = transformed[n(indices, i)], b = transformed[n(indices, i + 1)], c = transformed[n(indices, i + 2)];
             if (!a || !b || !c) throw new Error('GLB_INVALID_VERTEX');
