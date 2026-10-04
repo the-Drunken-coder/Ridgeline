@@ -18,7 +18,11 @@ Approved test boundaries are the packaged public viewport workflow and focused p
 
 ## Verification record
 
-Reviewed: `525ed1d8283014c98d12c3c9f7b8c0a26bf1bcc4`...`647458e6f7d4ff3b86a72d6fb86f474457dbf4be`, placement, terrain ownership, scene coordination, same-frame switching and public workflows reviewed by the integration owner on 2026-10-04. The integration tree equals reviewed worker `882b15c72e67a9cbcab24b433f4b78e93f1e4f82` (tree `263f92a429ad301684cf03ef4898dadd2b76eb11`). The final callback fix at `f14db3d` and subsequent test-only visible-icon baseline change at `882b15c` were reviewed separately. Earlier review evidence is preserved below.
+Current review, 2026-10-04: `8c8278c4107fa650b59ca86d7c1798399b850839`...`13bab3f25165b279499dcf74c1a5a97ad18f126f`, integration owner reviewed the combined picking, presentation, native label caching, callback histories, registry/layer recovery and viewport changes. Tree `53450402676a2d3c290d73adea22526fca825fad` exactly matches final worker `a177ef470dd3426e70b5edad6f4f4cd705fa9e0f`. The final delta from reviewed runtime `2ea02ce` was documentation and stronger unrelated-content assertions, also reviewed. No uncommitted runtime/test changes were included.
+
+Current local verification, 2026-10-04: `pnpm check` and `pnpm test` pass at `13bab3f`, with 324 root tests and 5 control tests. Full `pnpm test:browser` finished with 180 passes and two failures in 15.4 minutes at that exact runtime/test revision. Both failures reproduced twice against the same installed package: removal no longer cleared the hover cursor synchronously, and camera GPU publication resubmitted unchanged ground geometry. Narrow corrections are pending before tracker resolution. [Full run](evidence/interaction-recovery/integrated-interaction-browser.log), [repeated failures](evidence/interaction-recovery/frontier-regressions-repeated.log). Worker coverage passes all 26 model workflows on identical source, with the final changed test re-exercised on `a177ef4`. [Type checks](evidence/interaction-recovery/integrated-interaction-check.log), [unit checks](evidence/interaction-recovery/integrated-interaction-unit.log), [25 model-named workflows](evidence/interaction-recovery/frontier-combined-browser.log), [final changed case and PNG/JPEG workflow](evidence/interaction-recovery/frontier-final-affected-browser.log).
+
+Historical review: `525ed1d8283014c98d12c3c9f7b8c0a26bf1bcc4`...`647458e6f7d4ff3b86a72d6fb86f474457dbf4be`, placement, terrain ownership, scene coordination, same-frame switching and public workflows reviewed by the integration owner on 2026-10-04. The integration tree equals reviewed worker `882b15c72e67a9cbcab24b433f4b78e93f1e4f82` (tree `263f92a429ad301684cf03ef4898dadd2b76eb11`). The final callback fix at `f14db3d` and subsequent test-only visible-icon baseline change at `882b15c` were reviewed separately. Earlier review evidence is preserved below.
 
 Local verification: `pnpm check`, full `pnpm test` (311 root tests and 5 control tests), and full `pnpm test:browser` (170 cases, 11.6 minutes) pass at `647458e6f7d4ff3b86a72d6fb86f474457dbf4be` on 2026-10-04. The browser command also built/packed the library and installed, type-checked and built the separate consumer. README and evidence edits made during the run changed no runtime or test inputs. [Type checks](evidence/placement-switching/integrated-placement-switching-check.log), [unit checks](evidence/placement-switching/integrated-placement-switching-unit.log), [full packaged-browser log](evidence/placement-switching/integrated-placement-switching-browser.log).
 
@@ -100,7 +104,7 @@ Limits: fixed entity-local directional lighting is intentional. Translucency has
 
 ## #85: rigid placement and terrain preparation
 
-Status: implementation integrated at `647458e6f7d4ff3b86a72d6fb86f474457dbf4be`. Acceptance remains open for the complete attachment and model near-plane checks below. Enlarged-size integration with #86 is implemented and exercised.
+Status: implementation complete. The final physical-attachment and actual partial near-plane gaps are covered by the combined #87/#88 workflows at `13bab3f25165b279499dcf74c1a5a97ad18f126f`. The broader regression found two shared hover/geometry regressions; correction and rechecking are pending before tracker resolution.
 
 | Acceptance criterion | Evidence or remaining gap |
 | --- | --- |
@@ -108,8 +112,8 @@ Status: implementation integrated at `647458e6f7d4ff3b86a72d6fb86f474457dbf4be`.
 | Rigid slope following, stable dimensions and exaggeration | Real/enlarged planar fixtures at DPR 1/2 and exaggeration 1/2 exercise displayed contact. Focused checks cover explicit pitch/roll with slope following disabled. |
 | Unknown or invalid placement and automatic recovery | Public delayed exact-position preparation retains eligible fallback, recovers without pointer/entity updates, rejects below-terrain placement and handles changed providers. |
 | Planar contact tolerances and uneven limits | A 768-case numerical sweep found clearance 0.0199999908–0.0200001875 m and maximum slope error 0.000001479 degrees. A public uneven-ridge observation visibly intersects the rigid model between support samples. |
-| Physical attachments retain origins, dimensions and depth | Public ground-polygon pixel bounds remain within 0.5 CSS px while the body grows more than 1.5x. Ground markers/lines, airborne volumes and sensor origins/depth still require combined #88 evidence. This criterion is not yet complete. |
-| Precision, globe transition, planet hiding and clipping | Independent checks cover 33 views across zoom 18–20, date-line/world copies and globe zoom 11–12, with at most one CSS pixel error and an actual intermediate projection blend. Front/back planetary visibility is exercised. Shared near-plane clipping tests pass; a public model-specific near-plane crossing remains assigned to #87. |
+| Physical attachments retain origins, dimensions and depth | Public ground-polygon pixel bounds remain within 0.5 CSS px while the body grows more than 1.5x. Combined #88 checks now cover eligible ground marker invariance, independent ground-line endpoint, airborne volumes and sensor pixels outside legitimate body occlusion, without changing origins or dimensions. |
+| Precision, globe transition, planet hiding and clipping | Independent checks cover 33 views across zoom 18–20, date-line/world copies and globe zoom 11–12, with at most one CSS pixel error and an actual intermediate projection blend. Front/back planetary visibility is exercised. Combined #87 now proves an actual box crosses the native near plane, retains visible model exterior pixels and accepts an actual pointer click there. Fully behind-plane models reject hits. |
 | Delayed preparation, cancellation and current ownership | Real public abort callbacks reproduce and verify removal, reference replacement and same-ID reintroduction. Focused Elevation tests also cover partial batches, provider reset and unrelated requesters. Root independently reproduced and rechecked the overwritten-request failure. |
 
 Artifacts: [placement handoff and historical revisions](evidence/placement-switching/placement-closeout.md), [768-case raw results](evidence/placement-switching/placement-geometry-verification.json), [planar view](evidence/placement-switching/placement-uneven-plane.png), [uneven ridge](evidence/placement-switching/placement-uneven-ridge.png), [observation settings](evidence/placement-switching/placement-uneven-observation.json).
@@ -118,7 +122,7 @@ The numerical sweep used production geometry at `f5f441c`; later changes affecte
 
 ## #86: same-frame representation switching
 
-Status: implementation integrated and the full local regression passes at `647458e6f7d4ff3b86a72d6fb86f474457dbf4be`. Tracker acceptance remains open while a subsequent review history is investigated: a consumer custom layer may change entity data in prerender after model visibility commits but before model drawing. The #89 layer owner is adding a real browser reproduction before deciding whether a correction is needed. Later picking, presentation and context-recovery changes also require combined review and checks.
+Status: implementation complete. The later consumer-prerender history reproduced a blank frame and is fixed in the combined #89 layer. Both switching directions, removal/reintroduction, completed state and picks now pass at `13bab3f25165b279499dcf74c1a5a97ad18f126f`; two shared hover/geometry regressions from the broader suite remain under correction before tracker resolution.
 
 | Acceptance criterion | Evidence |
 | --- | --- |
@@ -135,11 +139,63 @@ The real symbol test exposed stale native GL binding caches after model instance
 
 The abort tests exposed two ownership boundaries: Elevation recreated cancelled areas after a consumer abort callback, and EntityScene restored removed data or discarded a newly reintroduced ID. Elevation now invalidates obsolete operations and preserves current request identities. EntityScene installs the accepted batch before cancellation callbacks; viewport publication refreshes current store entries afterward. [Confirmed failing scene histories](evidence/placement-switching/switching-entity-abort-confirmed-red.log), [corrected public history](evidence/placement-switching/switching-abort-reentry-green.log), [final four-case check](evidence/placement-switching/switching-pinned-browser.log), [handoff](evidence/placement-switching/switching-implementation.md).
 
-A historical 20-case run had 19 passes and one blank icon frame immediately after a large camera jump, before its symbol tiles were ready. The corrected fixture first establishes eligible native pixels, then still measures the very first switched frame. It passed three repeated runs before the final four-case check. [Historical run](evidence/placement-switching/switching-closeout-browser.log). Arbitrary partial native tile-upload failure or a model draw that fails after already submitting some primitives is not claimed to be transactional. Actual context rebuilding remains #89.
+A historical 20-case run had 19 passes and one blank icon frame immediately after a large camera jump, before its symbol tiles were ready. The corrected fixture first establishes eligible native pixels, then still measures the very first switched frame. It passed three repeated runs before the final four-case check. [Historical run](evidence/placement-switching/switching-closeout-browser.log). Arbitrary partial native tile-upload failure or a model draw that fails after already submitting some primitives is not claimed to be transactional. Actual context rebuilding is implemented and exercised in #89 below.
 
-## Next implementation ownership
+## #87: picking and stationary hover
 
-- #87 picking: EntityScene/viewport shared bridges, last-drawn box picking, event ordering, callback-safe stationary hover and real pointer/keyboard checks.
-- #88 feedback: renderer brightening, static rings, label layout/readiness helpers and presentation/physical-attachment checks. #87 owns its scene/viewport bridge edits.
-- #89 recovery: registry and ModelLayer lifecycle, retained resources and actual context-loss checks. #87 owns its scene/viewport bridge edits.
-- Root: shared browser harness, README, merged diff review, exact-revision verification and this closeout record. New workers start from `647458e6f7d4ff3b86a72d6fb86f474457dbf4be` in separate worktrees; root browser port 5174 remains reserved.
+Status: implementation complete, integrated at `13bab3f25165b279499dcf74c1a5a97ad18f126f`. The 26 model workflows pass; the broader suite found a synchronous cursor-reset regression on removal, now under correction. Tracker resolution remains pending.
+
+| Acceptance criterion | Evidence |
+| --- | --- |
+| Last-drawn boxes, tolerance, clipping and ordering | `model-picking.ts` clips box faces and interpolates hit depth. Scene installs only successfully drawn boxes and rejects obsolete feature identities. Actual native labels/icons precede model and airborne geometry, matching draw order. |
+| Empty/cutout regions and terrain limits | Public pointer cases hit empty enlarged-box space, reject outside space, and prove a native 100 m terrain fixture hides both model pixels and CPU hits. Unknown/withheld placement creates no hit. |
+| Original feature/attachment identity and interaction ownership | Public clicks return consumer IDs and actual attachment IDs. Interaction leases suppress selection; consumer handlers own accepted selection. |
+| Radial choices, stable slots and keyboard behavior | Real registered icons/names, pointer clicks, Arrow/Enter/Escape, removal/reintroduction and representation changes are covered. Disposing picker content can destroy the viewport without a stale selection request. |
+| Stationary hover and current callbacks | One pointer placement is followed by readiness, camera/entity motion, switching, unknown terrain/retry and unregister. Callback replacement resumes remaining observers with current data, while skipping the initiating mutator to avoid a render loop. |
+| Near-plane/world copies and idle | Independent clip signs prove an actual model straddles the near plane; visible exterior pixels are clicked. Fully clipped models reject hits. Date-line/world-copy/globe pixels and actual clicks pass. Settled hover produces no renders/events for five seconds. |
+| Focused and packaged checks | Three focused picking cases, the four public workflows and combined checks are revision-pinned in the [handoff](evidence/interaction-recovery/picking-implementation.md). |
+
+Root reviewed the same-ID hover callback, stale feature identity, interaction disposal and last-drawn publication histories. Public reproductions found and fixed obsolete selection after disposal and repeated mutation loops. [Disposal failure](evidence/interaction-recovery/picking-callback-red.log), [disposal correction](evidence/interaction-recovery/picking-callback-green.log), [repeated mutation failure](evidence/interaction-recovery/picking-repeated-replace-red.log), [correction](evidence/interaction-recovery/picking-repeated-replace-green.log), [partial near-plane check](evidence/interaction-recovery/picking-near-crossing.log).
+
+## #88: labels and static feedback
+
+Status: implementation complete, integrated at `13bab3f25165b279499dcf74c1a5a97ad18f126f`. Placement and actual-hover acceptance dependencies are present in the combined tree; root's full regression found two shared hover/geometry regressions now under correction. Tracker resolution remains pending.
+
+| Acceptance criterion | Evidence |
+| --- | --- |
+| Readable collision-placed labels | Native glyphs clear the projected body and strongest ring while preserving existing fonts and collision suppression. A source/layout stamp hides old symbol buckets until the matching layout arrives; stale buckets also reject public hits. |
+| Distinct rings/brightening at model altitude | Public preview, selection and actual hover verify thin/gentle versus thick/strong effects, selection precedence, airborne altitude and unchanged assigned appearance. |
+| Arbitrary colors and imported materials | Custom CSS, magenta fallback, original textures, cutout, translucent and double-sided fixtures retain alpha shape and restore their exact appearance after feedback clears. GLB bytes stay unchanged. |
+| Physical attachments and depth | Ground areas, volumes and sensors retain visible physical pixels outside the actual body's occlusion. Ground-line endpoint matches independent map projection; an eligible ground fallback marker is invariant under floor changes. Sensor apex occlusion by the enlarged opaque body is expected depth behavior. |
+| Current publication and shared resources | Appearance/selection/preview changes use shared resources. Root reproduced remove/reintroduce with identical offset clearing native state but retaining a cached stamp; destination invalidation restores the label. Unlabeled camera changes no longer republish empty label layouts. |
+| Public workflows and screenshots | Three packaged cases cover real/enlarged ground and airborne subjects. [Six-view settings](evidence/interaction-recovery/presentation-gallery.json), [custom ground](evidence/interaction-recovery/presentation-2.png), [magenta airborne](evidence/interaction-recovery/presentation-4.png), [original hover](evidence/interaction-recovery/presentation-5.png), [original selection](evidence/interaction-recovery/presentation-6.png). |
+| Static idle and checks | After the finite queued source/publication work settles, five seconds produce zero render events. Worker type/focused/public checks and exact screenshot revision are in the [handoff](evidence/interaction-recovery/presentation-closeout.md). |
+
+The public API has no separate airborne ground marker. This verification observes its real ground-line endpoint and the existing eligible ground fallback marker rather than inventing a new element. Screenshots were captured at clean `5f5b94d` on 2026-10-04, before later coordination fixes. Root inspected custom ground, magenta airborne and original-material airborne selection images. The checked-in Noto Sans glyph fixture has its own source and SIL OFL license. Historical gallery scripts retain temporary checkout paths and are evidence, not the portable #90 workload.
+
+## #89: basemap and context recovery
+
+Status: implementation complete, integrated at `13bab3f25165b279499dcf74c1a5a97ad18f126f`. Solid/textured acceptance dependencies are present; root's full regression found two shared hover/geometry regressions now under correction. Tracker resolution remains pending.
+
+| Acceptance criterion | Evidence |
+| --- | --- |
+| Basemap retains resources and layer order | Real style replacements retain accepted registrations, image decodes and valid GPU handles. Reattached feedback layers reuse same-context resources. Model/attachment/label order and hysteresis remain current. |
+| Real context loss and current restoration | `WEBGL_lose_context` withholds drawing, clears model/attachment hits and rebuilds current color/location/selection/attachments, including inside-band model choice. Basemap configuration accepted while lost is applied after the native painter returns. |
+| Readiness and completed/pending promises | Accepted CPU data remains distinct from current drawable resources. Pending registration waits, latest replacement wins, completed promises stay completed, and failed native painter recreation rejects readiness rather than waiting forever. |
+| Partial failure, fallback and unrelated content | Buffer, shader/program and texture allocation failures clean up owned handles. Public pixels prove eligible fallback, a ground attachment and an unrelated native point remain usable; explicit retry restores models. |
+| Late completions and callback cancellation | Focused histories exercise accepted-asset rebuild versus pending replacement in both completion orders. Public decode/unregister/destroy cases close late images without stale installation. Cancellation is named and does not emit an asset-failure diagnostic. |
+| Complete disposal and shared ownership | Registry clears accepted ownership before abort callbacks. Loss detaches drawable resources before callbacks; destroy clears entries before cancellation. Removing one entity retains its shared model. |
+| Actual packaged recovery | Five workflows use real basemap replacement/context loss with PNG/JPEG and solid assets, pending replacements, input while lost and callbacks that destroy. Worker environment is [recorded](evidence/interaction-recovery/recovery-browser-environment.json). |
+| Focused checks and quiet recovery | Seventeen registry ownership cases and combined model checks pass. Restored idle produces zero renders for five seconds. Exact pins/logs are in the [handoff](evidence/interaction-recovery/recovery-implementation.md). |
+
+Root's adversarial review added a consumer custom-layer prerender that changes representation after preflight: it produced a blank frame. The layer now performs a bounded reprepare before drawing; both directions, last-entity removal and reintroduction verify completed pixels/state/picks. Another actual-loss history accepted a new basemap but restored the old one; deferred current-style application fixes it. [Blank-frame failure](evidence/interaction-recovery/recovery-prerender-red.log), [old-basemap failure](evidence/interaction-recovery/recovery-config-loss-confirmed-red.log), [26-workflow worker result](evidence/interaction-recovery/recovery-final-browser.log).
+
+## #90 ownership
+
+All helpers start from integration `13bab3f25165b279499dcf74c1a5a97ad18f126f` in separate worktrees. Root owns combined verification, README, shared browser harness, tracker closeout and evidence.
+
+- Measurement implementer: private opt-in source timing boundaries, dedicated packaged consumer, measurement runner and command entries. No new public exports or product measurement controls.
+- Fixture helper: offline real GLB geometry sweeps, fixture metadata and generator tests; consumer-side external-file repackaging proof.
+- Playground helper: public-API example, existing playground integration, selected licensed assets and actual-input example tests.
+
+Hardware #80 and measured limits/advisory/production acceptance #91 remain pending by the user's direction. No PR, push or hosted checks are authorized or claimed.

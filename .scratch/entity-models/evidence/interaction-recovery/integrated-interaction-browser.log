@@ -1,0 +1,379 @@
+$ node scripts/test-browser.mjs
+$ vite build && tsc -p tsconfig.build.json
+vite v8.3.0 building client environment for production...
+transforming...
+✓ 165 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/ridgeline.css    6.08 kB │ gzip:  1.80 kB
+dist/ridgeline.js   277.35 kB │ gzip: 78.88 kB │ map: 735.62 kB
+
+✓ built in 401ms
+package: @ridgeline/map@0.1.0
+Tarball Contents
+dist/arrowheads.d.ts
+dist/camera-volume.d.ts
+dist/color.d.ts
+dist/drawing-controls.d.ts
+dist/drawing-geometry.d.ts
+dist/drawing-session.d.ts
+dist/drawing-shapes.d.ts
+dist/drawing-types.d.ts
+dist/drawing.d.ts
+dist/elevation-bounds.d.ts
+dist/elevation-sampler.d.ts
+dist/elevation.d.ts
+dist/entities.d.ts
+dist/entity-computation.d.ts
+dist/entity-geometry.d.ts
+dist/entity-ground.d.ts
+dist/entity-layer.d.ts
+dist/entity-projection.d.ts
+dist/errors.d.ts
+dist/feature-content.d.ts
+dist/feature-publication.d.ts
+dist/features.d.ts
+dist/gpu-camera-shaders.d.ts
+dist/gpu-camera-terrain.d.ts
+dist/gpu-cameras.d.ts
+dist/ground-feedback.d.ts
+dist/ground-target.d.ts
+dist/hillshade.d.ts
+dist/index.d.ts
+dist/interactions.d.ts
+dist/longitude.d.ts
+dist/maplibre-feature-publication.d.ts
+dist/model-feedback-layer.d.ts
+dist/model-frame.d.ts
+dist/model-glb.d.ts
+dist/model-labels.d.ts
+dist/model-layer.d.ts
+dist/model-picking.d.ts
+dist/model-placement.d.ts
+dist/model-presentation.d.ts
+dist/model-renderer.d.ts
+dist/model-settings.d.ts
+dist/model-switching.d.ts
+dist/model-visibility.d.ts
+dist/models.d.ts
+dist/ridgeline.css
+dist/ridgeline.js
+dist/ridgeline.js.map
+dist/sensor-camera-coverage.d.ts
+dist/types.d.ts
+dist/viewport.d.ts
+docs/performance.md
+package.json
+README.md
+Tarball Details
+/home/ubuntu/.t3/worktrees/Ridgeline/t3code-7c4f2af4/.artifacts/ridgeline-map-0.1.0.tgz
+Prepared .artifacts/consumer. Install dependencies, build, then open its dev server to run the checks.
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +43
++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 87, reused 43, downloaded 0, added 43, done
+
+dependencies:
++ @ridgeline/map 0.1.0
++ maplibre-gl 6.11.0 (6.11.2 is available)
+
+devDependencies:
++ typescript 7.0.2
++ vite 8.3.0 (8.3.1 is available)
+
+Done in 1.6s using pnpm v11.0.9
+$ tsc --noEmit && vite build
+vite v8.3.0 building client environment for production...
+transforming...
+✓ 24 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                 0.52 kB │ gzip:   0.37 kB
+dist/assets/0-255-BTAoze2O.pbf                 76.58 kB
+dist/assets/maplibre-gl-worker-BbFVVOSM.js    509.38 kB
+dist/assets/index-CweBEn9B.css                 89.03 kB │ gzip:  12.27 kB
+dist/assets/index-Jpur8VRE.js               1,620.97 kB │ gzip: 443.07 kB
+
+✓ built in 1.57s
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+[WebServer] (node:894159) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:894251) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 182 tests using 1 worker
+
+(node:894471) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓    1 tests/packaged/browser.spec.ts:6:3 › models retain resources through basemap replacement (3.7s)
+  ✓    2 tests/packaged/browser.spec.ts:6:3 › models rebuild current presentation after real context loss (9.3s)
+  ✓    3 tests/packaged/browser.spec.ts:6:3 › model recovery cancels stale native image completions (3.7s)
+  ✓    4 tests/packaged/browser.spec.ts:6:3 › model recovery reports allocation failure and retries explicitly (6.5s)
+  ✓    5 tests/packaged/browser.spec.ts:6:3 › model frames recover from consumer prerender mutations (2.1s)
+  ✓    6 tests/packaged/browser.spec.ts:6:3 › Model picking uses drawn boxes and returns original entity and attachment hits (3.4s)
+  ✓    7 tests/packaged/browser.spec.ts:6:3 › Model picking clips terrain near-plane and displayed world copies (8.0s)
+  ✓    8 tests/packaged/browser.spec.ts:6:3 › Model overlap picker preserves choices focus and consumer selection (3.0s)
+  ✓    9 tests/packaged/browser.spec.ts:6:3 › Model hover follows a stationary pointer and cancels stale callbacks (8.9s)
+  ✓   10 tests/packaged/browser.spec.ts:6:3 › Model feedback preserves appearance and follows model altitude (4.4s)
+  ✓   11 tests/packaged/browser.spec.ts:6:3 › Model labels wait for current collision layout beyond enlarged bounds (10.9s)
+  ✓   12 tests/packaged/browser.spec.ts:6:3 › Model enlargement preserves physical attachments and quiet presentation (8.2s)
+  ✓   13 tests/packaged/browser.spec.ts:6:3 › Model heading pitch roll and authored offset preserve physical axes (17.0s)
+  ✓   14 tests/packaged/browser.spec.ts:6:3 › Ground models follow planar terrain at real and enlarged size (32.8s)
+  ✓   15 tests/packaged/browser.spec.ts:6:3 › Model placement recovers from unknown terrain without moving entities (13.3s)
+  ✓   16 tests/packaged/browser.spec.ts:6:3 › Model switching publishes one representation through distance and settings histories (9.7s)
+  ✓   17 tests/packaged/browser.spec.ts:6:3 › Model switching preserves choices through temporary terrain and asset readiness (7.2s)
+  ✓   18 tests/packaged/browser.spec.ts:6:3 › Model switching preflights failures and rejects reentrant stale frames (2.1s)
+  ✓   19 tests/packaged/browser.spec.ts:6:3 › Model size floors use the rendered projected box and settle without idle frames (7.0s)
+  ✓   20 tests/packaged/browser.spec.ts:6:3 › Embedded PNG and JPEG preserve original and independent assigned appearances (1.7s)
+  ✓   21 tests/packaged/browser.spec.ts:6:3 › Model alpha modes unlit emission and double sided materials render their supported appearance (1.9s)
+  ✓   22 tests/packaged/browser.spec.ts:6:3 › Shared model images retain independent texture samplers and UV transforms (1.2s)
+  ✓   23 tests/packaged/browser.spec.ts:6:3 › Model decoding cancellation and failed replacement release owned resources (2.4s)
+  ✓   24 tests/packaged/browser.spec.ts:6:3 › Shared solid models register replace and remove through the public viewport (1.3s)
+  ✓   25 tests/packaged/browser.spec.ts:6:3 › Model registration waits cancels and isolates allocation failures (1.3s)
+  ✓   26 tests/packaged/browser.spec.ts:6:3 › Model callbacks cannot restore removed registrations or destroyed viewports (990ms)
+  ✓   27 tests/packaged/browser.spec.ts:6:3 › Reliability entity meter-scale projection agrees with double precision in flat views (12.9s)
+  ✓   28 tests/packaged/browser.spec.ts:6:3 › Reliability entity meter-scale projection agrees with double precision in globe views (24.4s)
+  ✓   29 tests/packaged/browser.spec.ts:6:3 › Reliability entity coherent attachments reject empty space across the opposite world seam (3.2s)
+  ✓   30 tests/packaged/browser.spec.ts:6:3 › Reliability drawing insertion handles preserve displayed edges (7.8s)
+  ✓   31 tests/packaged/browser.spec.ts:6:3 › Reliability drawing snapping follows the pointer world copy at low zoom (2.6s)
+  ✓   32 tests/packaged/browser.spec.ts:6:3 › Reliability drawing snap failures recover on the visible world copy and respect unavailable terrain (9.4s)
+  ✓   33 tests/packaged/browser.spec.ts:6:3 › Reliability drawing restores rejected handle edits on a third visible world copy (4.5s)
+  ✓   34 tests/packaged/browser.spec.ts:6:3 › Reliability drawing preserves rejected handle edits after camera turns and reversal (3.4s)
+  ✓   35 tests/packaged/browser.spec.ts:6:3 › Reliability drawing keyboard movement excludes carried shape vertices (2.2s)
+  ✓   36 tests/packaged/browser.spec.ts:6:3 › Reliability drawing keyboard snapping follows pointer policy (7.3s)
+  ✓   37 tests/packaged/browser.spec.ts:6:3 › Reliability drawing date-line storage snapping and reload flat without terrain (3.0s)
+  ✓   38 tests/packaged/browser.spec.ts:6:3 › Reliability drawing date-line storage snapping and reload flat with terrain (19.1s)
+  ✓   39 tests/packaged/browser.spec.ts:6:3 › Reliability drawing date-line storage snapping and reload globe without terrain (4.4s)
+  ✓   40 tests/packaged/browser.spec.ts:6:3 › Reliability drawing date-line storage snapping and reload globe with terrain (57.0s)
+  ✓   41 tests/packaged/browser.spec.ts:6:3 › Reliability entity nonsimple attachment polygons reject mixed batches before accepted or rendered changes (1.2s)
+  ✓   42 tests/packaged/browser.spec.ts:6:3 › Reliability publication retires styling when callbacks replace the basemap (1.1s)
+  ✓   43 tests/packaged/browser.spec.ts:6:3 › Reliability publication keeps updates made during icon registration (929ms)
+  ✓   44 tests/packaged/browser.spec.ts:6:3 › Reliability publication keeps removals and scene changes made by later icon callbacks (1.6s)
+  ✓   45 tests/packaged/browser.spec.ts:6:3 › Reliability publication runs a requested reset after a held update settles (965ms)
+  ✓   46 tests/packaged/browser.spec.ts:6:3 › Reliability content keeps a menu closed when its factory closes synchronously (938ms)
+  ✓   47 tests/packaged/browser.spec.ts:6:3 › Reliability content keeps a menu opened by tooltip disposal during a native picker click (1.3s)
+  ✓   48 tests/packaged/browser.spec.ts:6:3 › Reliability content keeps replacement focus when a menu disposer opens another menu (995ms)
+  ✓   49 tests/packaged/browser.spec.ts:6:3 › Reliability content releases menu results after helper or viewport destruction (1.4s)
+  ✓   50 tests/packaged/browser.spec.ts:6:3 › Reliability content ignores obsolete factory results and close callbacks (961ms)
+  ✓   51 tests/packaged/browser.spec.ts:6:3 › Reliability content keeps a replacement menu alive when picker page disposal opens it (1.5s)
+  ✓   52 tests/packaged/browser.spec.ts:6:3 › Reliability content lets a picker replace a pending menu factory (1.2s)
+  ✓   53 tests/packaged/browser.spec.ts:6:3 › Reliability drawing callback ownership and interrupted acquisition (6.5s)
+  ✓   54 tests/packaged/browser.spec.ts:6:3 › Reliability entity null buffer allocation diagnoses once and retry renders only current geometry (1.6s)
+  ✓   55 tests/packaged/browser.spec.ts:6:3 › Reliability entity date-line rendering and real picking agree across order pan and projection (4.4s)
+  ✓   56 tests/packaged/browser.spec.ts:6:3 › Reliability entity raster retry fetches repaired no-data and restores current camera pixels (3.1s)
+  ✓   57 tests/packaged/browser.spec.ts:6:3 › Reliability entity sampling failure clears completed plain and terrain coverage and retries current data (3.4s)
+  ✓   58 tests/packaged/browser.spec.ts:6:3 › Raw terrain and the installed renderer agree on nonzero TMS tile templates (1.6s)
+  ✓   59 tests/packaged/browser.spec.ts:6:3 › An earlier pointer release cannot replace controls during a later native press (1.5s)
+  ✓   60 tests/packaged/browser.spec.ts:6:3 › Inspector resumes updates after window blur or lost pointer capture (1.5s)
+  ✓   61 tests/packaged/browser.spec.ts:6:3 › Preparation failures preserve construction and update publication and release the viewport (1.5s)
+  ✓   62 tests/packaged/browser.spec.ts:6:3 › Removing an entity from preparation leaves accepted data and rendered output absent (1.3s)
+  ✓   63 tests/packaged/browser.spec.ts:6:3 › Removing an entity during elevation sampling clears its displayed camera (1.3s)
+  ✓   64 tests/packaged/browser.spec.ts:6:3 › Destroying from a restoration diagnostic stops callbacks and resource creation (1.0s)
+  ✓   65 tests/packaged/browser.spec.ts:6:3 › Unrelated terrain failure preserves the displayed mask of a pending replacement (3.4s)
+  ✓   66 tests/packaged/browser.spec.ts:6:3 › Destroy during initialization, repeat destroy, then remount (747ms)
+  ✓   67 tests/packaged/browser.spec.ts:6:3 › Late terrain preparation cannot affect a replacement viewport (1.2s)
+  ✓   68 tests/packaged/browser.spec.ts:6:3 › Queued features render with stable string IDs and click events (914ms)
+  ✓   69 tests/packaged/browser.spec.ts:6:3 › Reserved feature IDs remain selectable without inherited state (1.1s)
+  ✓   70 tests/packaged/browser.spec.ts:6:3 › Incremental updates replace data without moving the camera (1.1s)
+  ✓   71 tests/packaged/browser.spec.ts:6:3 › A mutating style callback cannot change accepted or rendered feature data (1.5s)
+  ✓   72 tests/packaged/browser.spec.ts:6:3 › Removing and reinserting an airborne ID does not restore its selection (1.7s)
+  ✓   73 tests/packaged/browser.spec.ts:6:3 › Mutating object basemaps does not change accepted configuration or style (1.1s)
+  ✓   74 tests/packaged/browser.spec.ts:6:3 › Style replacement preserves data and selection (885ms)
+  ✓   75 tests/packaged/browser.spec.ts:6:3 › A broken style isolates one feature and retries only on request (1.3s)
+  ✓   76 tests/packaged/browser.spec.ts:6:3 › Renderer rejection preserves removals and never restores an older update (1.0s)
+  ✓   77 tests/packaged/browser.spec.ts:6:3 › Source error events retain updates even when updateData resolves (998ms)
+  ✓   78 tests/packaged/browser.spec.ts:6:3 › An initial GeoJSON worker-load rejection recovers with the latest accepted features (1.2s)
+  ✓   79 tests/packaged/browser.spec.ts:6:3 › A retired source cannot restore stale changes after a basemap switch (1.0s)
+  ✓   80 tests/packaged/browser.spec.ts:6:3 › A broken style does not block basemap restoration or later updates (1.3s)
+  ✓   81 tests/packaged/browser.spec.ts:6:3 › Escape reaches consumers unless a picker is open (1.1s)
+  ✓   82 tests/packaged/browser.spec.ts:6:3 › Keyboard picker activation selects the chosen overlapping feature (973ms)
+  ✓   83 tests/packaged/browser.spec.ts:6:3 › Picker candidates stay stable during movement; UI disposes once (909ms)
+  ✓   84 tests/packaged/browser.spec.ts:6:3 › Feature content keeps the newest update from render and disposal callbacks (1.2s)
+  ✓   85 tests/packaged/browser.spec.ts:6:3 › Feature content returned after interaction destruction is disposed once (1.1s)
+  ✓   86 tests/packaged/browser.spec.ts:6:3 › Picker refreshes names, icons and availability without replacing buttons or focus (1.1s)
+  ✓   87 tests/packaged/browser.spec.ts:6:3 › Replacing a registered icon updates the map and an open picker (1.5s)
+  ✓   88 tests/packaged/browser.spec.ts:6:3 › Icon registration isolates an unrelated failing style callback (1.0s)
+  ✓   89 tests/packaged/browser.spec.ts:6:3 › A broken style falls back to names without interrupting the picker (1.1s)
+  ✓   90 tests/packaged/browser.spec.ts:6:3 › Hover content follows the current feature and survives unrelated removal (1.2s)
+  ✓   91 tests/packaged/browser.spec.ts:6:3 › A failed custom picker choice keeps the other choice and keyboard selection usable (1.3s)
+  ✓   92 tests/packaged/browser.spec.ts:6:3 › Point above a ground area wins the click and picker-free selection (1.3s)
+  ✓   93 tests/packaged/browser.spec.ts:6:3 › Hillshade options update live and survive toggles and basemap replacement (784ms)
+  ✓   94 tests/packaged/browser.spec.ts:6:3 › Completed viewport releases DOM and rejects further mutation (715ms)
+  ✓   95 tests/packaged/browser.spec.ts:6:3 › Airborne placement, attachment lifecycle, fallbacks, and globe shaders work through the package (2.7s)
+  ✓   96 tests/packaged/browser.spec.ts:6:3 › Wireframe-only camera interiors do not intercept clicks (1.7s)
+  ✓   97 tests/packaged/browser.spec.ts:6:3 › A real click selects a visible camera face clipped by the view (1.8s)
+  ✓   98 tests/packaged/browser.spec.ts:6:3 › Incomplete custom camera terrain settles without polling and retries explicitly (3.4s)
+  ✓   99 tests/packaged/browser.spec.ts:6:3 › Custom terrain preparation settles missing data and refreshes the cached patch (2.2s)
+  ✓  100 tests/packaged/browser.spec.ts:6:3 › Mixed terrain cameras retain shared preparation for non-camera attachments (3.2s)
+  ✓  101 tests/packaged/browser.spec.ts:6:3 › A ready camera does not hide unavailable ground attachment terrain (3.1s)
+  ✓  102 tests/packaged/browser.spec.ts:6:3 › One failed terrain region does not settle another pending camera (2.6s)
+  ✓  103 tests/packaged/browser.spec.ts:6:3 › A failed airborne style update retains its last complete display (2.1s)
+  ✓  104 tests/packaged/browser.spec.ts:6:3 › Airborne shader creation recovers through retryUpdates (2.1s)
+  ✓  105 tests/packaged/browser.spec.ts:6:3 › Custom elevation preparation also covers entities with only plain cameras (1.9s)
+  ✓  106 tests/packaged/browser.spec.ts:6:3 › A moved airborne camera prepares a missing center while retaining historical coverage (6.5s)
+  ✓  107 tests/packaged/browser.spec.ts:6:3 › Switching to a plain camera during unresolved placement drops terrain coverage (4.2s)
+  ✓  108 tests/packaged/browser.spec.ts:6:3 › No-altitude terrain cameras use prepared ground placement without GPU coverage (1.7s)
+  ✓  109 tests/packaged/browser.spec.ts:6:3 › Stateful elevation samplers retain their prepare method receiver (2.8s)
+  ✓  110 tests/packaged/browser.spec.ts:6:3 › Hidden terrain cameras still prepare placement elevation after movement (1.7s)
+  ✓  111 tests/packaged/browser.spec.ts:6:3 › Hiding coverage keeps shared placement preparation active (1.5s)
+  ✓  112 tests/packaged/browser.spec.ts:6:3 › Hidden unavailable placement waits for explicit retry after display configuration changes (1.8s)
+  ✓  113 tests/packaged/browser.spec.ts:6:3 › Raw DEM placement and coverage remain physical with terrain off and exaggerated (43.5s)
+  ✓  114 tests/packaged/browser.spec.ts:6:3 › Custom DEM shifts agree with the installed renderer on both sides of zero (5.1s)
+  ✓  115 tests/packaged/browser.spec.ts:6:3 › TileJSON Terrarium metadata decodes flat ground in raw and displayed terrain (3.1s)
+  ✓  116 tests/packaged/browser.spec.ts:6:3 › A 50 km camera at latitude 46 settles with bounded raw terrain loading (9.4s)
+  ✓  117 tests/packaged/browser.spec.ts:6:3 › Exaggerated terrain keeps sphere and plain camera volume pickable (7.3s)
+  ✓  118 tests/packaged/browser.spec.ts:6:3 › Visible footprint stays filled when displayed terrain differs slightly from sampled terrain (3.7s)
+  ✓  119 tests/packaged/browser.spec.ts:6:3 › Camera overlay remains filled across a hill without testing occlusion (1.9s)
+  ✓  120 tests/packaged/browser.spec.ts:6:3 › Permission failure during real dragging preserves history and locks a repaired pending save (3.6s)
+  ✓  121 tests/packaged/browser.spec.ts:6:3 › Permission diagnostic observers cancel destroy replace and repair the public drawing attachment (5.2s)
+  ✓  122 tests/packaged/browser.spec.ts:6:3 › Throwing snap filters exclude candidates bound all diagnostics and recover with stationary input (4.6s)
+  ✓  123 tests/packaged/browser.spec.ts:6:3 › Throwing snap filters preserve real keyboard and handle edits and recover targets (2.2s)
+  ✓  124 tests/packaged/browser.spec.ts:6:3 › Snap observers invalidate obsolete candidate iteration and placement across owner and scene changes (30.0s)
+  ✓  125 tests/packaged/browser.spec.ts:6:3 › Permission failure discovered by native placement and keyboard blocks changes without escaping input (1.9s)
+  ✓  126 tests/packaged/browser.spec.ts:6:3 › A snap diagnostic that changes settings restores the surviving dragged marker (1.5s)
+  ✓  127 tests/packaged/browser.spec.ts:6:3 › Permission callbacks report failures from replaced owners without changing the new draft (2.6s)
+  ✓  128 tests/packaged/browser.spec.ts:6:3 › Permission callbacks that animate the camera stop native edits and recover after settlement (9.5s)
+  ✓  129 tests/packaged/browser.spec.ts:6:3 › Permission controls handle callback reads refreshes and one-step delete recovery (1.1s)
+  ✓  130 tests/packaged/browser.spec.ts:6:3 › Final drawing permission cannot overwrite or revive consumer data (767ms)
+  ✓  131 tests/packaged/browser.spec.ts:6:3 › Drawing creates accepted features, owns clicks, edits with keyboard and survives style reload (3.3s)
+  ✓  132 tests/packaged/browser.spec.ts:6:3 › Inspector label editing preserves Tab and the first real Finish click (1.9s)
+  ✓  133 tests/packaged/browser.spec.ts:6:3 › Inspector rectangle fields retain consecutive native edits and undo history (3.9s)
+  ✓  134 tests/packaged/browser.spec.ts:6:3 › Deleting the focused final vertex keeps keyboard undo reachable (1.7s)
+  ✓  135 tests/packaged/browser.spec.ts:6:3 › Undo during a real vertex drag leaves later edits individually undoable (2.1s)
+  ✓  136 tests/packaged/browser.spec.ts:6:3 › Rejected submission during a handle drag keeps the next keyboard edit separate (1.8s)
+  ✓  137 tests/packaged/browser.spec.ts:6:3 › Revoking edit permission during a handle drag clears feedback and restores the handle (1.8s)
+  ✓  138 tests/packaged/browser.spec.ts:6:3 › Ordinary edits preserve dynamic styles, delete-only controls, and hover recovery (1.9s)
+  ✓  139 tests/packaged/browser.spec.ts:6:3 › Drawing snapping visits only nearby rendered candidates (1.4s)
+  ✓  140 tests/packaged/browser.spec.ts:6:3 › Snap callback replacement leaves no stale handle drag behind (2.0s)
+  ✓  141 tests/packaged/browser.spec.ts:6:3 › Stationary Alt toggles visible snap preview and placed vertex (2.8s)
+  ✓  142 tests/packaged/browser.spec.ts:6:3 › Invalid terrain preserves ground handle edits and keyboard movement (18.5s)
+  ✓  143 tests/packaged/browser.spec.ts:6:3 › Old keyboard feedback cannot clear a later unavailable click (5.7s)
+  ✓  144 tests/packaged/browser.spec.ts:6:3 › Ground drawing target follows real pointer placement and clears on sky (8.8s)
+  ✘  145 tests/packaged/browser.spec.ts:6:3 › Navigation and feature hover give way to active ground placement (5.5s)
+(node:904525) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  146 tests/packaged/browser.spec.ts:6:3 › Ground feedback respects preview callbacks that cancel, destroy, or replace drawing (4.7s)
+  ✓  147 tests/packaged/browser.spec.ts:6:3 › Ground drawing restores the snapped preview after changing draft style (4.2s)
+  ✓  148 tests/packaged/browser.spec.ts:6:3 › Ground drawing keeps a valid polar target without an unsafe footprint (12.6s)
+  ✓  149 tests/packaged/browser.spec.ts:6:3 › Ground drawing recovers beneath a stationary pointer and settles without idle work (13.2s)
+  ✓  150 tests/packaged/browser.spec.ts:6:3 › Failed and replaced elevation retire a stationary target until new terrain loads (25.0s)
+  ✓  151 tests/packaged/browser.spec.ts:6:3 › Stationary placement follows camera, projection, resize, and style replacement (4.1s)
+  ✓  152 tests/packaged/browser.spec.ts:6:3 › Style replacement keeps a ground edit and releases its handles on destruction (983ms)
+  ✓  153 tests/packaged/browser.spec.ts:6:3 › Date-line ground placement follows displayed exaggeration on flat and globe (15.2s)
+  ✓  154 tests/packaged/browser.spec.ts:6:3 › Stationary target resumes after permission and submission changes (2.3s)
+  ✓  155 tests/packaged/browser.spec.ts:6:3 › Drawing cursor opt-out preserves a consumer grabbing cursor (1.5s)
+  ✓  156 tests/packaged/browser.spec.ts:6:3 › Snap callbacks cannot place a target from a replaced scene (6.9s)
+  ✓  157 tests/packaged/browser.spec.ts:6:3 › A valid terrain center keeps its target while footprint tiles load (6.5s)
+  ✓  158 tests/packaged/browser.spec.ts:6:3 › Destroying during terrain replacement releases active drawing work (6.3s)
+  ✓  159 tests/packaged/browser.spec.ts:6:3 › Ground drawing uses loaded ridge, zero, and negative DEM cells and rejects missing DEM (40.4s)
+  ✓  160 tests/packaged/browser.spec.ts:6:3 › Ground drawing chooses a foreground ridge over terrain behind it (16.0s)
+  ✓  161 tests/packaged/browser.spec.ts:6:3 › Real pointer drawing previews stay ephemeral, snap, and place circle and rotated rectangle (3.5s)
+  ✓  162 tests/packaged/browser.spec.ts:6:3 › Accepted shape definitions survive consumer storage and viewport recreation (1.1s)
+  ✓  163 tests/packaged/browser.spec.ts:6:3 › Rejected drawing remains editable and cancellation preserves accepted data (4.0s)
+  ✓  164 tests/packaged/browser.spec.ts:6:3 › Vertex dragging moves the draft and restores unchanged snap targets (3.5s)
+  ✓  165 tests/packaged/browser.spec.ts:6:3 › Whole-shape dragging follows the pointer without snapping to its own vertices (2.9s)
+  ✓  166 tests/packaged/browser.spec.ts:6:3 › Drawing attachment cleans up when its preparation diagnostic destroys the viewport (1.2s)
+  ✓  167 tests/packaged/browser.spec.ts:6:3 › Forwarding viewport wrappers share drawing ownership and allow reattachment (1.1s)
+  ✓  168 tests/packaged/browser.spec.ts:6:3 › Centered drawing handles keep independent keyboard and drag behavior (5.1s)
+  ✓  169 tests/packaged/browser.spec.ts:6:3 › Arrowheads follow accepted geometry updates and disappear on deletion (3.4s)
+  ✓  170 tests/packaged/browser.spec.ts:6:3 › Arrow editing, basemap replacement, failure, cancellation and retry keep shaft and head coherent (2.6s)
+  ✓  171 tests/packaged/browser.spec.ts:6:3 › Terrain visibility colors the approach green and the hill shadow red (2.1s)
+  ✓  172 tests/packaged/browser.spec.ts:6:3 › Camera volume covers rising terrain inside its true FOV (2.7s)
+  ✓  173 tests/packaged/browser.spec.ts:6:3 › Raster tile arrivals recover camera coverage despite unrelated missing terrain (2.6s)
+  ✓  174 tests/packaged/browser.spec.ts:6:3 › A displayed camera failure removes only its coverage and retry uses current inputs (4.6s)
+  ✓  175 tests/packaged/browser.spec.ts:6:3 › Failed GPU target allocation releases its resources and retries (1.8s)
+  ✓  176 tests/packaged/browser.spec.ts:6:3 › A null GPU synchronization result reports failure and recovers on retry (2.9s)
+  ✘  177 tests/packaged/browser.spec.ts:6:3 › Coverage readiness follows every camera, pose changes, and ground placement (6.3s)
+(node:907196) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  178 tests/packaged/browser.spec.ts:6:3 › Rejected camera frames do not replace the displayed picking mask (7.7s)
+  ✓  179 tests/packaged/browser.spec.ts:6:3 › Retained camera masks survive a style rebuild during terrain retry (5.9s)
+  ✓  180 tests/packaged/browser.spec.ts:6:3 › GPU visibility preserves flat-ground coverage at long range and caches terrain during movement (16.9s)
+  ✓  181 tests/packaged/browser.spec.ts:6:3 › GPU grid stays clear across a sloped plane during movement (12.1s)
+  ✓  182 tests/packaged/browser.spec.ts:6:3 › GPU voting and depth-refined contours respond to subpixel boundaries (1.8s)
+
+
+  1) tests/packaged/browser.spec.ts:6:3 › Navigation and feature hover give way to active ground placement 
+
+    Error: Failed: Error: Removing hovered feature retained the pointer cursor
+        at Y (http://127.0.0.1:5174/assets/index-Jpur8VRE.js:1204:192101)
+        at http://127.0.0.1:5174/assets/index-Jpur8VRE.js:1205:86685
+        at async Q (http://127.0.0.1:5174/assets/index-Jpur8VRE.js:1204:192502)
+        at async tV (http://127.0.0.1:5174/assets/index-Jpur8VRE.js:1205:82705)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "passed"
+    Received: "failed"
+        at Y (http://127.0.0.1:5174/assets/index-Jpur8VRE.js:1204:192101)
+        at http://127.0.0.1:5174/assets/index-Jpur8VRE.js:1205:86685
+        at async Q (http://127.0.0.1:5174/assets/index-Jpur8VRE.js:1204:192502)
+        at async tV (http://127.0.0.1:5174/assets/index-Jpur8VRE.js:1205:82705)
+        at /home/ubuntu/.t3/worktrees/Ridgeline/t3code-7c4f2af4/tests/packaged/browser.spec.ts:47:41
+
+    attachment #1: failure screenshot (image/png) ──────────────────────────────────────────────────
+    .artifacts/playwright/browser-Navigation-and-fea-238be--to-active-ground-placement/attachments/failure-screenshot-d6e7cc36aa0b8a9c77db8190ebfcca28c7028ff4.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    .artifacts/playwright/browser-Navigation-and-fea-238be--to-active-ground-placement/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: .artifacts/playwright/browser-Navigation-and-fea-238be--to-active-ground-placement/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    .artifacts/playwright/browser-Navigation-and-fea-238be--to-active-ground-placement/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace .artifacts/playwright/browser-Navigation-and-fea-238be--to-active-ground-placement/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) tests/packaged/browser.spec.ts:6:3 › Coverage readiness follows every camera, pose changes, and ground placement 
+
+    Error: Failed: Error: GPU publication resubmitted unchanged ground geometry 2 times
+        at Y (http://127.0.0.1:5174/assets/index-Jpur8VRE.js:1204:192101)
+        at http://127.0.0.1:5174/assets/index-Jpur8VRE.js:1205:141822
+        at async Q (http://127.0.0.1:5174/assets/index-Jpur8VRE.js:1204:192502)
+        at async tV (http://127.0.0.1:5174/assets/index-Jpur8VRE.js:1205:139497)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "passed"
+    Received: "failed"
+        at Y (http://127.0.0.1:5174/assets/index-Jpur8VRE.js:1204:192101)
+        at http://127.0.0.1:5174/assets/index-Jpur8VRE.js:1205:141822
+        at async Q (http://127.0.0.1:5174/assets/index-Jpur8VRE.js:1204:192502)
+        at async tV (http://127.0.0.1:5174/assets/index-Jpur8VRE.js:1205:139497)
+        at /home/ubuntu/.t3/worktrees/Ridgeline/t3code-7c4f2af4/tests/packaged/browser.spec.ts:47:41
+
+    attachment #1: failure screenshot (image/png) ──────────────────────────────────────────────────
+    .artifacts/playwright/browser-Coverage-readiness-9bfb3-hanges-and-ground-placement/attachments/failure-screenshot-1aff5148573b5b79e5fc1ad2b7dff2b4a3882ec3.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    .artifacts/playwright/browser-Coverage-readiness-9bfb3-hanges-and-ground-placement/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: .artifacts/playwright/browser-Coverage-readiness-9bfb3-hanges-and-ground-placement/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    .artifacts/playwright/browser-Coverage-readiness-9bfb3-hanges-and-ground-placement/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace .artifacts/playwright/browser-Coverage-readiness-9bfb3-hanges-and-ground-placement/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2 failed
+    tests/packaged/browser.spec.ts:6:3 › Navigation and feature hover give way to active ground placement 
+    tests/packaged/browser.spec.ts:6:3 › Coverage readiness follows every camera, pose changes, and ground placement 
+  180 passed (15.4m)
+Error: pnpm exec playwright test --config playwright.packaged.config.mjs failed with status 1
+    at run (file:///home/ubuntu/.t3/worktrees/Ridgeline/t3code-7c4f2af4/scripts/test-browser.mjs:18:34)
+    at file:///home/ubuntu/.t3/worktrees/Ridgeline/t3code-7c4f2af4/scripts/test-browser.mjs:40:3
+[ELIFECYCLE] Command failed with exit code 1.
