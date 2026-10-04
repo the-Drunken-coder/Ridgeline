@@ -48,9 +48,14 @@ function number(value: unknown, fallback?: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('GLB_INVALID_NUMBER');
   return value;
 }
+function boolean(value: unknown, fallback = false): boolean {
+  if (value === undefined) return fallback;
+  if (typeof value !== 'boolean') throw new Error('GLB_INVALID_BOOLEAN');
+  return value;
+}
 function integer(value: unknown, fallback?: number): number {
   const result = number(value, fallback);
-  if (!Number.isInteger(result) || result < 0) throw new Error('GLB_INVALID_INDEX');
+  if (!Number.isSafeInteger(result) || result < 0) throw new Error('GLB_INVALID_INDEX');
   return result;
 }
 function n(values: ArrayLike<number>, index: number): number {
@@ -68,6 +73,12 @@ function vec3(values: number[]): Vec3 { return [n(values, 0), n(values, 1), n(va
 function vec4(values: number[]): Vec4 { return [n(values, 0), n(values, 1), n(values, 2), n(values, 3)]; }
 function vec2(values: number[]): Vec2 { return [n(values, 0), n(values, 1)]; }
 
+function uploadValues(values: number[]): Float32Array {
+  const result = new Float32Array(values);
+  if (!result.every(Number.isFinite)) throw new Error('GLB_NON_FINITE_ATTRIBUTE');
+  return result;
+}
+
 const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 function multiply(a: number[], b: number[]): number[] {
   return Array.from({ length: 16 }, (_, i) => {
@@ -77,8 +88,14 @@ function multiply(a: number[], b: number[]): number[] {
   });
 }
 function nodeMatrix(node: JsonObject): number[] {
-  if (node.matrix !== undefined) return vector(node.matrix, identity);
+  if (node.matrix !== undefined) {
+    if (node.rotation !== undefined || node.scale !== undefined || node.translation !== undefined) throw new Error('GLB_INVALID_NODE_TRANSFORM');
+    const matrix = vector(node.matrix, identity);
+    if (matrix[3] !== 0 || matrix[7] !== 0 || matrix[11] !== 0 || matrix[15] !== 1) throw new Error('GLB_INVALID_NODE_TRANSFORM');
+    return matrix;
+  }
   const [x = 0, y = 0, z = 0, w = 1] = vector(node.rotation, [0, 0, 0, 1]);
+  if (Math.abs(Math.hypot(x, y, z, w) - 1) > 1e-5) throw new Error('GLB_INVALID_NODE_TRANSFORM');
   const [sx = 1, sy = 1, sz = 1] = vector(node.scale, [1, 1, 1]);
   const [tx = 0, ty = 0, tz = 0] = vector(node.translation, [0, 0, 0]);
   return [
@@ -106,7 +123,7 @@ function normalMatrix(m: number[]): number[] {
   const a = n(m, 0), b = n(m, 4), c = n(m, 8), d = n(m, 1), e = n(m, 5), f = n(m, 9);
   const g = n(m, 2), h = n(m, 6), i = n(m, 10);
   const determinant = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
-  if (Math.abs(determinant) < 1e-12) throw new Error('GLB_SINGULAR_NODE_TRANSFORM');
+  if (determinant === 0) throw new Error('GLB_SINGULAR_NODE_TRANSFORM');
   return [(e * i - f * h) / determinant, (c * h - b * i) / determinant, (b * f - c * e) / determinant,
     (f * g - d * i) / determinant, (a * i - c * g) / determinant, (c * d - a * f) / determinant,
     (d * h - e * g) / determinant, (b * g - a * h) / determinant, (a * e - b * d) / determinant];
@@ -118,25 +135,35 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
   if (data.getUint32(4, true) !== 2) throw new Error('GLB_VERSION_2_REQUIRED');
   if (data.getUint32(8, true) !== buffer.byteLength) throw new Error('GLB_INVALID_LENGTH');
   let json: JsonObject | undefined, binary: Uint8Array | undefined;
-  for (let offset = 12; offset < buffer.byteLength;) {
+  let chunk = 0;
+  for (let offset = 12; offset < buffer.byteLength; chunk++) {
     if (offset + 8 > buffer.byteLength) throw new Error('GLB_TRUNCATED_CHUNK');
     const length = data.getUint32(offset, true), type = data.getUint32(offset + 4, true);
+    if (length % 4) throw new Error('GLB_INVALID_CHUNK_ALIGNMENT');
+    if (chunk === 0 && type !== 0x4e4f534a) throw new Error('GLB_INVALID_CHUNK_ORDER');
     offset += 8;
     if (offset + length > buffer.byteLength) throw new Error('GLB_TRUNCATED_CHUNK');
     const bytes = new Uint8Array(buffer, offset, length);
     if (type === 0x4e4f534a) {
       if (json) throw new Error('GLB_MULTIPLE_JSON_CHUNKS');
-      const decoded: unknown = JSON.parse(new TextDecoder().decode(bytes).replace(/\0+$/, ''));
+      let decoded: unknown;
+      try { decoded = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
+      catch (cause) { throw new Error('GLB_INVALID_JSON', { cause }); }
       json = object(decoded);
     }
     if (type === 0x004e4942) {
       if (binary) throw new Error('GLB_MULTIPLE_BINARY_BUFFERS');
+      if (chunk !== 1) throw new Error('GLB_INVALID_CHUNK_ORDER');
       binary = bytes;
     }
     offset += length;
   }
   if (!json || !binary) throw new Error('GLB_MISSING_JSON_OR_BIN');
   const root = json, bin = binary;
+  const asset = object(root.asset);
+  if (asset.version !== '2.0' || (asset.minVersion !== undefined && asset.minVersion !== '2.0')) {
+    throw new Error('GLB_VERSION_2_REQUIRED');
+  }
   for (const extension of list(root.extensionsRequired)) {
     if (extension !== 'KHR_mesh_quantization' && extension !== 'KHR_texture_transform' && extension !== 'KHR_materials_unlit') {
       throw new Error(`GLB_UNSUPPORTED_REQUIRED_EXTENSION:${String(extension)}`);
@@ -144,6 +171,9 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
   }
   const buffers = list(root.buffers).map(object);
   if (buffers.length !== 1 || buffers[0]?.uri !== undefined) throw new Error('GLB_EXTERNAL_OR_MULTIPLE_BUFFERS');
+  const bufferLength = integer(buffers[0]?.byteLength);
+  if (!bufferLength || bufferLength > bin.byteLength || bin.byteLength - bufferLength > 3) throw new Error('GLB_INVALID_BUFFER_LENGTH');
+  for (let i = bufferLength; i < bin.byteLength; i++) if (bin[i] !== 0) throw new Error('GLB_INVALID_BUFFER_PADDING');
   if (list(root.skins).length) throw new Error('GLB_SKINS_UNSUPPORTED');
   const views = list(root.bufferViews).map(object), accessors = list(root.accessors).map(object);
   const meshes = list(root.meshes).map(object), nodes = list(root.nodes).map(object);
@@ -155,26 +185,51 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
   }
   function viewBytes(index: number): Uint8Array {
     const view = views[index];
-    if (!view || integer(view.buffer, 0) !== 0) throw new Error('GLB_INVALID_BUFFER_VIEW');
+    if (!view || integer(view.buffer) !== 0) throw new Error('GLB_INVALID_BUFFER_VIEW');
     const offset = integer(view.byteOffset, 0), length = integer(view.byteLength);
-    if (offset + length > bin.byteLength) throw new Error('GLB_BUFFER_VIEW_OUT_OF_BOUNDS');
+    if (offset + length > bufferLength) throw new Error('GLB_BUFFER_VIEW_OUT_OF_BOUNDS');
     return bin.subarray(offset, offset + length);
   }
-  function accessorValues(index: number, expected?: string): { values: number[]; count: number; width: number } {
+  function accessorValues(index: number, semantic: 'POSITION' | 'NORMAL' | 'TEXCOORD_0' | 'COLOR_0' | 'indices'): { values: number[]; count: number; width: number; component: number } {
     const accessor = accessors[index];
     if (!accessor) throw new Error('GLB_INVALID_ACCESSOR');
     const widths: Record<string, number> = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
     const width = typeof accessor.type === 'string' ? widths[accessor.type] : undefined;
-    if (!width || (expected && accessor.type !== expected)) throw new Error('GLB_ACCESSOR_TYPE_UNSUPPORTED');
+    const expected = semantic === 'indices' ? 'SCALAR' : semantic === 'TEXCOORD_0' ? 'VEC2' : 'VEC3';
+    if (!width || (semantic === 'COLOR_0' ? width !== 3 && width !== 4 : accessor.type !== expected)) throw new Error('GLB_ACCESSOR_TYPE_UNSUPPORTED');
     const component = integer(accessor.componentType), count = integer(accessor.count);
-    const normalized = accessor.normalized === true;
+    if (!count || count * width > 0xffffffff) throw new Error('GLB_INVALID_ACCESSOR_COUNT');
+    const normalized = boolean(accessor.normalized);
+    const quantized = list(root.extensionsRequired).includes('KHR_mesh_quantization');
+    const float = component === 5126 && !normalized;
+    const unsigned = component === 5121 || component === 5123;
+    const signed = component === 5120 || component === 5122;
+    if (semantic === 'indices') {
+      if (normalized || (!unsigned && component !== 5125)) throw new Error('GLB_INVALID_INDEX_ACCESSOR');
+    } else {
+      const valid = float || (semantic === 'COLOR_0' ? unsigned && normalized
+        : semantic === 'NORMAL' ? quantized && signed && normalized
+        : semantic === 'POSITION' ? quantized && (signed || unsigned)
+        : unsigned && normalized || quantized && (signed || unsigned));
+      if (!valid) throw new Error('GLB_INVALID_ATTRIBUTE_COMPONENT');
+    }
     const sizes: Record<number, number> = { 5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4 };
     const size = sizes[component];
     if (!size) throw new Error(`GLB_COMPONENT_TYPE_UNSUPPORTED:${component}`);
+    if (accessor.bufferView === undefined) {
+      if (accessor.byteOffset !== undefined) throw new Error('GLB_INVALID_ACCESSOR_OFFSET');
+      return { count, width, component, values: new Array<number>(count * width).fill(0) };
+    }
     const viewIndex = integer(accessor.bufferView), view = views[viewIndex];
     if (!view) throw new Error('GLB_INVALID_BUFFER_VIEW');
     const bytes = viewBytes(viewIndex), reader = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const stride = integer(view.byteStride, width * size), start = integer(accessor.byteOffset, 0);
+    if (start % size || (integer(view.byteOffset, 0) + start) % size) throw new Error('GLB_INVALID_ACCESSOR_ALIGNMENT');
+    if (semantic === 'indices') {
+      if (view.byteStride !== undefined) throw new Error('GLB_INVALID_INDEX_STRIDE');
+    } else if (start % 4 || stride % 4 || (view.byteStride !== undefined && (stride < 4 || stride > 252))) {
+      throw new Error('GLB_INVALID_VERTEX_STRIDE');
+    }
     if (stride < width * size || start + Math.max(0, count - 1) * stride + width * size > bytes.byteLength) throw new Error('GLB_ACCESSOR_OUT_OF_BOUNDS');
     function read(offset: number): number {
       let value: number;
@@ -194,7 +249,7 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
       if (!Number.isFinite(value)) throw new Error('GLB_NON_FINITE_ATTRIBUTE');
       return value;
     }
-    return { count, width, values: Array.from({ length: count * width }, (_, i) => read(start + Math.floor(i / width) * stride + (i % width) * size)) };
+    return { count, width, component, values: Array.from({ length: count * width }, (_, i) => read(start + Math.floor(i / width) * stride + (i % width) * size)) };
   }
   const images = list(root.images).map((entry) => {
     const image = object(entry);
@@ -231,9 +286,9 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
   const grouped = new Map<number, { positions: number[]; normals: number[]; uvs: number[]; colors: number[]; indices: number[]; material: ModelMaterial }>();
   const bounds: ParsedModel['bounds'] = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
   let triangles = 0;
-  function visit(index: number, parent: number[], ancestors: Set<number>): void {
+  function visit(index: number, parent: number[]): number[] {
     const node = nodes[index];
-    if (!node || ancestors.has(index)) throw new Error('GLB_INVALID_NODE_TREE');
+    if (!node) throw new Error('GLB_INVALID_NODE_TREE');
     if (node.skin !== undefined) throw new Error('GLB_SKINS_UNSUPPORTED');
     const matrix = multiply(parent, nodeMatrix(node));
     if (node.mesh !== undefined) {
@@ -241,15 +296,17 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
       if (!mesh) throw new Error('GLB_INVALID_MESH');
       for (const entry of list(mesh.primitives)) {
         const primitive = object(entry), attrs = object(primitive.attributes);
-        const positions = accessorValues(integer(attrs.POSITION), 'VEC3');
-        const normals = attrs.NORMAL === undefined ? undefined : accessorValues(integer(attrs.NORMAL), 'VEC3');
-        const uvs = attrs.TEXCOORD_0 === undefined ? undefined : accessorValues(integer(attrs.TEXCOORD_0), 'VEC2');
-        const colors = attrs.COLOR_0 === undefined ? undefined : accessorValues(integer(attrs.COLOR_0));
+        const positions = accessorValues(integer(attrs.POSITION), 'POSITION');
+        const normals = attrs.NORMAL === undefined ? undefined : accessorValues(integer(attrs.NORMAL), 'NORMAL');
+        const uvs = attrs.TEXCOORD_0 === undefined ? undefined : accessorValues(integer(attrs.TEXCOORD_0), 'TEXCOORD_0');
+        const colors = attrs.COLOR_0 === undefined ? undefined : accessorValues(integer(attrs.COLOR_0), 'COLOR_0');
         if (colors && colors.width !== 3 && colors.width !== 4) throw new Error('GLB_INVALID_COLOR_ATTRIBUTE');
         for (const optional of [normals, uvs, colors]) if (optional && optional.count !== positions.count) throw new Error('GLB_ATTRIBUTE_COUNT_MISMATCH');
-        const indices = primitive.indices === undefined ? Array.from({ length: positions.count }, (_, i) => i) : accessorValues(integer(primitive.indices), 'SCALAR').values;
+        const indexAccessor = primitive.indices === undefined ? undefined : accessorValues(integer(primitive.indices), 'indices');
+        const indices = indexAccessor?.values ?? Array.from({ length: positions.count }, (_, i) => i);
         if (indices.length % 3) throw new Error('GLB_INVALID_TRIANGLE_COUNT');
-        for (const value of indices) if (!Number.isInteger(value) || value < 0 || value >= positions.count) throw new Error('GLB_INDEX_OUT_OF_BOUNDS');
+        const restart = indexAccessor?.component === 5121 ? 255 : indexAccessor?.component === 5123 ? 65535 : 4294967295;
+        for (const value of indices) if (!Number.isInteger(value) || value < 0 || value >= positions.count || value === restart) throw new Error('GLB_INDEX_OUT_OF_BOUNDS');
         // A mirrored node must retain outward front faces when its transform is baked.
         if (determinant3(matrix) < 0) for (let i = 0; i < indices.length; i += 3) {
           const second = n(indices, i + 1);
@@ -262,14 +319,14 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
         let batch = grouped.get(materialIndex);
         if (!batch) { batch = { positions: [], normals: [], uvs: [], colors: [], indices: [], material }; grouped.set(materialIndex, batch); }
         const transformed = Array.from({ length: positions.count }, (_, i) => point(matrix, n(positions.values, i * 3), n(positions.values, i * 3 + 1), n(positions.values, i * 3 + 2)));
-        const nm = normalMatrix(matrix);
+        const nm = normals ? normalMatrix(matrix) : undefined;
         function append(vertex: number, faceNormal?: Vec3): number {
           const p = transformed[vertex];
           if (!p || !batch) throw new Error('GLB_INVALID_VERTEX');
           const outputIndex = batch.positions.length / 3;
           batch.positions.push(...p);
           for (let axis = 0; axis < 3; axis++) { bounds.min[axis] = Math.min(n(bounds.min, axis), n(p, axis)); bounds.max[axis] = Math.max(n(bounds.max, axis), n(p, axis)); }
-          if (normals) {
+          if (normals && nm) {
             const x = n(normals.values, vertex * 3), y = n(normals.values, vertex * 3 + 1), z = n(normals.values, vertex * 3 + 2);
             batch.normals.push(...normalize(n(nm, 0) * x + n(nm, 3) * y + n(nm, 6) * z, n(nm, 1) * x + n(nm, 4) * y + n(nm, 7) * z, n(nm, 2) * x + n(nm, 5) * y + n(nm, 8) * z));
           } else batch.normals.push(...(faceNormal ?? [0, 1, 0]));
@@ -278,9 +335,12 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
           return outputIndex;
         }
         if (normals) {
-          const base = batch.positions.length / 3;
-          for (let vertex = 0; vertex < positions.count; vertex++) append(vertex);
-          for (const value of indices) batch.indices.push(base + value);
+          const vertices = new Map<number, number>();
+          for (const value of indices) {
+            let output = vertices.get(value);
+            if (output === undefined) { output = append(value); vertices.set(value, output); }
+            batch.indices.push(output);
+          }
         } else {
           // Missing normals need separate triangle corners to retain flat faces.
           for (let i = 0; i < indices.length; i += 3) {
@@ -294,15 +354,42 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
         triangles += indices.length / 3;
       }
     }
-    const next = new Set(ancestors).add(index);
-    for (const child of list(node.children)) visit(integer(child), matrix, next);
+    return matrix;
   }
-  const scenes = list(root.scenes).map(object), scene = scenes[integer(root.scene, 0)];
+  const parents = new Map<number, number>();
+  const children = nodes.map((node, index) => list(node.children).map(value => {
+    const child = integer(value);
+    if (!nodes[child] || parents.has(child)) throw new Error('GLB_INVALID_NODE_TREE');
+    parents.set(child, index);
+    return child;
+  }));
+  // A strict forest cannot contain a cycle if every node is reachable from a root.
+  const pending = nodes.flatMap((_, index) => parents.has(index) ? [] : [index]);
+  let visited = 0;
+  while (pending.length) {
+    const index = pending.pop();
+    if (index === undefined) break;
+    visited++;
+    for (const child of children[index] ?? []) pending.push(child);
+  }
+  if (visited !== nodes.length) throw new Error('GLB_INVALID_NODE_TREE');
+  const scenes = list(root.scenes).map(entry => {
+    const roots = list(object(entry).nodes).map(value => integer(value));
+    if (new Set(roots).size !== roots.length || roots.some(index => !nodes[index] || parents.has(index))) throw new Error('GLB_INVALID_NODE_TREE');
+    return roots;
+  });
+  const scene = scenes[integer(root.scene, 0)];
   if (!scene) throw new Error('GLB_DEFAULT_SCENE_MISSING');
-  for (const node of list(scene.nodes)) visit(integer(node), identity, new Set());
+  const stack = [...scene].reverse().map(index => ({ index, parent: identity }));
+  while (stack.length) {
+    const current = stack.pop();
+    if (!current) break;
+    const matrix = visit(current.index, current.parent);
+    for (const index of [...(children[current.index] ?? [])].reverse()) stack.push({ index, parent: matrix });
+  }
   if (!triangles) throw new Error('GLB_EMPTY_MODEL');
   return { bounds, triangles, images, batches: [...grouped.values()].map((batch) => ({
-    positions: new Float32Array(batch.positions), normals: new Float32Array(batch.normals), uvs: new Float32Array(batch.uvs),
-    colors: new Float32Array(batch.colors), indices: new Uint32Array(batch.indices), material: batch.material,
+    positions: uploadValues(batch.positions), normals: uploadValues(batch.normals), uvs: uploadValues(batch.uvs),
+    colors: uploadValues(batch.colors), indices: new Uint32Array(batch.indices), material: batch.material,
   })) };
 }
