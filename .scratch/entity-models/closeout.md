@@ -18,9 +18,9 @@ Approved test boundaries are the packaged public viewport workflow and focused p
 
 ## Verification record
 
-Reviewed: `47750f2ebc36669c88e5376896782ac51de457e9`...`180bebbc694433a7501d2b1fe77e4c330c08b7d4`, shared projection implementation reviewed by the integration owner on 2026-10-04. The integrated tree equals the reviewed worker tree at `0f24d275099b83c999e3afa949f638959e589f16` (tree `4d7a67c840f503cbc5d78c5f69fc0add3d64343c`). Registration and later slices are still in progress.
+Reviewed: `bb8780448423bf1dea524191b52ff6de62cb843a`...`d5f860c900dda3cb9c7f06c4a739aa7991f47a75`, shared registration, parser, solid renderer, scene integration and consumer checks reviewed by the integration owner on 2026-10-04. The integrated tree equals the reviewed worker tree at `53593a6b0608ae60f281831832527c11277fca3c` (tree `47a804cada3f855ee3cea52d16d148757aeaf8f5`). Earlier projection evidence is below. Materials, placement and switching are now in progress.
 
-Local verification: at `180bebbc694433a7501d2b1fe77e4c330c08b7d4`, `pnpm check` and `node --import tsx --test tests/entity-projection.test.ts tests/entity-layer.test.ts tests/entities.test.ts tests/entity-scene.test.ts` passed (31 focused tests). Historical packaged browser evidence and its revision limits are recorded below.
+Local verification: at `d5f860c900dda3cb9c7f06c4a739aa7991f47a75`, `pnpm check` and `node --import tsx --test tests/model-glb.test.ts tests/models.test.ts tests/features.test.ts tests/entities.test.ts tests/entity-scene.test.ts` passed (52 tests). The exact source tree at `53593a6b0608ae60f281831832527c11277fca3c` passed all three new packaged registration cases. Historical broader checks and their revision limits are recorded below.
 
 Hosted verification: unavailable, no PR authorized or created.
 
@@ -53,4 +53,29 @@ Observed approximation limit: a visible outer edge pixel of a 6 m screen-facing 
 
 ## #83: registration and solid models
 
-Status: in progress. The parser worker owns `src/model-glb.ts`, `tests/model-glb.test.ts` and `tests/model-fixtures.ts`. The core worker owns model resources/rendering, viewport/scene/API integration, registration browser cases and relevant documentation. The coordinator supplied the browser harness wiring in the core worktree and remains the owner of combined verification. Worker evidence is not yet integrated acceptance.
+Status: resolved for the scoped solid-model path. Integrated at `d5f860c900dda3cb9c7f06c4a739aa7991f47a75`. The parser and core workers had separate file ownership; the coordinator supplied shared browser wiring and reviewed their combined behavior.
+
+| Acceptance criterion | Evidence |
+| --- | --- |
+| Public contracts, snapshots and atomic validation | `types.ts`, `model-settings.ts`, registry and viewport integration implement registration/removal, entity references/orientation and settings. Focused and packaged tests mutate supplied bytes/settings/state snapshots and reject invalid registrations/effective configurations without changing accepted state. |
+| Pure static GLB parser | `model-glb.ts` validates consumed static geometry, transforms, buffers, supported accessor semantics, node ownership and material metadata. Eighteen parser cases cover quantization, tiny scales, mirrored transforms, finite upload arrays, malformed containers, named subset rejection and copied images. All four sample GLBs also parsed at `9a88db97392fdedfc5e5aba92d54915ac275c3ee`. |
+| Shared solid rendering and projection | The instanced model layer sits directly below entity attachments and uses shared EntityProjection. Packaged tests observe each of two spatially separate instances, retain the second after removing the first and exercise the explicit zero-floor near path. A single-sided asymmetric upward face proves correct axis handedness and culling. |
+| Readiness and atomic installation | Registry tests exercise registration before renderer readiness, readiness failure with each model's context, successful upload before resolution and retained old resources on failed replacement. Viewport readiness does not wait for registrations. |
+| Copied model status and missing-heading fallback | Public cases observe loading/ready/failed/unavailable and replacementPending, mutate detached status reads and verify missing-heading diagnostics with icon fallback. Final frame-publication semantics remain assigned to #86. |
+| Newest revision, removal and shared lifetime | Focused tests verify only the newest queued revision uploads. Public tests verify failed replacement retains pixels, unregister retains feature/selection, unknown unregister is harmless and removing one entity leaves another drawn. |
+| Cancellation, partial cleanup and callbacks | Focused tests remove during upload and cancel on destruction. Packaged tests cancel from entitychange, destroy from an error callback and inject a real WebGL buffer allocation failure, checking buffer/VAO cleanup and the retained working model. Intentional cancellation has no asset-failure diagnostic. |
+| Existing diagnostic channels and isolation | Errors include model ID/operation and retained cause; logging keys include the resource. Public failure cases retain the working model and unrelated accepted data. No triangle advisory was added. |
+| Public workflow tests and documentation | README documents the delivered solid path and explicitly identifies later slices. Three packaged cases, 52 focused checks and root type/ticket checks pass on the source/integration revisions above. |
+
+Historical checks, collected on 2026-10-04: before the final renderer extraction and axis correction, the uncommitted core checkout passed `pnpm check`, 291 root tests and 5 control tests. Its exact checkout revision is not attributed to the final commit. After extraction and correction, focused and packaged checks passed; a final packaged recheck at committed `53593a6b0608ae60f281831832527c11277fca3c` passed all three cases in 5.1 seconds. The merger and root confirmed the same tree at `d5f860c900dda3cb9c7f06c4a739aa7991f47a75`, clean status and whitespace checks.
+
+The asymmetric rendering test failed with the original reflected axis mapping, despite the cube tests passing. The corrected rotation sends authored +X west, +Y up and +Z north and preserves CCW outward faces. Complete heading-offset/pitch/roll composition and slope contact are assigned to #85.
+
+Parser limits: this is the approved static subset, not a full glTF schema validator. Ignored animation/camera/light internals and unused extension payloads are not validated. Image bytes are copied here; actual PNG/JPEG decoding and material completion belong to #84. Context rebuild, exact frame switching, model picking, readable feedback and final consumer/performance tooling are still pending. The parent spec remains open.
+
+## Next implementation ownership
+
+- #84 materials: `models.ts`, `model-renderer.ts`, parser/material details and material-specific tests. GPU frame preparation finishes uploads before returning a draw plan.
+- #85 placement: pure placement geometry, shared projection helpers, elevation preparation and placement tests. Enlarged-size acceptance depends on #86 integration.
+- #86 switching: ModelLayer, EntityScene, viewport/frame coordination and switching tests; integrates the placement worker's interface. It does not edit the registry or GPU renderer.
+- Root: shared browser harness, README integration, merged diff review, exact-revision verification and this closeout record.
