@@ -83,6 +83,22 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
   { name: 'models retain resources through basemap replacement', async run(test) {
     const errors: RidgelineError[] = [];
     const viewport = create(test, [feature('first', -.0002), feature('second', .0002)], undefined, error => errors.push(error));
+    let feedbackAllocations = 0;
+    const observed = new WeakSet<object>(), addLayer = viewport.map.addLayer;
+    viewport.map.addLayer = function (layer, ...args) {
+      if (layer.type === 'custom' && layer.id === 'rl:model-feedback' && !observed.has(layer)) {
+        observed.add(layer);
+        const onAdd = layer.onAdd;
+        layer.onAdd = function (map, gl) {
+          const createProgram = gl.createProgram, createBuffer = gl.createBuffer;
+          gl.createProgram = function () { feedbackAllocations++; return createProgram.call(this); };
+          gl.createBuffer = function () { feedbackAllocations++; return createBuffer.call(this); };
+          try { onAdd?.call(this, map, gl); }
+          finally { gl.createProgram = createProgram; gl.createBuffer = createBuffer; }
+        };
+      }
+      return addLayer.call(this, layer, ...args);
+    };
     const original = globalThis.createImageBitmap;
     let decodes = 0;
     Object.defineProperty(globalThis, 'createImageBitmap', { configurable: true, writable: true,
@@ -110,6 +126,7 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
         await test.until(() => held.held.every(image => image.bitmap.width === 0), 'detached and resumed bitmaps closed');
         check(count(await capture(viewport), 'magenta') > 1000, 'Current replacement did not render after style replacement');
       } finally { held.stop(); held.release(); }
+      check(feedbackAllocations === 2, `Live basemap replacement duplicated feedback programs/buffers: ${feedbackAllocations}`);
       viewport.remove(['first']);
       check(count(await capture(viewport), 'magenta', 'right') > 100, 'Removing one entity disposed its shared registration');
     } finally { globalThis.createImageBitmap = original; viewport.destroy(); }
@@ -130,7 +147,18 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
       const distance = Math.hypot((point.x - eye.x) / point.meterInMercatorCoordinateUnits(), camera.getCameraAltitude() - 20);
       viewport.configure({ entityModels: { switchDistanceMeters: distance, deadZoneMeters: 40, minimumSizePixels: 0 } });
       viewport.setSelection(['textured']); await capture(viewport);
+      const pointer = window.drawingPointer;
+      if (!pointer) throw new Error('Real pointer bridge unavailable');
+      let clicked: { features: string[]; attachments: string[] } = { features: [], attachments: [] };
+      let hovered: string[] = [];
+      viewport.on('click', event => { clicked = { features: event.features.map(feature => feature.id), attachments: event.attachments.map(hit => hit.attachmentId) }; });
+      viewport.on('hover', event => { hovered = event.features.map(feature => feature.id); });
+      const groundPoint = viewport.map.project([-.0002, 0]);
+      await pointer('move', groundPoint.x, groundPoint.y); await pointer('click', groundPoint.x, groundPoint.y);
+      check(clicked.features.includes('textured') && clicked.attachments.includes('area'), 'Initial pointer did not hit original model and attachment');
       const extension = await lose(viewport, test);
+      await pointer('move', groundPoint.x + 1, groundPoint.y); await pointer('click', groundPoint.x, groundPoint.y);
+      check(clicked.features.length === 0 && clicked.attachments.length === 0 && hovered.length === 0, 'Lost canvas retained stale click or hover candidates');
       check(viewport.getEntityState('textured')?.representation === 'withheld' && viewport.getEntityState('solid')?.representation === 'withheld', 'Actual loss did not publish withheld representations');
       check(viewport.getEntityState('textured')?.model?.status === 'ready', 'Actual loss discarded accepted model readiness');
       appearances.set('textured', { mode: 'color', color: 'blue' });
@@ -220,6 +248,38 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
       viewport.retryUpdates();
       await test.until(() => viewport.getEntityState('instance')?.representation === 'model', 'explicit retry restores retained asset');
       check(count(await capture(viewport), 'magenta') > 1000, 'Explicit retry did not rebuild model pixels');
+      const addLayer = viewport.map.addLayer;
+      const shaders = new Set<WebGLShader>(), programs = new Set<WebGLProgram>();
+      let failShader = true, shaderAttempts = 0;
+      viewport.map.addLayer = function (layer, ...args) {
+        if (layer.type === 'custom' && layer.id === 'rl:models') {
+          const prerender = layer.prerender;
+          layer.prerender = function (gl, input) {
+            if (!failShader) { prerender?.call(this, gl, input); return; }
+            failShader = false;
+            const createShader = gl.createShader, deleteShader = gl.deleteShader, createProgram = gl.createProgram, deleteProgram = gl.deleteProgram;
+            Object.defineProperty(gl, 'createShader', { configurable: true, writable: true, value: (type: number) => {
+              if (++shaderAttempts === 2) return null;
+              const shader = createShader.call(gl, type); if (shader) shaders.add(shader); return shader;
+            } });
+            gl.createProgram = function () { const program = createProgram.call(this); if (program) programs.add(program); return program; };
+            gl.deleteShader = function (shader) { if (shader) shaders.delete(shader); deleteShader.call(this, shader); };
+            gl.deleteProgram = function (program) { if (program) programs.delete(program); deleteProgram.call(this, program); };
+            try { prerender?.call(this, gl, input); }
+            finally { gl.createShader = createShader; gl.deleteShader = deleteShader; gl.createProgram = createProgram; gl.deleteProgram = deleteProgram; }
+          };
+        }
+        return addLayer.call(this, layer, ...args);
+      };
+      try {
+        const shaderExtension = await lose(viewport, test); await restore(viewport, test, shaderExtension);
+        await test.until(() => errors.some(error => error.code === 'MODEL_RENDERER_FAILED' && error.context.operation === 'models'), 'scoped shader restoration failure');
+        check(shaderAttempts === 2 && shaders.size === 0 && programs.size === 0, 'Partial shader initialization leaked owned shaders/program');
+        check(viewport.getEntityState('instance')?.representation === 'icon', 'Shader failure did not retain eligible icon fallback');
+        viewport.retryUpdates();
+        await test.until(() => viewport.getEntityState('instance')?.representation === 'model', 'explicit shader retry restores accepted model');
+        check(count(await capture(viewport), 'magenta') > 1000, 'Shader retry did not restore pixels');
+      } finally { viewport.map.addLayer = addLayer; }
       const failedExtension = await lose(viewport, test);
       const waiting = failure(viewport.registerModel('waiting', { bytes: solidGlb() }), 'MODEL_LOAD_FAILED');
       const canvas = viewport.map.getCanvas(), getContext = canvas.getContext;
@@ -232,6 +292,42 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
         await waiting;
       } finally { canvas.getContext = getContext; }
     } finally { globalThis.createImageBitmap = nativeDecode; viewport.destroy(); }
+    let destroyedFromError = false;
+    const cancelled = create(test, undefined, undefined, error => {
+      if (error.context.operation === 'restoreModel') { destroyedFromError = true; cancelled.destroy(); }
+    });
+    try {
+      await cancelled.ready;
+      await cancelled.registerModel('material', { bytes: materialGlb([{ image: 'png' }, { image: 'jpeg' }]), metersPerUnit: 10 });
+      await capture(cancelled);
+      const { gl } = context(cancelled), extension = await lose(cancelled, test);
+      const createTexture = gl.createTexture, deleteTexture = gl.deleteTexture, texImage2D = gl.texImage2D;
+      const images: ImageBitmap[] = [], textures = new Set<WebGLTexture>();
+      Object.defineProperty(globalThis, 'createImageBitmap', { configurable: true, writable: true,
+        value: (source: ImageBitmapSource, options?: ImageBitmapOptions) => nativeDecode(source, options).then(bitmap => {
+          images.push(bitmap);
+          if (images.length === 2) Object.defineProperty(gl, 'createTexture', { configurable: true, writable: true,
+            value: () => { gl.createTexture = createTexture; return null; } });
+          return bitmap;
+        }) });
+      Object.defineProperty(gl, 'texImage2D', { configurable: true, writable: true, value: (...args: unknown[]) => {
+        const result = Reflect.apply(texImage2D, gl, args), source = args.at(-1);
+        if (source instanceof ImageBitmap && images.includes(source)) {
+          const texture: unknown = gl.getParameter(gl.TEXTURE_BINDING_2D);
+          if (texture instanceof WebGLTexture) textures.add(texture);
+        }
+        return result;
+      } });
+      gl.deleteTexture = function (texture) { if (texture) textures.delete(texture); deleteTexture.call(this, texture); };
+      try {
+        extension.restoreContext();
+        await test.until(() => destroyedFromError, 'restore allocation diagnostic destroys the viewport');
+        check(images.length === 2 && images.every(image => image.width === 0) && textures.size === 0,
+          'Partial texture allocation or callback destruction leaked decoded images/textures');
+        check(!cancelled.getFeature('instance'), 'Restore callback destruction retained entity state');
+        await pause(100);
+      } finally { gl.createTexture = createTexture; gl.deleteTexture = deleteTexture; gl.texImage2D = texImage2D; }
+    } finally { globalThis.createImageBitmap = nativeDecode; cancelled.destroy(); }
   } },
   { name: 'model frames recover from consumer prerender mutations', async run(test) {
     const viewport = create(test);
