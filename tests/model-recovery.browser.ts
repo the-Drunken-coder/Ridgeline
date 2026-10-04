@@ -233,6 +233,7 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
     const unrelated: MapFeature = { type: 'Feature', id: 'unrelated', properties: {}, geometry: { type: 'Point', coordinates: [.00035, 0] } };
     const errors: RidgelineError[] = [], viewport = create(test, [resident, unrelated], undefined, error => errors.push(error));
     const checkFallback = async () => {
+      await test.until(() => viewport.map.loaded(), 'unrelated native geometry settles after model failure');
       const image = await capture(viewport);
       check(count(image, 'cyan', 'left') > 30, 'Failed restore hid the eligible airborne icon');
       check(count(image, 'green') > 100, 'Failed restore hid its unrelated ground attachment');
