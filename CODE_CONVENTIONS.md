@@ -31,7 +31,7 @@ Prioritize these qualities over being lightweight for its own sake. Bundle size,
 - Use discriminated unions for distinct states and variants. Validate unknown external values before narrowing them; avoid `any`, unchecked assertions, and helpers whose only behavior is a cast.
 - Follow the surrounding file's formatting. Keep formatting-only changes separate from behavioral work.
 - Validate and snapshot consumer data at the owning boundary before mutating accepted state. Public reads must preserve the documented snapshot semantics rather than expose mutable internals.
-- Use [CONTEXT.md](CONTEXT.md) terminology. Make coordinate order, units, altitude references, and missing-data behavior explicit at geographic boundaries. Unknown elevation must remain distinct from zero elevation.
+- Use [GLOSSARY.md](GLOSSARY.md) terminology. Make coordinate order, units, altitude references, and missing-data behavior explicit at geographic boundaries. Unknown elevation must remain distinct from zero elevation.
 - Preserve drawing shape metadata through storage and reload as required by [ADR-0003](docs/adr/0003-preserve-drawing-shape-definitions.md).
 
 ## Ownership, asynchronous work, and errors
@@ -65,6 +65,6 @@ Before reporting a review clean:
 
 ## Documentation
 
-Document public behavior and integration examples in [README.md](README.md). Keep domain vocabulary in [CONTEXT.md](CONTEXT.md), decision rationale in [docs/adr/](docs/adr/), and feature requirements in their specs. Link to the authoritative document instead of copying its contract here.
+Document public behavior and integration examples in [README.md](README.md). Keep domain vocabulary in [GLOSSARY.md](GLOSSARY.md), decision rationale in [docs/adr/](docs/adr/), and feature requirements in their specs. Link to the authoritative document instead of copying its contract here.
 
 Use comments for intent, ownership, and non-obvious constraints. Update them when behavior changes.

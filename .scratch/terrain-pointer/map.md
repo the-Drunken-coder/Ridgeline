@@ -17,7 +17,7 @@ Published as [Terrain-aware pointer feedback specification](spec.md), ready for 
 - Tool intent determines behavior. Camera angle adapts presentation. Top-down feedback stays simple; shallow-angle feedback must remain legible.
 - Ridgeline owns reusable interaction feedback. Consumers retain workflow and selection ownership under [consumer-owned workflows](../../docs/adr/0001-consumer-owned-workflows.md).
 - Consult matt-wayfinder for map traversal, matt-grilling and matt-domain-modeling for human decisions, matt-research for research, and matt-prototype for visual exploration. Present distinct static mocks and wait for the user's choice before implementing a visual direction.
-- Use [domain vocabulary](../../CONTEXT.md), [drawing scope](../map-drawing/spec.md), and [airborne entity behavior](../airborne-entities/spec.md) when resolving overlap with existing features.
+- Use [domain vocabulary](../../GLOSSARY.md), [drawing scope](../map-drawing/spec.md), and [airborne entity behavior](../airborne-entities/spec.md) when resolving overlap with existing features.
 - The user delegated technical recommendations; avoid asking them to choose renderer APIs. The approved visual direction is indexed below.
 
 ## Decisions so far
