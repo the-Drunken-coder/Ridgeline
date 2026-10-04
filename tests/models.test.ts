@@ -2,6 +2,42 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ModelRegistry } from '../src/models';
 import { RidgelineError } from '../src/errors';
+import { solidGlb } from './model-fixtures';
+import { DEFAULT_ENTITY_MODELS, modelSettings } from '../src/model-settings';
+
+test('model defaults remain immutable and undefined overrides inherit accepted settings', () => {
+  assert.throws(() => Object.assign(DEFAULT_ENTITY_MODELS, { minimumSizePixels: 0 }), TypeError);
+  assert.deepEqual(modelSettings(DEFAULT_ENTITY_MODELS, { minimumSizePixels: undefined, switchDistanceMeters: 500 }),
+    { switchDistanceMeters: 500, deadZoneMeters: 200, minimumSizePixels: 40 });
+});
+
+test('pending asynchronous uploads cancel promptly and dispose late resources without replacing the working asset', async () => {
+  const errors: RidgelineError[] = [];
+  let finish: (resource: { dispose(): void }) => void = () => {};
+  let signal: AbortSignal | undefined;
+  let disposed = 0, uploads = 0;
+  const registry = new ModelRegistry({ changed: () => {}, diagnostic: error => errors.push(error) });
+  registry.renderer({ upload: () => ({ dispose() {} }) });
+  await registry.register('shared', { bytes: solidGlb() });
+  const previous = registry.get('shared');
+  registry.renderer({ upload: (_model, _current, attemptSignal) => {
+    uploads++; signal = attemptSignal;
+    return new Promise(resolve => { finish = resolve; });
+  } });
+  const replacement = registry.register('shared', { bytes: solidGlb() });
+  await Promise.resolve();
+  assert.equal(uploads, 1);
+  assert.equal(registry.get('shared'), previous);
+  registry.unregister('shared');
+  await assert.rejects(replacement, { code: 'MODEL_LOAD_CANCELLED' });
+  assert.equal(signal?.aborted, true);
+  finish({ dispose: () => disposed++ });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(disposed, 1);
+  assert.equal(registry.get('shared'), undefined);
+  assert.deepEqual(errors, []);
+  registry.destroy();
+});
 
 test('registration waits for a renderer and unregister cancels without an asset diagnostic', async () => {
   const errors: RidgelineError[] = [];
@@ -13,6 +49,34 @@ test('registration waits for a renderer and unregister cancels without an asset 
   assert.deepEqual(registry.status('vehicle'), { id: 'vehicle', status: 'unavailable', replacementPending: false });
   assert.deepEqual(errors, []);
   registry.destroy();
+});
+
+test('a renderer change aborts its asynchronous attempt and installs only the resumed upload', async () => {
+  const errors: RidgelineError[] = [];
+  const registry = new ModelRegistry({ changed: () => {}, diagnostic: error => errors.push(error) });
+  let finish: (resource: { dispose(): void }) => void = () => {};
+  let signal: AbortSignal | undefined;
+  let oldDisposals = 0, newDisposals = 0;
+  registry.renderer({ upload: (_model, _current, attemptSignal) => {
+    signal = attemptSignal;
+    return new Promise(resolve => { finish = resolve; });
+  } });
+  const pending = registry.register('shared', { bytes: solidGlb() });
+  await Promise.resolve();
+  registry.renderer(undefined);
+  assert.equal(signal?.aborted, true);
+  assert.equal(registry.status('shared').status, 'loading');
+  registry.renderer({ upload: () => ({ dispose: () => newDisposals++ }) });
+  await pending;
+  const installed = registry.get('shared');
+  finish({ dispose: () => oldDisposals++ });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(registry.get('shared'), installed);
+  assert.equal(oldDisposals, 1);
+  assert.equal(newDisposals, 0);
+  assert.deepEqual(errors, []);
+  registry.destroy();
+  assert.equal(newDisposals, 1);
 });
 
 test('shared registration snapshots bytes and atomically retains the working asset after a failed replacement', async () => {
