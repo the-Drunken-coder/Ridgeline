@@ -59,7 +59,13 @@ vec4 projectPosition(vec3 position,float scale){
   // GPU trigonometry and cancellation against the camera's global translation.
   vec4 sphere=u_globe_local*vec4(sphereOffset(position.xy,position.z),1.0);
   vec4 flatPosition=u_flat*vec4(position.xy,position.z*scale,1.0);
-  return mix(flatPosition,sphere,u_blend);
+  vec4 precise=mix(flatPosition,sphere,u_blend);
+  // The native globe depth mesh uses MapLibre's float32 projection. Retain its
+  // normalized depth so near-ground geometry remains visible against that mesh.
+  vec4 native=mix(flatPosition,projectTileFor3D(position.xy,position.z),u_blend);
+  if(native.w<=0.||precise.w<=0.)return native;
+  precise.z=native.z/native.w*precise.w;
+  return precise;
 #else
   return projectTileFor3D(position.xy,position.z*scale);
 #endif

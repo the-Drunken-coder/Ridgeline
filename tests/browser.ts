@@ -207,6 +207,28 @@ async function suite() {
             check(air.getFeature(feature.id)?.geometry.coordinates[0] === longitude, 'World-copy selection changed stored longitude');
           }
         }
+        if (projection === 'globe') {
+          // At this low altitude the globe clips part of the screen-facing marker.
+          // Its visible pixels must survive the native globe depth convention.
+          air.map.jumpTo({ center: [-539.99999, 46], zoom: 11, pitch: 35, bearing: 23 });
+          const before = air.getEntityState('precise')?.computedAt;
+          air.setSelection([]);
+          air.upsert([{ ...point('precise'), geometry: { type: 'Point', coordinates: [-179.99999, 46] },
+            entity: { altitude: { meters: 6, reference: 'ground' } } }]);
+          await until(() => air.getEntityState('precise')?.computedAt !== before && air.map.loaded(), 'near-surface globe placement');
+          const { pixels, width, height, scale } = await capture();
+          const expected = reference(-179.99999, 46, 6);
+          let visible: { x: number; y: number } | undefined;
+          for (let index = 0; index < pixels.length; index += 4) {
+            if (pixels[index]! < pixels[index + 1]! + 80 || pixels[index]! < pixels[index + 2]! + 80) continue;
+            const pixel = index / 4, candidate = { x: (pixel % width + .5) / scale,
+              y: (height - Math.floor(pixel / width) - .5) / scale };
+            if (Math.hypot(candidate.x - expected.x, candidate.y - expected.y) < 5) { visible = candidate; break; }
+          }
+          check(visible, 'Native globe depth hid the entire near-surface marker');
+          await pointer('click', visible!);
+          check(picked.includes('precise'), 'Near-surface globe marker cannot be picked at its drawn pixels');
+        }
         check(projection === 'flat' || sawTransition, 'Globe coverage never exercised an intermediate projection blend');
         await new Promise<void>(resolve => { air.map.once('idle', () => resolve()); air.map.triggerRepaint(); });
         let frames = 0;
