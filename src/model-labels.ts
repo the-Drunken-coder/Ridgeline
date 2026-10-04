@@ -14,6 +14,9 @@ export class ModelLabels {
     const offset = this.offsets.get(id) ?? 1.8;
     return { _rl_label_offset: [0, offset], _rl_label_stamp: offset === 1.8 ? '' : String(offset) };
   }
+  acceptsHit(id: string, stamp: unknown) {
+    return !this.destroyed && (typeof stamp === 'string' ? stamp : '') === this.properties(id)._rl_label_stamp;
+  }
   commit(records: readonly ModelPresentation[], current: () => boolean) {
     if (this.destroyed || !current()) return false;
     const next = new Map<string, number>();
