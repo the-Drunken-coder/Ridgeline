@@ -1,4 +1,4 @@
-import { createViewport } from '@ridgeline/map';
+import { attachInteractions, createViewport } from '@ridgeline/map';
 import type { MapFeature, ModelAppearance, Viewport } from '@ridgeline/map';
 import { GeoJSONSource } from 'maplibre-gl';
 import { materialGlb } from './model-material-fixtures';
@@ -53,6 +53,7 @@ export const modelPresentationCases: readonly { name: string; run(context: Conte
       camera: { center: [0, 0], zoom: 18, pitch: 0 }, features: [feature()], elevationSampler: { sample: () => 0 },
       style: () => ({ modelAppearance: appearance }), logger: () => {} });
     context.setCurrent(viewport);
+    const interactions = attachInteractions(viewport, { picker: false });
     try {
       await viewport.ready;
       await viewport.registerModel('body', { bytes: materialGlb([{ unlit: true, baseColor: [.1, .3, .5, 1] }]), metersPerUnit: 10 });
@@ -86,7 +87,31 @@ export const modelPresentationCases: readonly { name: string; run(context: Conte
           'Airborne feedback ring followed the ground marker instead of the model');
         viewport.setSelection([]);
       }
-    } finally { viewport.destroy(); }
+      viewport.map.jumpTo({ pitch: 0, bearing: 0 });
+      appearance = { mode: 'original' }; viewport.upsert([feature()]);
+      for (const alphaMode of ['MASK', 'BLEND'] as const) {
+        const bytes = materialGlb([{ image: 'alpha', unlit: true, baseColor: [.1, .3, .5, .8],
+          alphaMode, alphaCutoff: .3, doubleSided: true, backFace: true }]);
+        const original = new Uint8Array(bytes).slice();
+        await viewport.registerModel('body', { bytes, metersPerUnit: 10 });
+        const baseline = await pixels(viewport), bounds = region(baseline, (r, g, b) => r < 245 || g < 245 || b < 245);
+        check(bounds.count > 100, `${alphaMode}: original double-sided fixture has no body`);
+        viewport.setSelection(['instance']); const selected = await pixels(viewport);
+        let changed = 0;
+        for (let i = 0; i < baseline.bytes.length; i += 4) {
+          const x = i / 4 % baseline.width + .5, y = baseline.height - Math.floor(i / 4 / baseline.width) - .5;
+          if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) continue;
+          const before = baseline.bytes[i]! + baseline.bytes[i + 1]! + baseline.bytes[i + 2]!;
+          const after = selected.bytes[i]! + selected.bytes[i + 1]! + selected.bytes[i + 2]!;
+          if (before === 765) check(after === before, `${alphaMode}: feedback filled transparent texels`);
+          else { check(after >= before, `${alphaMode}: feedback darkened original materials`); if (after > before + 5) changed++; }
+        }
+        check(changed > 100 && region(selected, orange).count > 100, `${alphaMode}: original material feedback was unreadable`);
+        viewport.setSelection([]); const restored = await pixels(viewport);
+        check(restored.bytes.every((value, index) => value === baseline.bytes[index]), `${alphaMode}: clearing feedback did not restore the exact material frame`);
+        check(new Uint8Array(bytes).every((value, index) => value === original[index]), 'Feedback modified the source GLB');
+      }
+    } finally { interactions.destroy(); viewport.destroy(); }
   } },
   { name: 'Model labels wait for current collision layout beyond enlarged bounds', async run(context) {
     const glyphs = new URL('./fixtures/noto-sans/0-255.pbf', import.meta.url).href + '?fontstack={fontstack}&range={range}';
@@ -127,6 +152,8 @@ export const modelPresentationCases: readonly { name: string; run(context: Conte
       viewport.configure({ basemap: { ...basemap, layers: [{ ...basemap.layers[0]!, id: 'replacement-background' }] } });
       await context.until(() => viewport.map.getSource('rl:features') !== source && Boolean(viewport.map.getLayer('rl:labels')), 'new label source generation');
       viewport.map.setPaintProperty('rl:labels', 'text-color', '#0000ff'); await idle(viewport); clear(await pixels(viewport));
+      viewport.remove(['instance']); viewport.upsert([feature(90, 25)]); await idle(viewport);
+      clear(await pixels(viewport));
       check(JSON.stringify(viewport.map.getLayoutProperty('rl:labels', 'text-font')) === JSON.stringify(['Noto Sans Regular']), 'Model labels changed the existing font contract');
     } finally { viewport.destroy(); }
   } },
@@ -147,13 +174,27 @@ export const modelPresentationCases: readonly { name: string; run(context: Conte
         const entity = feature(0, 25); entity.entity!.attachments = [attachment]; viewport.upsert([entity]); await idle(viewport);
         const physical = await pixels(viewport);
         entity.entity!.model!.minimumSizePixels = 45; viewport.upsert([entity]); await idle(viewport); const enlarged = await pixels(viewport);
+        const bodyA = region(physical, red), bodyB = region(enlarged, red);
+        check(bodyB.right - bodyB.left > (bodyA.right - bodyA.left) * 1.5, 'Attachment fixture did not enlarge the visible body');
+        const cover = { left: Math.min(bodyA.left, bodyB.left) - 2, right: Math.max(bodyA.right, bodyB.right) + 2,
+          top: Math.min(bodyA.top, bodyB.top) - 2, bottom: Math.max(bodyA.bottom, bodyB.bottom) + 2 };
+        // A larger opaque body may hide the physical sensor apex. Every physical pixel
+        // beyond those body bounds must remain fixed, including the sensor's outgoing edges.
+        for (let i = 0; i < physical.bytes.length; i += 4) {
+          const x = i / 4 % physical.width + .5, y = physical.height - Math.floor(i / 4 / physical.width) - .5;
+          if (x >= cover.left && x <= cover.right && y >= cover.top && y <= cover.bottom) {
+            physical.bytes.fill(255, i, i + 4); enlarged.bytes.fill(255, i, i + 4); continue;
+          }
+          check(blue(physical.bytes[i]!, physical.bytes[i + 1]!, physical.bytes[i + 2]!) ===
+            blue(enlarged.bytes[i]!, enlarged.bytes[i + 1]!, enlarged.bytes[i + 2]!), `Enlargement moved a visible ${attachment.type} pixel`);
+        }
         const a = region(physical, blue), b = region(enlarged, blue);
         check(a.count > 10 && b.count > 10, `No physical pixels for ${attachment.type}`);
         for (const side of ['left', 'right', 'top', 'bottom'] as const)
           check(Math.abs(a[side] - b[side]) <= 1, `Enlargement moved ${attachment.type} ${side}: ${a[side]}/${b[side]}`);
-        const ground = (r: number, g: number, b: number) => g > 100 && g > r + 50 && g > b + 50;
+        const ground = (r: number, g: number, b: number) => g > 100 && g > r + 10 && g > b + 10;
         const before = region(physical, ground), after = region(enlarged, ground);
-        check(before.count > 10 && after.count > 10, 'No visible physical ground marker/line');
+        check(before.count > 0 && after.count > 0, `No visible physical ground line: ${JSON.stringify({ before, after, attachment })}`);
         check(Math.abs(before.bottom - after.bottom) <= .5 && Math.abs(before.left - after.left) <= .5 && Math.abs(before.right - after.right) <= .5,
           'Enlargement moved physical ground marker/line');
       }

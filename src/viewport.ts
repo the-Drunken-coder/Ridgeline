@@ -54,11 +54,13 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   let destroyed = false;
   let prepared = false;
   let contextLost = false;
+  let restoreBasemap = false;
   let interactionRevision = 0;
   let sceneGeneration = 0;
   let readySettled = false;
   let hovered = '';
   let hoverInvalidated = false;
+  const hoverNotified = new Set<(value: Interaction<P>) => void>();
   let configuration: MapConfiguration = {
     basemap: structuredClone(options.basemap ?? DEFAULT_BASEMAP),
     projection: options.projection ?? 'flat',
@@ -80,9 +82,11 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     try { options.onError?.(error); } catch { /* Keep diagnostic observers isolated. */ }
     emit('diagnostic', error);
   }
-  function emit<K extends keyof ViewportEvents<P>>(event: K, value: ViewportEvents<P>[K], current?: () => boolean) {
+  function emit<K extends keyof ViewportEvents<P>>(event: K, value: ViewportEvents<P>[K], current?: () => boolean, notified?: Set<(value: ViewportEvents<P>[K]) => void>) {
     for (const listener of listeners[event]) {
       if (current && !current()) break;
+      if (notified?.has(listener)) continue;
+      notified?.add(listener);
       try { listener(value); } catch (cause) {
         const error = new RidgelineError('CALLBACK_FAILED', `A ${event} listener threw.`, { operation: event, recoverable: true }, cause);
         if (event === 'diagnostic') report(error); else diagnostic(error);
@@ -266,7 +270,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   }
 
   function prepareStyle() {
-    if (destroyed) return;
+    if (destroyed || contextLost) return;
     const generation = sceneGeneration;
     const current = () => !destroyed && sceneGeneration === generation;
     try {
@@ -360,7 +364,13 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   map.on('style.load', prepareStyle);
   map.on('error', onError);
   map.on('webglcontextlost', () => entities.contextLost());
-  map.on('webglcontextrestored', () => { contextLost = false; });
+  map.on('webglcontextrestored', () => {
+    if (destroyed) return;
+    contextLost = false;
+    // MapLibre first restores its pre-loss style. Apply any newer accepted basemap
+    // only after its painter exists; prepareStyle then rebuilds our owned layers.
+    if (restoreBasemap) { restoreBasemap = false; map.setStyle(structuredClone(configuration.basemap), { diff: false }); }
+  });
   const interactionCurrent = (revision: number) => () => !destroyed && !interactionOwner && interactionRevision === revision;
   map.on('click', event => { if (!interactionOwner) emit('click', interaction(event, 12), interactionCurrent(interactionRevision)); });
   map.on('contextmenu', event => { if (!interactionOwner) emit('contextmenu', interaction(event, 6), interactionCurrent(interactionRevision)); });
@@ -370,9 +380,11 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     const id = value.features[0]?.id ?? '';
     if (id !== hovered || hoverInvalidated) {
       const current = interactionCurrent(interactionRevision);
-      hovered = id; hoverInvalidated = false; emit('hover', value, current);
+      if (id !== hovered) hoverNotified.clear();
+      hovered = id; hoverInvalidated = false; emit('hover', value, current, hoverNotified);
       // A callback can replace a feature before later observers receive it.
-      // The next completed draw must offer the current feature, even with the same ID.
+      // Resume with the remaining observers after the next draw. Repeating the
+      // initiating callback could create a replacement/render loop for the same ID.
       if (!current()) hoverInvalidated = true;
     }
   }
@@ -401,7 +413,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   });
   const resize = new ResizeObserver(() => { if (!destroyed) map.resize(); });
   resize.observe(options.container);
-  const onLeave = () => { lastPointer = undefined; hovered = ''; viewport.preview(null); };
+  const onLeave = () => { lastPointer = undefined; hovered = ''; hoverNotified.clear(); viewport.preview(null); };
   map.getCanvas().addEventListener('mouseleave', onLeave);
 
   const viewport: Viewport<P> = {
@@ -415,7 +427,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       assertActive();
       if (interactionOwner) throw new Error(`Map interaction is owned by ${interactionOwner}.`);
       if (!owner.trim()) throw new Error('An interaction owner needs a name.');
-      interactionRevision++; interactionOwner = owner; hovered = ''; viewport.preview(null); emit('interactionchange', { owner });
+      interactionRevision++; interactionOwner = owner; hovered = ''; hoverNotified.clear(); viewport.preview(null); emit('interactionchange', { owner });
       let released = false;
       return () => {
         if (released) return;
@@ -547,7 +559,10 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       const configuredScene = configuration;
       entities.configure(next.elevation !== undefined);
       if (destroyed || configuration !== configuredScene) return;
-      if (styleChanged) map.setStyle(structuredClone(configuration.basemap), { diff: false });
+      if (styleChanged) {
+        if (contextLost) restoreBasemap = true;
+        else map.setStyle(structuredClone(configuration.basemap), { diff: false });
+      }
       else if (prepared) {
         map.setProjection({ type: configuration.projection === 'flat' ? 'mercator' : 'globe' });
         applyElevation(next.elevation !== undefined);
@@ -568,6 +583,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       map.getCanvas().removeEventListener('mouseleave', onLeave);
       map.remove(); icons.clear(); selected.clear(); publishedMarkerKeys.clear(); availableMarkers.clear(); store.remove(store.ids());
       for (const set of Object.values(listeners)) set.clear();
+      hoverNotified.clear();
     },
   };
   drawingInternals.set(map, {

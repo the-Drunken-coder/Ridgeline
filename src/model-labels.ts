@@ -21,6 +21,7 @@ export class ModelLabels {
     if (this.destroyed || !current()) return false;
     const next = new Map<string, number>();
     for (const record of records) {
+      if (!record.hasLabel) continue;
       const offset = modelPresentationGeometry(record).labelOffset[1];
       if (offset > 1.8) next.set(record.id, Math.max(offset, next.get(record.id) ?? 0));
     }

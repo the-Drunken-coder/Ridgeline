@@ -17,11 +17,14 @@ function create(context: Context, features = [entity()], sample: () => number | 
     basemap: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
     camera: { center: [0, 0], zoom: 17, pitch: 0, bearing: 0 },
     entityModels: { switchDistanceMeters: 1e7, deadZoneMeters: 0, minimumSizePixels: 120 },
-    style: () => ({ radius: 6, color: '#0000ff', icon: 'entity-icon' }), logger: () => {} });
+    style: feature => ({ radius: 6, color: '#0000ff', icon: feature.id === 'ordinary' ? 'ordinary-icon' : 'entity-icon' }), logger: () => {} });
   context.setCurrent(viewport);
   const bytes = new Uint8ClampedArray(12 * 12 * 4);
   for (let i = 0; i < bytes.length; i += 4) { bytes[i + 2] = 255; bytes[i + 3] = 255; }
   viewport.registerIcon('entity-icon', { image: new ImageData(bytes, 12, 12) });
+  const yellow = bytes.slice();
+  for (let i=0;i<yellow.length;i+=4) { yellow[i]=255; yellow[i+1]=255; yellow[i+2]=0; }
+  viewport.registerIcon('ordinary-icon', { image: new ImageData(yellow,12,12) });
   return viewport;
 }
 async function ready(context: Context, viewport: Viewport) {
@@ -32,6 +35,17 @@ const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 async function frame(viewport: Viewport) {
   await new Promise<void>(resolve => { viewport.map.once('render', () => resolve()); viewport.map.triggerRepaint(); });
   await Promise.resolve();
+}
+async function colors(viewport: Viewport) {
+  return new Promise<{colored:number;center:number[]}>(resolve => {
+    viewport.map.once('render', () => {
+      const canvas=viewport.map.getCanvas(), gl=canvas.getContext('webgl2'); check(gl,'WebGL2 unavailable');
+      const pixels=new Uint8Array(canvas.width*canvas.height*4); gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+      let colored=0; for(let i=0;i<pixels.length;i+=4) if(Math.max(pixels[i]!,pixels[i+1]!,pixels[i+2]!)-Math.min(pixels[i]!,pixels[i+1]!,pixels[i+2]!)>100)colored++;
+      const index=(Math.floor(canvas.height/2)*canvas.width+Math.floor(canvas.width/2))*4;
+      resolve({colored,center:[...pixels.slice(index,index+3)]});
+    }); viewport.map.triggerRepaint();
+  });
 }
 async function key(value: string) { check(window.browserKey, 'Real keyboard bridge unavailable'); await window.browserKey(value); }
 export const modelPickingCases: readonly { name: string; run(context: Context): Promise<void> }[] = [
@@ -65,6 +79,7 @@ export const modelPickingCases: readonly { name: string; run(context: Context): 
         const moved = entity(); moved.geometry = { type: 'Point', coordinates: [longitude, latitude] };
         viewport.upsert([moved]); viewport.configure({ projection }); viewport.setCamera({ center: [longitude + (projection === 'flat' ? 720 : 0), latitude], zoom });
         await frame(viewport); await pause(150); await frame(viewport);
+        check((await colors(viewport)).colored > 0, `${projection} ${longitude} model did not actually draw`);
         await pointer('click', x + 25, y + 25);
         check(clicks.at(-1)?.features[0]?.id === 'model', `${projection} ${longitude} displayed world copy was not picked`);
       }
@@ -77,7 +92,8 @@ export const modelPickingCases: readonly { name: string; run(context: Context): 
       await frame(viewport); await pointer('click', x + 25, y + 25); check(clicks.at(-1)?.features[0]?.id === 'model', 'Terrain baseline box absent');
       viewport.configure({ elevation: terrain.elevation, terrain: true });
       await context.until(() => Math.abs((viewport.map.queryTerrainElevation(terrain.location) ?? 0) - 100) < 1, 'known foreground terrain');
-      await frame(viewport); await pointer('click', x + 25, y + 25);
+      check((await colors(viewport)).colored === 0, 'Native foreground terrain did not visually occlude the model');
+      await pointer('click', x + 25, y + 25);
       check(clicks.at(-1)?.features.length === 0, 'Box behind known native terrain was picked');
     } finally { viewport.destroy(); }
   } },
@@ -91,6 +107,7 @@ export const modelPickingCases: readonly { name: string; run(context: Context): 
       await viewport.ready; await viewport.registerModel('asset',{bytes:axisModelGlb()});
       await context.until(() => viewport.getEntityState('near')?.representation === 'model' && viewport.map.isSourceLoaded('rl:features'), 'overlap models');
       await frame(viewport);
+      const top = (await colors(viewport)).center; check(top[0]!>220 && top[1]!>220 && top[2]!<30,'Native ordinary icon is not visibly above overlapping models');
       const canvas = viewport.map.getCanvas(), x = canvas.clientWidth/2, y = canvas.clientHeight/2;
       await pointer('click',x,y);
       check(clicks.at(-1)?.features.map(item=>item.id).join(',') === 'ordinary,near,far', 'Overlap order differs from visible layer/depth order');
@@ -154,12 +171,12 @@ export const modelPickingCases: readonly { name: string; run(context: Context): 
       const replacementUI=attachInteractions(viewport); viewport.upsert([entity()]); await pause(200); await frame(viewport);
       check(cancelled.length===0 && !context.container.querySelector('.rl-tooltip'), 'Cancelled hover reached a later listener or remounted UI');
       cancel(); observe(); replacementUI.destroy();
-      let replaceArmed = true; const replacedNames:string[]=[];
-      const replace=viewport.on('hover', value=>{ if(replaceArmed && value.features[0]) { replaceArmed=false; viewport.upsert([{...entity(),properties:{name:'Newest'}}]); } });
+      let replacementCallbacks = 0; const replacedNames:string[]=[];
+      const replace=viewport.on('hover', value=>{ if(value.features[0]) { replacementCallbacks++; viewport.upsert([{...entity(),properties:{name:'Newest'}}]); } });
       const replacementObserver=viewport.on('hover',value=>{if(value.features[0])replacedNames.push(String(value.features[0].properties.name));});
       const latestUI=attachInteractions(viewport); viewport.upsert([entity()]);
       await context.until(()=>context.container.querySelector('.rl-tooltip')?.textContent==='Newest','replacement hover shows latest content');
-      check(replacedNames.join(',')==='Newest','Replacement emitted stale follow-up hover'); replace(); replacementObserver(); latestUI.destroy();
+      check(replacementCallbacks===1 && replacedNames.join(',')==='Newest','Replacement repeated its initiating callback or emitted stale follow-up hover'); replace(); replacementObserver(); latestUI.destroy();
     } finally { ui.destroy(); viewport.destroy(); }
   } },
 ];
