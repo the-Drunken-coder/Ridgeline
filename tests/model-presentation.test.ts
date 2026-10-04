@@ -3,7 +3,7 @@ import test from 'node:test';
 import { modelFeedback, modelPresentationGeometry } from '../src/model-presentation';
 
 test('feedback uses the displayed model altitude while labels clear the strongest static ring', () => {
-  const frame = { id: 'aircraft', anchor: { x: 100, y: 80, depth: 0 }, labelAnchor: { x: 100, y: 80, depth: 0 },
+  const frame = { id: 'aircraft', hasLabel: true, anchor: { x: 100, y: 80, depth: 0 }, labelAnchor: { x: 100, y: 80, depth: 0 },
     box: { minX: 94, minY: 72, maxX: 106, maxY: 88 } };
   const airborne = modelPresentationGeometry(frame);
   assert.deepEqual(airborne.center, [100, 80]);
