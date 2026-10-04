@@ -54,6 +54,7 @@ let disposed = false;
 let placingSymbol = false;
 const airborneSettings = new Map<string, AirborneSettings>();
 let airborneInspector: ReturnType<typeof mountAirborneInspector> | undefined;
+let modelPrototype: ReturnType<typeof import('./entity-models.prototype').mountEntityModelsPrototype> | undefined;
 
 function showError(error: RidgelineError) {
   diagnostics.hidden = false;
@@ -147,7 +148,8 @@ function stopBenchmark() { measuring = false; cancelAnimationFrame(benchmarkFram
 function stopMotion() { cancelAnimationFrame(motionFrame); motionFrame = 0; if (motionTimer) clearInterval(motionTimer); motionTimer = undefined; stopBenchmark(); }
 function isAirborneScenario() { return currentScenario === 'airborne' || currentScenario === 'airborne-single'; }
 function resetCamera() {
-  if (currentScenario === 'sidc') viewport.setCamera({ center: [6.87,45.924], zoom: 13.5, pitch: 0, bearing: 0 });
+  if (currentScenario === 'entity-models') modelPrototype?.resetView();
+  else if (currentScenario === 'sidc') viewport.setCamera({ center: [6.87,45.924], zoom: 13.5, pitch: 0, bearing: 0 });
   else if (currentScenario === 'overlap') viewport.setCamera({ center: [6.869,45.925], zoom: 14.3, pitch: 0, bearing: 0 });
   else if (currentScenario === 'moving') viewport.setCamera({ center: [6.869,45.92], zoom: 12.9, pitch: 0, bearing: 0 });
   else if (currentScenario === 'airborne-single') viewport.setCamera({ center: [6.867,45.920], zoom: 14, pitch: 60, bearing: -20 });
@@ -156,6 +158,7 @@ function resetCamera() {
 }
 function loadScenario() {
   const revision = ++scenarioRevision;
+  modelPrototype?.destroy(); modelPrototype = undefined;
   drawingDemo?.destroy(); drawingDemo=undefined;
   sidcDemo?.destroy(); sidcDemo = undefined;
   airborneInspector?.destroy(); airborneInspector = undefined;
@@ -165,6 +168,8 @@ function loadScenario() {
   element('#drawing-inspector',HTMLDivElement).hidden=currentScenario!=='drawing';
   document.body.classList.toggle('sidc-scenario', currentScenario === 'sidc');
   document.body.classList.toggle('airborne-scenario', isAirborneScenario());
+  document.body.classList.toggle('entity-models-scenario', currentScenario === 'entity-models');
+  element('#entity-models-demo', HTMLElement).hidden = currentScenario !== 'entity-models';
   element('#map-settings', HTMLDetailsElement).open = !isAirborneScenario() && currentScenario !== 'drawing';
   element('#sidc-demo', HTMLElement).hidden = currentScenario !== 'sidc';
   element('#airborne-demo', HTMLElement).hidden = !isAirborneScenario();
@@ -182,7 +187,15 @@ function loadScenario() {
     failingElevation = nextFailingElevation;
   }
   if (currentScenario === 'error') { terrain.checked = true; viewport.configure({ terrain: true }); }
-  if (currentScenario === 'drawing') {
+  if (currentScenario === 'entity-models') {
+    const content = element('#entity-models-demo', HTMLElement);
+    content.textContent = 'Loading model prototype…';
+    void import('./entity-models.prototype').then(({ mountEntityModelsPrototype }) => {
+      if (disposed || revision !== scenarioRevision) return;
+      modelPrototype = mountEntityModelsPrototype(viewport, content);
+      renderSelection();
+    }).catch(error => { content.textContent = `Prototype could not load: ${String(error)}`; });
+  } else if (currentScenario === 'drawing') {
     viewport.upsert(drawingFeatures());
     drawingDemo=mountDrawingDemo(viewport,element('#drawing-tools',HTMLDivElement),element('#drawing-inspector',HTMLDivElement));
     viewport.setSelection(['drawing-0']);
@@ -279,8 +292,9 @@ listen(measureButton, 'click', () => {
   };
   benchmarkFrame = requestAnimationFrame(sample);
 });
-if(new URLSearchParams(location.search).get('scenario')==='drawing')scenario.value='drawing';
+const requestedScenario = new URLSearchParams(location.search).get('scenario');
+if (requestedScenario && [...scenario.options].some(option => option.value === requestedScenario)) scenario.value = requestedScenario;
 void viewport.ready.then(loadScenario).catch(error => { notice.textContent = 'The map could not start. See the diagnostic for details.'; if (error instanceof Error) console.error(error); });
-function dispose() { offSelection(); drawingDemo?.destroy(); disposed = true; ++scenarioRevision; airborneInspector?.destroy(); sidcDemo?.destroy(); interactions?.destroy(); stopMotion(); lifetime.abort(); viewport.destroy(); }
+function dispose() { offSelection(); modelPrototype?.destroy(); drawingDemo?.destroy(); disposed = true; ++scenarioRevision; airborneInspector?.destroy(); sidcDemo?.destroy(); interactions?.destroy(); stopMotion(); lifetime.abort(); viewport.destroy(); }
 window.addEventListener('pagehide', dispose, { once: true });
 if (import.meta.hot) import.meta.hot.dispose(dispose);

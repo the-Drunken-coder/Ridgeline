@@ -13,6 +13,7 @@
   "sideEffects": ["**/*.css"],
   "scripts": {
     "dev": "vite --config vite.playground.config.ts --host 127.0.0.1",
+    "dev:entity-models": "vite --config vite.playground.config.ts --host 0.0.0.0 --open /?scenario=entity-models",
     "dev:controls": "pnpm --dir control-lab dev",
     "build:controls": "pnpm --dir control-lab build",
     "test:controls": "pnpm --dir control-lab test",

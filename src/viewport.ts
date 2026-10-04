@@ -274,6 +274,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       for (const hit of hits) {
         const id = hit.properties?._rl_feature_id;
         if (typeof id !== 'string' || seen.has(id)) continue;
+        // Throwaway entity-model prototype: transparent icon shapes must stop picking.
+        if (hit.geometry.type === 'Point' && Number(map.getFeatureState({ source: SOURCE, id: sourceFeatureId(id) }).modelOpacity ?? 0) >= .5) continue;
         const feature = store.get(id);
         if (feature) { seen.add(id); features.push(feature); }
       }

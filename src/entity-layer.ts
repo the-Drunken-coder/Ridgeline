@@ -1,6 +1,8 @@
 import { MercatorCoordinate } from 'maplibre-gl';
 import type { CustomLayerInterface, CustomRenderMethodInput, Map as GLMap } from 'maplibre-gl';
 import type { GeoPoint } from './entity-geometry';
+import { shiftedProjection as shifted, nearestWorldCopy, entityProjectionShader, clipEntityPosition, clipEntityPolygon, entityScreenPoint } from './entity-projection';
+import type { ScreenPoint } from './entity-projection';
 
 export type Primitive = {
   entityId: string;
@@ -19,17 +21,6 @@ type Program = {
   color: number;
   scale: number;
 };
-type ScreenPoint = { x: number; y: number; depth: number };
-const multiply = (m: ArrayLike<number>, v: number[]) =>
-  [0, 1, 2, 3].map(
-    (row) => m[row]! * v[0]! + m[row + 4]! * v[1]! + m[row + 8]! * v[2]! + m[row + 12]! * v[3]!,
-  );
-function shifted(matrix: ArrayLike<number>, x: number, y: number) {
-  const m = Float64Array.from(matrix);
-  for (let i = 0; i < 4; i++) m[12 + i] = matrix[12 + i]! + matrix[i]! * x + matrix[i + 4]! * y;
-  return new Float32Array(m);
-}
-
 /** Shared-depth 3D geometry using MapLibre's projection shader contract. No continuous repaint loop. */
 export class EntityLayer implements CustomLayerInterface {
   readonly id = 'rl:entities';
@@ -44,6 +35,17 @@ export class EntityLayer implements CustomLayerInterface {
   private gl?: WebGL2RenderingContext;
   private failed = false;
   private verticalScale = 1;
+  // Throwaway model-prototype seams. The entity scene remains the representation owner.
+  private representationOpacity = new Map<string, number>();
+  private modelPicker?: (x: number, y: number, tolerance: number) => { entityId: string; depth: number }[];
+  setRepresentationOpacity(id: string, opacity: number) {
+    if ((this.representationOpacity.get(id) ?? 1) === opacity) return;
+    this.representationOpacity.set(id, opacity);
+    this.map?.triggerRepaint();
+  }
+  setModelPicker(picker?: (x: number, y: number, tolerance: number) => { entityId: string; depth: number }[]) {
+    this.modelPicker = picker;
+  }
   constructor(private report: (cause: unknown) => void) {}
   private displayHeight(height: number) {
     return height * this.verticalScale;
@@ -162,7 +164,7 @@ export class EntityLayer implements CustomLayerInterface {
         // Each coherent entity uses its own nearby copy, including the flat
         // component of a globe transition. Unrelated entities cannot shift it.
         const [x, y] = draw.origin;
-        const worldCopy = Math.round((this.map.getCenter().lng + 180) / 360 - x);
+        const worldCopy = nearestWorldCopy(this.map, x);
         gl.uniformMatrix4fv(uniform('u_projection_matrix'), false,
           globe ? new Float32Array(d.mainMatrix) : shifted(d.mainMatrix, x + worldCopy, y));
         gl.uniformMatrix4fv(uniform('u_flat'), false, shifted(d.fallbackMatrix, x + worldCopy, y));
@@ -170,6 +172,7 @@ export class EntityLayer implements CustomLayerInterface {
         gl.uniform1f(uniform('u_line_width'), (draw.size ?? 1) * devicePixelRatio);
         gl.uniform1f(uniform('u_point_size'), (draw.size ?? 10) * devicePixelRatio);
         gl.uniform1i(uniform('u_point'), draw.mode === 'points' ? 1 : 0);
+        gl.uniform1f(uniform('u_opacity'), draw.mode === 'points' ? this.representationOpacity.get(draw.entityId) ?? 1 : 1);
         gl.drawArrays(
           draw.mode === 'triangles' || draw.mode === 'lines' ? gl.TRIANGLES : gl.POINTS,
           draw.first,
@@ -190,17 +193,9 @@ ${input.shaderData.vertexShaderPrelude}
 ${input.shaderData.define}
 in vec3 a_position; in float a_scale; in vec4 a_color; in vec4 a_end; in vec2 a_line;
 uniform vec2 u_viewport; uniform float u_line_width;
-uniform mat4 u_flat; uniform float u_blend; uniform float u_point_size;
+uniform float u_point_size;
 out vec4 v_color;
-vec4 projectPosition(vec3 position,float scale){
-#ifdef GLOBE
-  vec4 sphere=projectTileFor3D(position.xy,position.z);
-  vec4 flatPosition=u_flat*vec4(position.xy,position.z*scale,1.0);
-  return mix(flatPosition,sphere,u_blend);
-#else
-  return projectTileFor3D(position.xy,position.z*scale);
-#endif
-}
+${entityProjectionShader}
 void main(){
   vec4 start=projectPosition(a_position,a_scale);
   gl_Position=start;
@@ -221,8 +216,8 @@ void main(){
   gl_PointSize=u_point_size;v_color=a_color;
 }`;
     const fragment = `#version 300 es
-precision highp float; in vec4 v_color;uniform bool u_point;out vec4 color;
-void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_color;}`;
+precision highp float; in vec4 v_color;uniform bool u_point;uniform float u_opacity;out vec4 color;
+void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=vec4(v_color.rgb,v_color.a*u_opacity);}`;
     const shaders: WebGLShader[] = [];
     const p = gl.createProgram();
     if (!p) throw new Error('Cannot allocate entity shader.');
@@ -262,43 +257,11 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
   private clipDisplayed(p: GeoPoint, origin?: Draw['origin']): number[] | null {
     const data = this.projection;
     if (!data || !this.map) return null;
-    const height = p[2];
-    const m = MercatorCoordinate.fromLngLat([p[0], p[1]], height),
-      d = data.defaultProjectionData;
-    const globe = data.shaderData.define.includes('GLOBE');
-    // Attachments retain the GPU's coherent origin; independent terrain probes
-    // choose the nearby copy of their own screen location.
-    const reference = origin?.[0] ?? m.x;
-    const x = m.x - Math.round(m.x - reference) + Math.round((this.map.getCenter().lng + 180) / 360 - reference);
-    let clip = multiply(d.mainMatrix, [x, m.y, m.z, 1]);
-    if (globe) {
-      const lon = (p[0] * Math.PI) / 180,
-        lat = (p[1] * Math.PI) / 180,
-        r = 1 + height / 6371008.8;
-      const sphere = [
-        Math.sin(lon) * Math.cos(lat) * r,
-        Math.sin(lat) * r,
-        Math.cos(lon) * Math.cos(lat) * r,
-        1,
-      ];
-      const front = sphere
-        .slice(0, 3)
-        .reduce((sum, v, i) => sum + v * d.clippingPlane[i]!, d.clippingPlane[3]);
-      if (d.projectionTransition > 0.99 && front < 0) return null;
-      const g = multiply(d.mainMatrix, sphere),
-        f = multiply(d.fallbackMatrix, [x, m.y, m.z, 1]);
-      clip = g.map((v, i) => v * d.projectionTransition + f[i]! * (1 - d.projectionTransition));
-    }
-    return clip;
+    return clipEntityPosition(this.map, data, p, origin);
   }
   private screen(clip: number[]): ScreenPoint {
-    const map = this.map;
-    if (!map) throw new Error('Entity layer is not attached.');
-    return {
-      x: ((clip[0]! / clip[3]! + 1) / 2) * map.getCanvas().clientWidth,
-      y: ((1 - clip[1]! / clip[3]!) / 2) * map.getCanvas().clientHeight,
-      depth: clip[2]! / clip[3]!,
-    };
+    if (!this.map) throw new Error('Entity layer is not attached.');
+    return entityScreenPoint(this.map, clip);
   }
   private projectDisplayed(p: GeoPoint): ScreenPoint | null {
     const clip = this.clipDisplayed(p);
@@ -313,23 +276,8 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
   private clippedTriangle(vertices: GeoPoint[], origin?: Draw['origin']): ScreenPoint[] {
     const polygon = vertices.map(point => this.clip(point, origin));
     if (polygon.some(point => !point)) return [];
-    let points = polygon.filter((point): point is number[] => point !== null);
-    // The GPU clips faces against both depth planes before rasterization.
-    for (const distance of [(p: number[]) => p[2]! + p[3]!, (p: number[]) => p[3]! - p[2]!]) {
-      const next: number[][] = [];
-      for (let i = 0; i < points.length; i++) {
-        const a = points[i]!, b = points[(i + 1) % points.length]!;
-        const da = distance(a), db = distance(b);
-        if (da >= 0) next.push(a);
-        if ((da < 0 && db > 0) || (da > 0 && db < 0)) {
-          const t = da / (da - db);
-          next.push(a.map((value, index) => value + t * (b[index]! - value)));
-        }
-      }
-      points = next;
-      if (points.length < 3) return [];
-    }
-    return points.filter(point => point[3]! > 0).map(point => this.screen(point));
+    const points = polygon.filter((point): point is number[] => point !== null);
+    return clipEntityPolygon(points).map(point => this.screen(point));
   }
   private clippedSegment(a: GeoPoint, b: GeoPoint, origin: Draw['origin']): [ScreenPoint, ScreenPoint] | null {
     const clippedStart = this.clip(a, origin), clippedEnd = this.clip(b, origin);
@@ -348,7 +296,7 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
     return start[3]! > 0 && end[3]! > 0 ? [this.screen(start), this.screen(end)] : null;
   }
   pick(x: number, y: number, tolerance: number) {
-    const hits: { entityId: string; attachmentId?: string; depth: number }[] = [];
+    const hits: { entityId: string; attachmentId?: string; depth: number }[] = this.modelPicker?.(x, y, tolerance) ?? [];
     let terrainDepth: number | undefined;
     if (this.map && this.projection) {
       const location = this.map.unproject([x, y]);
@@ -376,6 +324,7 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
         continue;
       }
       if (draw.mode === 'points') {
+        if ((this.representationOpacity.get(draw.entityId) ?? 1) < .5) continue;
         const p = this.project(draw.vertices[0]!);
         if (
           p &&

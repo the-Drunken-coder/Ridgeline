@@ -88,6 +88,18 @@ footer { min-height: 31px; display: flex; align-items: center; justify-content: 
 #airborne-demo dl { grid-template-columns: 1fr auto; }
 #airborne-demo [data-state] { font-size: 12px; }
 [hidden] { display: none !important; }
+.entity-models-scenario .workspace { grid-template-columns: 300px minmax(0,1fr); }
+.entity-models-scenario .sidebar { padding:12px 16px; gap:12px; }
+.entity-models-scenario .sidebar section + section { padding-top:10px; }
+#entity-models-demo .setting { min-height:32px; }
+#entity-models-demo .setting select { width:145px; }
+#entity-models-demo .setting input[type=number] { width:90px; padding:4px; border:1px solid var(--line); background:var(--surface); }
+#entity-models-demo h2 { margin-top:14px; }
+#entity-models-demo output, #entity-models-demo p, #entity-models-demo details { font-size:11px; }
+#entity-models-demo output { display:block; font-variant-numeric:tabular-nums; white-space:pre-line; margin:8px 0; }
+.model-prototype-switcher { position:absolute; bottom:35px; left:50%; transform:translateX(-50%); display:flex; gap:8px; align-items:center; background:var(--surface); border:1px solid var(--line); padding:6px; z-index:4; font-size:12px; }
+.model-prototype-switcher span { min-width:110px; text-align:center; }
+.model-prototype-attribution a { color:inherit; }
 @media(prefers-color-scheme:dark) { :root { --surface:#202925; --line:#3d5144; --ink:#e7eee9; --muted:#abbcaf; --accent:#8dd0a9; color:var(--ink); background:#18221d; } }
 @media(max-width:760px) { .workspace { grid-template-columns:210px minmax(0,1fr); }.sidebar { padding:13px; }footer span:last-child { display:none; } }
 @media(max-width:540px) { .workspace { display:flex; flex-direction:column; height:auto; }.sidebar { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border-right:0;gap:16px; }.sidebar section + section { padding-top:0;border:0; }main { height:600px; }.event-section { display:none; }#motion { grid-column:1/-1; }#map-status { font-size:11px; }.app-header { gap:10px;padding:0 12px; } }
