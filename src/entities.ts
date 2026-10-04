@@ -392,6 +392,7 @@ export class EntityScene<P extends Properties> {
       const choice = modelChoice(this.choices.get(id), { modelId: reference?.id, heading: entity.heading, status, eligible, distance, settings });
       if (choice) choices.set(id, choice);
       if (!choice?.model) this.elevation.release(modelAreaKey(id));
+      if (!current()) return;
       let representation: EntityState['representation'] = state.placement === 'withheld' ? 'withheld' :
         this.options.nativeAvailable?.(feature, style) !== false || state.placement === 'airborne' ? 'icon' : 'withheld';
       if (choice?.model && eligible && asset && entity.heading !== undefined) {
@@ -413,6 +414,7 @@ export class EntityScene<P extends Properties> {
           const key = modelAreaKey(id);
           this.elevation.requestBatch([{ key, center: input.location, radiusMeters: placement.radiusMeters,
             requiredPositions: placement.requiredPositions }], { deferProbe: true });
+          if (!current()) return;
           if (placement.status === 'unknown') this.elevation.requirePreparation(key);
         }
         if (!current()) return;
