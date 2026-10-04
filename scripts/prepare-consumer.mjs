@@ -1,11 +1,15 @@
-import { mkdir, copyFile, writeFile, readFile } from 'node:fs/promises';
+import { mkdir, copyFile, writeFile, readFile, cp } from 'node:fs/promises';
 
 // This separate Vite application deliberately has no alias to Ridgeline's source.
 const directory = '.artifacts/consumer';
 await mkdir(directory, { recursive: true });
+await cp('tests/fixtures/noto-sans', `${directory}/fixtures/noto-sans`, { recursive: true });
 await copyFile('tests/browser.html', `${directory}/index.html`);
 await copyFile('tests/browser.ts', `${directory}/main.ts`);
 await copyFile('tests/browser-cases.ts', `${directory}/browser-cases.ts`);
+await copyFile('tests/model-recovery.browser.ts', `${directory}/model-recovery.browser.ts`);
+await copyFile('tests/model-picking.browser.ts', `${directory}/model-picking.browser.ts`);
+await copyFile('tests/model-presentation.browser.ts', `${directory}/model-presentation.browser.ts`);
 await copyFile('tests/model-registration.browser.ts', `${directory}/model-registration.browser.ts`);
 await copyFile('tests/model-placement.browser.ts', `${directory}/model-placement.browser.ts`);
 await copyFile('tests/model-placement-fixtures.ts', `${directory}/model-placement-fixtures.ts`);

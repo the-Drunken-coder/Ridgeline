@@ -11,6 +11,158 @@ test('model defaults remain immutable and undefined overrides inherit accepted s
     { switchDistanceMeters: 500, deadZoneMeters: 200, minimumSizePixels: 40 });
 });
 
+test('context loss retains accepted data and completed registrations while rebuilding drawable resources', async () => {
+  let uploads = 0, disposed = 0;
+  const registry = new ModelRegistry({ changed: () => {}, diagnostic: () => {} });
+  registry.renderer({ upload: () => { uploads++; return { dispose: () => disposed++ }; } });
+  const completed = registry.register('shared', { bytes: solidGlb(), metersPerUnit: 3 });
+  await completed;
+  const accepted = registry.get('shared');
+  assert.ok(accepted);
+  registry.contextLost();
+  assert.equal(registry.available, false);
+  assert.equal(registry.get('shared'), undefined);
+  assert.deepEqual(registry.status('shared'), { id: 'shared', status: 'ready', replacementPending: false });
+  assert.equal(disposed, 1);
+  await completed;
+  registry.renderer({ upload: model => { uploads++; assert.equal(model, accepted.model); return { dispose: () => disposed++ }; } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(registry.get('shared')?.definition, accepted.definition);
+  assert.equal(uploads, 2);
+  registry.destroy(); registry.destroy();
+  assert.equal(disposed, 2);
+});
+
+test('restoration preserves the current replacement promise and stale accepted uploads cannot overwrite it', async () => {
+  const registry = new ModelRegistry({ changed: () => {}, diagnostic: () => {} });
+  registry.renderer({ upload: () => ({ dispose() {} }) });
+  await registry.register('shared', { bytes: solidGlb(), metersPerUnit: 1 });
+  registry.contextLost();
+  const replacement = registry.register('shared', { bytes: solidGlb(), metersPerUnit: 2 });
+  let oldFinish: (resource: { dispose(): void }) => void = () => {};
+  let restoredSignal: AbortSignal | undefined, uploads = 0, disposed = 0;
+  registry.renderer({ upload: (_model, _current, signal) => {
+    if (++uploads === 1) { restoredSignal = signal; return new Promise(resolve => { oldFinish = resolve; }); }
+    return { dispose() {} };
+  } });
+  await replacement;
+  assert.equal(registry.get('shared')?.definition.metersPerUnit, 2);
+  assert.equal(restoredSignal?.aborted, true);
+  oldFinish({ dispose: () => disposed++ });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(disposed, 1);
+  assert.equal(registry.get('shared')?.definition.metersPerUnit, 2);
+  registry.destroy();
+});
+
+test('failed replacement still restores the accepted registration after loss', async () => {
+  const errors: RidgelineError[] = [];
+  const registry = new ModelRegistry({ changed: () => {}, diagnostic: error => errors.push(error) });
+  registry.renderer({ upload: () => ({ dispose() {} }) });
+  await registry.register('shared', { bytes: solidGlb(), metersPerUnit: 7 });
+  registry.contextLost();
+  const replacement = registry.register('shared', { bytes: new ArrayBuffer(0) });
+  registry.renderer({ upload: () => ({ dispose() {} }) });
+  await assert.rejects(replacement, { code: 'MODEL_UNSUPPORTED' });
+  assert.equal(registry.get('shared')?.definition.metersPerUnit, 7);
+  assert.equal(registry.status('shared').status, 'ready');
+  assert.equal(errors.length, 1);
+  registry.destroy();
+});
+
+test('failed restoration diagnoses once and explicit retry rebuilds the retained asset', async () => {
+  const errors: RidgelineError[] = [];
+  const registry = new ModelRegistry({ changed: () => {}, diagnostic: error => errors.push(error) });
+  registry.renderer({ upload: () => ({ dispose() {} }) });
+  await registry.register('shared', { bytes: solidGlb() });
+  registry.contextLost();
+  let uploads = 0;
+  registry.renderer({ upload: () => { if (++uploads === 1) throw new Error('Allocation failed'); return { dispose() {} }; } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(registry.get('shared'), undefined);
+  assert.equal(registry.status('shared').status, 'ready');
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0]?.context.operation, 'restoreModel');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(uploads, 1);
+  registry.retry();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(registry.get('shared'));
+  assert.equal(uploads, 2);
+  registry.destroy();
+});
+
+test('accepted rebuild remains usable until a slower replacement completes or fails', async () => {
+  for (const outcome of ['replace', 'fail'] as const) {
+    let originalDisposed = 0, rebuiltDisposed = 0;
+    const registry = new ModelRegistry({ changed: () => {}, diagnostic: () => {} });
+    registry.renderer({ upload: () => ({ dispose: () => originalDisposed++ }) });
+    await registry.register('shared', { bytes: solidGlb(), metersPerUnit: 1 });
+    registry.contextLost();
+    const replacement = registry.register('shared', { bytes: solidGlb(), metersPerUnit: 2 });
+    let finish: (resource: { dispose(): void }) => void = () => {}, fail: (error: Error) => void = () => {}, uploads = 0;
+    registry.renderer({ upload: () => ++uploads === 1 ? { dispose: () => rebuiltDisposed++ } :
+      new Promise((resolve, reject) => { finish = resolve; fail = reject; }) });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(registry.get('shared')?.definition.metersPerUnit, 1);
+    assert.equal(registry.status('shared').replacementPending, true);
+    if (outcome === 'replace') { finish({ dispose() {} }); await replacement; }
+    else { fail(new Error('Replacement failed')); await assert.rejects(replacement, { code: 'MODEL_LOAD_FAILED' }); }
+    assert.equal(registry.get('shared')?.definition.metersPerUnit, outcome === 'replace' ? 2 : 1);
+    assert.equal(originalDisposed, 1);
+    assert.equal(rebuiltDisposed, outcome === 'replace' ? 1 : 0);
+    registry.destroy();
+    assert.equal(rebuiltDisposed, 1);
+  }
+});
+
+test('a failed replacement cannot cancel a still-decoding accepted rebuild', async () => {
+  const registry = new ModelRegistry({ changed: () => {}, diagnostic: () => {} });
+  registry.renderer({ upload: () => ({ dispose() {} }) });
+  await registry.register('shared', { bytes: solidGlb(), metersPerUnit: 4 });
+  registry.contextLost();
+  let finish: (resource: { dispose(): void }) => void = () => {};
+  const replacement = registry.register('shared', { bytes: new ArrayBuffer(0) });
+  registry.renderer({ upload: () => new Promise(resolve => { finish = resolve; }) });
+  await assert.rejects(replacement, { code: 'MODEL_UNSUPPORTED' });
+  assert.equal(registry.get('shared'), undefined);
+  finish({ dispose() {} });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(registry.get('shared')?.definition.metersPerUnit, 4);
+  registry.destroy();
+});
+
+test('restore notifications can remove the registration or destroy its owner without resurrecting resources', async () => {
+  for (const action of ['unregister', 'destroy'] as const) {
+    let restoring = false, disposed = 0;
+    const registry = new ModelRegistry({ changed: id => {
+      if (restoring && registry.get(id)) {
+        if (action === 'unregister') registry.unregister(id); else registry.destroy();
+      }
+    }, diagnostic: () => {} });
+    registry.renderer({ upload: () => ({ dispose: () => disposed++ }) });
+    await registry.register('shared', { bytes: solidGlb() });
+    registry.contextLost(); restoring = true;
+    registry.renderer({ upload: () => ({ dispose: () => disposed++ }) });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(registry.get('shared'), undefined);
+    assert.equal(registry.status('shared').status, 'unavailable');
+    assert.equal(disposed, 2);
+    registry.destroy();
+  }
+});
+
+test('destruction from the first loss notification releases every registration exactly once', async () => {
+  let losing = false, disposed = 0;
+  const registry = new ModelRegistry({ changed: () => { if (losing) registry.destroy(); }, diagnostic: () => {} });
+  registry.renderer({ upload: () => ({ dispose: () => disposed++ }) });
+  await registry.register('first', { bytes: solidGlb() });
+  await registry.register('second', { bytes: solidGlb() });
+  losing = true; registry.contextLost();
+  assert.equal(disposed, 2);
+  assert.equal(registry.get('second'), undefined);
+});
+
 test('pending asynchronous uploads cancel promptly and dispose late resources without replacing the working asset', async () => {
   const errors: RidgelineError[] = [];
   let finish: (resource: { dispose(): void }) => void = () => {};
