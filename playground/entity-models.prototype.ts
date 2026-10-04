@@ -185,7 +185,11 @@ export function mountEntityModelsPrototype(viewport: Viewport<Sample>, container
     view=next; tick=0; opacities.clear(); viewport.clear(); viewport.upsert(makeFeatures());
     viewport.setSelection([view==='workload'||view==='samples'?'model-1':'model-0']);
     container.querySelector<HTMLSelectElement>('[data-control="view"]')!.value=view;
-    if (view==='transition') { viewport.configure({projection:'globe'}); options.thresholdMeters=200000; }
+    if (view==='transition') {
+      viewport.configure({projection:'globe'}); options.thresholdMeters=200000;
+      const projectionControl=document.querySelector<HTMLSelectElement>('#projection');
+      if(projectionControl)projectionControl.value='globe';
+    }
     else options.thresholdMeters=2000;
     setOptions({}); resetView(); syncModels();
   }
