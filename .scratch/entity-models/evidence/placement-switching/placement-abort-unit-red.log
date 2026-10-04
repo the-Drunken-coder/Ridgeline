@@ -1,0 +1,77 @@
+✔ batch requests share one preparation, retain unknown as settled, and retry explicitly (4.512758ms)
+✔ releasing one requester keeps shared preparation alive; releasing all aborts it (1.684211ms)
+✔ replacement, reset, and destroy abort obsolete work and ignore late completion (1.703304ms)
+✔ preparation rejection settles once with the original cause and can be retried (2.407393ms)
+✔ a sampler throwing during an eager probe settles the area and reports its cause (0.773506ms)
+✔ moving a settled area prepares its new location and a removed scheduled area never starts (1.474428ms)
+✔ known consumer heights skip preparation and unknown remains distinct from zero (0.856956ms)
+✔ an unknown interior sample can require preparation after a known area grid was skipped (0.620946ms)
+✔ consumer without prepare is settled until explicit retry notification (0.592218ms)
+✔ deferred placement batches avoid probes until missing geometry requires one shared preparation (0.622974ms)
+✔ a raster tile failure notifies only area keys that use that tile (20.131348ms)
+✔ an active no-data area retains failure knowledge without pinning its source tile (119.556618ms)
+✔ a contained requester still prepares when its scheduled covering requester is released (0.827499ms)
+✔ preparation and sampling use identical normalized center coordinates (0.443005ms)
+✔ exact terrain probes are snapshotted and included in consumer preparation (0.840941ms)
+✔ changing exact probes replaces pending area work even at the same center and radius (1.154247ms)
+✔ pending shared preparations only cover exact probes already sent to the sampler (1.280275ms)
+✔ model area notifications preserve entity identity and provider reset retains exact probes (1.004778ms)
+✔ a sampler changing provider cannot publish the obsolete preparation result (0.544562ms)
+✖ abort callbacks keep newer terrain ownership and discard a partially accepted batch (6.198244ms)
+✖ provider reset retires only old work when an abort callback replaces one requester (2.080513ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 19
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 562.438062
+
+✖ failing tests:
+
+test at tests/elevation.test.ts:1:17104
+✖ abort callbacks keep newer terrain ownership and discard a partially accepted batch (6.198244ms)
+  AssertionError [ERR_ASSERTION]: release retained part of the obsolete batch
+  
+  2 !== 0
+  
+      at TestContext.<anonymous> (/tmp/ridgeline-model-placement/tests/elevation.test.ts:495:14)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/elevation.test.ts:1:18060
+✖ provider reset retires only old work when an abort callback replaces one requester (2.080513ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      [
+  +     0,
+  +     0
+  -     3,
+  -     3
+      ],
+  -   [
+  -     10,
+  -     10
+  -   ]
+    ]
+  
+      at TestContext.<anonymous> (/tmp/ridgeline-model-placement/tests/elevation.test.ts:509:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ [ 0, 0 ] ],
+    expected: [ [ 3, 3 ], [ 10, 10 ] ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
