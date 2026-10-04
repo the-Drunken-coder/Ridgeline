@@ -150,6 +150,14 @@ export const modelPlacementCases: readonly { name: string; run(context: Context)
         }
       }
       check(sawBlend, 'Model precision cases did not exercise continuous globe blending');
+      viewport.map.jumpTo({ center: [0, 0], zoom: 3, pitch: 0, bearing: 0 });
+      await viewport.registerModel('asset', { bytes: axisModelGlb(), metersPerUnit: 100000 });
+      const planetary = feature([0, 0], true); planetary.entity!.altitude = { meters: 400000, reference: 'sea-level' };
+      viewport.upsert([planetary]); await idle(viewport);
+      check((await pixels(viewport)).red.count > 0, 'Planet hiding fixture has no visible front model');
+      planetary.geometry.coordinates = [180, 0]; viewport.upsert([planetary]); await idle(viewport);
+      const hidden = await pixels(viewport);
+      check(hidden.red.count + hidden.green.count + hidden.blue.count === 0, 'The model rendered through the planet');
     } finally { viewport.destroy(); }
   } },
   { name: 'Ground models follow planar terrain at real and enlarged size', async run(context) {
