@@ -18,9 +18,11 @@ Approved test boundaries are the packaged public viewport workflow and focused p
 
 ## Verification record
 
-Reviewed: `819e4e3`...`cf7d4bb89448776a1d0c599413d36588716942c1`, material rendering, asynchronous registration ownership, settings fixes and public workflows reviewed by the integration owner on 2026-10-04. The integration tree equals reviewed worker `c40d78b6a84b6b6dbcb5a2a8ab0f907be22bf1ab` (tree `f7d1b98303c851a71e6557ffd0f1fface9db6da5`). Placement and switching remain in progress. Earlier projection/registration review evidence is below.
+Reviewed: `525ed1d8283014c98d12c3c9f7b8c0a26bf1bcc4`...`647458e6f7d4ff3b86a72d6fb86f474457dbf4be`, placement, terrain ownership, scene coordination, same-frame switching and public workflows reviewed by the integration owner on 2026-10-04. The integration tree equals reviewed worker `882b15c72e67a9cbcab24b433f4b78e93f1e4f82` (tree `263f92a429ad301684cf03ef4898dadd2b76eb11`). The final callback fix at `f14db3d` and subsequent test-only visible-icon baseline change at `882b15c` were reviewed separately. Earlier review evidence is preserved below.
 
-Local verification: `pnpm check` and `node --import tsx --test tests/model-glb.test.ts tests/models.test.ts tests/features.test.ts tests/entities.test.ts tests/entity-scene.test.ts` pass at `cf7d4bb89448776a1d0c599413d36588716942c1` (55 tests). Seven affected packaged model cases pass on material implementation `05aa922`; the final five-line appearance-precedence test addition passes at `c40d78b`. Runtime source is identical across those material revisions. Documentation changes after these checks do not change runtime source.
+Local verification: `pnpm check`, full `pnpm test` (311 root tests and 5 control tests), and full `pnpm test:browser` (170 cases, 11.6 minutes) pass at `647458e6f7d4ff3b86a72d6fb86f474457dbf4be` on 2026-10-04. The browser command also built/packed the library and installed, type-checked and built the separate consumer. README and evidence edits made during the run changed no runtime or test inputs. [Type checks](evidence/placement-switching/integrated-placement-switching-check.log), [unit checks](evidence/placement-switching/integrated-placement-switching-unit.log), [full packaged-browser log](evidence/placement-switching/integrated-placement-switching-browser.log).
+
+Historical material verification: at `cf7d4bb89448776a1d0c599413d36588716942c1`, root type/ticket checks and 55 focused tests passed. Seven affected packaged model cases passed on material implementation `05aa922`; the final appearance-precedence addition passed at `c40d78b`. Runtime source was identical across those material revisions.
 
 Historical full regression: at `7bcb9b7`, runtime source `d5f860c900dda3cb9c7f06c4a739aa7991f47a75`, full `pnpm test:browser` passed all 159 cases in 10.1 minutes on 2026-10-04. This included packaged build/install, consumer type checking/build, projection precision, registration, existing interactions, terrain, attachments and recovery. [Complete log](evidence/checks/registration-projection-browser.log). Evidence-only commit `57c6862` landed while that command ran and changed no inputs. This full run predates material completion; current affected checks are recorded above.
 
@@ -94,8 +96,48 @@ Artifacts: [seven-case browser log](evidence/materials/material-browser-all.log)
 
 Limits: fixed entity-local directional lighting is intentional. Translucency has no depth writes and is unsorted; overlapping translucent geometry may composite in draw order. Same-frame switching, model picking/highlight and context restoration remain their later slices. Software WebGL establishes no target-browser hardware or performance acceptance.
 
+## #85: rigid placement and terrain preparation
+
+Status: implementation integrated at `647458e6f7d4ff3b86a72d6fb86f474457dbf4be`. Acceptance remains open for the complete attachment and model near-plane checks below. Enlarged-size integration with #86 is implemented and exercised.
+
+| Acceptance criterion | Evidence or remaining gap |
+| --- | --- |
+| Heading, pitch, roll, authored offset and scale | Focused geometry checks and the public asymmetric axes case use independent geographic/matrix references. Authored offset applies before body rotation; missing airborne pitch/roll defaults to zero. |
+| Rigid slope following, stable dimensions and exaggeration | Real/enlarged planar fixtures at DPR 1/2 and exaggeration 1/2 exercise displayed contact. Focused checks cover explicit pitch/roll with slope following disabled. |
+| Unknown or invalid placement and automatic recovery | Public delayed exact-position preparation retains eligible fallback, recovers without pointer/entity updates, rejects below-terrain placement and handles changed providers. |
+| Planar contact tolerances and uneven limits | A 768-case numerical sweep found clearance 0.0199999908–0.0200001875 m and maximum slope error 0.000001479 degrees. A public uneven-ridge observation visibly intersects the rigid model between support samples. |
+| Physical attachments retain origins, dimensions and depth | Public ground-polygon pixel bounds remain within 0.5 CSS px while the body grows more than 1.5x. Ground markers/lines, airborne volumes and sensor origins/depth still require combined #88 evidence. This criterion is not yet complete. |
+| Precision, globe transition, planet hiding and clipping | Independent checks cover 33 views across zoom 18–20, date-line/world copies and globe zoom 11–12, with at most one CSS pixel error and an actual intermediate projection blend. Front/back planetary visibility is exercised. Shared near-plane clipping tests pass; a public model-specific near-plane crossing remains assigned to #87. |
+| Delayed preparation, cancellation and current ownership | Real public abort callbacks reproduce and verify removal, reference replacement and same-ID reintroduction. Focused Elevation tests also cover partial batches, provider reset and unrelated requesters. Root independently reproduced and rechecked the overwritten-request failure. |
+
+Artifacts: [placement handoff and historical revisions](evidence/placement-switching/placement-closeout.md), [768-case raw results](evidence/placement-switching/placement-geometry-verification.json), [planar view](evidence/placement-switching/placement-uneven-plane.png), [uneven ridge](evidence/placement-switching/placement-uneven-ridge.png), [observation settings](evidence/placement-switching/placement-uneven-observation.json).
+
+The numerical sweep used production geometry at `f5f441c`; later changes affected coordination and cancellation, not that placement calculation. Public precision regressions passed at combined `f895069`. Scripts in this historical evidence directory retain their original temporary checkout paths and are not presented as the final portable measurement workflow. The browser was Chromium 153.0.8010.12 on Linux with ANGLE SwiftShader.
+
+## #86: same-frame representation switching
+
+Status: implementation integrated and the full local regression passes at `647458e6f7d4ff3b86a72d6fb86f474457dbf4be`. Tracker acceptance remains open while a subsequent review history is investigated: a consumer custom layer may change entity data in prerender after model visibility commits but before model drawing. The #89 layer owner is adding a real browser reproduction before deciding whether a correction is needed. Later picking, presentation and context-recovery changes also require combined review and checks.
+
+| Acceptance criterion | Evidence |
+| --- | --- |
+| Distance, thresholds, equality and inherited overrides | Focused choice histories and public camera/configuration sequences exercise both directions, exact equality, zero-width bands, loading inside the band and independent overrides. |
+| Atomic validation and retained identity | Invalid combined configuration/entity updates preserve accepted settings, data and selection. Explicitly undefined optional overrides inherit defaults. |
+| Projected-box floor and physical size | Public projected-box checks exercise 40 CSS px across zoom/pitch/bearing and physical-only zero floor; real dimensions can exceed the floor. Shared vertex/projection helpers also supply the upcoming picking path. |
+| Same-frame icon/dot/model visibility | Frame-by-frame pixel XOR tests cover native registered symbols and airborne dots in flat, globe and intermediate views, discrete switches and continuous camera movement. The fixture proves the native icon is visible before starting each view's threshold sequence. |
+| Temporary eligibility, availability and reset histories | Unknown terrain and injected renderer preflight/draw failures retain the choice while falling back; recovery restores it inside the band. Reference change, missing heading and unregister reset it. |
+| Renderer publication and current snapshots | State publishes from completed model frames rather than anticipated geometry. Off-screen and planet-hidden model state remains distinct from unavailable placement. Representation events do not republish GeoJSON. |
+| Callback invalidation and settled idle | Browser cases cancel from sampling, terrain abort, entitychange and error callbacks, including removal/reintroduction and viewport destruction. Source membership and pixels prove current data survives. The floor/recovery cases observe five quiet seconds. |
+| Focused, type and packaged checks | Worker `882b15c` passed type checks and all four switching/floor cases. Runtime `f14db3d` passed 98 focused tests and 19 other model/publication cases; root full checks on the identical merged tree are recorded above. |
+
+The real symbol test exposed stale native GL binding caches after model instance upload. The pinned MapLibre adapter now invalidates those bindings before preparing native opacity changes. The 20-instance public fixture also proves one shared solid-material draw rather than one draw per entity.
+
+The abort tests exposed two ownership boundaries: Elevation recreated cancelled areas after a consumer abort callback, and EntityScene restored removed data or discarded a newly reintroduced ID. Elevation now invalidates obsolete operations and preserves current request identities. EntityScene installs the accepted batch before cancellation callbacks; viewport publication refreshes current store entries afterward. [Confirmed failing scene histories](evidence/placement-switching/switching-entity-abort-confirmed-red.log), [corrected public history](evidence/placement-switching/switching-abort-reentry-green.log), [final four-case check](evidence/placement-switching/switching-pinned-browser.log), [handoff](evidence/placement-switching/switching-implementation.md).
+
+A historical 20-case run had 19 passes and one blank icon frame immediately after a large camera jump, before its symbol tiles were ready. The corrected fixture first establishes eligible native pixels, then still measures the very first switched frame. It passed three repeated runs before the final four-case check. [Historical run](evidence/placement-switching/switching-closeout-browser.log). Arbitrary partial native tile-upload failure or a model draw that fails after already submitting some primitives is not claimed to be transactional. Actual context rebuilding remains #89.
+
 ## Next implementation ownership
 
-- #85 placement: pure placement geometry, shared projection helpers, elevation preparation and placement tests. Enlarged-size acceptance depends on #86 integration.
-- #86 switching: ModelLayer, EntityScene, viewport/frame coordination and switching tests; integrates the placement worker's interface. It does not edit the registry or GPU renderer.
-- Root: shared browser harness, README integration, merged diff review, exact-revision verification and this closeout record.
+- #87 picking: EntityScene/viewport shared bridges, last-drawn box picking, event ordering, callback-safe stationary hover and real pointer/keyboard checks.
+- #88 feedback: renderer brightening, static rings, label layout/readiness helpers and presentation/physical-attachment checks. #87 owns its scene/viewport bridge edits.
+- #89 recovery: registry and ModelLayer lifecycle, retained resources and actual context-loss checks. #87 owns its scene/viewport bridge edits.
+- Root: shared browser harness, README, merged diff review, exact-revision verification and this closeout record. New workers start from `647458e6f7d4ff3b86a72d6fb86f474457dbf4be` in separate worktrees; root browser port 5174 remains reserved.

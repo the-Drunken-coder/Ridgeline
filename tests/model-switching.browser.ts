@@ -1,5 +1,6 @@
 import { createViewport, RidgelineError } from '@ridgeline/map';
 import type { ElevationSampler, MapFeature, Viewport } from '@ridgeline/map';
+import type { CustomLayerInterface } from 'maplibre-gl';
 import { solidGlb } from './model-fixtures';
 
 type Context = { container: HTMLDivElement; setCurrent(viewport: Viewport): void;
@@ -239,18 +240,46 @@ export const modelSwitchingCases: readonly { name: string; run(context: Context)
     const sampler: ElevationSampler = { sample: () => { const action = onSample; onSample = undefined; action?.(); return 0; } };
     const errors: RidgelineError[] = [], viewport = create(context, sampler, errors);
     try {
-      await ready(context, viewport, 1800);
+      const addLayer = viewport.map.addLayer;
+      let modelLayer: CustomLayerInterface | undefined;
+      viewport.map.addLayer = function (layer, beforeId) {
+        if (layer.id === 'rl:models' && layer.type === 'custom') modelLayer = layer;
+        return addLayer.call(this, layer, beforeId);
+      };
+      try { await ready(context, viewport, 1800); }
+      finally { viewport.map.addLayer = addLayer; }
       only(await frame(viewport), 'model', 'initial model');
       const gl = viewport.map.getCanvas().getContext('webgl2'); if (!gl) throw new Error('WebGL2 unavailable');
+      if (!modelLayer) throw new Error('The model custom layer must be installed');
+      const observedRender = modelLayer.render;
+      const observedDraw = gl.drawElementsInstanced;
+      let observingModel = false;
+      let instanceBuffer: WebGLBuffer | undefined;
+      modelLayer.render = function (...args) {
+        observingModel = true;
+        try { return observedRender.apply(this, args); }
+        finally { observingModel = false; }
+      };
+      gl.drawElementsInstanced = (...args) => {
+        for (let index = 0; observingModel && index < gl.getParameter(gl.MAX_VERTEX_ATTRIBS); index++) {
+          if (!gl.getVertexAttrib(index, gl.VERTEX_ATTRIB_ARRAY_DIVISOR)) continue;
+          const buffer = gl.getVertexAttrib(index, gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING);
+          if (buffer instanceof WebGLBuffer) instanceBuffer = buffer;
+        }
+        return observedDraw.apply(gl, args);
+      };
+      try { only(await frame(viewport), 'model', 'observed model instance draw'); }
+      finally { gl.drawElementsInstanced = observedDraw; modelLayer.render = observedRender; }
+      check(instanceBuffer !== undefined, 'A real model draw must identify its instance upload buffer');
       const bufferData = gl.bufferData;
       let fail = true;
       Object.defineProperty(gl, 'bufferData', { configurable: true, writable: true, value: (...args: unknown[]) => {
-        const data = args[1];
-        if (fail && args[2] === gl.DYNAMIC_DRAW && data instanceof Float32Array && data.length === 17) { fail = false; throw new Error('Injected model preflight failure'); }
+        if (fail && args[0] === gl.ARRAY_BUFFER && args[2] === gl.DYNAMIC_DRAW && gl.getParameter(gl.ARRAY_BUFFER_BINDING) === instanceBuffer) { fail = false; throw new Error('Injected model preflight failure'); }
         return Reflect.apply(bufferData, gl, args);
       } });
       try { only(await frame(viewport, () => move(viewport, 2000)), 'icon', 'preflight failure in same frame'); }
       finally { gl.bufferData = bufferData; }
+      check(!fail, 'The observed model instance buffer must receive the injected upload failure');
       check(errors.some(error => error.code === 'MODEL_RENDERER_FAILED'), 'Preflight failure was not reported');
       only(await frame(viewport, () => viewport.retryUpdates()), 'model', 'renderer recovery retains band choice');
       const draw = gl.drawElementsInstanced;
