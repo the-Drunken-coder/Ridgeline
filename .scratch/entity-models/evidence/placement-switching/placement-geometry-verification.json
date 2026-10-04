@@ -1,0 +1,8 @@
+{
+  "revision": "f5f441c9551047dfd552c2bc05cd4413ff6b0c47",
+  "cases": 768,
+  "minClearance": 0.019999990829944636,
+  "maxClearance": 0.020000187467786645,
+  "maxNormalErrorDegrees": 0.0000014787793334710982,
+  "maxDimensionError": 1.4210854715202004e-14
+}
