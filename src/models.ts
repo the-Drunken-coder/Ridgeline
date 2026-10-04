@@ -81,9 +81,11 @@ export class ModelRegistry<R extends ModelResources = ModelResources> {
     if (this.destroyed) return;
     this.uploader = undefined; this.failed = undefined;
     for (const [id, entry] of [...this.entries]) {
-      this.stop(entry.pending); this.stopRestore(entry);
+      if (this.destroyed) return;
+      if (this.entries.get(id) !== entry) continue;
       const resources = entry.ready?.resources;
       entry.ready = undefined; entry.restoreFailed = false;
+      this.stop(entry.pending); this.stopRestore(entry);
       resources?.dispose();
       if (!this.destroyed && this.entries.get(id) === entry) this.options.changed(id);
     }
@@ -104,12 +106,13 @@ export class ModelRegistry<R extends ModelResources = ModelResources> {
     if (this.destroyed) return;
     this.destroyed = true;
     this.uploader = undefined;
-    for (const [id, entry] of this.entries) {
+    const entries = [...this.entries];
+    this.entries.clear();
+    for (const [id, entry] of entries) {
       this.cancel(id, entry.pending);
       this.stopRestore(entry);
       entry.ready?.resources.dispose();
     }
-    this.entries.clear();
   }
   private cancelled(id: string) { return new RidgelineError('MODEL_LOAD_CANCELLED', 'Model registration was cancelled.', { operation: 'registerModel', recoverable: true, modelId: id }); }
   private stopRestore(entry: Registration<R>) {
@@ -182,6 +185,7 @@ export class ModelRegistry<R extends ModelResources = ModelResources> {
       entry.restore === attempt && this.uploader === uploader && !attempt.signal.aborted;
     let resources: R | undefined;
     try {
+      if (!current()) return;
       resources = await uploader.upload(accepted.model, current, attempt.signal);
       if (!current()) { resources.dispose(); return; }
       entry.ready = { ...accepted, resources };

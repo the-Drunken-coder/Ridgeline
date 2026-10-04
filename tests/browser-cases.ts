@@ -1,5 +1,10 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'models retain resources through basemap replacement',
+  'models rebuild current presentation after real context loss',
+  'model recovery cancels stale native image completions',
+  'model recovery reports allocation failure and retries explicitly',
+  'model frames recover from consumer prerender mutations',
   'Model picking uses drawn boxes and returns original entity and attachment hits',
   'Model picking clips terrain near-plane and displayed world copies',
   'Model overlap picker preserves choices focus and consumer selection',
