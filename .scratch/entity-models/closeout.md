@@ -116,7 +116,7 @@ The numerical sweep used production geometry at `f5f441c`; later changes affecte
 
 ## #86: same-frame representation switching
 
-Status: resolved for the scoped switching implementation and local acceptance. Integrated at `647458e6f7d4ff3b86a72d6fb86f474457dbf4be`; full integrated packaged regression passes. Later picking, presentation and context-recovery changes still require combined review and checks.
+Status: implementation integrated and the full local regression passes at `647458e6f7d4ff3b86a72d6fb86f474457dbf4be`. Tracker acceptance remains open while a subsequent review history is investigated: a consumer custom layer may change entity data in prerender after model visibility commits but before model drawing. The #89 layer owner is adding a real browser reproduction before deciding whether a correction is needed. Later picking, presentation and context-recovery changes also require combined review and checks.
 
 | Acceptance criterion | Evidence |
 | --- | --- |
