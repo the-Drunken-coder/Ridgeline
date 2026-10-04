@@ -1,5 +1,9 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Embedded PNG and JPEG preserve original and independent assigned appearances',
+  'Model alpha modes unlit emission and double sided materials render their supported appearance',
+  'Shared model images retain independent texture samplers and UV transforms',
+  'Model decoding cancellation and failed replacement release owned resources',
   'Shared solid models register replace and remove through the public viewport',
   'Model registration waits cancels and isolates allocation failures',
   'Model callbacks cannot restore removed registrations or destroyed viewports',

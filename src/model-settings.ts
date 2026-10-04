@@ -1,9 +1,11 @@
 import { Color } from '@maplibre/maplibre-gl-style-spec';
 import type { EntityModel, EntityModelSettings, ModelAppearance, ModelDefinition } from './types';
 
-export const DEFAULT_ENTITY_MODELS: EntityModelSettings = { switchDistanceMeters: 2000, deadZoneMeters: 200, minimumSizePixels: 40 };
+export const DEFAULT_ENTITY_MODELS: Readonly<EntityModelSettings> = Object.freeze({ switchDistanceMeters: 2000, deadZoneMeters: 200, minimumSizePixels: 40 });
 export function modelSettings(defaults: EntityModelSettings, overrides?: Partial<EntityModelSettings>): EntityModelSettings {
-  const next = { ...defaults, ...overrides };
+  const next = { ...defaults };
+  for (const key of ['switchDistanceMeters', 'deadZoneMeters', 'minimumSizePixels'] as const)
+    if (overrides?.[key] !== undefined) next[key] = overrides[key];
   if (!Number.isFinite(next.switchDistanceMeters) || next.switchDistanceMeters <= 0 ||
     !Number.isFinite(next.deadZoneMeters) || next.deadZoneMeters < 0 || next.deadZoneMeters >= 2 * next.switchDistanceMeters ||
     !Number.isFinite(next.minimumSizePixels) || next.minimumSizePixels < 0)
