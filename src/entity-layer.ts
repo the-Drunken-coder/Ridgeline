@@ -35,7 +35,9 @@ export class EntityLayer implements CustomLayerInterface {
   private gl?: WebGL2RenderingContext;
   private failed = false;
   private verticalScale = 1;
+  private hiddenPoints: ReadonlySet<string> = new Set();
   constructor(private report: (cause: unknown) => void) {}
+  suppressPoints(ids: ReadonlySet<string>) { this.hiddenPoints = ids; }
   private displayHeight(height: number) {
     return height * this.verticalScale;
   }
@@ -143,6 +145,7 @@ export class EntityLayer implements CustomLayerInterface {
       gl.disable(gl.CULL_FACE);
       gl.depthMask(false);
       for (const draw of this.draws) {
+        if (draw.mode === 'points' && this.hiddenPoints.has(draw.entityId)) continue;
         this.projection.bindOrigin(gl, program.program, draw.origin);
         gl.uniform1f(uniform('u_line_width'), (draw.size ?? 1) * devicePixelRatio);
         gl.uniform1f(uniform('u_point_size'), (draw.size ?? 10) * devicePixelRatio);
@@ -253,6 +256,7 @@ void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_colo
     }
     const visible = (depth: number) => terrainDepth === undefined || depth <= terrainDepth + 1e-6;
     for (const draw of this.draws) {
+      if (draw.mode === 'points' && this.hiddenPoints.has(draw.entityId)) continue;
       if (draw.mode === 'lines' && !draw.attachmentId) continue;
       if (draw.mode === 'lines') {
         for (let i = 0; i < draw.vertices.length; i += 2) {

@@ -1,5 +1,9 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Model switching publishes one representation through distance and settings histories',
+  'Model switching preserves choices through temporary terrain and asset readiness',
+  'Model switching preflights failures and rejects reentrant stale frames',
+  'Model size floors use the rendered projected box and settle without idle frames',
   'Shared solid models register replace and remove through the public viewport',
   'Model registration waits cancels and isolates allocation failures',
   'Model callbacks cannot restore removed registrations or destroyed viewports',
