@@ -228,7 +228,20 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
     } finally { viewport.destroy(); }
   } },
   { name: 'model recovery reports allocation failure and retries explicitly', async run(test) {
-    const errors: RidgelineError[] = [], viewport = create(test, undefined, undefined, error => errors.push(error));
+    const resident = feature();
+    if (resident.entity) resident.entity.attachments = [{ id: 'area', type: 'circle', radius: 18, color: '#00ff00' }];
+    const unrelated: MapFeature = { type: 'Feature', id: 'unrelated', properties: {}, geometry: { type: 'Point', coordinates: [.00035, 0] } };
+    const errors: RidgelineError[] = [], viewport = create(test, [resident, unrelated], undefined, error => errors.push(error));
+    const checkFallback = async () => {
+      await test.until(() => viewport.map.loaded(), 'unrelated native geometry settles after model failure');
+      const image = await capture(viewport);
+      check(count(image, 'cyan', 'left') > 30, 'Failed restore hid the eligible airborne icon');
+      check(count(image, 'green') > 100, 'Failed restore hid its unrelated ground attachment');
+      const point = viewport.map.project([.00035, 0]), height = image.bytes.length / 4 / image.width;
+      const offset = ((height - 1 - Math.round(point.y)) * image.width + Math.round(point.x)) * 4;
+      check(image.bytes[offset]! < 60 && image.bytes[offset + 1]! > 180 && image.bytes[offset + 2]! > 180,
+        'Failed restore hid the unrelated native point');
+    };
     const nativeDecode = globalThis.createImageBitmap;
     try {
       await viewport.ready;
@@ -251,7 +264,7 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
         check(attempted === 3 && buffers.size === 0, 'Partial restore leaked allocated buffers');
         check(viewport.getEntityState('instance')?.model?.status === 'ready', 'Failed restore discarded accepted CPU registration');
         await test.until(() => viewport.getEntityState('instance')?.representation === 'icon', 'eligible icon after model restore failure');
-        check(count(await capture(viewport), 'cyan') > 30, 'Failed restore hid usable icon fallback');
+        await checkFallback();
         await pause(200); check(errors.filter(error => error.context.operation === 'restoreModel').length === 1, 'Failed restore retried without an explicit request');
       } finally { globalThis.createImageBitmap = nativeDecode; gl.createBuffer = createBuffer; gl.deleteBuffer = deleteBuffer; }
       viewport.retryUpdates();
@@ -285,6 +298,7 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
         await test.until(() => errors.some(error => error.code === 'MODEL_RENDERER_FAILED' && error.context.operation === 'models'), 'scoped shader restoration failure');
         check(shaderAttempts === 2 && shaders.size === 0 && programs.size === 0, 'Partial shader initialization leaked owned shaders/program');
         check(viewport.getEntityState('instance')?.representation === 'icon', 'Shader failure did not retain eligible icon fallback');
+        await checkFallback();
         viewport.retryUpdates();
         await test.until(() => viewport.getEntityState('instance')?.representation === 'model', 'explicit shader retry restores accepted model');
         check(count(await capture(viewport), 'magenta') > 1000, 'Shader retry did not restore pixels');
