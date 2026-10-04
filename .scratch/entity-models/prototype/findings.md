@@ -1,6 +1,6 @@
 # Entity model prototype
 
-Work for [Choose model appearance and switching behavior](https://github.com/the-Drunken-coder/Ridgeline/issues/76), under [Entity models and representation switching](https://github.com/the-Drunken-coder/Ridgeline/issues/71). Captures and measurements were made on 2026-10-04. Appearance choices are awaiting the user. This is a throwaway branch, `prototype/entity-models`, with no PR or merge.
+Work for [Choose model appearance and switching behavior](https://github.com/the-Drunken-coder/Ridgeline/issues/76), under [Entity models and representation switching](https://github.com/the-Drunken-coder/Ridgeline/issues/71). Captures and measurements were made on 2026-10-04. The user then chose the appearance; the authoritative choices are in the [resolution comment](https://github.com/the-Drunken-coder/Ridgeline/issues/76#issuecomment-5976929100). Captures predate the approved replacement colors and combined ring plus brightening. This is a throwaway branch, `prototype/entity-models`, with no PR or merge.
 
 ## Run and compare
 
@@ -10,9 +10,9 @@ For a paused comparison, open `/?scenario=entity-models&modelView=samples&paused
 
 The workload has 25 copies each of the drone, tank, jet and boat, plus 1,000 icon entities. It moves through the existing `viewport.upsert` flow every 100 ms. The boat sits on land as a placement fixture. Its scene is not a water-navigation demo. The prototype keeps the four source credits in the sidebar.
 
-## Choices to make
+## Options shown before the decision
 
-These are recommendations for discussion, not approved defaults.
+These historical recommendations describe the alternatives shown in the gallery. The resolution comment records the user's choices, including changes to the color and selection recommendations below. The approved replacement colors and combined treatment have not been implemented or measured in this prototype.
 
 | Choice | What you see and tradeoff | Recommendation | Captures |
 | --- | --- | --- | --- |
@@ -63,6 +63,6 @@ The prototype uses a separate instanced model layer, the shared entity projectio
 
 Main-thread parsing, simple local lighting and unsorted translucent parts follow the accepted approach. Production allocation-failure cleanup, diagnostics, lifecycle tests and the full parser validation suite are not completed by this prototype. Grouping, animation, drawing models, touch, automatic simplified distant models and production implementation stay outside the map's destination. Their absence is not newly discovered fog.
 
-Questions made clearer for later ticketing, after the user's choices, are target-hardware performance and the triangle guideline, worker parsing, label/attachment overlap, distinct selection and hover feedback, empty box hits, and ground contact across an enlarged uneven footprint. No new tickets or map decisions were written during this human decision pause.
+The remaining questions now live in [Choose the consumer model and color API](https://github.com/the-Drunken-coder/Ridgeline/issues/77), [Choose model picking, labels and attachment placement](https://github.com/the-Drunken-coder/Ridgeline/issues/78), and [Choose model browser and verification targets](https://github.com/the-Drunken-coder/Ridgeline/issues/79). [Measure model performance and correctness on target browsers](https://github.com/the-Drunken-coder/Ridgeline/issues/80) carries the hardware gap, triangle guideline and remaining verification work. It requires the browser-target and interaction decisions first. All are child tickets of the map, with native blocking relationships.
 
 [Closeout record](closeout.md) separates implementation, local smoke evidence and unavailable checks. Model: gpt-6.1-sol. Harness: Codex in T3 Code.

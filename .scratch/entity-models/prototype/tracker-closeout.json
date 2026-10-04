@@ -1,0 +1,148 @@
+{
+  "verified_at": "2026-10-04T05:34:38.253086+00:00",
+  "map": {
+    "number": 71,
+    "id": 5694353561,
+    "title": "Entity models and representation switching",
+    "state": "open",
+    "html_url": "https://github.com/the-Drunken-coder/Ridgeline/issues/71"
+  },
+  "resolution": {
+    "number": 76,
+    "id": 5694354072,
+    "title": "Choose model appearance and switching behavior",
+    "state": "closed",
+    "html_url": "https://github.com/the-Drunken-coder/Ridgeline/issues/76",
+    "comment_url": "https://github.com/the-Drunken-coder/Ridgeline/issues/76#issuecomment-5976929100",
+    "assignees": [
+      "the-Drunken-coder"
+    ]
+  },
+  "documentation_baseline": "a31d8cf8c3e4b8c67c890f455e1a93eed49663a7",
+  "runtime_revision": "d6d803bb7fdb622384ca56f1c41e58cf252dab3f",
+  "verification": "Published bodies, labels, state, assignees, native map membership and blocking relationships read back from GitHub.",
+  "followups": [
+    {
+      "number": 77,
+      "id": 5696538611,
+      "title": "Choose the consumer model and color API",
+      "state": "open",
+      "html_url": "https://github.com/the-Drunken-coder/Ridgeline/issues/77",
+      "labels": [
+        "wayfinder:grilling"
+      ],
+      "assignees": [],
+      "blocked_by": [
+        {
+          "number": 75,
+          "id": 5694353979,
+          "title": "Choose how Ridgeline draws and loads models",
+          "state": "closed",
+          "html_url": "https://github.com/the-Drunken-coder/Ridgeline/issues/75"
+        },
+        {
+          "number": 76,
+          "id": 5694354072,
+          "title": "Choose model appearance and switching behavior",
+          "state": "closed",
+          "html_url": "https://github.com/the-Drunken-coder/Ridgeline/issues/76"
+        }
+      ]
+    },
+    {
+      "number": 78,
+      "id": 5696538715,
+      "title": "Choose model picking, labels and attachment placement",
+      "state": "open",
+      "html_url": "https://github.com/the-Drunken-coder/Ridgeline/issues/78",
+      "labels": [
+        "wayfinder:grilling"
+      ],
+      "assignees": [],
+      "blocked_by": [
+        {
+          "number": 75,
+          "id": 5694353979,
+          "title": "Choose how Ridgeline draws and loads models",
+          "state": "closed",
+          "html_url": "https://github.com/the-Drunken-coder/Ridgeline/issues/75"
+        },
+        {
+          "number": 76,
+          "id": 5694354072,
+          "title": "Choose model appearance and switching behavior",
+          "state": "closed",
+          "html_url": "https://github.com/the-Drunken-coder/Ridgeline/issues/76"
+        }
+      ]
+    },
+    {
+      "number": 79,
+      "id": 5696538804,
+      "title": "Choose model browser and verification targets",
+      "state": "open",
+      "html_url": "https://github.com/the-Drunken-coder/Ridgeline/issues/79",
+      "labels": [
+        "wayfinder:grilling"
+      ],
+      "assignees": [],
+      "blocked_by": [
+        {
+          "number": 75,
+          "id": 5694353979,
+          "title": "Choose how Ridgeline draws and loads models",
+          "state": "closed",
+          "html_url": "https://github.com/the-Drunken-coder/Ridgeline/issues/75"
+        },
+        {
+          "number": 76,
+          "id": 5694354072,
+          "title": "Choose model appearance and switching behavior",
+          "state": "closed",
+          "html_url": "https://github.com/the-Drunken-coder/Ridgeline/issues/76"
+        }
+      ]
+    },
+    {
+      "number": 80,
+      "id": 5696538917,
+      "title": "Measure model performance and correctness on target browsers",
+      "state": "open",
+      "html_url": "https://github.com/the-Drunken-coder/Ridgeline/issues/80",
+      "labels": [
+        "wayfinder:task"
+      ],
+      "assignees": [],
+      "blocked_by": [
+        {
+          "number": 75,
+          "id": 5694353979,
+          "title": "Choose how Ridgeline draws and loads models",
+          "state": "closed",
+          "html_url": "https://github.com/the-Drunken-coder/Ridgeline/issues/75"
+        },
+        {
+          "number": 76,
+          "id": 5694354072,
+          "title": "Choose model appearance and switching behavior",
+          "state": "closed",
+          "html_url": "https://github.com/the-Drunken-coder/Ridgeline/issues/76"
+        },
+        {
+          "number": 78,
+          "id": 5696538715,
+          "title": "Choose model picking, labels and attachment placement",
+          "state": "open",
+          "html_url": "https://github.com/the-Drunken-coder/Ridgeline/issues/78"
+        },
+        {
+          "number": 79,
+          "id": 5696538804,
+          "title": "Choose model browser and verification targets",
+          "state": "open",
+          "html_url": "https://github.com/the-Drunken-coder/Ridgeline/issues/79"
+        }
+      ]
+    }
+  ]
+}

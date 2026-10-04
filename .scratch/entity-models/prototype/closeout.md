@@ -1,4 +1,4 @@
-# Prototype closeout at the human decision pause
+# Prototype and appearance-decision closeout
 
 Spec: [Choose model appearance and switching behavior](https://github.com/the-Drunken-coder/Ridgeline/issues/76), with the terminology in [Entity models and representation switching](https://github.com/the-Drunken-coder/Ridgeline/issues/71) and the approach in [Choose how Ridgeline draws and loads models](https://github.com/the-Drunken-coder/Ridgeline/issues/75). This planning map has no approved production implementation spec yet.
 
@@ -18,10 +18,14 @@ Local verification:
 
 Hosted verification: unavailable. No PR was created, as instructed. No hosted required-check or merge-readiness claim is made.
 
-Remaining limits: user appearance choices; integrated and discrete hardware measurements; globe workload timing; a measured triangle guideline; smooth transition and jitter review at normal frame rates; terrain contact across the entire enlarged footprint; label/attachment overlap decisions; production parser, diagnostics and allocation-failure hardening. The current ticket is open and assigned to `the-Drunken-coder`.
+Remaining limits: integrated and discrete hardware measurements; globe workload timing; a measured triangle guideline; smooth transition and jitter review at normal frame rates; terrain contact across the entire enlarged footprint; label/attachment overlap decisions; production parser, diagnostics and allocation-failure hardening. The appearance ticket is closed with the user's choices in its [resolution comment](https://github.com/the-Drunken-coder/Ridgeline/issues/76#issuecomment-5976929100). The original gallery and runtime do not implement or measure the subsequently chosen replacement colors and combined ring plus brightening.
 
 On 2026-10-04, the user chose to proceed with software smoke checks and record the hardware gap. Hardware measurements remain deferred and the triangle guideline remains unset.
 
-Status: prototype implementation complete, locally smoke-checked, awaiting human appearance decisions. The hardware gap is recorded at the user's request. It is not resolved or merge-ready. No map gist, new decision tickets, PR or merge was written during this pause.
+Decision closeout on 2026-10-04: the appearance ticket was resolved after the live exchange. The map has a named gist, and its remaining fog graduated into [the consumer API decision](https://github.com/the-Drunken-coder/Ridgeline/issues/77), [the interaction decision](https://github.com/the-Drunken-coder/Ridgeline/issues/78), [the browser and verification target decision](https://github.com/the-Drunken-coder/Ridgeline/issues/79), and [target-browser measurements](https://github.com/the-Drunken-coder/Ridgeline/issues/80). Native map membership and blocking relationships are recorded in [tracker closeout](tracker-closeout.json). These open tickets are not production implementation tickets.
+
+The decision-closeout changes are documentation only, based on `a31d8cf8c3e4b8c67c890f455e1a93eed49663a7`. Root reviewed the uncommitted documentation diff and checked relative artifact links and whitespace before publication. No runtime code changed and runtime checks were not repeated. The runtime review and exercised revisions above remain the evidence for the original prototype.
+
+Status: prototype implementation complete and locally smoke-checked; appearance decision resolved. Hardware performance and remaining correctness claims are unverified. No production-readiness claim, PR or merge.
 
 Model: gpt-6.1-sol. Harness: Codex in T3 Code. Record date: 2026-10-04.
