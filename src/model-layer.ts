@@ -86,7 +86,10 @@ export class ModelLayer implements CustomLayerInterface {
       }
     } catch (cause) { this.fallback(cause); }
   }
-  render() {
+  render(gl: WebGL2RenderingContext, input: CustomRenderMethodInput) {
+    // Another custom layer can change consumer state after our offscreen pass.
+    // Preflight again before drawing so the later icon layers use this same revision.
+    if (!this.frame?.current()) this.prerender(gl, input);
     if (!this.frame?.current()) return;
     if (this.gl?.isContextLost()) { this.contextLost(); return; }
     try { this.prepared?.draw(); this.drawn = Boolean(this.prepared); }

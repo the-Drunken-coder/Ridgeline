@@ -240,22 +240,44 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
       await viewport.registerModel('material', { bytes: materialGlb([{ unlit: true }]), metersPerUnit: 10 });
       await test.until(() => viewport.getEntityState('instance')?.representation === 'model', 'initial representation before consumer mutation');
       await capture(viewport);
-      let mutate = false;
+      let mutate: (() => void) | undefined;
       viewport.map.addLayer({ id: 'consumer-prerender', type: 'custom', renderingMode: '3d', render() {}, prerender() {
-        if (!mutate) return;
-        mutate = false;
-        viewport.configure({ entityModels: { switchDistanceMeters: 1, deadZoneMeters: 0, minimumSizePixels: 0 } });
+        const action = mutate; mutate = undefined; action?.();
       } });
-      const next = new Promise<{ bytes: Uint8Array; width: number }>(resolve => viewport.map.once('render', () => {
-        const { gl } = context(viewport), canvas = viewport.map.getCanvas(), bytes = new Uint8Array(canvas.width * canvas.height * 4);
-        gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, bytes);
-        resolve({ bytes, width: canvas.width });
-      }));
-      mutate = true; viewport.map.triggerRepaint();
-      const image = await next;
-      check(count(image, 'cyan') > 30 && count(image, 'magenta') === 0,
-        `Consumer prerender mutation produced stale or blank representation: ${count(image, 'cyan')} icon pixels, ${count(image, 'magenta')} model pixels`);
-      check(viewport.getEntityState('instance')?.representation === 'icon', 'Mutation frame did not publish its drawn fallback');
+      let clicked: string[] = [];
+      viewport.on('click', event => { clicked = event.features.map(feature => feature.id); });
+      for (const transition of [
+        { representation: 'icon', action: () => viewport.configure({ entityModels: { switchDistanceMeters: 1, deadZoneMeters: 0, minimumSizePixels: 0 } }) },
+        { representation: 'model', action: () => viewport.configure({ entityModels: { switchDistanceMeters: 2000, deadZoneMeters: 0, minimumSizePixels: 0 } }) },
+        { representation: undefined, action: () => viewport.remove(['instance']) },
+        { representation: 'model', action: () => viewport.upsert([feature('instance', .0002)]) },
+      ] as const) {
+        const next = new Promise<void>((resolve, reject) => viewport.map.once('render', () => {
+          try {
+            const { gl } = context(viewport), canvas = viewport.map.getCanvas(), bytes = new Uint8Array(canvas.width * canvas.height * 4);
+            gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, bytes);
+            const image = { bytes, width: canvas.width }, icons = count(image, 'cyan'), models = count(image, 'magenta');
+            check(transition.representation === 'icon' ? icons > 30 && models === 0 : transition.representation === 'model' ? models > 1000 && icons === 0 : icons === 0 && models === 0,
+              `Consumer prerender mutation to ${transition.representation} produced ${icons} icon pixels and ${models} model pixels`);
+            check(viewport.getEntityState('instance')?.representation === transition.representation, 'Mutation frame published a representation that was not drawn');
+            let minX = canvas.width, maxX = -1, minY = canvas.height, maxY = -1;
+            for (let i = 0; i < bytes.length; i += 4) {
+              const r = bytes[i]!, g = bytes[i + 1]!, b = bytes[i + 2]!;
+              if (transition.representation === 'model' ? r > g + 80 && b > g + 80 : g > r + 80 && b > r + 80) {
+                const x = i / 4 % canvas.width, y = Math.floor(i / 4 / canvas.width);
+                minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+              }
+            }
+            const point = { x: maxX >= 0 ? (minX + maxX) / 2 : canvas.width / 2,
+              y: maxY >= 0 ? canvas.height - (minY + maxY) / 2 : canvas.height / 2 };
+            // Inspect picking in this exact completed frame; separate picking cases exercise real pointer gestures.
+            viewport.map.fire('click', { point, lngLat: viewport.map.unproject([point.x, point.y]), originalEvent: new MouseEvent('click') });
+            check(transition.representation ? clicked.includes('instance') : clicked.length === 0, 'Mutation frame retained stale pick geometry');
+            resolve();
+          } catch (cause) { reject(cause); }
+        }));
+        mutate = transition.action; viewport.map.triggerRepaint(); await next;
+      }
     } finally { viewport.destroy(); }
   } },
 ];
