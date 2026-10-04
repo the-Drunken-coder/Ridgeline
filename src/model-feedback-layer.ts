@@ -23,6 +23,11 @@ export class ModelFeedbackLayer implements CustomLayerInterface {
   destroy() { if (this.destroyed) return; this.destroyed = true; this.onRemove(); }
   onAdd(map: GLMap, context: WebGLRenderingContext | WebGL2RenderingContext) {
     if (this.destroyed || !(context instanceof WebGL2RenderingContext)) return;
+    // MapLibre live style replacement reattaches custom layers without calling onRemove.
+    if (this.gl === context && this.program && context.isProgram(this.program) && this.buffer && this.vao) {
+      this.map = map; return;
+    }
+    this.release();
     this.map = map; this.gl = context;
     const gl = context, shaders: WebGLShader[] = [];
     try {

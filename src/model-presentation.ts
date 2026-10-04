@@ -5,6 +5,7 @@ export type ModelPresentation = {
   id: string;
   anchor: ScreenPoint;
   labelAnchor: ScreenPoint;
+  hasLabel: boolean;
   box: { minX: number; minY: number; maxX: number; maxY: number };
   feedback?: ModelFeedback;
 };
