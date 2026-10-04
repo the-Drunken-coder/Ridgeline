@@ -164,18 +164,67 @@ export const modelSwitchingCases: readonly { name: string; run(context: Context)
       only(await frame(viewport, () => viewport.upsert([feature('other')])), 'icon', 'reference change resets');
     } finally { viewport.destroy(); }
     const pending: AbortSignal[] = [];
-    const footprint = create(context, { sample: (lng, lat) => lng === 0 && lat === 0 ? 0 : null,
-      prepare: (_positions, signal) => { pending.push(signal); return new Promise<void>(() => {}); } });
+    let knownRadius = 0, unrelatedPrepared = false, onAbort: (() => void) | undefined;
+    const footprint = create(context, { sample: (lng, lat) => Math.abs(lng) <= knownRadius && Math.abs(lat) <= knownRadius ? 0 : null,
+      prepare: (positions, signal) => {
+        unrelatedPrepared ||= positions.some(([lng, lat]) => Math.abs(lng - .001) < 1e-9 && lat === 0);
+        pending.push(signal);
+        signal.addEventListener('abort', () => { const action = onAbort; onAbort = undefined; action?.(); });
+        return new Promise<void>(() => {});
+      } });
     try {
       await ready(context, footprint, 2000);
-      const tile = document.createElement('canvas'); tile.width = 16; tile.height = 16;
+      const tile = document.createElement('canvas'); tile.width = 256; tile.height = 256;
       const paint = tile.getContext('2d'); if (!paint) throw new Error('Terrain fixture needs a canvas');
-      paint.fillStyle = 'rgb(128,0,0)'; paint.fillRect(0, 0, 16, 16);
-      footprint.configure({ terrain: true, elevation: { tiles: [tile.toDataURL()], encoding: 'terrarium', tileSize: 16, maxzoom: 0 } });
+      paint.fillStyle = 'rgb(128,0,0)'; paint.fillRect(0, 0, 256, 256);
+      footprint.configure({ terrain: true, elevation: { tiles: [tile.toDataURL()], encoding: 'terrarium', tileSize: 256, maxzoom: 0 } });
       only(await frame(footprint, () => move(footprint, 1800)), 'icon', 'unknown footprint keeps fallback');
       await context.until(() => pending.some(signal => !signal.aborted), 'pending exact model footprint');
       only(await frame(footprint, () => move(footprint, 2200)), 'icon', 'far switch retires footprint');
       check(pending.every(signal => signal.aborted), 'Far icon retained irrelevant model preparation');
+      knownRadius = .00005;
+      only(await frame(footprint, () => { footprint.upsert([feature()]); move(footprint, 1800); }), 'icon', 'unknown enlarged footprint keeps fallback');
+      await context.until(() => pending.some(signal => !signal.aborted), 'pending enlarged model footprint');
+      let removed = false;
+      onAbort = () => { removed = true; footprint.remove(['entity']); };
+      const enlarged = feature(); enlarged.entity!.model!.minimumSizePixels = 80;
+      await frame(footprint, () => footprint.upsert([enlarged]));
+      check(removed && !footprint.getEntityState('entity'), 'Terrain abort callback did not own removal');
+      const beforeReset = pending.length;
+      footprint.configure({ elevation: { ...footprint.getConfiguration().elevation, attribution: 'replacement after removal' } });
+      await pause(100);
+      check(pending.length === beforeReset, 'Removed model resurrected terrain preparation after provider reset');
+      const ownershipFailures: string[] = [];
+      await footprint.registerModel('other', { bytes: solidGlb() });
+      await frame(footprint, () => { footprint.upsert([feature()]); move(footprint, 2200); footprint.retryUpdates(); });
+      await frame(footprint, () => move(footprint, 1800));
+      await context.until(() => pending.some(signal => !signal.aborted), 'reference-change pending footprint');
+      let referenceAborted = false;
+      onAbort = () => { referenceAborted = true; footprint.remove(['entity']); };
+      const unaffected = feature('missing'); unaffected.id = 'unaffected'; unaffected.geometry.coordinates = [.001, 0];
+      footprint.upsert([feature('other'), unaffected]);
+      await frame(footprint);
+      check(referenceAborted, 'Reference change did not abort model-owned preparation');
+      if (footprint.getFeature('entity') || footprint.getEntityState('entity')) ownershipFailures.push('Reference change restored entity removed by abort callback');
+      check(Boolean(footprint.getFeature('unaffected') && footprint.getEntityState('unaffected')), 'Cancelled entity dropped another accepted batch member');
+      await context.until(() => unrelatedPrepared, 'unaffected batch member retains terrain preparation');
+      if (!ownershipFailures.length) await context.until(() => footprint.map.isSourceLoaded('rl:features') &&
+        !footprint.map.querySourceFeatures('rl:features').some(item => item.properties._rl_feature_id === 'entity'), 'removed reference retires native publication');
+      footprint.remove(['unaffected']);
+      await frame(footprint, () => { footprint.upsert([feature()]); move(footprint, 2200); footprint.retryUpdates(); });
+      await frame(footprint, () => move(footprint, 1800));
+      await context.until(() => pending.some(signal => !signal.aborted), 'removal pending footprint');
+      let removalAborted = false;
+      onAbort = () => { removalAborted = true; footprint.upsert([feature('missing')]); };
+      footprint.remove(['entity']);
+      await frame(footprint);
+      check(removalAborted, 'Removal did not abort model-owned preparation');
+      if (footprint.getFeature('entity')?.entity?.model?.id !== 'missing' || footprint.getEntityState('entity')?.model?.id !== 'missing')
+        ownershipFailures.push('Removal discarded entity reintroduced by abort callback');
+      check(ownershipFailures.length === 0, ownershipFailures.join('; '));
+      await context.until(() => footprint.map.isSourceLoaded('rl:features') &&
+        footprint.map.querySourceFeatures('rl:features').some(item => item.properties._rl_feature_id === 'entity'), 'reintroduced entity reaches native publication');
+      only(await frame(footprint), 'icon', 'reintroduced entity owns native pixels');
     } finally { footprint.destroy(); }
   } },
   { name: 'Model switching preflights failures and rejects reentrant stale frames', async run(context) {

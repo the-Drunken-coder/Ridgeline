@@ -126,10 +126,14 @@ export class EntityScene<P extends Properties> {
     });
   }
   set(features: readonly MapFeature<P>[], removed: readonly string[] = []) {
+    if (this.destroyed) return;
     this.revision++;
-    for (const id of removed) {
-      this.coverage.remove(id);
-      this.elevation.release(placementAreaKey(id)); this.elevation.release(modelAreaKey(id));
+    const retired = new Set([...removed, ...features.filter(feature => !feature.entity).map(feature => feature.id)]);
+    const referencesChanged = new Set(features.filter(feature => feature.entity &&
+      this.features.get(feature.id)?.entity?.model?.id !== feature.entity.model?.id).map(feature => feature.id));
+    // Install the whole accepted batch before aborting old work. An abort callback
+    // may replace any member; its newer feature must survive the remaining cleanup.
+    for (const id of retired) {
       this.features.delete(id);
       this.states.delete(id);
       this.modelStyles.delete(id); this.modelDiagnostics.delete(id); this.choices.delete(id); this.published.delete(id);
@@ -139,29 +143,26 @@ export class EntityScene<P extends Properties> {
       this.dirty.delete(id);
       this.diagnosticKeys.delete(id);
     }
-    for (const feature of features) {
-      if (feature.entity) {
-        if (this.features.get(feature.id)?.entity?.model?.id !== feature.entity.model?.id) {
-          this.choices.delete(feature.id); this.elevation.release(modelAreaKey(feature.id));
-        }
-        this.features.set(feature.id, feature);
-        this.dirty.add(feature.id);
-      } else {
-        this.coverage.remove(feature.id);
-        this.elevation.release(placementAreaKey(feature.id)); this.elevation.release(modelAreaKey(feature.id));
-        this.features.delete(feature.id);
-        this.states.delete(feature.id);
-        this.modelStyles.delete(feature.id); this.modelDiagnostics.delete(feature.id); this.choices.delete(feature.id); this.published.delete(feature.id);
-        this.nonCameraCoverage.delete(feature.id);
-        this.positions.delete(feature.id);
-        this.geometryDirty = this.geometry.delete(feature.id) || this.geometryDirty;
-        this.diagnosticKeys.delete(feature.id);
-      }
+    for (const feature of features) if (feature.entity) {
+      this.features.set(feature.id, feature);
+      this.dirty.add(feature.id);
+      if (referencesChanged.has(feature.id)) this.choices.delete(feature.id);
     }
-    const areas: { key: string; center: [number, number]; radiusMeters: number }[] = [];
+    const current = (feature: MapFeature<P>) => !this.destroyed && this.features.get(feature.id) === feature;
+    for (const id of retired) {
+      if (this.destroyed || this.features.has(id)) continue;
+      this.coverage.remove(id);
+      if (this.destroyed || this.features.has(id)) continue;
+      this.elevation.release(placementAreaKey(id));
+      if (this.destroyed || this.features.has(id)) continue;
+      this.elevation.release(modelAreaKey(id));
+    }
+    for (const feature of features) if (referencesChanged.has(feature.id) && current(feature))
+      this.elevation.release(modelAreaKey(feature.id));
+    const areas: { feature: MapFeature<P>; request: { key: string; center: [number, number]; radiusMeters: number } }[] = [];
     const footprintsVisible = this.options.configuration().entityVisibility.footprints;
     for (const feature of features) {
-      if (!feature.entity || feature.geometry.type !== 'Point') continue;
+      if (!current(feature) || !feature.entity || feature.geometry.type !== 'Point') continue;
       const [lng, lat] = feature.geometry.coordinates;
       if (lng === undefined || lat === undefined) continue;
       const center: [number, number] = [lng, lat];
@@ -179,9 +180,9 @@ export class EntityScene<P extends Properties> {
       this.coverage.requestAreas(feature.id, center,
         attachments.filter((attachment): attachment is CameraAttachment => attachment.type === 'camera'),
         footprintsVisible && Boolean(feature.entity.altitude) && cameraCapable);
-      areas.push({ key: placementAreaKey(feature.id), center, radiusMeters });
+      areas.push({ feature, request: { key: placementAreaKey(feature.id), center, radiusMeters } });
     }
-    this.elevation.requestBatch(areas, { deferProbe: true });
+    this.elevation.requestBatch(areas.filter(area => current(area.feature)).map(area => area.request), { deferProbe: true });
     this.schedule();
   }
   configure(elevationChanged = false) {

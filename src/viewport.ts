@@ -394,16 +394,20 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         for (const feature of features) if (feature.entity?.model) modelSettings(configuration.entityModels, feature.entity.model);
         const changed = store.upsert(features);
         entities.set(changed);
-        publication.update(changed);
-        emit('datachange', { ids: changed.map(feature => feature.id), removed: [] });
+        if (destroyed) return;
+        const current = changed.flatMap(feature => { const latest = store.get(feature.id); return latest ? [latest] : []; });
+        publication.update(current);
+        emit('datachange', { ids: current.map(feature => feature.id), removed: [] });
       } catch (cause) {
         const error = cause instanceof RidgelineError ? cause : new RidgelineError('INVALID_FEATURE', 'Feature data could not be copied.', { operation: 'upsert', recoverable: true }, cause);
         diagnostic(error); throw error;
       }
     },
     remove(ids) {
-      assertActive(); const removed = store.remove(ids);
-      entities.set([], removed);
+      assertActive(); const accepted = store.remove(ids);
+      entities.set([], accepted);
+      if (destroyed) return;
+      const removed = accepted.filter(id => !store.has(id));
       publication.update([], removed);
       for (const id of removed) { selected.delete(id); if (editingId === id) editingId = null; if (previewId === id) previewId = null; if (prepared) map.removeFeatureState({ source: SOURCE, id: sourceFeatureId(id) }); }
       if (removed.length) modelVisibility.invalidate();
