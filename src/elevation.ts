@@ -11,6 +11,8 @@ export type ElevationArea = {
   radiusMeters: number;
   preparationBounds?: readonly [number, number, number, number];
   sampleRange?: number;
+  /** Exact probes needed in addition to the footprint preparation grid. */
+  requiredPositions?: readonly (readonly [number, number])[];
 };
 
 type Area = ElevationArea & { work?: Work; revision: number; unavailable?: boolean };
@@ -23,11 +25,14 @@ type Work = {
   areas: ElevationArea[];
   controller: AbortController;
   status: WorkStatus;
+  preparedPositions?: Set<string>;
 };
 
+export const modelAreaKey = (entityId: string) => `model:${entityId}`;
 export const placementAreaKey = (entityId: string) => `placement:${entityId}`;
 export const cameraAreaKey = (entityId: string, range: number) => `camera:${entityId}:${range}`;
 export function entityIdForAreaKey(key: string) {
+  if (key.startsWith('model:')) return key.slice('model:'.length);
   if (key.startsWith('placement:')) return key.slice('placement:'.length);
   if (key.startsWith('camera:')) return key.slice('camera:'.length, key.lastIndexOf(':'));
   return undefined;
@@ -43,6 +48,14 @@ type ElevationOptions = {
 
 const EARTH_RADIUS = 6_371_008.8;
 const radians = Math.PI / 180;
+
+const pointKey = ([lng, lat]: readonly [number, number]) => `${wrapLongitude(lng)},${lat}`;
+function sameArea(a: ElevationArea, b: ElevationArea) {
+  if (a.center[0] !== b.center[0] || a.center[1] !== b.center[1] || a.radiusMeters !== b.radiusMeters || a.sampleRange !== b.sampleRange) return false;
+  if (Boolean(a.preparationBounds) !== Boolean(b.preparationBounds) || a.preparationBounds?.some((value, index) => value !== b.preparationBounds?.[index])) return false;
+  const first = new Set(a.requiredPositions?.map(pointKey)), second = new Set(b.requiredPositions?.map(pointKey));
+  return first.size === second.size && [...first].every(point => second.has(point));
+}
 
 function contains(outer: ElevationArea, inner: ElevationArea) {
   if (outer.preparationBounds) {
@@ -64,7 +77,8 @@ function contains(outer: ElevationArea, inner: ElevationArea) {
 }
 
 function positions(area: ElevationArea): [number, number][] {
-  const output: [number, number][] = [[wrapLongitude(area.center[0]), area.center[1]]];
+  const output: [number, number][] = [[wrapLongitude(area.center[0]), area.center[1]],
+    ...(area.requiredPositions ?? []).map(([lng, lat]): [number, number] => [wrapLongitude(lng), lat])];
   if (area.preparationBounds) {
     const [west, south, east, north] = area.preparationBounds;
     for (const lng of [west, area.center[0], east]) for (const lat of [south, area.center[1], north])
@@ -130,8 +144,7 @@ export class Elevation {
     const fresh: Area[] = [];
     for (const request of requests) {
       const previous = this.areas.get(request.key);
-      if (previous && previous.center[0] === request.center[0] &&
-          previous.center[1] === request.center[1] && previous.radiusMeters === request.radiusMeters) {
+      if (previous && sameArea(previous, request)) {
         if (!options.deferProbe) this.startDeferred(previous.work);
         continue;
       }
@@ -140,7 +153,8 @@ export class Elevation {
         key: request.key,
         center: [request.center[0], request.center[1]],
         radiusMeters: request.radiusMeters,
-        preparationBounds: request.preparationBounds,
+        preparationBounds: request.preparationBounds && [...request.preparationBounds],
+        requiredPositions: request.requiredPositions?.map(([lng, lat]) => [wrapLongitude(lng), lat]),
         sampleRange: request.sampleRange,
         revision: ++this.revisionCounter,
       };
@@ -153,6 +167,7 @@ export class Elevation {
     for (const area of fresh) {
       const covering = [...this.works].find(work =>
         work.keys.size && work.status.phase !== 'settled' &&
+        (work.status.phase === 'scheduled' || (area.requiredPositions ?? []).every(point => work.preparedPositions?.has(pointKey(point)))) &&
         work.areas.some(candidate => work.keys.has(candidate.key) && contains(candidate, area)));
       if (covering) {
         area.work = covering;
@@ -281,16 +296,19 @@ export class Elevation {
     try {
       known = !work.status.force && samples.every(([lng, lat]) => this.height(lng, lat) !== null);
     } catch (cause) {
+      if (this.destroyed || work.controller.signal.aborted || !this.works.has(work)) return;
       work.status = { phase: 'settled', prepared: true };
       this.report('Consumer elevation source could not sample entity or sensor terrain.', cause);
       this.notify([...work.keys]);
       return;
     }
+    if (this.destroyed || work.controller.signal.aborted || !this.works.has(work)) return;
     if (known) {
       work.status = { phase: 'settled', prepared: false };
       this.notify([...work.keys]);
       return;
     }
+    work.preparedPositions = new Set(samples.map(pointKey));
     work.status = { phase: 'pending' };
     // Call as a method so a stateful consumer sampler keeps its receiver.
     void Promise.resolve().then(() => {
@@ -319,7 +337,7 @@ export class Elevation {
   }
 
   private restart() {
-    const requests = [...this.areas.values()].map(({ key, center, radiusMeters, preparationBounds, sampleRange }) => ({ key, center, radiusMeters, preparationBounds, sampleRange }));
+    const requests = [...this.areas.values()].map(({ key, center, radiusMeters, preparationBounds, sampleRange, requiredPositions }) => ({ key, center, radiusMeters, preparationBounds, sampleRange, requiredPositions }));
     for (const work of this.works) work.controller.abort();
     this.works.clear();
     this.areas.clear();
