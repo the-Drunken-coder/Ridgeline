@@ -10,6 +10,8 @@ await copyFile('tests/model-registration.browser.ts', `${directory}/model-regist
 await copyFile('tests/model-placement.browser.ts', `${directory}/model-placement.browser.ts`);
 await copyFile('tests/model-placement-fixtures.ts', `${directory}/model-placement-fixtures.ts`);
 await copyFile('tests/model-switching.browser.ts', `${directory}/model-switching.browser.ts`);
+await copyFile('tests/model-materials.browser.ts', `${directory}/model-materials.browser.ts`);
+await copyFile('tests/model-material-fixtures.ts', `${directory}/model-material-fixtures.ts`);
 await copyFile('tests/model-fixtures.ts', `${directory}/model-fixtures.ts`);
 // The focused GPU test compiles the production GLSL function directly.
 await copyFile('src/gpu-camera-shaders.ts', `${directory}/gpu-camera-shaders.ts`);
