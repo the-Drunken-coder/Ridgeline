@@ -1,6 +1,8 @@
 import { checkGpuVote } from './gpu-vote';
 import { browserCases } from './browser-cases';
 import { modelRegistrationCases } from './model-registration.browser';
+import { modelPlacementCases } from './model-placement.browser';
+import { modelSwitchingCases } from './model-switching.browser';
 import { modelMaterialCases } from './model-materials.browser';
 import { createViewport, createDrawingSession, attachInteractions, attachDrawing, attachDrawingControls, shapeGeometry, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
@@ -110,7 +112,7 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
-  for (const test of [...modelMaterialCases, ...modelRegistrationCases]) {
+  for (const test of [...modelPlacementCases, ...modelSwitchingCases, ...modelMaterialCases, ...modelRegistrationCases]) {
     await run(test.name, () => test.run({ container, setCurrent(viewport) { current = viewport; }, until }));
   }
   for (const projection of ['flat', 'globe'] as const) {

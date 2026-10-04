@@ -1,5 +1,12 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Model heading pitch roll and authored offset preserve physical axes',
+  'Ground models follow planar terrain at real and enlarged size',
+  'Model placement recovers from unknown terrain without moving entities',
+  'Model switching publishes one representation through distance and settings histories',
+  'Model switching preserves choices through temporary terrain and asset readiness',
+  'Model switching preflights failures and rejects reentrant stale frames',
+  'Model size floors use the rendered projected box and settle without idle frames',
   'Embedded PNG and JPEG preserve original and independent assigned appearances',
   'Model alpha modes unlit emission and double sided materials render their supported appearance',
   'Shared model images retain independent texture samplers and UV transforms',
