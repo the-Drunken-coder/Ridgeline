@@ -1,5 +1,10 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'models retain resources through basemap replacement',
+  'models rebuild current presentation after real context loss',
+  'model recovery cancels stale native image completions',
+  'model recovery reports allocation failure and retries explicitly',
+  'model frames recover from consumer prerender mutations',
   'Model heading pitch roll and authored offset preserve physical axes',
   'Ground models follow planar terrain at real and enlarged size',
   'Model placement recovers from unknown terrain without moving entities',
