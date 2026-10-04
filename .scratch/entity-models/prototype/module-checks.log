@@ -1,0 +1,24 @@
+✔ triangles picking keeps coherent geometry together in flat projection (6.467929ms)
+✔ triangles picking keeps coherent geometry together in globe fallback projection (1.76297ms)
+✔ lines picking keeps coherent geometry together in flat projection (2.007931ms)
+✔ lines picking keeps coherent geometry together in globe fallback projection (1.220307ms)
+✔ null entity buffer allocation reports once and explicit retry renders only current geometry (1.637489ms)
+✔ picks the visible part of a face whose third vertex crosses the near plane (1.245743ms)
+✔ synchronous and rejected preparation errors are reported without aborting accepted entity updates (13.221387ms)
+✔ a preparation callback can remove its entity without reviving geometry (2.580369ms)
+✔ style can remove an entity without restoring its camera output (3.102216ms)
+✔ style can replace an entity without restoring its camera output (1.130713ms)
+✔ sample can remove an entity without restoring its camera output (0.882159ms)
+✔ sample can replace an entity without restoring its camera output (0.699332ms)
+✔ a failed entity style retains the last complete placement (2.66789ms)
+✔ a required sampling failure removes completed camera coverage while retaining placement and unrelated ground areas (11.667845ms)
+✔ selection rebuilds only entities whose highlight changes (3.528817ms)
+✔ unchanged unusable cameras do not restart released terrain preparation (81.06568ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 607.579707

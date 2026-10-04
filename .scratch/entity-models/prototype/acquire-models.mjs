@@ -39,7 +39,8 @@ try {
   const input = join(temporary, 'kit', 'Models', 'GLB format', 'boat-speed-a.glb');
   // This is the single packaging step requested in #74, embedding the kit PNG.
   execFileSync('pnpm', ['dlx', '@gltf-transform/cli@4.5.1', 'copy', input, join(output, 'boat.glb')], {stdio: 'inherit'});
-  await writeFile(join(output, 'Kenney-License.txt'), await readFile(join(temporary, 'kit', 'License.txt')));
+  const license = await readFile(join(temporary, 'kit', 'License.txt'), 'utf8');
+  await writeFile(join(output, 'Kenney-License.txt'), license.replace(/\r\n/g, '\n').split('\n').map(line => line.trimEnd()).join('\n'));
   sources.push({name: 'boat', author: 'Kenney', page, url: zipUrl, sourceBytes: (await readFile(input)).byteLength, bytes: (await readFile(join(output, 'boat.glb'))).byteLength, license: 'CC0 1.0', licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/', modification: 'One gltf-transform copy pass to embed colormap.png'});
 } finally {
   await rm(temporary, {recursive: true, force: true});

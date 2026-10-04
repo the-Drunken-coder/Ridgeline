@@ -1,0 +1,84 @@
+{
+  "date": "2026-10-04T01:19:46.426Z",
+  "method": "Trimmed actual Playwright viewport recordings with ffmpeg stream copy. No playback speed changes. Software WebGL only.",
+  "clips": [
+    {
+      "file": "recordings/size-comparison.webm",
+      "source": "raw-recordings/page@860f25cfc200c0326c5686b1fe13d214.webm",
+      "startSeconds": 70,
+      "durationSeconds": 40,
+      "note": "Historical uncommitted capture, enlargement then real size"
+    },
+    {
+      "file": "recordings/tint-comparison.webm",
+      "source": "raw-recordings/page@860f25cfc200c0326c5686b1fe13d214.webm",
+      "startSeconds": 108,
+      "durationSeconds": 10,
+      "note": "Historical uncommitted capture, tint on/off"
+    },
+    {
+      "file": "recordings/treatment-comparison.webm",
+      "source": "raw-recordings/page@860f25cfc200c0326c5686b1fe13d214.webm",
+      "startSeconds": 117,
+      "durationSeconds": 12,
+      "note": "Historical uncommitted capture, ring/box/bright"
+    },
+    {
+      "file": "recordings/slope-comparison.webm",
+      "source": "raw-recordings/page@de31e2c703c05c2e85cb838f4b12e223.webm",
+      "startSeconds": 46,
+      "durationSeconds": 17,
+      "note": "Historical build at 6b3d123, flat/following/real"
+    },
+    {
+      "file": "recordings/instant-switch.webm",
+      "source": "raw-recordings/page@6d886be7a48bc2fec749afb8b5214bfc.webm",
+      "startSeconds": 81,
+      "durationSeconds": 24,
+      "note": "Runtime 0aedbc0, instant endpoint comparison"
+    },
+    {
+      "file": "recordings/fade-switch.webm",
+      "source": "raw-recordings/page@6d886be7a48bc2fec749afb8b5214bfc.webm",
+      "startSeconds": 132,
+      "durationSeconds": 15,
+      "note": "Runtime 0aedbc0, fade endpoint comparison"
+    },
+    {
+      "file": "recordings/moving-workload.webm",
+      "source": "raw-recordings/page@eb12bd86fc966a7481e73fae56b29a76.webm",
+      "startSeconds": 178,
+      "durationSeconds": 17,
+      "note": "Runtime 0aedbc0, moving entities on software WebGL"
+    },
+    {
+      "file": "recordings/globe-transition.webm",
+      "source": "raw-recordings/page@3e13e148032438b4c62d6d434b95624c.webm",
+      "startSeconds": 102,
+      "durationSeconds": 28,
+      "note": "Runtime 0aedbc0, discrete globe zoom views, software rendering does not prove smooth continuity"
+    },
+    {
+      "file": "recordings/context-recovery.webm",
+      "source": "raw-recordings/page@cc2340a44d2251f3bf9757ab5600b46d.webm",
+      "startSeconds": 44,
+      "durationSeconds": 25,
+      "note": "Runtime 0aedbc0, software context loss and restore"
+    },
+    {
+      "file": "recordings/material-fixtures.webm",
+      "source": "raw-recordings/page@58161ed90e120cd83b3d679e49f2260d.webm",
+      "startSeconds": 123,
+      "durationSeconds": 23,
+      "note": "Runtime 0aedbc0, translucent plane then cut-out drone fixtures"
+    },
+    {
+      "file": "recordings/meter-scale-precision.webm",
+      "source": "raw-recordings/page@72c544590c92d828a3f1cd2cf7dbfee2.webm",
+      "startSeconds": 75,
+      "durationSeconds": 30,
+      "note": "Runtime 0aedbc0, real-size meter-scale precision fixture. Discrete software frames do not prove normal-rate jitter freedom."
+    }
+  ],
+  "sourceRetention": "Full raw sessions were discarded after extracting these clips. Source filenames are provenance only."
+}

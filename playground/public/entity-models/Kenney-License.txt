@@ -1,10 +1,10 @@
-	
+
 
 	Watercraft Kit (2.1)
 
 	Created/distributed by Kenney (www.kenney.nl)
 	Creation date: 19-04-2024 11:37
-	
+
 			------------------------------
 
 	License: (Creative Commons Zero, CC0)
@@ -20,7 +20,7 @@
 	• Donate  : www.kenney.nl/donate
 
 	• Patreon : patreon.com/kenney
-	
+
 	Follow on social media for updates:
 
 	• Twitter:   twitter.com/KenneyNL

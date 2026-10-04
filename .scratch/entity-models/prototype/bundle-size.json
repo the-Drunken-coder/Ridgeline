@@ -1,0 +1,24 @@
+{
+  "date": "2026-10-04T01:01:29.273Z",
+  "revision": "6b3d12382cbf1dd5e9e989fc1381f5b5e4636d3f",
+  "method": "Vite 8.3.0 minified ES modules with maplibre-gl external; sum gzipSync of emitted chunks. Shared projection includes existing entity code, so not a library delta.",
+  "chunks": [
+    {
+      "file": "entity-model-glb.prototype.js",
+      "raw": 12138,
+      "gzip": 4157
+    },
+    {
+      "file": "entity-model-layer.prototype.js",
+      "raw": 21615,
+      "gzip": 7241
+    },
+    {
+      "file": "entity-projection.js",
+      "raw": 2543,
+      "gzip": 1220
+    }
+  ],
+  "raw": 36296,
+  "gzip": 12618
+}

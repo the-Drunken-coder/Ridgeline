@@ -4,7 +4,7 @@ Prototype ticket: [Choose model appearance and switching behavior, #76](https://
 
 ## Acquisition
 
-The picks match [#74's resolution](https://github.com/the-Drunken-coder/Ridgeline/issues/74#issuecomment-5974696379). The three Poly Pizza GLBs were downloaded unchanged from the live model pages. Their automatic source-format conversions were supplied by Poly Pizza, not performed for this prototype.
+The picks match [Find freely licensed sample models](https://github.com/the-Drunken-coder/Ridgeline/issues/74#issuecomment-5974696379). The three Poly Pizza GLBs were downloaded unchanged from the live model pages. Their automatic source-format conversions were supplied by Poly Pizza, not performed for this prototype.
 
 The Kenney ZIP was downloaded from the official Watercraft Kit page. The original `boat-speed-a.glb` references `Textures/colormap.png`. One `@gltf-transform/cli@4.5.1 copy` pass embedded that PNG. No quantization, mesh simplification, compression or joining was applied to any sample.
 
@@ -35,13 +35,13 @@ The first three models are [CC BY 3.0](https://creativecommons.org/licenses/by/3
 - "Jet" by jeremy, https://poly.pizza/m/6fyLMORhgGK, licensed under CC BY 3.0, https://creativecommons.org/licenses/by/3.0/. Converted to GLB by Poly Pizza.
 - "Watercraft Kit" by Kenney, https://kenney.nl/assets/watercraft-kit, CC0 1.0, https://creativecommons.org/publicdomain/zero/1.0/. Repackaged to embed its PNG. Credit is optional under CC0.
 
-Kenney's original [License.txt](../../../playground/public/entity-models/Kenney-License.txt) is retained beside the GLBs.
+Kenney's [License.txt](../../../playground/public/entity-models/Kenney-License.txt) is retained beside the GLBs, with line endings and trailing whitespace normalized.
 
 ## Parsed bounds
 
 These are default-scene bounds after node transforms, before the renderer's axis turn, centering or terrain placement. Coordinates retain glTF's +Y up.
 
-| Sample | Minimum X, Y, Z | Maximum X, Y, Z | Front from #74 |
+| Sample | Minimum X, Y, Z | Maximum X, Y, Z | Authored forward direction |
 | --- | --- | --- | --- |
 | Drone | -0.286715, -0.159208, -0.524731 | 0.286856, 0.048380, 0.256569 | +Z |
 | Tank | -7.401291, -0.041452, -2.487616 | 3.944094, 3.537173, 2.574759 | -X |
@@ -63,4 +63,4 @@ Historical Node timing run before the final mirrored-transform change, 21 parses
 | Jet | 3.07 | 2.80 | 6.90 |
 | Speedboat | 0.76 | 0.42 | 0.48 |
 
-The final parser and image-decode helper built standalone with Vite 8.3.0's ES library output measured 12,138 bytes raw and 4,157 bytes gzip using Node `gzipSync`. This includes exported functions and validation. The renderer and shared projection are excluded. It slightly exceeds the 3 to 4 KB gzip parser estimate in #75. Browser parsing, image decoding, texture upload and combined bundle size remain the integration owner's measurements.
+The final parser and image-decode helper built standalone with Vite 8.3.0's ES library output measured 12,138 bytes raw and 4,157 bytes gzip using Node `gzipSync`. This includes exported functions and validation. The renderer and shared projection are excluded. It slightly exceeds the 3 to 4 KB gzip parser estimate in [Choose how Ridgeline draws and loads models](https://github.com/the-Drunken-coder/Ridgeline/issues/75). Browser parsing, image decoding, texture upload and combined bundle size remain the integration owner's measurements.
