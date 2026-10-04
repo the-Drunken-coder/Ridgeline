@@ -1,5 +1,7 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Reliability entity meter-scale projection agrees with double precision in flat views',
+  'Reliability entity meter-scale projection agrees with double precision in globe views',
   'Reliability entity coherent attachments reject empty space across the opposite world seam',
   'Reliability drawing insertion handles preserve displayed edges',
   'Reliability drawing snapping follows the pointer world copy at low zoom',
