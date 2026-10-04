@@ -1,3 +1,4 @@
+import { ModelVisibility } from './model-visibility';
 import { shapeGeometry } from './drawing-shapes';
 import { createArrowheads } from './arrowheads';
 import { Map as GLMap } from 'maplibre-gl';
@@ -111,8 +112,32 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     diagnostic(error);
     throw error;
   }
+  const modelVisibility = new ModelVisibility(map);
+  const preparedMarkerKeys = new WeakMap<MapFeature<P>, string>();
+  const publishedMarkerKeys = new Map<string, string>();
+  let nativeSource: unknown;
+  let availableMarkers = new Map<string, string>();
+  let frameMarkers: Map<string, string> | undefined;
   const models = new ModelRegistry<ModelGpu>({ diagnostic, changed: id => entities.modelsChanged(id) });
   const entities = new EntityScene<P>({ models, map, configuration: () => configuration, style: getStyle, sampler: options.elevationSampler, diagnostic,
+    beginNativeFrame: () => { frameMarkers = undefined; },
+    nativeAvailable: (feature, style) => {
+      const source = map.getSource(SOURCE);
+      if (!source) return false;
+      if (source !== nativeSource) { nativeSource = source; availableMarkers.clear(); }
+      const key = markerKey(feature, style);
+      if (availableMarkers.get(feature.id) === key) return true;
+      if (publishedMarkerKeys.get(feature.id) === key && map.isSourceLoaded(SOURCE)) {
+        availableMarkers.set(feature.id, key); return true;
+      }
+      frameMarkers ??= new Map(map.querySourceFeatures(SOURCE).flatMap(item =>
+        typeof item.properties?._rl_feature_id === 'string' && typeof item.properties?._rl_marker === 'string'
+          ? [[item.properties._rl_feature_id, item.properties._rl_marker] as [string, string]] : []));
+      if (frameMarkers.get(feature.id) === key) { availableMarkers.set(feature.id, key); return true; }
+      return false;
+    },
+    commitVisibility: hidden => modelVisibility.commit(hidden),
+    representationChanged: ids => { if (!destroyed) emit('entitychange', { ids }); },
     changed: ids => {
       publication.update(ids.flatMap(id => { const feature = store.get(id); return feature ? [feature] : []; }));
       for (const id of ids) { if (destroyed) return; synchronizeState(id); }
@@ -122,6 +147,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   const arrowheads = createArrowheads(map, 'rl:arrows', 'rl:arrowheads');
   const publication = createFeaturePublication({ store, target: mapLibreFeaturePublication(map), render: rendered, sourceId: sourceFeatureId, diagnostic,
     published: (id, feature) => {
+      const marker = feature && preparedMarkerKeys.get(feature);
+      if (marker) publishedMarkerKeys.set(id, marker); else publishedMarkerKeys.delete(id);
       const wasArrow = publishedArrows.has(id);
       if (feature?.drawing?.shape.kind === 'arrow') publishedArrows.set(id, feature);
       else publishedArrows.delete(id);
@@ -129,6 +156,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       synchronizeState(id);
     },
     restored: features => {
+      publishedMarkerKeys.clear();
+      for (const feature of features) { const key = preparedMarkerKeys.get(feature); if (key) publishedMarkerKeys.set(feature.id, key); }
       publishedArrows.clear();
       for (const feature of features) if (feature.drawing?.shape.kind === 'arrow') publishedArrows.set(feature.id, feature);
     },
@@ -146,15 +175,21 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     return typeof name === 'string' && name.trim() ? name : feature.id;
   }
   function getStyle(feature: MapFeature<P>): FeatureStyle { return { ...options.style?.(structuredClone(feature)), ...feature.drawing?.style }; }
+  function markerKey(feature: MapFeature<P>, style: FeatureStyle) {
+    const marker = entities.marker(feature);
+    return JSON.stringify([marker.position ?? feature.geometry.coordinates, marker.visible, marker.ground, marker.offset,
+      style.icon && icons.has(style.icon) ? style.icon : '', style.color ?? '#216e5b', style.radius ?? 6]);
+  }
   function rendered(feature: MapFeature<P>): MapFeature {
     const style = getStyle(feature);
-    const marker = entities.marker(feature);
+    const marker = entities.marker(feature), key = feature.entity ? markerKey(feature, style) : undefined;
+    if (key) preparedMarkerKeys.set(feature, key);
     return {
       type: 'Feature', id: feature.id,
       geometry: feature.drawing ? shapeGeometry(feature.drawing.shape, true)
         : marker.position ? { type: 'Point', coordinates: marker.position } : feature.geometry,
       properties: {
-        _rl_id: sourceFeatureId(feature.id), _rl_feature_id: feature.id,
+        _rl_id: sourceFeatureId(feature.id), _rl_feature_id: feature.id, ...(key ? { _rl_marker: key } : {}),
         _rl_color: style.color ?? '#216e5b', _rl_fill: style.fillColor ?? style.color ?? '#216e5b', _rl_dashed: style.dashed ?? false, _rl_radius: style.radius ?? 6,
         _rl_width: style.lineWidth ?? 3, _rl_opacity: style.fillOpacity ?? 0.2,
         _rl_icon: style.icon && icons.has(style.icon) ? `rl:icon:${style.icon}` : '',
@@ -164,7 +199,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     };
   }
   function synchronizeState(id: string) {
-    if (prepared && map.getSource(SOURCE) && store.has(id)) map.setFeatureState({ source: SOURCE, id: sourceFeatureId(id) }, { selected: selected.has(id), hover: previewId === id, editing: editingId === id, model: entities.getState(id)?.representation === 'model' });
+    if (prepared && map.getSource(SOURCE) && store.has(id)) map.setFeatureState({ source: SOURCE, id: sourceFeatureId(id) }, { selected: selected.has(id), hover: previewId === id, editing: editingId === id });
   }
   function applyElevation(replace = false) {
     if (!prepared || destroyed) return;
@@ -245,6 +280,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       applyElevation();
       if (!current()) return;
       entities.attach();
+      // Fallbacks draw after models, so a detected model draw failure can expose them in this frame.
+      for (const id of ['rl:points', 'rl:icons', 'rl:labels']) map.moveLayer(id);
+      modelVisibility.invalidate();
       if (!current()) return;
       for (const id of selected) synchronizeState(id);
       if (previewId) synchronizeState(previewId);
@@ -281,7 +319,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       addEntityHits(entities.pickAbove(x, y, tolerance));
       for (const hit of hits) {
         const id = hit.properties?._rl_feature_id;
-        if (typeof id !== 'string' || seen.has(id)) continue;
+        if (typeof id !== 'string' || seen.has(id) || entities.getState(id)?.representation === 'model') continue;
         const feature = store.get(id);
         if (feature) { seen.add(id); features.push(feature); }
       }
@@ -318,7 +356,6 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   });
   // Feature publication and camera changes can alter the pick under a still pointer.
   map.on('idle', refreshHover);
-  map.on('move', () => entities.cameraChanged());
   map.on('moveend', () => {
     emit('camerachange', { center: map.getCenter(), zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() });
     refreshHover();
@@ -369,6 +406,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       entities.set([], removed);
       publication.update([], removed);
       for (const id of removed) { selected.delete(id); if (editingId === id) editingId = null; if (previewId === id) previewId = null; if (prepared) map.removeFeatureState({ source: SOURCE, id: sourceFeatureId(id) }); }
+      if (removed.length) modelVisibility.invalidate();
+      for (const id of removed) { availableMarkers.delete(id); publishedMarkerKeys.delete(id); }
       if (removed.length) entities.selection([...selected]);
       emit('datachange', { ids: [], removed });
       if (removed.includes(hovered)) refreshHover();
@@ -482,7 +521,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       entities.destroy(); models.destroy();
       arrowheads.remove(); preparedListeners.clear(); sceneListeners.clear(); drawingInternals.delete(map);
       map.getCanvas().removeEventListener('mouseleave', onLeave);
-      map.remove(); icons.clear(); selected.clear(); store.remove(store.ids());
+      map.remove(); icons.clear(); selected.clear(); publishedMarkerKeys.clear(); availableMarkers.clear(); store.remove(store.ids());
       for (const set of Object.values(listeners)) set.clear();
     },
   };
