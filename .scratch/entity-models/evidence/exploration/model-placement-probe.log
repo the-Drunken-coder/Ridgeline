@@ -1,0 +1,114 @@
+{
+  "handedness": {
+    "fixedColumns": [
+      [
+        -1,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        1
+      ],
+      [
+        0,
+        1,
+        0
+      ]
+    ],
+    "determinant": 1,
+    "reflectedAlternativeDeterminant": -1,
+    "physicalRight": [
+      1,
+      0,
+      0
+    ],
+    "rolledRight": [
+      0.9396926207859084,
+      0,
+      -0.3420201433256687
+    ]
+  },
+  "winding": {
+    "cases": 35,
+    "properCCW": 35,
+    "reflectedCCW": 0,
+    "triangle": [
+      [
+        -1,
+        1,
+        -1
+      ],
+      [
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        -1
+      ]
+    ]
+  },
+  "orientation": {
+    "assetNose": "+X",
+    "heading": 0,
+    "headingOffset": 90,
+    "pitch": 20,
+    "correctedNose": [
+      -6.123233995736766e-17,
+      0.9396926207859084,
+      0.3420201433256687
+    ],
+    "incorrectHeadingSumNose": [
+      -6.123233995736766e-17,
+      1,
+      0
+    ]
+  },
+  "worldCopies": {
+    "comparisons": 36,
+    "maxRawExtentErrorCssPixels": 2.0768908370882855e-8
+  },
+  "planes": {
+    "cases": 768,
+    "maxAngularErrorDegrees": 8.537736462515939e-7,
+    "minClearance": 0.019999999999527063,
+    "maxClearance": 0.020000000004074536,
+    "maxDimensionError": 6.821210263296962e-13
+  },
+  "oldLift": {
+    "directCenter": 1.064030650891055,
+    "oldCenter": 1.8198699419201874,
+    "extraFloat": 0.7558392910291323
+  },
+  "floors": {
+    "cases": 105,
+    "maxAbsoluteOnePassError": 0.08887756589084006,
+    "maxFinalFloorError": 5.1100698783557164e-8
+  },
+  "exactPointSampler": {
+    "preparedPointCount": 10,
+    "centerRecovered": 100,
+    "corner": [
+      0.0000359728145489768,
+      0.000026979610911728835,
+      0.0000019622966647148132
+    ],
+    "cornerBefore": null,
+    "cornerAfter": null,
+    "prepareCalls": 1,
+    "readiness": "unavailable",
+    "changedKeys": [
+      [
+        "placement:probe"
+      ]
+    ]
+  },
+  "cancelled": {
+    "aborted": true,
+    "staleNotifications": 0
+  }
+}
