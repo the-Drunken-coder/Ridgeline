@@ -475,7 +475,7 @@ export class EntityScene<P extends Properties> {
             const labelHeight = state.placement === 'airborne' ? (state.altitude ?? 0) * verticalScale(configuration)
               : configuration.terrain ? (state.ground ?? 0) * configuration.exaggeration : 0;
             const labelAnchor = projection.project([input.location[0], input.location[1], labelHeight], origin);
-            if (anchor && labelAnchor) presentation.push({ id, anchor, labelAnchor, box, feedback: modelFeedback(this.selected.has(id), this.previewed === id) });
+            if (anchor && labelAnchor) presentation.push({ id, anchor, labelAnchor, box, hasLabel: Boolean(style.label), feedback: modelFeedback(this.selected.has(id), this.previewed === id) });
           }
         }
       }
