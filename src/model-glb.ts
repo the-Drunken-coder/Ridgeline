@@ -171,7 +171,7 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
     }
   }
   const buffers = list(root.buffers).map(object);
-  if (buffers.length !== 1 || buffers[0]?.uri !== undefined) throw new Error('GLB_EXTERNAL_OR_MULTIPLE_BUFFERS');
+  if (buffers.length !== 1 || buffers[0]?.uri !== undefined) throw new Error('GLB_EXTERNAL_OR_MULTIPLE_BUFFERS_UNSUPPORTED');
   const bufferLength = integer(buffers[0]?.byteLength);
   if (!bufferLength || bufferLength > bin.byteLength || bin.byteLength - bufferLength > 3) throw new Error('GLB_INVALID_BUFFER_LENGTH');
   for (let i = bufferLength; i < bin.byteLength; i++) if (bin[i] !== 0) throw new Error('GLB_INVALID_BUFFER_PADDING');

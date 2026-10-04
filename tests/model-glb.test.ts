@@ -234,7 +234,7 @@ test('unsupported model features reject by name with no partial result', () => {
     [{ ...json, extensionsRequired: ['KHR_draco_mesh_compression'] }, 'GLB_UNSUPPORTED_REQUIRED_EXTENSION:KHR_draco_mesh_compression'],
     [{ ...json, extensionsRequired: ['EXT_meshopt_compression'] }, 'GLB_UNSUPPORTED_REQUIRED_EXTENSION:EXT_meshopt_compression'],
     [{ ...json, extensionsRequired: ['KHR_texture_basisu'] }, 'GLB_UNSUPPORTED_REQUIRED_EXTENSION:KHR_texture_basisu'],
-    [{ ...json, buffers: [{ byteLength: binary.length, uri: 'https://example.test/model.bin' }] }, 'GLB_EXTERNAL_OR_MULTIPLE_BUFFERS'],
+    [{ ...json, buffers: [{ byteLength: binary.length, uri: 'https://example.test/model.bin' }] }, 'GLB_EXTERNAL_OR_MULTIPLE_BUFFERS_UNSUPPORTED'],
     [{ ...json, images: [{ uri: 'texture.png' }] }, 'GLB_EXTERNAL_IMAGES_UNSUPPORTED'],
     [{ ...json, skins: [{}] }, 'GLB_SKINS_UNSUPPORTED'],
     [{ ...json, nodes: [{ mesh: 0, skin: 0 }] }, 'GLB_SKINS_UNSUPPORTED'],
