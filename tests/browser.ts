@@ -218,12 +218,13 @@ async function suite() {
           await until(() => air.getEntityState('precise')?.computedAt !== before && air.map.loaded(), 'near-surface globe placement');
           const { pixels, width, height, scale } = await capture();
           const expected = reference(-179.99999, 46, 6);
-          let visible: { x: number; y: number } | undefined;
+          let visible: { x: number; y: number } | undefined, nearest = 5;
           for (let index = 0; index < pixels.length; index += 4) {
             if (pixels[index]! < pixels[index + 1]! + 80 || pixels[index]! < pixels[index + 2]! + 80) continue;
             const pixel = index / 4, candidate = { x: (pixel % width + .5) / scale,
               y: (height - Math.floor(pixel / width) - .5) / scale };
-            if (Math.hypot(candidate.x - expected.x, candidate.y - expected.y) < 5) { visible = candidate; break; }
+            const distance = Math.hypot(candidate.x - expected.x, candidate.y - expected.y);
+            if (distance < nearest) { visible = candidate; nearest = distance; }
           }
           check(visible, 'Native globe depth hid the entire near-surface marker');
           await pointer('click', visible!);
