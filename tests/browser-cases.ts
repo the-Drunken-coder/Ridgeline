@@ -1,5 +1,9 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Model picking uses drawn boxes and returns original entity and attachment hits',
+  'Model picking clips terrain near-plane and displayed world copies',
+  'Model overlap picker preserves choices focus and consumer selection',
+  'Model hover follows a stationary pointer and cancels stale callbacks',
   'Model feedback preserves appearance and follows model altitude',
   'Model labels wait for current collision layout beyond enlarged bounds',
   'Model enlargement preserves physical attachments and quiet presentation',

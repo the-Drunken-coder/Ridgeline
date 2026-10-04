@@ -1,9 +1,13 @@
-import { MercatorCoordinate } from 'maplibre-gl';
+import { MercatorCoordinate, Point } from 'maplibre-gl';
+import { ModelFeedbackLayer } from './model-feedback-layer';
+import { modelFeedback } from './model-presentation';
+import type { ModelPresentation } from './model-presentation';
 import { ModelLayer } from './model-layer';
 import type { ModelFrame } from './model-layer';
 import { EntityProjection, entityVertex } from './entity-projection';
 import { modelPlacement } from './model-placement';
-import { modelFloorScale } from './model-frame';
+import { pickModelBox } from './model-picking';
+import { modelFloorScale, modelScreenBox } from './model-frame';
 import { modelChoice } from './model-switching';
 import type { ModelChoice } from './model-switching';
 import { wrapLongitude } from './longitude';
@@ -50,15 +54,23 @@ type SceneOptions<P extends Properties> = {
   nativeAvailable?(feature: MapFeature<P>, style: FeatureStyle): boolean;
   commitVisibility?(hidden: ReadonlyMap<string, boolean>, current: () => boolean): boolean;
   representationChanged?(ids: string[]): void;
+  commitPresentation?(records: readonly ModelPresentation[], current: () => boolean): boolean;
+  contextLost?(): void;
+  contextRestored?(): void;
 };
 
 export class EntityScene<P extends Properties> {
   readonly layer: EntityLayer;
   readonly modelLayer?: ModelLayer;
+  private feedbackLayer: ModelFeedbackLayer;
+  private previewed: string | null = null;
   private modelStyles = new Map<string, FeatureStyle>();
   private choices = new Map<string, ModelChoice>();
   private published = new Map<string, EntityState['representation']>();
   private revision = 0;
+  private lost = false;
+  private modelHits: { feature: MapFeature<P>; polygons: NonNullable<ReturnType<typeof modelScreenBox>>['polygons'] }[] = [];
+  private terrainDepth?: (point: { x: number; y: number }) => number | undefined;
   private modelDiagnostics = new Map<string, string>();
   private groundLayer: EntityGround;
   private features = new Map<string, MapFeature<P>>();
@@ -76,8 +88,12 @@ export class EntityScene<P extends Properties> {
   private diagnosticKeys = new Map<string, string>();
   constructor(private options: SceneOptions<P>) {
     this.groundLayer = new EntityGround(options.map);
+    this.feedbackLayer = new ModelFeedbackLayer(cause => options.diagnostic(new RidgelineError('MODEL_RENDERER_FAILED',
+      'Model feedback could not render.', { operation: 'models', recoverable: true }, cause)));
     if (options.models) this.modelLayer = new ModelLayer(options.models, {
       prepare: (projection, available) => this.prepareModelFrame(projection, available), diagnostic: options.diagnostic,
+      contextLost: () => this.contextLost(),
+      contextRestored: () => { this.lost = false; options.contextRestored?.(); this.invalidate(); },
     });
     this.layer = new EntityLayer((cause) =>
       options.diagnostic(
@@ -201,7 +217,13 @@ export class EntityScene<P extends Properties> {
     this.coverage.retry();
     this.invalidate();
   }
+  preview(id: string | null) {
+    if (this.previewed === id || this.destroyed) return;
+    this.previewed = id; this.revision++;
+    if (!this.lost) this.options.map.triggerRepaint();
+  }
   selection(ids: readonly string[]) {
+    this.revision++;
     const next = new Set(ids);
     for (const id of new Set([...this.selected, ...next]))
       if (this.selected.has(id) !== next.has(id) && this.features.has(id)) this.dirty.add(id);
@@ -236,27 +258,46 @@ export class EntityScene<P extends Properties> {
     if (this.options.models?.status(modelId).status === 'unavailable') for (const id of ids) { this.choices.delete(id); this.elevation.release(modelAreaKey(id)); }
     for (const id of ids) this.dirty.add(id);
     if (ids.length) { this.schedule(); (this.options.representationChanged ?? this.options.changed)(ids); }
-    if (!this.destroyed) this.options.map.triggerRepaint();
+    if (!this.destroyed && !this.lost) this.options.map.triggerRepaint();
   }
   pickAbove(x: number, y: number, tolerance: number) {
-    return [...this.layer.pick(x, y, tolerance), ...this.coverage.pick(x, y)];
+    if (this.lost || this.destroyed) return [];
+    const models: { entityId: string; attachmentId?: string; depth: number }[] = this.modelHits.flatMap(({ feature, polygons }) => {
+      if (this.features.get(feature.id) !== feature) return [];
+      const point = pickModelBox(polygons, x, y, tolerance, this.terrainDepth);
+      return point ? [{ entityId: feature.id, depth: point.depth }] : [];
+    });
+    return [...[...models, ...this.layer.pick(x, y, tolerance)].sort((a, b) => a.depth - b.depth), ...this.coverage.pick(x, y)];
+  }
+  contextLost() {
+    if (this.lost || this.destroyed) return;
+    this.lost = true; this.revision++; this.feedbackLayer.clear();
+    this.modelHits = []; this.terrainDepth = undefined;
+    const ids = [...this.published.keys()];
+    this.published = new Map(ids.map(id => [id, 'withheld']));
+    this.options.contextLost?.();
+    this.modelLayer?.contextLost();
+    if (!this.destroyed && ids.length) (this.options.representationChanged ?? this.options.changed)(ids);
   }
   pickGround(x: number, y: number, tolerance: number) {
     return this.groundLayer.pick(x, y, tolerance);
   }
   attach() {
+    this.modelHits = []; this.terrainDepth = undefined;
     this.groundLayer.attach();
     this.coverage.attach();
     if (!this.options.map.getLayer(this.layer.id)) this.options.map.addLayer(this.layer);
     if (this.modelLayer && !this.options.map.getLayer(this.modelLayer.id)) this.options.map.addLayer(this.modelLayer, this.layer.id);
+    if (!this.options.map.getLayer(this.feedbackLayer.id)) this.options.map.addLayer(this.feedbackLayer);
     this.invalidate();
   }
   destroy() {
     this.coverage.destroy();
     this.destroyed = true;
+    this.modelHits = []; this.terrainDepth = undefined;
     cancelAnimationFrame(this.frame);
     this.elevation.destroy();
-    this.modelLayer?.destroy();
+    this.modelLayer?.destroy(); this.feedbackLayer.destroy();
     this.modelStyles.clear(); this.modelDiagnostics.clear(); this.choices.clear(); this.published.clear();
     this.features.clear();
     this.geometry.clear();
@@ -366,14 +407,16 @@ export class EntityScene<P extends Properties> {
   }
 
   private prepareModelFrame(projection: EntityProjection, rendererAvailable: boolean): ModelFrame | undefined {
-    if (this.destroyed) return;
+    if (this.destroyed || this.lost) return;
     if (this.dirty.size) this.flush();
     if (this.destroyed) return;
     const revision = this.revision, registry = this.options.models, configuration = this.options.configuration();
-    const current = () => !this.destroyed && this.revision === revision && this.options.configuration() === configuration;
+    const current = () => !this.destroyed && !this.lost && this.revision === revision && this.options.configuration() === configuration;
     this.options.beginNativeFrame?.();
     const choices = new Map<string, ModelChoice>(), representations = new Map<string, EntityState['representation']>();
     const grouped = new Map<RegisteredModel<ModelGpu>, ModelDraw>();
+    const hits: typeof this.modelHits = [];
+    const presentation: ModelPresentation[] = [];
     const center = this.options.map.getCenter(), frameOrigin = MercatorCoordinate.fromLngLat([wrapLongitude(center.lng), center.lat]);
     const origin: [number, number] = [frameOrigin.x, frameOrigin.y];
     const transform = this.options.map._camera.transform;
@@ -421,25 +464,45 @@ export class EntityScene<P extends Properties> {
         if (!current()) return;
         if (placement.status === 'ready') {
           const draw = grouped.get(asset) ?? { asset, origin, instances: [] };
-          draw.instances.push({ basis: placement.basis, anchor: entityVertex(placement.position, origin),
+          draw.instances.push({ feedback: modelFeedback(this.selected.has(id), this.previewed === id), basis: placement.basis, anchor: entityVertex(placement.position, origin),
             appearance: style.modelAppearance && { ...style.modelAppearance } });
           grouped.set(asset, draw);
           representation = 'model';
+          const box = modelScreenBox(projection, placement, origin);
+          if (box) {
+            hits.push({ feature, polygons: box.polygons });
+            const anchor = projection.project(placement.position, origin);
+            const labelHeight = state.placement === 'airborne' ? (state.altitude ?? 0) * verticalScale(configuration)
+              : configuration.terrain ? (state.ground ?? 0) * configuration.exaggeration : 0;
+            const labelAnchor = projection.project([input.location[0], input.location[1], labelHeight], origin);
+            if (anchor && labelAnchor) presentation.push({ id, anchor, labelAnchor, box, feedback: modelFeedback(this.selected.has(id), this.previewed === id) });
+          }
         }
       }
       representations.set(id, representation);
     }
     if (!current()) return;
+    const drawnTransform = transform.clone(), terrain = this.options.map.terrain;
+    const terrainDepth = (point: { x: number; y: number }) => {
+      if (!terrain) return undefined;
+      const location = drawnTransform.screenPointToLocation(new Point(point.x, point.y), terrain);
+      const height = this.options.map.queryTerrainElevation(location);
+      return height === null ? undefined : projection.project([location.lng, location.lat, height])?.depth;
+    };
     return { draws: [...grouped.values()], current,
       commit: () => {
         if (!current()) return false;
         const hidden = new Map([...representations].map(([id, representation]) => [id, representation !== 'icon']));
+        if (this.options.commitPresentation?.(presentation, current) === false || !current()) return false;
         if (this.options.commitVisibility?.(hidden, current) === false || !current()) return false;
+        this.feedbackLayer.set(presentation, current);
         this.layer.suppressPoints(new Set([...hidden].filter(([, hide]) => hide).map(([id]) => id)));
         return true;
       },
-      publish: () => {
+      publish: modelsDrawn => {
         if (!current()) return;
+        this.modelHits = modelsDrawn ? hits : [];
+        this.terrainDepth = modelsDrawn ? terrainDepth : undefined;
         this.choices = choices;
         const changed = [...representations].filter(([id, representation]) => this.published.get(id) !== representation).map(([id]) => id);
         this.published = representations;

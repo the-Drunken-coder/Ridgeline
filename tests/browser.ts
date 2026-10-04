@@ -1,5 +1,6 @@
 import { checkGpuVote } from './gpu-vote';
 import { browserCases } from './browser-cases';
+import { modelPickingCases } from './model-picking.browser';
 import { modelPresentationCases } from './model-presentation.browser';
 import { modelRegistrationCases } from './model-registration.browser';
 import { modelPlacementCases } from './model-placement.browser';
@@ -113,7 +114,7 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
-  for (const test of [...modelPresentationCases, ...modelPlacementCases, ...modelSwitchingCases, ...modelMaterialCases, ...modelRegistrationCases]) {
+  for (const test of [...modelPickingCases, ...modelPresentationCases, ...modelPlacementCases, ...modelSwitchingCases, ...modelMaterialCases, ...modelRegistrationCases]) {
     await run(test.name, () => test.run({ container, setCurrent(viewport) { current = viewport; }, until }));
   }
   for (const projection of ['flat', 'globe'] as const) {
