@@ -20,6 +20,8 @@ Hosted verification: unavailable. No PR was created, as instructed. No hosted re
 
 Remaining limits: user appearance choices; integrated and discrete hardware measurements; globe workload timing; a measured triangle guideline; smooth transition and jitter review at normal frame rates; terrain contact across the entire enlarged footprint; label/attachment overlap decisions; production parser, diagnostics and allocation-failure hardening. The current ticket is open and assigned to `the-Drunken-coder`.
 
-Status: prototype implementation complete, locally smoke-checked, awaiting human decisions and missing hardware evidence. It is not resolved or merge-ready. No map gist, new decision tickets, PR or merge was written during this pause.
+On 2026-10-04, the user chose to proceed with software smoke checks and record the hardware gap. Hardware measurements remain deferred and the triangle guideline remains unset.
+
+Status: prototype implementation complete, locally smoke-checked, awaiting human appearance decisions. The hardware gap is recorded at the user's request. It is not resolved or merge-ready. No map gist, new decision tickets, PR or merge was written during this pause.
 
 Model: gpt-6.1-sol. Harness: Codex in T3 Code. Record date: 2026-10-04.

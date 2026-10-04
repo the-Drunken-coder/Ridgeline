@@ -25,6 +25,8 @@ These are recommendations for discussion, not approved defaults.
 
 ## Browser and GPU limits
 
+On 2026-10-04, the user chose to proceed with software smoke checks and record the hardware gap. The appearance discussion can proceed with the saved comparisons. Hardware workload measurements and a measured triangle guideline remain gaps.
+
 The T3 desktop preview identified `ANGLE (Apple, ANGLE Metal Renderer: Apple M1 Pro, Unspecified Version)` in Chromium 152.0.7977.130, Electron 44.4.2. It disconnected before the playground rendered models. No model performance measurement or appearance capture was made on that GPU. There was no accessible discrete GPU and no `/dev/dri` device in the VM.
 
 All saved appearance captures and browser numbers use Linux headless Chromium 153.0.8010.12 with `ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)`. This is software WebGL, at device pixel ratio 1. The later captures use an 1,100 × 760 browser viewport and an 800 × 677 map canvas. The historical appearance capture used 1,280 × 900. These are smoke checks, not evidence of integrated or discrete GPU capacity.
