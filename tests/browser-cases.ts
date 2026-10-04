@@ -1,5 +1,8 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Model heading pitch roll and authored offset preserve physical axes',
+  'Ground models follow planar terrain at real and enlarged size',
+  'Model placement recovers from unknown terrain without moving entities',
   'Shared solid models register replace and remove through the public viewport',
   'Model registration waits cancels and isolates allocation failures',
   'Model callbacks cannot restore removed registrations or destroyed viewports',

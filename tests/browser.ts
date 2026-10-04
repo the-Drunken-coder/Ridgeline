@@ -1,6 +1,7 @@
 import { checkGpuVote } from './gpu-vote';
 import { browserCases } from './browser-cases';
 import { modelRegistrationCases } from './model-registration.browser';
+import { modelPlacementCases } from './model-placement.browser';
 import { createViewport, createDrawingSession, attachInteractions, attachDrawing, attachDrawingControls, shapeGeometry, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
 import { MercatorCoordinate, GeoJSONSource, ErrorEvent as MapErrorEvent, setWorkerUrl, addProtocol, removeProtocol } from 'maplibre-gl';
@@ -109,7 +110,7 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
-  for (const test of modelRegistrationCases) {
+  for (const test of [...modelPlacementCases, ...modelRegistrationCases]) {
     await run(test.name, () => test.run({ container, setCurrent(viewport) { current = viewport; }, until }));
   }
   for (const projection of ['flat', 'globe'] as const) {
