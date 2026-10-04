@@ -1,3 +1,4 @@
+import { validateModelReference } from './model-settings';
 import type { CameraAttachment, Entity } from './types';
 
 export type Vec3 = [number, number, number];
@@ -15,6 +16,9 @@ export const normalize = (v: Vec3): Vec3 => {
 };
 
 export function validateEntity(entity: Entity, fail: (message: string) => never) {
+  if (entity.model !== undefined) validateModelReference(entity.model, fail);
+  for (const key of ['heading', 'pitch', 'roll'] as const)
+    if (entity[key] !== undefined && !Number.isFinite(entity[key])) fail('Entity orientation angles must be finite.');
   const positive = (v: number) => Number.isFinite(v) && v > 0;
   if (
     entity.altitude &&

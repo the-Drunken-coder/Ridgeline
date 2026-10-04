@@ -1,3 +1,4 @@
+import { DEFAULT_ENTITY_MODELS } from '../src/model-settings';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { FeatureCollection } from 'geojson';
@@ -9,7 +10,7 @@ import type { FeatureStyle, MapConfiguration, MapFeature } from '../src/types';
 const configuration: MapConfiguration = {
   basemap: { version: 8, sources: {}, layers: [] }, projection: 'flat', terrain: false,
   hillshade: false, hillshadeOptions: {}, exaggeration: 1, elevation: { tiles: [] },
-  entityVisibility: DEFAULT_ENTITY_VISIBILITY,
+  entityModels: DEFAULT_ENTITY_MODELS, entityVisibility: DEFAULT_ENTITY_VISIBILITY,
 };
 const entity = (lng = 0): MapFeature => ({ type: 'Feature', id: 'aircraft', properties: {},
   geometry: { type: 'Point', coordinates: [lng, 0] },

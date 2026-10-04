@@ -32,9 +32,16 @@ export type EntityAttachment = CameraAttachment
   | AttachmentBase & { type: 'cylinder'; radius: number; height: number }
   | AttachmentBase & { type: 'circle'; radius: number }
   | AttachmentBase & { type: 'polygon'; /** Open boundary in east/north meters relative to the entity. */ vertices: [number, number][] };
-export type Entity = { altitude?: Altitude; groundIfNoAltitude?: boolean; attachments?: EntityAttachment[] };
+export type ModelAppearance = { mode: 'color'; color: string } | { mode: 'original' };
+export type ModelDefinition = { bytes: ArrayBuffer; metersPerUnit?: number; headingOffset?: number; appearance?: ModelAppearance };
+export type EntityModelSettings = { switchDistanceMeters: number; deadZoneMeters: number; minimumSizePixels: number };
+export type EntityModel = Partial<EntityModelSettings> & { id: string; followSlope?: boolean };
+export type EntityModelState = { id: string; status: 'loading' | 'ready' | 'unavailable' | 'failed'; replacementPending: boolean };
+export type Entity = { model?: EntityModel; heading?: number; pitch?: number; roll?: number; altitude?: Altitude; groundIfNoAltitude?: boolean; attachments?: EntityAttachment[] };
 export type EntityVisibility = { footprints: boolean; zones: boolean; groundLines: boolean };
 export type EntityState = {
+  representation: 'icon' | 'model' | 'withheld';
+  model?: EntityModelState;
   placement: 'airborne' | 'ground' | 'withheld' | 'elevation-unavailable' | 'below-terrain';
   altitude?: number;
   ground?: number;
@@ -47,6 +54,7 @@ export type EntityState = {
 /** An optional raw, unexaggerated terrain source, useful for offline data and deterministic tests. */
 export type ElevationSampler = { sample(lng: number, lat: number): number | null; prepare?(positions: readonly [number, number][], signal: AbortSignal): Promise<void> };
 export type FeatureStyle = {
+  modelAppearance?: ModelAppearance;
   color?: string;
   radius?: number;
   lineWidth?: number;
@@ -77,6 +85,7 @@ export type MapConfiguration = {
   exaggeration: number;
   elevation: ElevationProvider;
   entityVisibility: EntityVisibility;
+  entityModels: EntityModelSettings;
 };
 export type Interaction<P extends Properties> = {
   features: MapFeature<P>[];
@@ -136,6 +145,8 @@ export interface Viewport<P extends Properties = Properties> {
   /** Report a failure in a consumer callback used by an attached UI. */
   reportCallbackError(cause: unknown, operation: string, featureId?: string): void;
   getIcon(id: string): IconDefinition | undefined;
+  registerModel(id: string, definition: ModelDefinition): Promise<void>;
+  unregisterModel(id: string): void;
   registerIcon(id: string, definition: IconDefinition): void;
   setSelection(ids: readonly string[]): void;
   getSelection(): string[];

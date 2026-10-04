@@ -1,6 +1,7 @@
 export type ErrorCode =
   | 'INVALID_FEATURE' | 'INVALID_CONFIGURATION' | 'INITIALIZATION_FAILED' | 'INITIALIZATION_TIMEOUT'
   | 'STYLE_FAILED' | 'ELEVATION_UNAVAILABLE' | 'ASSET_FAILED' | 'UPDATE_FAILED'
+  | 'MODEL_INVALID' | 'MODEL_UNSUPPORTED' | 'MODEL_LOAD_FAILED' | 'MODEL_LOAD_CANCELLED' | 'MODEL_UNAVAILABLE' | 'MODEL_HEADING_MISSING' | 'MODEL_RENDERER_FAILED'
   | 'ICON_FAILED' | 'DESTROYED' | 'CALLBACK_FAILED' | 'ALTITUDE_MISSING' | 'BELOW_TERRAIN';
 
 export class RidgelineError extends Error {
@@ -8,7 +9,7 @@ export class RidgelineError extends Error {
   constructor(
     readonly code: ErrorCode,
     message: string,
-    readonly context: { operation: string; recoverable: boolean; featureId?: string; sourceId?: string },
+    readonly context: { operation: string; recoverable: boolean; featureId?: string; sourceId?: string; modelId?: string },
     cause?: unknown,
   ) {
     super(message, { cause });
@@ -21,7 +22,7 @@ export type Logger = (error: RidgelineError) => void;
 export function createReporter(logger: Logger = error => console.error(`[Ridgeline:${error.code}]`, error)) {
   const seen = new Map<string, number>();
   return (error: RidgelineError) => {
-    const key = `${error.code}:${error.context.operation}:${error.context.sourceId ?? ''}`;
+    const key = `${error.code}:${error.context.operation}:${error.context.modelId ?? error.context.sourceId ?? ''}`;
     const now = Date.now();
     if (now - (seen.get(key) ?? -Infinity) < 10_000) return;
     seen.set(key, now);

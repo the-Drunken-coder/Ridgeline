@@ -1,3 +1,4 @@
+import { DEFAULT_ENTITY_MODELS } from '../src/model-settings';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Map as GLMap } from 'maplibre-gl';
@@ -34,7 +35,7 @@ const configuration: MapConfiguration = {
   hillshadeOptions: {},
   exaggeration: 1,
   elevation: { tiles: [], encoding: 'terrarium', tileSize: 256 },
-  entityVisibility: { footprints: true, zones: true, groundLines: true },
+  entityModels: DEFAULT_ENTITY_MODELS, entityVisibility: { footprints: true, zones: true, groundLines: true },
 };
 
 const camera = (id = 'camera', bearing = 0): CameraAttachment => ({
@@ -377,7 +378,7 @@ test('hiding coverage removes all camera geometry and showing it requests the cu
 
   const hidden = input({ configuration: {
     ...configuration,
-    entityVisibility: { ...configuration.entityVisibility, footprints: false },
+    entityModels: DEFAULT_ENTITY_MODELS, entityVisibility: { ...configuration.entityVisibility, footprints: false },
   } });
   assert.equal(update(coverage, hidden).coverage, 'ready');
   assert.deepEqual(coverage.output('entity'), []);
@@ -602,7 +603,7 @@ test('hiding or removing a camera before preparation starts leaves no output', a
     updateCameraOnly(coverage, input());
     if (action === 'hide') updateCameraOnly(coverage, input({ configuration: {
       ...configuration,
-      entityVisibility: { ...configuration.entityVisibility, footprints: false },
+      entityModels: DEFAULT_ENTITY_MODELS, entityVisibility: { ...configuration.entityVisibility, footprints: false },
     } }));
     else coverage.remove('entity');
     await new Promise<void>(resolve => setImmediate(resolve));
@@ -631,7 +632,7 @@ for (const action of ['hide', 'retry', 'reset', 'destroy'] as const)
     assert.equal(pending.length, 1);
     if (action === 'hide') updateCameraOnly(coverage, input({ configuration: {
       ...configuration,
-      entityVisibility: { ...configuration.entityVisibility, footprints: false },
+      entityModels: DEFAULT_ENTITY_MODELS, entityVisibility: { ...configuration.entityVisibility, footprints: false },
     } }));
     else if (action === 'retry') { elevation.retry(); coverage.retry(); coverage.flush(); }
     else if (action === 'reset') { elevation.reset(configuration.elevation); coverage.retry(); coverage.flush(); }
