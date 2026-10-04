@@ -1,9 +1,11 @@
 import { MercatorCoordinate } from 'maplibre-gl';
 import type { CustomRenderMethodInput } from 'maplibre-gl';
-import type { GeoPoint } from './entity-geometry';
+import type { GeoPoint, Vec3 } from './entity-geometry';
+import { wrapLongitude } from './longitude';
 
 export type ScreenPoint = { x: number; y: number; depth: number };
 export type ProjectionOrigin = readonly [number, number];
+export type EntityVertex = [number, number, number, number];
 type ProjectionInput = {
   shaderData: Pick<CustomRenderMethodInput['shaderData'], 'define'>;
   defaultProjectionData: Pick<CustomRenderMethodInput['defaultProjectionData'],
@@ -19,10 +21,21 @@ function shifted(matrix: ArrayLike<number>, x: number, y: number) {
 }
 
 /** Geographic geometry stays relative to one entity origin until after GPU multiplication. */
-export function entityVertex(p: GeoPoint, origin: ProjectionOrigin): [number, number, number, number] {
+export function entityVertex(p: GeoPoint, origin: ProjectionOrigin): EntityVertex {
   const m = MercatorCoordinate.fromLngLat([p[0], Math.max(-85.05112878, Math.min(85.05112878, p[1]))]);
   const x = m.x - origin[0];
   return [x - Math.round(x), m.y - origin[1], p[2], m.meterInMercatorCoordinateUnits()];
+}
+
+/** Matches the shader's local east/north/up meter displacement without changing its anchor. */
+export function offsetEntityVertex(anchor: EntityVertex, offset: Vec3): EntityVertex {
+  return [anchor[0] + offset[0] * anchor[3], anchor[1] - offset[1] * anchor[3], anchor[2] + offset[2], anchor[3]];
+}
+
+/** Geographic terrain probes use the same XY coordinates as the rendered vertices. */
+export function entityVertexPosition(vertex: EntityVertex, origin: ProjectionOrigin): GeoPoint {
+  const point = new MercatorCoordinate(origin[0] + vertex[0], origin[1] + vertex[1]).toLngLat();
+  return [wrapLongitude(point.lng), point.lat, vertex[2]];
 }
 
 /** Position.xy is relative Mercator; position.z is displayed meters. */
@@ -126,16 +139,23 @@ export class EntityProjection {
   }
 
   clip(p: GeoPoint, origin?: ProjectionOrigin): number[] | null {
-    const m = MercatorCoordinate.fromLngLat([p[0], p[1]], p[2]);
+    const m = MercatorCoordinate.fromLngLat([p[0], p[1]]);
     const reference = origin ?? [m.x, m.y];
-    const x = m.x - Math.round(m.x - reference[0]) + this.worldCopy(reference);
+    return this.clipVertex(entityVertex(p, reference), reference);
+  }
+
+  /** CPU projection of the exact meter/relative-Mercator coordinates consumed by projectPosition. */
+  clipVertex(vertex: EntityVertex, origin: ProjectionOrigin): number[] | null {
+    const canonicalX = origin[0] + vertex[0], y = origin[1] + vertex[1];
+    const x = canonicalX + this.worldCopy(origin), z = vertex[2] * vertex[3];
     const d = this.data;
-    if (!this.globe) return multiply(d.mainMatrix, [x, m.y, m.z, 1]);
-    const lon = p[0] * Math.PI / 180, lat = p[1] * Math.PI / 180, r = 1 + p[2] / 6371008.8;
+    if (!this.globe) return multiply(d.mainMatrix, [x, y, z, 1]);
+    const point = entityVertexPosition(vertex, origin);
+    const lon = point[0] * Math.PI / 180, lat = point[1] * Math.PI / 180, r = 1 + vertex[2] / 6371008.8;
     const sphere = [Math.sin(lon) * Math.cos(lat) * r, Math.sin(lat) * r, Math.cos(lon) * Math.cos(lat) * r, 1];
     const front = sphere.slice(0, 3).reduce((sum, v, i) => sum + v * d.clippingPlane[i]!, d.clippingPlane[3]!);
     if (d.projectionTransition > .99 && front < 0) return null;
-    const g = multiply(d.mainMatrix, sphere), f = multiply(d.fallbackMatrix, [x, m.y, m.z, 1]);
+    const g = multiply(d.mainMatrix, sphere), f = multiply(d.fallbackMatrix, [x, y, z, 1]);
     return g.map((v, i) => v * d.projectionTransition + f[i]! * (1 - d.projectionTransition));
   }
 
