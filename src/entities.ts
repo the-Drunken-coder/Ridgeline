@@ -1,3 +1,9 @@
+import { MercatorCoordinate } from 'maplibre-gl';
+import { ModelLayer } from './model-layer';
+import type { ModelInstance } from './model-layer';
+import type { ModelGpu } from './model-renderer';
+import type { ModelRegistry } from './models';
+import { DEFAULT_ENTITY_MODELS, modelAppearance, modelSettings } from './model-settings';
 import type { Map as GLMap } from 'maplibre-gl';
 import { EntityLayer } from './entity-layer';
 import { EntityGround } from './entity-ground';
@@ -33,10 +39,14 @@ type SceneOptions<P extends Properties> = {
   sampler?: ElevationSampler;
   diagnostic: (error: RidgelineError) => void;
   changed: (ids: string[]) => void;
+  models?: ModelRegistry<ModelGpu>;
 };
 
 export class EntityScene<P extends Properties> {
   readonly layer: EntityLayer;
+  readonly modelLayer?: ModelLayer;
+  private modelInstances = new Map<string, ModelInstance>();
+  private modelDiagnostics = new Map<string, string>();
   private groundLayer: EntityGround;
   private features = new Map<string, MapFeature<P>>();
   private states = new Map<string, EntityState>();
@@ -53,6 +63,7 @@ export class EntityScene<P extends Properties> {
   private diagnosticKeys = new Map<string, string>();
   constructor(private options: SceneOptions<P>) {
     this.groundLayer = new EntityGround(options.map);
+    if (options.models) this.modelLayer = new ModelLayer(options.models, options.diagnostic);
     this.layer = new EntityLayer((cause) =>
       options.diagnostic(
         new RidgelineError(
@@ -105,6 +116,7 @@ export class EntityScene<P extends Properties> {
       this.elevation.release(placementAreaKey(id));
       this.features.delete(id);
       this.states.delete(id);
+      this.modelInstances.delete(id); this.modelDiagnostics.delete(id);
       this.nonCameraCoverage.delete(id);
       this.positions.delete(id);
       this.geometryDirty = this.geometry.delete(id) || this.geometryDirty;
@@ -120,6 +132,7 @@ export class EntityScene<P extends Properties> {
         this.elevation.release(placementAreaKey(feature.id));
         this.features.delete(feature.id);
         this.states.delete(feature.id);
+        this.modelInstances.delete(feature.id); this.modelDiagnostics.delete(feature.id);
         this.nonCameraCoverage.delete(feature.id);
         this.positions.delete(feature.id);
         this.geometryDirty = this.geometry.delete(feature.id) || this.geometryDirty;
@@ -174,7 +187,8 @@ export class EntityScene<P extends Properties> {
   }
   getState(id: string) {
     const state = this.states.get(id);
-    return state && { ...state };
+    const reference = this.features.get(id)?.entity?.model;
+    return state && { ...state, model: reference ? this.options.models?.status(reference.id) : undefined };
   }
   marker(feature: MapFeature<P>) {
     if (!feature.entity) return { visible: true, ground: true, offset: 0 };
@@ -192,6 +206,13 @@ export class EntityScene<P extends Properties> {
       offset: airborne ? (config.terrain ? (altitude - ground) * verticalScale(config) : altitude) : 0,
     };
   }
+  modelsChanged(modelId: string) {
+    if (this.destroyed) return;
+    const ids = [...this.features.values()].filter(feature => feature.entity?.model?.id === modelId).map(feature => feature.id);
+    for (const id of ids) this.dirty.add(id);
+    if (ids.length) { this.schedule(); this.options.changed(ids); }
+  }
+  cameraChanged() { if ([...this.features.values()].some(feature => feature.entity?.model)) this.invalidate(); }
   pickAbove(x: number, y: number, tolerance: number) {
     return [...this.layer.pick(x, y, tolerance), ...this.coverage.pick(x, y)];
   }
@@ -202,6 +223,7 @@ export class EntityScene<P extends Properties> {
     this.groundLayer.attach();
     this.coverage.attach();
     if (!this.options.map.getLayer(this.layer.id)) this.options.map.addLayer(this.layer);
+    if (this.modelLayer && !this.options.map.getLayer(this.modelLayer.id)) this.options.map.addLayer(this.modelLayer, this.layer.id);
     this.invalidate();
   }
   destroy() {
@@ -209,6 +231,8 @@ export class EntityScene<P extends Properties> {
     this.destroyed = true;
     cancelAnimationFrame(this.frame);
     this.elevation.destroy();
+    this.modelLayer?.destroy();
+    this.modelInstances.clear(); this.modelDiagnostics.clear();
     this.features.clear();
     this.geometry.clear();
     this.states.clear();
@@ -289,9 +313,43 @@ export class EntityScene<P extends Properties> {
     this.nonCameraCoverage.set(feature.id, placementCoverage);
     result.state.coverage = combineCoverage(placementCoverage, camera.coverage);
     result.state.footprintTriangles = camera.footprintTriangles;
+    this.prepareModel(feature, style, result);
+    if (this.destroyed || this.features.get(feature.id) !== feature) return;
     this.apply(feature.id, result);
   }
 
+  private prepareModel(feature: MapFeature<P>, style: FeatureStyle, result: EntityComputationResult) {
+    this.modelInstances.delete(feature.id);
+    const entity = feature.entity, reference = entity?.model, registry = this.options.models;
+    if (!reference || !registry) { this.modelDiagnostics.delete(feature.id); return; }
+    const status = registry.status(reference.id), asset = registry.get(reference.id);
+    result.state.model = status;
+    const problem = entity.heading === undefined ? 'MODEL_HEADING_MISSING' : status.status === 'unavailable' ? 'MODEL_UNAVAILABLE' : undefined;
+    if (problem) {
+      const key = `${problem}:${reference.id}`;
+      if (this.modelDiagnostics.get(feature.id) !== key) {
+        this.modelDiagnostics.set(feature.id, key);
+        this.options.diagnostic(new RidgelineError(problem, problem === 'MODEL_HEADING_MISSING' ? 'Entity model requires heading.' : 'The referenced model is unavailable.',
+          { operation: 'entities', recoverable: true, featureId: feature.id, modelId: reference.id }));
+      }
+      return;
+    }
+    this.modelDiagnostics.delete(feature.id);
+    if (!asset || !registry.available || entity.heading === undefined || result.state.ground === undefined ||
+      !['ground', 'airborne'].includes(result.state.placement) || result.state.altitude === undefined) return;
+    const settings = modelSettings(this.options.configuration().entityModels ?? DEFAULT_ENTITY_MODELS, reference);
+    const [lng, lat] = result.position;
+    const transform = this.options.map._camera.transform;
+    const camera = MercatorCoordinate.fromLngLat(transform.getCameraLngLat());
+    const point = MercatorCoordinate.fromLngLat([lng, lat]);
+    const unit = point.meterInMercatorCoordinateUnits(), dx = point.x - camera.x;
+    const height = result.state.altitude * verticalScale(this.options.configuration());
+    if (Math.hypot((dx - Math.round(dx)) / unit, (point.y - camera.y) / unit, height - transform.getCameraAltitude()) >= settings.switchDistanceMeters) return;
+    const appearance = modelAppearance(style.modelAppearance);
+    this.modelInstances.set(feature.id, { id: feature.id, modelId: reference.id, asset, position: [lng, lat, height],
+      heading: entity.heading, pitch: entity.pitch ?? 0, roll: entity.roll ?? 0, grounded: result.state.placement === 'ground', appearance });
+    result.state.representation = 'model';
+  }
   private apply(id: string, result: EntityComputationResult) {
     if (this.destroyed || !this.features.has(id)) return;
     this.geometry.set(id, result.primitives);
@@ -313,7 +371,8 @@ export class EntityScene<P extends Properties> {
   }
   private renderLayers(includeGround = true) {
     const primitives = [...this.geometry.values()].flat().concat(this.coverage.allGeometry());
-    this.layer.set(primitives.filter(p => !p.surface), verticalScale(this.options.configuration()));
+    this.layer.set(primitives.filter(p => !p.surface && !(p.mode === 'points' && this.states.get(p.entityId)?.representation === 'model')), verticalScale(this.options.configuration()));
+    this.modelLayer?.set([...this.modelInstances.values()]);
     if (includeGround) this.groundLayer.set(primitives.filter(p => p.surface));
   }
 }

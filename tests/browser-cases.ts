@@ -1,5 +1,8 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Shared solid models register replace and remove through the public viewport',
+  'Model registration waits cancels and isolates allocation failures',
+  'Model callbacks cannot restore removed registrations or destroyed viewports',
   'Reliability entity meter-scale projection agrees with double precision in flat views',
   'Reliability entity meter-scale projection agrees with double precision in globe views',
   'Reliability entity coherent attachments reject empty space across the opposite world seam',

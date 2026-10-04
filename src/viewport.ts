@@ -7,6 +7,9 @@ import { FeatureStore } from './features';
 import { createFeaturePublication } from './feature-publication';
 import { FEATURE_SOURCE as SOURCE, mapLibreFeaturePublication, sourceFeatureId } from './maplibre-feature-publication';
 import { hillshadePaint, resolveHillshade } from './hillshade';
+import { ModelRegistry } from './models';
+import type { ModelGpu } from './model-renderer';
+import { DEFAULT_ENTITY_MODELS, modelSettings } from './model-settings';
 import { EntityScene, DEFAULT_ENTITY_VISIBILITY } from './entities';
 import type { FeatureStyle, IconDefinition, Interaction, MapConfiguration, MapFeature, Properties, Viewport, ViewportEvents, ViewportOptions } from './types';
 
@@ -60,6 +63,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     exaggeration: options.exaggeration ?? 1,
     elevation: structuredClone(options.elevation ?? DEFAULT_ELEVATION),
     entityVisibility: { ...DEFAULT_ENTITY_VISIBILITY, ...options.entityVisibility },
+    entityModels: { ...DEFAULT_ENTITY_MODELS, ...options.entityModels },
   };
   const listeners: { [K in keyof ViewportEvents<P>]: Set<(value: ViewportEvents<P>[K]) => void> } = {
     interactionchange: new Set(), selectionchange: new Set(), click: new Set(), hover: new Set(), contextmenu: new Set(), selectionrequest: new Set(),
@@ -91,6 +95,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   try {
     if (!Number.isFinite(configuration.exaggeration) || configuration.exaggeration < 0) throw new RidgelineError('INVALID_CONFIGURATION', 'Terrain exaggeration must be a finite nonnegative number.', { operation: 'create', recoverable: false });
     configuration.hillshadeOptions = resolveHillshade(options.hillshadeOptions);
+    configuration.entityModels = modelSettings(DEFAULT_ENTITY_MODELS, options.entityModels);
+    for (const feature of options.features ?? []) if (feature.entity?.model) modelSettings(configuration.entityModels, feature.entity.model);
     if (options.features) store.upsert(options.features);
     map = new GLMap({
       container: options.container,
@@ -105,10 +111,12 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     diagnostic(error);
     throw error;
   }
-  const entities = new EntityScene<P>({ map, configuration: () => configuration, style: getStyle, sampler: options.elevationSampler, diagnostic,
+  const models = new ModelRegistry<ModelGpu>({ diagnostic, changed: id => entities.modelsChanged(id) });
+  const entities = new EntityScene<P>({ models, map, configuration: () => configuration, style: getStyle, sampler: options.elevationSampler, diagnostic,
     changed: ids => {
       publication.update(ids.flatMap(id => { const feature = store.get(id); return feature ? [feature] : []; }));
-      emit('entitychange', { ids });
+      for (const id of ids) { if (destroyed) return; synchronizeState(id); }
+      if (!destroyed) emit('entitychange', { ids });
     },
   });
   const arrowheads = createArrowheads(map, 'rl:arrows', 'rl:arrowheads');
@@ -130,7 +138,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     if (!readySettled) failReady(new RidgelineError('INITIALIZATION_TIMEOUT', 'The initial map style did not become ready in time.', { operation: 'initialize', recoverable: false }));
   }, options.initializationTimeoutMs ?? 20_000);
   function failReady(error: RidgelineError) {
-    if (!readySettled) { readySettled = true; clearTimeout(timer); rejectReady(error); }
+    if (!readySettled) { readySettled = true; clearTimeout(timer); rejectReady(error); models.readinessFailed(error); }
     diagnostic(error);
   }
   function getName(feature: MapFeature<P>) {
@@ -156,7 +164,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     };
   }
   function synchronizeState(id: string) {
-    if (prepared && map.getSource(SOURCE) && store.has(id)) map.setFeatureState({ source: SOURCE, id: sourceFeatureId(id) }, { selected: selected.has(id), hover: previewId === id, editing: editingId === id });
+    if (prepared && map.getSource(SOURCE) && store.has(id)) map.setFeatureState({ source: SOURCE, id: sourceFeatureId(id) }, { selected: selected.has(id), hover: previewId === id, editing: editingId === id, model: entities.getState(id)?.representation === 'model' });
   }
   function applyElevation(replace = false) {
     if (!prepared || destroyed) return;
@@ -227,8 +235,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         { id: 'rl:fill', type: 'fill', source: SOURCE, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': ['get', '_rl_fill'], 'fill-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, ['boolean', ['feature-state', 'selected'], false], 0.45, ['get', '_rl_opacity']] } },
         { id: 'rl:line', type: 'line', source: SOURCE, filter: ['all', ['in', '$type', 'LineString', 'Polygon'], ['!=', '_rl_dashed', true]], paint: { 'line-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', ['get', '_rl_color']], 'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 5, ['get', '_rl_width']] } },
         { id: 'rl:dashed', type: 'line', source: SOURCE, filter: ['all', ['in', '$type', 'LineString', 'Polygon'], ['==', '_rl_dashed', true]], paint: { 'line-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', ['get', '_rl_color']], 'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 5, ['get', '_rl_width']], 'line-dasharray': [3, 2] } },
-        { id: 'rl:points', type: 'circle', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_airborne', true], ['!=', '_rl_hidden', true]], paint: { 'circle-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'circle-stroke-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'circle-radius': ['case', ['boolean', ['feature-state', 'hover'], false], 12, ['get', '_rl_radius']], 'circle-color': ['get', '_rl_color'], 'circle-stroke-width': ['case', ['boolean', ['feature-state', 'selected'], false], 4, 2], 'circle-stroke-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', '#ffffff'] } },
-        { id: 'rl:icons', type: 'symbol', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_icon', ''], ['!=', '_rl_hidden', true]], layout: { 'icon-image': ['get', '_rl_icon'], 'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-height-offset': ['get', '_rl_height'] }, paint: { 'icon-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1] } },
+        { id: 'rl:points', type: 'circle', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_airborne', true], ['!=', '_rl_hidden', true]], paint: { 'circle-opacity': ['case', ['any', ['boolean', ['feature-state', 'editing'], false], ['boolean', ['feature-state', 'model'], false]], 0, 1], 'circle-stroke-opacity': ['case', ['any', ['boolean', ['feature-state', 'editing'], false], ['boolean', ['feature-state', 'model'], false]], 0, 1], 'circle-radius': ['case', ['boolean', ['feature-state', 'hover'], false], 12, ['get', '_rl_radius']], 'circle-color': ['get', '_rl_color'], 'circle-stroke-width': ['case', ['boolean', ['feature-state', 'selected'], false], 4, 2], 'circle-stroke-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', '#ffffff'] } },
+        { id: 'rl:icons', type: 'symbol', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_icon', ''], ['!=', '_rl_hidden', true]], layout: { 'icon-image': ['get', '_rl_icon'], 'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-height-offset': ['get', '_rl_height'] }, paint: { 'icon-opacity': ['case', ['any', ['boolean', ['feature-state', 'editing'], false], ['boolean', ['feature-state', 'model'], false]], 0, 1] } },
         { id: 'rl:labels', type: 'symbol', source: SOURCE, filter: ['!=', '_rl_hidden', true], layout: { 'text-field': ['get', '_rl_label'], 'text-font': ['Noto Sans Regular'], 'text-size': 12, 'text-offset': [0, 1.8], 'text-anchor': 'top', 'symbol-height-offset': ['get', '_rl_height'] }, paint: { 'text-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'text-color': '#203b32', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } },
       ];
       for (const layer of layers) { if (!current()) return; if (!map.getLayer(layer.id)) map.addLayer(layer); }
@@ -310,6 +318,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   });
   // Feature publication and camera changes can alter the pick under a still pointer.
   map.on('idle', refreshHover);
+  map.on('move', () => entities.cameraChanged());
   map.on('moveend', () => {
     emit('camerachange', { center: map.getCenter(), zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() });
     refreshHover();
@@ -345,6 +354,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     upsert(features) {
       assertActive();
       try {
+        for (const feature of features) if (feature.entity?.model) modelSettings(configuration.entityModels, feature.entity.model);
         const changed = store.upsert(features);
         entities.set(changed);
         publication.update(changed);
@@ -371,6 +381,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     },
     getFeature: id => store.get(id), getFeatures: () => store.all(), getEntityState: id => entities.getState(id), getName, getStyle,
     getIcon: id => icons.get(id),
+    registerModel(id, definition) { assertActive(); return models.register(id, definition); },
+    unregisterModel(id) { assertActive(); models.unregister(id); },
     registerIcon(id, definition) {
       assertActive();
       if (!id.trim()) throw new RidgelineError('ICON_FAILED', 'An icon needs a nonempty ID.', { operation: 'registerIcon', recoverable: true });
@@ -418,6 +430,14 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         const error = new RidgelineError('INVALID_CONFIGURATION', 'Terrain exaggeration must be a finite nonnegative number.', { operation: 'configure', recoverable: true });
         diagnostic(error); throw error;
       }
+      let entityModels;
+      try {
+        entityModels = modelSettings(configuration.entityModels, next.entityModels);
+        for (const feature of store.all()) if (feature.entity?.model) modelSettings(entityModels, feature.entity.model);
+      } catch (cause) {
+        const error = new RidgelineError('INVALID_CONFIGURATION', 'Invalid effective entity model settings.', { operation: 'configure', recoverable: true }, cause);
+        diagnostic(error); throw error;
+      }
       let hillshadeOptions;
       try { hillshadeOptions = resolveHillshade(next.hillshadeOptions, configuration.hillshadeOptions); }
       catch (cause) { if (cause instanceof RidgelineError) diagnostic(cause); throw cause; }
@@ -431,6 +451,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         exaggeration: next.exaggeration ?? configuration.exaggeration,
         elevation: structuredClone(next.elevation ?? configuration.elevation),
         entityVisibility: { ...configuration.entityVisibility, ...next.entityVisibility },
+        entityModels,
       };
       if (styleChanged || next.projection !== undefined || next.terrain !== undefined ||
         next.exaggeration !== undefined || next.elevation !== undefined) {
@@ -458,7 +479,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       publication.destroy();
       if (!readySettled) { readySettled = true; rejectReady(new RidgelineError('DESTROYED', 'Viewport was destroyed before initialization completed.', { operation: 'initialize', recoverable: false })); }
       clearTimeout(timer); resize.disconnect();
-      entities.destroy();
+      entities.destroy(); models.destroy();
       arrowheads.remove(); preparedListeners.clear(); sceneListeners.clear(); drawingInternals.delete(map);
       map.getCanvas().removeEventListener('mouseleave', onLeave);
       map.remove(); icons.clear(); selected.clear(); store.remove(store.ids());

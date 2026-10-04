@@ -169,6 +169,33 @@ Camera appearance supports `volumeOpacity`, `wireframe`, and `wireframeWidth`. T
 
 `getEntityState(id)` returns placement, physical altitude and ground height, coverage availability, computation timing, and footprint triangle count. Subscribe to `entitychange` for updated IDs. Missing altitude uses a ground marker unless `groundIfNoAltitude: false`; explicit zero remains a supplied altitude. Missing terrain or below-terrain placement withholds dependent airborne geometry without rewriting the supplied altitude.
 
+### Shared solid models
+
+Register application-supplied GLB bytes once per viewport, then reference that model from multiple entities:
+
+```ts
+await viewport.registerModel('vehicle', {
+  bytes: vehicleBytes, metersPerUnit: 1, headingOffset: 0,
+  appearance: { mode: 'color', color: '#db7428' },
+});
+viewport.upsert([{
+  type: 'Feature', id: 'vehicle-1', properties: {},
+  geometry: { type: 'Point', coordinates: [6.87, 45.92] },
+  entity: {
+    model: { id: 'vehicle', minimumSizePixels: 0 }, heading: 90,
+    altitude: { meters: 30, reference: 'ground' },
+  },
+}]);
+```
+
+This first slice displays untextured opaque static GLB v2 triangles near the camera. It accepts an embedded binary buffer, node transforms, core accessors, `KHR_mesh_quantization`, normals and vertex colors. Unsupported assets reject without fetching application resources. `metersPerUnit` defaults to 1 and must be positive; `headingOffset` defaults to zero. Authored +Y is up and +Z is forward. Entity heading is clockwise from north; pitch is positive nose-up and roll positive right-side-down, all in degrees. Heading is required for model display; missing heading reports `MODEL_HEADING_MISSING` and retains the icon.
+
+Registration copies bytes and settings before asynchronous work and resolves after parsing, GPU upload and installation. It may start before `viewport.ready`, waiting for the model renderer. Viewport readiness remains independent of model loading. A failed replacement retains the previous asset; a newer registration, `unregisterModel(id)` or destruction cancels pending work with `MODEL_LOAD_CANCELLED`. Cancellation does not emit an asset-failure diagnostic. Removing an entity retains its shared registration. Unregistering returns referencing entities to icons and preserves their data and selection; unknown IDs are harmless.
+
+Entity-state snapshots include `representation` (`icon`, `model` or `withheld`) and an optional referenced `model` with `id`, `status` and `replacementPending`. Initial registration is `loading`, successful upload is `ready`, an absent registration is `unavailable`, and an initial failure is `failed`. A working model stays `ready` while a replacement is pending. These statuses describe registration, independently of visibility. `entitychange` reports updates.
+
+`FeatureStyle.modelAppearance` overrides the registration appearance. Use `{ mode: 'color', color }` for a solid CSS color or `{ mode: 'original' }` for supported authored colors; the unassigned default is magenta. `style.color` does not assign a model color. Viewport `entityModels` settings and per-entity overrides validate switching distance, dead-zone width and minimum size atomically. `DEFAULT_ENTITY_MODELS` contains 2,000 meters, 200 meters and 40 CSS pixels respectively. Use `minimumSizePixels: 0` for this slice's physical-size path. Texture and alpha materials, slope placement, size-floor and hysteresis switching, same-frame publication, model picking, labels/selection treatment and context restoration remain in the subsequent [entity-model implementation slices](https://github.com/the-Drunken-coder/Ridgeline/blob/21805ecb7543098f8c9820c476725654e20b31ec/.scratch/entity-models/spec.md). Target-browser and hardware acceptance is pending.
+
 Pointer events include `attachments: { entityId, attachmentId }[]`. Visible camera faces, wireframes, and footprints can select their owning attachment. The optional interaction helper carries attachment hits into `selectionrequest`; the consumer owns selection policy.
 
 An optional `elevationSampler` supplies raw unexaggerated meters through `sample(lng, lat): number | null`; its optional asynchronous `prepare(positions, signal)` loads the needed area. Preparation is skipped when required heights are already known and may be shared by overlapping entity and camera requests. Both methods receive longitude normalized to [-180, 180) and latitude in degrees. Return null for unknown terrain. Incomplete camera terrain reports loading while preparation is pending, then unavailable if required samples remain unknown. A failure elsewhere does not change that camera's status. Completing preparation refreshes incomplete patches; known terrain stays cached during movement. Call `retryUpdates()` when already loaded terrain changes or when data loads without `prepare`. This source changes computation, not the map's displayed DEM, so keep their datums and data aligned.
@@ -222,7 +249,7 @@ The default map assets need internet access, but no API key, account, or applica
 
 `ready` means the style and Ridgeline layers can accept data, not that every tile has loaded. Queue data before readiness. A failed initial style or the default 20-second timeout rejects readiness; destroy and recreate after fixing the cause. `initializationTimeoutMs` is configurable. Construction can throw when the container or WebGL context cannot be initialized.
 
-`RidgelineError` exposes `code`, `message`, `context` (operation, recoverability, optional source/feature ID), and `cause`. Codes cover invalid features/configuration, initialization failure/timeout, style failure, unavailable elevation, unavailable assets, update failure, icon failure, use after destruction, and consumer callback failure. `onError` and the diagnostic event notify consumers. `logger` defaults to `console.error`; repeated code/operation/source combinations are logged at most once per ten seconds. Supply `logger: () => {}` to disable logging.
+`RidgelineError` exposes `code`, `message`, `context` (operation, recoverability, optional source/feature/model ID), and `cause`. Codes cover invalid features/configuration, initialization failure/timeout, style failure, unavailable elevation, unavailable assets, update failure, icon failure, model registration/rendering failure, use after destruction, and consumer callback failure. `onError` and the diagnostic event notify consumers. `logger` defaults to `console.error`; repeated code/operation/resource combinations are logged at most once per ten seconds. Supply `logger: () => {}` to disable logging.
 
 Recoverable tile failures leave the rest of the map usable. The elevation-unavailable scenario deliberately requests invalid local tiles and lets you retry the default provider. A basemap that fails to load can leave an empty base; the feature model and selection remain retained for a subsequent successful style change.
 

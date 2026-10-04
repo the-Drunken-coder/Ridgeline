@@ -1,3 +1,4 @@
+import { DEFAULT_ENTITY_MODELS } from '../src/model-settings';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -199,7 +200,7 @@ test('unknown ground attachment reports unavailable independent of its camera', 
       basemap: { version: 8, sources: {}, layers: [] }, projection: 'flat', terrain: false,
       hillshade: false, hillshadeOptions: {}, exaggeration: 1,
       elevation: { tiles: [], encoding: 'terrarium', tileSize: 256 },
-      entityVisibility: { footprints: true, zones: true, groundLines: false },
+      entityModels: DEFAULT_ENTITY_MODELS, entityVisibility: { footprints: true, zones: true, groundLines: false },
     };
     const feature: MapFeature = {
       type: 'Feature', id: 'asset', geometry: { type: 'Point', coordinates: [0, 0] }, properties: {},
