@@ -242,15 +242,28 @@ export const modelSwitchingCases: readonly { name: string; run(context: Context)
       await ready(context, viewport, 1800);
       only(await frame(viewport), 'model', 'initial model');
       const gl = viewport.map.getCanvas().getContext('webgl2'); if (!gl) throw new Error('WebGL2 unavailable');
+      const observedDraw = gl.drawElementsInstanced;
+      let instanceBuffer: WebGLBuffer | undefined;
+      gl.drawElementsInstanced = (...args) => {
+        for (let index = 0; index < gl.getParameter(gl.MAX_VERTEX_ATTRIBS); index++) {
+          if (!gl.getVertexAttrib(index, gl.VERTEX_ATTRIB_ARRAY_DIVISOR)) continue;
+          const buffer = gl.getVertexAttrib(index, gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING);
+          if (buffer instanceof WebGLBuffer) instanceBuffer = buffer;
+        }
+        return observedDraw.apply(gl, args);
+      };
+      try { only(await frame(viewport), 'model', 'observed model instance draw'); }
+      finally { gl.drawElementsInstanced = observedDraw; }
+      check(instanceBuffer !== undefined, 'A real model draw must identify its instance upload buffer');
       const bufferData = gl.bufferData;
       let fail = true;
       Object.defineProperty(gl, 'bufferData', { configurable: true, writable: true, value: (...args: unknown[]) => {
-        const data = args[1];
-        if (fail && args[2] === gl.DYNAMIC_DRAW && data instanceof Float32Array && data.length === 17) { fail = false; throw new Error('Injected model preflight failure'); }
+        if (fail && args[2] === gl.DYNAMIC_DRAW && gl.getParameter(gl.ARRAY_BUFFER_BINDING) === instanceBuffer) { fail = false; throw new Error('Injected model preflight failure'); }
         return Reflect.apply(bufferData, gl, args);
       } });
       try { only(await frame(viewport, () => move(viewport, 2000)), 'icon', 'preflight failure in same frame'); }
       finally { gl.bufferData = bufferData; }
+      check(!fail, 'The observed model instance buffer must receive the injected upload failure');
       check(errors.some(error => error.code === 'MODEL_RENDERER_FAILED'), 'Preflight failure was not reported');
       only(await frame(viewport, () => viewport.retryUpdates()), 'model', 'renderer recovery retains band choice');
       const draw = gl.drawElementsInstanced;
