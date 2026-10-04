@@ -336,3 +336,19 @@ test('malformed used materials reject without defaulting their invalid values', 
     meshes: [{ primitives: [{ attributes: { POSITION: 0 }, material: 0 }] }],
   }, binary)), /GLB_MISSING_TEXCOORD_0/);
 });
+
+test('floating vertex colors reject components outside their unit range', () => {
+  const { json, binary: positions } = triangleFixture();
+  for (const invalid of [-0.1, 1.1]) {
+    const colors = new Float32Array([invalid, 0, 0, 1, 0, 0, 0, 1, 0]);
+    const binary = new Uint8Array(positions.length + colors.byteLength);
+    binary.set(positions);
+    binary.set(new Uint8Array(colors.buffer), positions.length);
+    assert.throws(() => parseGlb(encodeGlb({ ...json,
+      buffers: [{ byteLength: binary.length }],
+      bufferViews: [...json.bufferViews, { buffer: 0, byteOffset: positions.length, byteLength: colors.byteLength }],
+      accessors: [...json.accessors, { bufferView: 1, componentType: 5126, type: 'VEC3', count: 3 }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0, COLOR_0: 1 } }] }],
+    }, binary)), /GLB_INVALID_COLOR_ATTRIBUTE/);
+  }
+});
