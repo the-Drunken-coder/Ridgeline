@@ -408,7 +408,7 @@ export class EntityScene<P extends Properties> {
 
   private prepareModelFrame(projection: EntityProjection, rendererAvailable: boolean): ModelFrame | undefined {
     if (this.destroyed || this.lost) return;
-    if (this.dirty.size) this.flush();
+    if (this.dirty.size || this.geometryDirty) this.flush();
     if (this.destroyed) return;
     const revision = this.revision, registry = this.options.models, configuration = this.options.configuration();
     const current = () => !this.destroyed && !this.lost && this.revision === revision && this.options.configuration() === configuration;
