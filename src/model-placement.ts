@@ -116,8 +116,12 @@ export function scaleModelPlacement(placement: ModelPlacementGeometry, factor: n
   const scaled = (point: Vec3): Vec3 => [point[0] * factor, point[1] * factor, point[2] * factor];
   const corners = placement.corners.map(scaled), position: GeoPoint = [...placement.position];
   const terrain = placement.terrain && { ...placement.terrain };
-  if (terrain) position[2] = .02 + Math.max(...corners.map(point =>
-    terrain.height + terrain.eastSlope * point[0] + terrain.northSlope * point[1] - point[2]));
+  if (terrain) {
+    const contact = (points: Vec3[]) => Math.max(...points.map(point =>
+      terrain.height + terrain.eastSlope * point[0] + terrain.northSlope * point[1] - point[2]));
+    // Retain the actual support above the fitted plane; a unit scale must preserve placement.
+    position[2] += contact(corners) - contact(placement.corners);
+  }
   return { basis: [scaled(placement.basis[0]), scaled(placement.basis[1]), scaled(placement.basis[2])],
     position, corners, displayScale: placement.displayScale * factor, grounded: placement.grounded, terrain };
 }
