@@ -58,6 +58,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   let sceneGeneration = 0;
   let readySettled = false;
   let hovered = '';
+  let hoverInvalidated = false;
   let configuration: MapConfiguration = {
     basemap: structuredClone(options.basemap ?? DEFAULT_BASEMAP),
     projection: options.projection ?? 'flat',
@@ -333,7 +334,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         const id = hit.properties?._rl_feature_id;
         if (typeof id !== 'string' || seen.has(id)) continue;
         if (hit.layer.id === 'rl:labels' && !modelLabels.acceptsHit(id, hit.properties?._rl_label_stamp)) continue;
-        if ((hit.layer.id === 'rl:points' || hit.layer.id === 'rl:icons') && entities.getState(id)?.representation !== 'icon' && store.get(id)?.entity) continue;
+        const representation = entities.getState(id)?.representation;
+        if ((hit.layer.id === 'rl:points' || hit.layer.id === 'rl:icons') && (representation === 'model' || representation === 'withheld')) continue;
         const feature = store.get(id);
         if (feature) { seen.add(id); features.push(feature); }
       } };
@@ -366,7 +368,13 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   function updateHover(event: Pick<MapMouseEvent, 'point' | 'lngLat' | 'originalEvent'>) {
     const value = interaction(event, 3);
     const id = value.features[0]?.id ?? '';
-    if (id !== hovered) { hovered = id; emit('hover', value, interactionCurrent(interactionRevision)); }
+    if (id !== hovered || hoverInvalidated) {
+      const current = interactionCurrent(interactionRevision);
+      hovered = id; hoverInvalidated = false; emit('hover', value, current);
+      // A callback can replace a feature before later observers receive it.
+      // The next completed draw must offer the current feature, even with the same ID.
+      if (!current()) hoverInvalidated = true;
+    }
   }
   function refreshHover() {
     if (destroyed || interactionOwner || !lastPointer) return;
@@ -442,7 +450,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       const removed = accepted.filter(id => !store.has(id));
       publication.update([], removed);
       for (const id of removed) { selected.delete(id); if (editingId === id) editingId = null; if (previewId === id) previewId = null; if (prepared) map.removeFeatureState({ source: SOURCE, id: sourceFeatureId(id) }); }
-      if (removed.length) modelVisibility.invalidate();
+      if (removed.length) { modelVisibility.invalidate(); modelLabels.invalidate(); }
       for (const id of removed) { availableMarkers.delete(id); publishedMarkerKeys.delete(id); }
       if (removed.length) entities.selection([...selected]);
       emit('datachange', { ids: [], removed });

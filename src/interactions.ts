@@ -124,7 +124,9 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
   let clickedAttachments: Interaction<P>['attachments'] = [];
   function request(id: string) {
     if (!viewport.getFeature(id)) return;
-    close(true); viewport.requestSelection([id], clickedAttachments);
+    const attachments = clickedAttachments, version = close(true);
+    if (!disposed && operation === version && !viewport.getInteractionOwner() && viewport.getFeature(id))
+      viewport.requestSelection([id], attachments);
   }
   function button(label: string, action: () => void) {
     const element = document.createElement('button'); element.type = 'button'; element.textContent = label;
