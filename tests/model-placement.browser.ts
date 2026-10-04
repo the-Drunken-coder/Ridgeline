@@ -36,7 +36,7 @@ async function pixels(viewport: Viewport) {
       const result = { red: empty(), green: empty(), blue: empty() };
       for (let i = 0; i < bytes.length; i += 4) {
         const r = bytes[i]!, g = bytes[i + 1]!, b = bytes[i + 2]!;
-        const target = r > 100 && g < 50 && b < 50 ? result.red : g > 100 && r < 50 && b < 50 ? result.green : b > 100 && r < 50 && g < 50 ? result.blue : undefined;
+        const target = r > 100 && g < 50 && b < 50 ? result.red : g > 100 && r < 50 && b < 50 ? result.green : b > r + 30 && b > g + 30 ? result.blue : undefined;
         if (!target) continue;
         const x = (i / 4 % canvas.width + .5) / ratio, y = (canvas.height - Math.floor(i / 4 / canvas.width) - .5) / ratio;
         target.count++; target.x += x; target.y += y; target.left = Math.min(target.left, x); target.right = Math.max(target.right, x);
@@ -73,10 +73,36 @@ function closePixel(actual: Pixels, expected: { x: number; y: number }, descript
     `${description} center ${actual.x},${actual.y} differs from ${expected.x},${expected.y}`);
 }
 
+function rasterBounds(viewport: Viewport, points: { x: number; y: number }[]) {
+  const cross = (a: typeof points[number], b: typeof a, c: typeof a) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y), hull: typeof points = [];
+  for (const sequence of [sorted, [...sorted].reverse()]) {
+    const edge: typeof points = [];
+    for (const point of sequence) {
+      while (edge.length >= 2 && cross(edge[edge.length - 2]!, edge[edge.length - 1]!, point) <= 0) edge.pop();
+      edge.push(point);
+    }
+    hull.push(...edge.slice(0, -1));
+  }
+  const mapCanvas = viewport.map.getCanvas(), ratio = mapCanvas.width / mapCanvas.clientWidth;
+  const canvas = document.createElement('canvas'); canvas.width = mapCanvas.width; canvas.height = mapCanvas.height;
+  const context = canvas.getContext('2d'); if (!context) throw new Error('Reference raster needs a canvas');
+  context.scale(ratio, ratio); context.beginPath(); hull.forEach(point => context.lineTo(point.x, point.y)); context.closePath(); context.fill();
+  const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  const bounds = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
+  for (let i = 0; i < data.length; i += 4) if (data[i + 3]! > 205) {
+    const x = (i / 4 % canvas.width + .5) / ratio, y = (Math.floor(i / 4 / canvas.width) + .5) / ratio;
+    bounds.left = Math.min(bounds.left, x); bounds.right = Math.max(bounds.right, x);
+    bounds.top = Math.min(bounds.top, y); bounds.bottom = Math.max(bounds.bottom, y);
+  }
+  return bounds;
+}
+
 export const modelPlacementCases: readonly { name: string; run(context: Context): Promise<void> }[] = [
   { name: 'Model heading pitch roll and authored offset preserve physical axes', async run(context) {
     const viewport = createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 18, pitch: 60, bearing: 0 },
-      elevationSampler: { sample: () => 0 }, style: () => ({ radius: 0, color: '#fff', modelAppearance: { mode: 'original' } }), logger: () => {} });
+      elevationSampler: { sample: () => 0 }, entityModels: { switchDistanceMeters: 1e9, deadZoneMeters: 0, minimumSizePixels: 0 },
+      style: () => ({ radius: 0, color: '#fff', modelAppearance: { mode: 'original' } }), logger: () => {} });
     context.setCurrent(viewport);
     try {
       await viewport.ready; const frame = reference(viewport), unit = 6, diagonal = unit * Math.sqrt(3) / 2;
@@ -103,6 +129,27 @@ export const modelPlacementCases: readonly { name: string; run(context: Context)
         closePixel(actual.green, project(viewport, input, [0, 0, 8], [unit, 0, 0]), 'corrected authored right');
         await viewport.registerModel('asset', { bytes: axisModelGlb(), metersPerUnit: 2 });
       }
+      let sawBlend = false;
+      for (const projection of ['flat', 'globe'] as const) {
+        viewport.configure({ projection });
+        for (const zoom of projection === 'globe' ? [11, 11.25, 11.5, 11.75, 12, 18, 19, 20] : [18, 19, 20]) {
+          const metersPerUnit = 2 ** (19 - zoom), unit = 3 * metersPerUnit, altitude = 4 * metersPerUnit;
+          await viewport.registerModel('asset', { bytes: axisModelGlb(), metersPerUnit });
+          for (const [longitude, copy] of [[6.87, 0], [179.99999, 1], [-179.99999, -1]] as const) {
+            viewport.map.jumpTo({ center: [longitude + copy * 360, 46], zoom, pitch: 35, bearing: 23 });
+            const entity = feature([longitude, 46], true); entity.entity!.altitude = { meters: altitude, reference: 'ground' };
+            viewport.upsert([entity]); await idle(viewport);
+            const actual = await pixels(viewport), input = frame(), anchor: Vec3 = [longitude, 46, altitude];
+            const blend = input.defaultProjectionData.projectionTransition; sawBlend ||= blend > 0 && blend < 1;
+            const description = `${projection}, zoom ${zoom}, longitude ${longitude}, copy ${copy}, blend ${blend}`;
+            closePixel(actual.red, project(viewport, input, anchor, [0, unit, 0]), `nose: ${description}`);
+            closePixel(actual.green, project(viewport, input, anchor, [unit, 0, 0]), `right: ${description}`);
+            closePixel(actual.blue, project(viewport, input, anchor, [0, 0, unit]), `up: ${description}`);
+            check(viewport.getFeature('model')?.geometry.coordinates[0] === longitude, 'World-copy projection changed the geographic anchor');
+          }
+        }
+      }
+      check(sawBlend, 'Model precision cases did not exercise continuous globe blending');
     } finally { viewport.destroy(); }
   } },
   { name: 'Ground models follow planar terrain at real and enlarged size', async run(context) {
@@ -128,18 +175,28 @@ export const modelPlacementCases: readonly { name: string; run(context: Context)
             return project(viewport, input, [...terrain.location, center], offset);
           })));
           const left = Math.min(...points.map(p => p.x)), rightEdge = Math.max(...points.map(p => p.x)), top = Math.min(...points.map(p => p.y)), bottom = Math.max(...points.map(p => p.y));
-          return { left, right: rightEdge, top, bottom, size: Math.max(rightEdge - left, bottom - top) };
+          return { points, size: Math.max(rightEdge - left, bottom - top) };
         };
         let scale = 1;
         if (minimumSizePixels && bounds(1).size < minimumSizePixels) {
           let lo = 1, hi = 2; while (bounds(hi).size < minimumSizePixels) hi *= 2;
           for (let step = 0; step < 30; step++) { const mid = (lo + hi) / 2; if (bounds(mid).size < minimumSizePixels) lo = mid; else hi = mid; } scale = hi;
         }
-        const expected = bounds(scale); check(actual.count > 20, 'Ground model did not draw');
+        // Compare equivalent opaque raster coverage. A sharp projected corner need not cover its extreme pixel.
+        const expected = rasterBounds(viewport, bounds(scale).points); check(actual.count > 20, 'Ground model did not draw');
         for (const side of ['left', 'right', 'top', 'bottom'] as const)
-          check(Math.abs(actual[side] - expected[side]) <= 1.25, `Ground ${side} ${actual[side]} differs from ${expected[side]} at floor ${minimumSizePixels}, exaggeration ${exaggeration}, ratio ${pixelRatio}`);
+          check(Math.abs(actual[side] - expected[side]) <= 1, `Ground ${side} differs: ${JSON.stringify({ actual, expected, scale, minimumSizePixels, exaggeration, pixelRatio })}`);
         check(viewport.getFeature('model')?.geometry.coordinates[0] === terrain.location[0], 'Ground contact changed the geographic anchor');
       }
+      viewport.map.setPixelRatio(1); viewport.configure({ exaggeration: 1 });
+      const attached = feature(terrain.location);
+      attached.entity!.attachments = [{ id: 'physical-zone', type: 'polygon', color: '#0000ff', vertices: [[8, -6], [18, -6], [18, 6], [8, 6]] }];
+      viewport.upsert([attached]); await idle(viewport); const physical = await pixels(viewport);
+      attached.entity!.model!.minimumSizePixels = 40; viewport.upsert([attached]); await idle(viewport); const enlarged = await pixels(viewport);
+      check(physical.blue.count > 15 && enlarged.blue.count > 15, 'Physical attachment has no visible pixels');
+      check(enlarged.red.right - enlarged.red.left > 1.5 * (physical.red.right - physical.red.left), 'Attachment comparison did not enlarge the model');
+      for (const side of ['left', 'right', 'top', 'bottom'] as const)
+        check(Math.abs(physical.blue[side] - enlarged.blue[side]) <= .5, `Model enlargement moved the physical attachment ${side}`);
     } finally { viewport.destroy(); }
   } },
   { name: 'Model placement recovers from unknown terrain without moving entities', async run(context) {
