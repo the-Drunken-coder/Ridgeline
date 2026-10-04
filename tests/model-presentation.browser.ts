@@ -245,6 +245,9 @@ export const modelPresentationCases: readonly { name: string; run(context: Conte
       check(enlargedFallback.bytes.every((value, index) => value === fallback.bytes[index]), 'Model size floor changed the physical fallback ground marker');
       await viewport.registerModel('body', { bytes: groundModelGlb() }); await idle(viewport);
       viewport.setSelection(['instance']); await idle(viewport);
+      // Selection queues scene work, then native publication on the following frame.
+      // The first MapLibre idle can precede that already-scheduled publication.
+      await new Promise(resolve => setTimeout(resolve, 300)); await idle(viewport);
       let renders = 0; const count = () => renders++; viewport.map.on('render', count);
       await new Promise(resolve => setTimeout(resolve, 5000)); viewport.map.off('render', count);
       check(renders === 0, `Static selected model scheduled ${renders} idle frames`);
