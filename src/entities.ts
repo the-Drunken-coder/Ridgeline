@@ -135,7 +135,6 @@ export class EntityScene<P extends Properties> {
       displayed: id => {
         const state = this.states.get(id);
         if (state) state.coverage = combineCoverage(this.nonCameraCoverage.get(id) ?? 'ready', this.coverage.status(id));
-        this.geometryDirty = true;
         this.renderLayers(false);
         options.changed([id]);
       },
