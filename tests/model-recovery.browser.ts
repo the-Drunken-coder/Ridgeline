@@ -161,6 +161,7 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
       check(clicked.features.length === 0 && clicked.attachments.length === 0 && hovered.length === 0, 'Lost canvas retained stale click or hover candidates');
       check(viewport.getEntityState('textured')?.representation === 'withheld' && viewport.getEntityState('solid')?.representation === 'withheld', 'Actual loss did not publish withheld representations');
       check(viewport.getEntityState('textured')?.model?.status === 'ready', 'Actual loss discarded accepted model readiness');
+      viewport.configure({ basemap: basemap('#eeeeee') });
       appearances.set('textured', { mode: 'color', color: 'blue' });
       const moved = feature('textured', -.00016); moved.entity!.attachments = textured.entity!.attachments;
       viewport.upsert([moved]); viewport.setSelection(['solid']);
@@ -168,7 +169,11 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
       const replacement = viewport.registerModel('material', { bytes: materialGlb([{ image: 'jpeg', unlit: true }]), metersPerUnit: 10 }).then(() => { installed = true; });
       await pause(60);
       check(!installed, 'Registration installed while its renderer was lost');
-      await restore(viewport, test, extension); await replacement; await completed;
+      check(viewport.getEntityState('textured')?.representation === 'withheld', 'A basemap change exposed representation before context restoration');
+      await restore(viewport, test, extension);
+      check(viewport.map.getPaintProperty('background', 'background-color') === '#eeeeee', 'Restoration replaced the latest accepted basemap with its stale pre-loss style');
+      await test.until(() => installed, 'current registration installs after changed-basemap restoration');
+      await replacement; await completed;
       await test.until(() => viewport.getEntityState('textured')?.representation === 'model' && viewport.getEntityState('solid')?.representation === 'model', 'inside-band choices return after restoration');
       const restored = await capture(viewport);
       check(count(restored, 'blue', 'left') > 100 && count(restored, 'magenta', 'left') === 0, 'Restoration used stale per-entity color');
@@ -185,6 +190,9 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
   } },
   { name: 'model recovery cancels stale native image completions', async run(test) {
     const errors: RidgelineError[] = [], viewport = create(test, undefined, undefined, error => errors.push(error));
+    const triggerRepaint = viewport.map.triggerRepaint;
+    let destroyed = false, staleRepaints = 0;
+    viewport.map.triggerRepaint = function () { if (destroyed) staleRepaints++; return triggerRepaint.call(this); };
     try {
       await viewport.ready;
       await viewport.registerModel('material', { bytes: materialGlb(), metersPerUnit: 10 });
@@ -208,11 +216,12 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
         try {
           const extension = await lose(viewport, test); await restore(viewport, test, extension);
           await test.until(() => held.held.length === 1, `${action}: accepted asset rebuild is decoding`);
-          if (action === 'unregister') viewport.unregisterModel('material'); else viewport.destroy();
+          if (action === 'unregister') viewport.unregisterModel('material'); else { viewport.destroy(); destroyed = true; }
           held.stop(); held.release();
           await test.until(() => held.held.every(image => image.bitmap.width === 0), `${action}: late restore bitmap closes`);
           if (action === 'unregister') check(viewport.getEntityState('instance')?.model?.status === 'unavailable', 'Late restoration resurrected an unregistered asset');
-          else check(!viewport.getFeature('instance'), 'Late restoration resurrected a destroyed viewport');
+          else { check(!viewport.getFeature('instance'), 'Late restoration resurrected a destroyed viewport');
+            check(staleRepaints === 0, 'Late restoration scheduled work after destruction'); }
         } finally { held.stop(); held.release(); }
       }
       check(!errors.some(error => error.code === 'MODEL_LOAD_FAILED'), 'Intentional restore cancellation emitted an asset failure');
