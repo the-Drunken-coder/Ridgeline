@@ -1,5 +1,7 @@
 import { attachInteractions, createViewport } from '@ridgeline/map';
 import type { Interaction, MapFeature, Viewport } from '@ridgeline/map';
+import { MercatorCoordinate } from 'maplibre-gl';
+import { solidGlb } from './model-fixtures';
 import { axisModelGlb, planarTerrain } from './model-placement-fixtures';
 
 type Context = { container: HTMLDivElement; setCurrent(viewport: Viewport): void;
@@ -37,13 +39,20 @@ async function frame(viewport: Viewport) {
   await Promise.resolve();
 }
 async function colors(viewport: Viewport) {
-  return new Promise<{colored:number;center:number[]}>(resolve => {
+  return new Promise<{colored:number;center:number[];magenta:{count:number;x:number;y:number}}>(resolve => {
     viewport.map.once('render', () => {
       const canvas=viewport.map.getCanvas(), gl=canvas.getContext('webgl2'); check(gl,'WebGL2 unavailable');
       const pixels=new Uint8Array(canvas.width*canvas.height*4); gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
-      let colored=0; for(let i=0;i<pixels.length;i+=4) if(Math.max(pixels[i]!,pixels[i+1]!,pixels[i+2]!)-Math.min(pixels[i]!,pixels[i+1]!,pixels[i+2]!)>100)colored++;
+      let colored=0; const magenta={count:0,x:0,y:0}, ratio=canvas.width/canvas.clientWidth;
+      for(let i=0;i<pixels.length;i+=4) {
+        if(Math.max(pixels[i]!,pixels[i+1]!,pixels[i+2]!)-Math.min(pixels[i]!,pixels[i+1]!,pixels[i+2]!)>100)colored++;
+        if(pixels[i]!>pixels[i+1]!+80 && pixels[i+2]!>pixels[i+1]!+80) {
+          magenta.count++; magenta.x+=(i/4%canvas.width+.5)/ratio; magenta.y+=(canvas.height-Math.floor(i/4/canvas.width)-.5)/ratio;
+        }
+      }
+      if(magenta.count) {magenta.x/=magenta.count;magenta.y/=magenta.count;}
       const index=(Math.floor(canvas.height/2)*canvas.width+Math.floor(canvas.width/2))*4;
-      resolve({colored,center:[...pixels.slice(index,index+3)]});
+      resolve({colored,center:[...pixels.slice(index,index+3)],magenta});
     }); viewport.map.triggerRepaint();
   });
 }
@@ -84,6 +93,23 @@ export const modelPickingCases: readonly { name: string; run(context: Context): 
         check(clicks.at(-1)?.features[0]?.id === 'model', `${projection} ${longitude} displayed world copy was not picked`);
       }
       viewport.configure({ projection: 'flat' }); viewport.setCamera({ center: [0,0], zoom:17 });
+      await viewport.registerModel('crossing', {bytes:solidGlb(),metersPerUnit:64,appearance:{mode:'color',color:'#ff00ff'}});
+      const cameraHeight=viewport.map._camera.transform.getCameraAltitude(), longitude=90*360/(2*Math.PI*6371008.8), crossing=entity();
+      crossing.geometry={type:'Point',coordinates:[longitude,0]}; crossing.entity!.altitude={meters:cameraHeight-25,reference:'ground'};
+      crossing.entity!.model={id:'crossing',minimumSizePixels:0};
+      let matrix:Float64Array|undefined;
+      viewport.map.addLayer({id:'picking-near-plane-reference',type:'custom',render(_gl,input){matrix=Float64Array.from(input.defaultProjectionData.mainMatrix);}});
+      viewport.upsert([crossing]); const nearPixels=await colors(viewport); check(matrix,'Near-plane reference absent');
+      const anchor=MercatorCoordinate.fromLngLat([longitude,0],cameraHeight-25), units=anchor.meterInMercatorCoordinateUnits(), distances:number[]=[];
+      for(const dx of [-64,64]) for(const dy of [-64,64]) for(const dz of [-32,32]) {
+        const point=[anchor.x+dx*units,anchor.y+dy*units,anchor.z+dz*units,1];
+        distances.push(point.reduce((sum,value,index)=>sum+value*(matrix![index*4+2]!+matrix![index*4+3]!),0));
+      }
+      check(Math.min(...distances)<0 && Math.max(...distances)>0,'Model bounds did not actually cross the native near plane');
+      check(nearPixels.magenta.count>100,'Near-plane crossing model lost its visible exterior');
+      await pointer('click',nearPixels.magenta.x,nearPixels.magenta.y);
+      check(clicks.at(-1)?.features[0]?.id==='model','Visible clipped model exterior was not picked');
+      viewport.map.removeLayer('picking-near-plane-reference');
       const behind = entity(); behind.entity!.altitude = { meters: viewport.map._camera.transform.getCameraAltitude() + 100, reference: 'ground' };
       viewport.upsert([behind]); await frame(viewport);
       await pointer('click', x + 25, y + 25); check(clicks.at(-1)?.features.length === 0, 'Behind-near-plane box was picked');
