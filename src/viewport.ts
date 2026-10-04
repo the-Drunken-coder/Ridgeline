@@ -54,6 +54,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   let destroyed = false;
   let prepared = false;
   let contextLost = false;
+  let restoreBasemap = false;
   let interactionRevision = 0;
   let sceneGeneration = 0;
   let readySettled = false;
@@ -269,7 +270,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   }
 
   function prepareStyle() {
-    if (destroyed) return;
+    if (destroyed || contextLost) return;
     const generation = sceneGeneration;
     const current = () => !destroyed && sceneGeneration === generation;
     try {
@@ -363,7 +364,13 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   map.on('style.load', prepareStyle);
   map.on('error', onError);
   map.on('webglcontextlost', () => entities.contextLost());
-  map.on('webglcontextrestored', () => { contextLost = false; });
+  map.on('webglcontextrestored', () => {
+    if (destroyed) return;
+    contextLost = false;
+    // MapLibre first restores its pre-loss style. Apply any newer accepted basemap
+    // only after its painter exists; prepareStyle then rebuilds our owned layers.
+    if (restoreBasemap) { restoreBasemap = false; map.setStyle(structuredClone(configuration.basemap), { diff: false }); }
+  });
   const interactionCurrent = (revision: number) => () => !destroyed && !interactionOwner && interactionRevision === revision;
   map.on('click', event => { if (!interactionOwner) emit('click', interaction(event, 12), interactionCurrent(interactionRevision)); });
   map.on('contextmenu', event => { if (!interactionOwner) emit('contextmenu', interaction(event, 6), interactionCurrent(interactionRevision)); });
@@ -552,7 +559,10 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       const configuredScene = configuration;
       entities.configure(next.elevation !== undefined);
       if (destroyed || configuration !== configuredScene) return;
-      if (styleChanged) map.setStyle(structuredClone(configuration.basemap), { diff: false });
+      if (styleChanged) {
+        if (contextLost) restoreBasemap = true;
+        else map.setStyle(structuredClone(configuration.basemap), { diff: false });
+      }
       else if (prepared) {
         map.setProjection({ type: configuration.projection === 'flat' ? 'mercator' : 'globe' });
         applyElevation(next.elevation !== undefined);
