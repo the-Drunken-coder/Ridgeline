@@ -132,7 +132,14 @@ export const modelSwitchingCases: readonly { name: string; run(context: Context)
         let blend = 0;
         airborne.map.addLayer({ id: 'switch-projection-reference', type: 'custom', render(_gl, input) { blend = input.defaultProjectionData.projectionTransition; } });
         for (const [projection, zoom, expectedBlend] of [['flat', 14, 0], ['globe', 5, 1], ['globe', 11.5, .5]] as const) {
-          await frame(airborne, () => { airborne.configure({ projection }); airborne.map.jumpTo({ zoom }); });
+          await frame(airborne, () => {
+            airborne.configure({ projection, entityModels: { switchDistanceMeters: 1, deadZoneMeters: 0, minimumSizePixels: 40 } });
+            airborne.map.jumpTo({ zoom });
+          });
+          // A new camera view can still be loading symbol tiles. Establish both
+          // representations' eligibility before measuring the first switching frame.
+          await new Promise<void>(resolve => { airborne.map.once('idle', () => resolve()); airborne.map.triggerRepaint(); });
+          only(await frame(airborne), 'icon', `${icon ? 'symbol' : 'dot'} ${projection} ${zoom} eligible fallback`);
           const at = distance(airborne);
           only(await frame(airborne, () => airborne.configure({ entityModels: { switchDistanceMeters: at * 2, deadZoneMeters: 0, minimumSizePixels: 40 } })), 'model', `${icon ? 'symbol' : 'dot'} ${projection} ${zoom} model`);
           only(await frame(airborne, () => airborne.configure({ entityModels: { switchDistanceMeters: at / 2, deadZoneMeters: 0, minimumSizePixels: 40 } })), 'icon', `${icon ? 'symbol' : 'dot'} ${projection} ${zoom} fallback`);
