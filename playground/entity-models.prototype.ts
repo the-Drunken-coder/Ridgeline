@@ -96,7 +96,7 @@ export function mountEntityModelsPrototype(viewport: Viewport<Sample>, container
     <h2>Size and switching</h2>
     <label class="setting">Size<select data-control="sizeMode"><option value="enlarged">Enlarged, then real</option><option value="real">Real size only</option></select></label>
     <label class="setting">Fixed size px<input data-control="targetPixels" type="number" min="12" max="160" step="4" value="56"></label>
-    <label class="setting">Switch distance m<input data-control="thresholdMeters" type="number" min="10" max="2000000" step="100" value="2000"></label>
+    <label class="setting">Switch distance m<input data-control="thresholdMeters" type="number" min="10" max="2000000" step="10" value="2000"></label>
     <label class="setting">Dead zone m<input data-control="deadZoneMeters" type="number" min="0" max="100000" step="50" value="200"></label>
     <label class="setting">Swap<select data-control="transition"><option value="instant">Instant</option><option value="fade">Brief fade</option></select></label>
     <h2>Appearance</h2>
