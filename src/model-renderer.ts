@@ -4,6 +4,7 @@ import { EntityProjection, entityProjectionShader } from './entity-projection';
 import type { ParsedModel, ModelMaterial, Vec3 } from './model-glb';
 import type { RegisteredModel } from './models';
 import type { ModelAppearance } from './types';
+import type { ModelFeedback } from './model-presentation';
 
 type Batch = { vao: WebGLVertexArrayObject; instances: WebGLBuffer; count: number; material: ModelMaterial;
   texture?: WebGLTexture; sampler?: WebGLSampler };
@@ -14,10 +15,11 @@ export type ModelDrawInstance = {
   /** entityVertex output relative to the draw origin: Mercator XY, displayed meters, units per meter. */
   anchor: [number, number, number, number];
   appearance?: ModelAppearance;
+  feedback?: ModelFeedback;
 };
 export type ModelDraw = { asset: RegisteredModel<ModelGpu>; origin: [number, number]; instances: ModelDrawInstance[] };
 export type PreparedModelFrame = { draw(): void };
-const STRIDE = 17;
+const STRIDE = 18;
 const linear = (value: number) => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4;
 
 /** Native decoding cannot be aborted. Reject promptly, then close any bitmap delivered after cancellation. */
@@ -120,7 +122,7 @@ export class ModelRenderer {
         }
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffer()); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, batch.indices, gl.STATIC_DRAW);
         const instances = buffer(); gl.bindBuffer(gl.ARRAY_BUFFER, instances);
-        for (const [location, size, offset] of [[3, 3, 0], [4, 3, 3], [5, 3, 6], [6, 4, 9], [7, 4, 13]] as const) {
+        for (const [location, size, offset] of [[3, 3, 0], [4, 3, 3], [5, 3, 6], [6, 4, 9], [7, 4, 13], [9, 1, 17]] as const) {
           gl.enableVertexAttribArray(location); gl.vertexAttribPointer(location, size, gl.FLOAT, false, STRIDE * 4, offset * 4); gl.vertexAttribDivisor(location, 1);
         }
         return { vao, instances, count: batch.indices.length, material: batch.material, sampler,
@@ -144,7 +146,8 @@ export class ModelRenderer {
         if (!color) throw new Error('Invalid model appearance.');
         const [red, green, blue] = color.rgb;
         values.push(...instance.basis[0], ...instance.basis[1], ...instance.basis[2], ...instance.anchor,
-          linear(red), linear(green), linear(blue), appearance?.mode === 'original' ? 1 : 0);
+          linear(red), linear(green), linear(blue), appearance?.mode === 'original' ? 1 : 0,
+          instance.feedback === 'selected' ? .18 : instance.feedback === 'hover' ? .08 : 0);
       }
       groups.set(draw.asset, values);
       return { ...draw, offset, count: draw.instances.length };
@@ -177,7 +180,7 @@ export class ModelRenderer {
             for (const batch of asset.resources.batches) {
               if ((batch.material.alphaMode === 'BLEND') !== translucent) continue;
               gl.bindVertexArray(batch.vao); gl.bindBuffer(gl.ARRAY_BUFFER, batch.instances);
-              for (const [location, size, start] of [[3, 3, 0], [4, 3, 3], [5, 3, 6], [6, 4, 9], [7, 4, 13]] as const)
+              for (const [location, size, start] of [[3, 3, 0], [4, 3, 3], [5, 3, 6], [6, 4, 9], [7, 4, 13], [9, 1, 17]] as const)
                 gl.vertexAttribPointer(location, size, gl.FLOAT, false, STRIDE * 4, (offset * STRIDE + start) * 4);
               gl.uniform4fv(uniform('u_base'), batch.material.baseColor); gl.uniform3fv(uniform('u_emissive'), batch.material.emissive);
               gl.uniform1i(uniform('u_unlit'), batch.material.unlit ? 1 : 0);
@@ -208,15 +211,16 @@ ${input.shaderData.define}
 layout(location=0) in vec3 a_position; layout(location=1) in vec3 a_normal; layout(location=2) in vec4 a_color;
 layout(location=3) in vec3 i_rot0; layout(location=4) in vec3 i_rot1; layout(location=5) in vec3 i_rot2;
 layout(location=6) in vec4 i_offset; layout(location=7) in vec4 i_color; layout(location=8) in vec2 a_uv;
+layout(location=9) in float i_feedback;
 uniform vec3 u_center;
-out vec3 v_normal; out vec4 v_color; out vec4 v_instance; out vec2 v_uv;
+out vec3 v_normal; out vec4 v_color; out vec4 v_instance; out vec2 v_uv; out float v_feedback;
 ${entityProjectionShader}
 void main(){vec3 p=a_position-u_center;vec3 enu=i_rot0*p.x+i_rot1*p.y+i_rot2*p.z;
 gl_Position=projectPosition(vec3(i_offset.xy+vec2(enu.x,-enu.y)*i_offset.w,i_offset.z+enu.z),i_offset.w);
-v_normal=a_normal;v_color=a_color;v_instance=i_color;v_uv=a_uv;}`;
+v_normal=a_normal;v_color=a_color;v_instance=i_color;v_uv=a_uv;v_feedback=i_feedback;}`;
       const fragment = `#version 300 es
 precision highp float;
-in vec3 v_normal;in vec4 v_color;in vec4 v_instance;in vec2 v_uv;
+in vec3 v_normal;in vec4 v_color;in vec4 v_instance;in vec2 v_uv;in float v_feedback;
 uniform vec4 u_base;uniform vec3 u_emissive;uniform bool u_unlit;uniform bool u_textured;
 uniform int u_alphaMode;uniform float u_alphaCutoff;
 uniform sampler2D u_texture;uniform vec4 u_uv;uniform float u_rotation;out vec4 color;
@@ -226,7 +230,7 @@ float c=cos(u_rotation),s=sin(u_rotation);vec2 uv=u_uv.xy+mat2(c,s,-s,c)*(v_uv*u
 vec4 texel=u_textured?texture(u_texture,uv):vec4(1.);
 float alpha=u_base.a*v_color.a*texel.a;if(u_alphaMode==1&&alpha<u_alphaCutoff)discard;
 vec3 rgb=v_instance.w>.5?u_base.rgb*v_color.rgb*texel.rgb*light+(u_unlit?vec3(0.):u_emissive):v_instance.rgb*light;
-color=vec4(srgb(rgb),u_alphaMode==2?alpha:1.);}`;
+color=vec4(srgb(mix(rgb,vec3(1.),v_feedback)),u_alphaMode==2?alpha:1.);}`;
       for (const [type, source] of [[gl.VERTEX_SHADER, vertex], [gl.FRAGMENT_SHADER, fragment]] as const) {
         const shader = gl.createShader(type); if (!shader) throw new Error('Cannot allocate model shader.'); shaders.push(shader);
         gl.shaderSource(shader, source); gl.compileShader(shader);
