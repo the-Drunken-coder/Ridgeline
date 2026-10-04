@@ -274,7 +274,7 @@ export const modelSwitchingCases: readonly { name: string; run(context: Context)
       const bufferData = gl.bufferData;
       let fail = true;
       Object.defineProperty(gl, 'bufferData', { configurable: true, writable: true, value: (...args: unknown[]) => {
-        if (fail && args[2] === gl.DYNAMIC_DRAW && gl.getParameter(gl.ARRAY_BUFFER_BINDING) === instanceBuffer) { fail = false; throw new Error('Injected model preflight failure'); }
+        if (fail && args[0] === gl.ARRAY_BUFFER && args[2] === gl.DYNAMIC_DRAW && gl.getParameter(gl.ARRAY_BUFFER_BINDING) === instanceBuffer) { fail = false; throw new Error('Injected model preflight failure'); }
         return Reflect.apply(bufferData, gl, args);
       } });
       try { only(await frame(viewport, () => move(viewport, 2000)), 'icon', 'preflight failure in same frame'); }
