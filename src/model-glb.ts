@@ -248,6 +248,7 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
         value = Math.max(-1, value / max);
       }
       if (!Number.isFinite(value)) throw new Error('GLB_NON_FINITE_ATTRIBUTE');
+      if (semantic === 'COLOR_0' && (value < 0 || value > 1)) throw new Error('GLB_INVALID_COLOR_ATTRIBUTE');
       return value;
     }
     return { count, width, component, values: Array.from({ length: count * width }, (_, i) => read(start + Math.floor(i / width) * stride + (i % width) * size)) };
