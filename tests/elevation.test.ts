@@ -478,3 +478,37 @@ test('a sampler changing provider cannot publish the obsolete preparation result
     assert.equal(elevation.readiness(modelAreaKey('current')), 'loading');
   } finally { elevation.destroy(); }
 });
+
+test('abort callbacks keep newer terrain ownership and discard a partially accepted batch', async () => {
+  for (const action of ['release', 'replace', 'destroy'] as const) {
+    const source = controlled(), { elevation } = fixture(source.sampler), key = modelAreaKey('current');
+    try {
+      elevation.request(key, [0, 0], 1); await flush();
+      source.calls[0]!.signal.addEventListener('abort', () => {
+        if (action === 'release') elevation.release(key);
+        else if (action === 'replace') elevation.request(key, [3, 3], 1);
+        else elevation.destroy();
+      });
+      elevation.requestBatch([{ key: 'partial', center: [0, 0], radiusMeters: 1 },
+        { key, center: [1, 1], radiusMeters: 1 }], { deferProbe: true });
+      await flush();
+      assert.equal(elevation.revision('partial'), 0, `${action} retained part of the obsolete batch`);
+      assert.equal(elevation.revision(key) > 0, action === 'replace');
+      elevation.reset({ tiles: ['replacement'] }); await flush();
+      assert.deepEqual(source.calls.slice(1).map(call => call.positions[0]), action === 'replace' ? [[3, 3], [3, 3]] : []);
+    } finally { elevation.destroy(); }
+  }
+});
+
+test('provider reset retires only old work when an abort callback replaces one requester', async () => {
+  const source = controlled(), { elevation } = fixture(source.sampler);
+  try {
+    elevation.request('changed', [0, 0], 1); elevation.request('retained', [10, 10], 1); await flush();
+    source.calls[0]!.signal.addEventListener('abort', () => elevation.request('changed', [3, 3], 1));
+    elevation.reset({ tiles: ['replacement'] }); await flush();
+    assert.deepEqual(source.calls.slice(2).map(call => call.positions[0]), [[3, 3], [10, 10]]);
+    assert.equal(source.calls[2]!.signal.aborted, false);
+    assert.equal(source.calls[3]!.signal.aborted, false);
+    assert.ok(elevation.revision('changed') > 0 && elevation.revision('retained') > 0);
+  } finally { elevation.destroy(); }
+});

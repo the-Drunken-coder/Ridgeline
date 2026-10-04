@@ -102,6 +102,7 @@ export class Elevation {
   private raster?: RasterElevationSampler;
   private destroyed = false;
   private revisionCounter = 0;
+  private operation = 0;
 
   constructor(private readonly options: ElevationOptions) {
     if (!options.sampler) this.raster = this.createRaster(options.provider);
@@ -141,14 +142,21 @@ export class Elevation {
   /** New areas in one call share a consumer preparation and its signal. */
   requestBatch(requests: readonly ElevationArea[], options: { deferProbe?: boolean } = {}): void {
     if (this.destroyed) return;
-    const fresh: Area[] = [];
+    const operation = ++this.operation, fresh: Area[] = [], accepted: Area[] = [];
+    const retainCurrent = () => {
+      if (!this.destroyed && operation === this.operation) return true;
+      for (const area of accepted) if (this.areas.get(area.key) === area) this.releaseArea(area.key);
+      return false;
+    };
     for (const request of requests) {
       const previous = this.areas.get(request.key);
       if (previous && sameArea(previous, request)) {
         if (!options.deferProbe) this.startDeferred(previous.work);
         continue;
       }
-      if (previous) this.release(request.key);
+      if (previous) this.releaseArea(request.key);
+      // Aborting preparation can synchronously remove, replace or destroy its requester.
+      if (!retainCurrent()) return;
       const area: Area = {
         key: request.key,
         center: [request.center[0], request.center[1]],
@@ -159,6 +167,7 @@ export class Elevation {
         revision: ++this.revisionCounter,
       };
       this.areas.set(area.key, area);
+      accepted.push(area);
       if (this.options.sampler?.prepare) fresh.push(area);
     }
     if (!fresh.length) return;
@@ -191,6 +200,7 @@ export class Elevation {
         work.keys.clear();
         work.controller.abort();
         this.works.delete(work);
+        if (!retainCurrent()) return;
       }
     }
 
@@ -206,6 +216,11 @@ export class Elevation {
   }
 
   release(key: string): void {
+    this.operation++;
+    this.releaseArea(key);
+  }
+
+  private releaseArea(key: string): void {
     const area = this.areas.get(key);
     if (!area) return;
     this.areas.delete(key);
@@ -249,6 +264,7 @@ export class Elevation {
 
   retry(): void {
     if (this.destroyed) return;
+    this.operation++;
     if (this.raster) {
       for (const area of this.areas.values()) area.unavailable = false;
       this.raster.retry();
@@ -258,6 +274,7 @@ export class Elevation {
 
   reset(provider: ElevationProvider): void {
     if (this.destroyed) return;
+    this.operation++;
     if (this.raster) {
       for (const area of this.areas.values()) area.unavailable = false;
       this.raster.destroy();
@@ -268,6 +285,7 @@ export class Elevation {
 
   destroy(): void {
     if (this.destroyed) return;
+    this.operation++;
     this.destroyed = true;
     for (const work of this.works) work.controller.abort();
     this.works.clear();
@@ -337,10 +355,13 @@ export class Elevation {
   }
 
   private restart() {
-    const requests = [...this.areas.values()].map(({ key, center, radiusMeters, preparationBounds, sampleRange, requiredPositions }) => ({ key, center, radiusMeters, preparationBounds, sampleRange, requiredPositions }));
-    for (const work of this.works) work.controller.abort();
+    const retiredAreas = [...this.areas.values()], retiredWorks = [...this.works];
+    // New requests made by abort listeners belong to the new provider and must survive.
     this.works.clear();
-    this.areas.clear();
+    for (const work of retiredWorks) work.controller.abort();
+    if (this.destroyed) return;
+    const requests = retiredAreas.filter(area => this.areas.get(area.key) === area);
+    for (const area of requests) this.areas.delete(area.key);
     this.requestBatch(requests);
     this.notify(requests.map(request => request.key));
   }
