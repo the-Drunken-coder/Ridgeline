@@ -33,6 +33,10 @@ if (process.env.FAIL_BUILD) process.exit(1);
 if (process.env.FIXTURE_REPORT && process.argv.includes('playwright')) {
   fs.mkdirSync(path.join(root, '.artifacts/playwright'), { recursive: true });
   fs.writeFileSync(path.join(root, '.artifacts/playwright/report'), process.env.FIXTURE_REPORT);
+  if (process.env.FIXTURE_REPORT_PROTECTION === 'symlink')
+    fs.symlinkSync(path.join(root, 'external-evidence'), path.join(root, '.artifacts/playwright/external'));
+  if (process.env.FIXTURE_REPORT_PROTECTION === 'tracked')
+    require('node:child_process').execFileSync('git', ['add', '-f', '.artifacts/playwright/report'], { cwd: root });
   if (process.env.FAIL_BROWSER) process.exit(1);
 }
 if (process.env.INTERRUPT_BUILD) {
@@ -141,7 +145,7 @@ test('retention preserves interrupted ownership, tracked members, curated eviden
   for (const name of protectedNames) {
     const path = join(history, `packaged-${name}`);
     await mkdir(path);
-    const record = { ...original, completedAt: '2000-01-01T00:00:00.000Z', pid: 99999999 };
+    const record = { ...original, startedAt: '1999-12-31T00:00:00.000Z', completedAt: '2000-01-01T00:00:00.000Z', pid: 99999999 };
     if (['running', 'interrupted'].includes(name)) record.status = name;
     if (name === 'unknown') record.owner = 'someone-else';
     await writeFile(join(path, '.browser-run.json'), JSON.stringify(record));
@@ -217,6 +221,97 @@ test('malformed ownership records and protected latest outputs survive subsequen
   assert.match(result.stderr, /Refusing to replace protected browser output/);
   assert.equal(await readFile(join(output, 'tracked'), 'utf8'), 'preserve latest output');
   await access(join(unknown, '.browser-run.json'));
+});
+
+test('incomplete or malformed completion metadata remains protected during retention', async t => {
+  const f = await fixture(t);
+  assert.equal(f.run().status, 0);
+  const history = join(f.root, '.artifacts/browser-runs');
+  const original = JSON.parse(await readFile(join(history, (await readdir(history))[0], '.browser-run.json'), 'utf8'));
+  const complete = { ...original, startedAt: '2000-01-01T00:00:00.000Z', completedAt: '2000-01-02T00:00:00.000Z' };
+  const malformed = [
+    ['missing-owner', { owner: undefined }], ['missing-version', { version: undefined }],
+    ['missing-command', { command: undefined }], ['missing-status', { status: undefined }],
+    ['missing-pid', { pid: undefined }], ['text-pid', { pid: 'not a process' }],
+    ['zero-pid', { pid: 0 }], ['fractional-pid', { pid: 1.5 }], ['unsafe-pid', { pid: Number.MAX_SAFE_INTEGER + 1 }],
+    ['missing-invocation', { invocation: undefined }], ['null-invocation', { invocation: null }],
+    ['empty-invocation', { invocation: [] }], ['non-string-argument', { invocation: ['node', 12] }],
+    ['empty-argument', { invocation: [''] }], ['missing-start', { startedAt: undefined }],
+    ['false-start', { startedAt: false }], ['invalid-start', { startedAt: 'not a date' }],
+    ['noncanonical-start', { startedAt: '2000-01-01' }], ['missing-completion', { completedAt: undefined }],
+    ['invalid-completion', { completedAt: 'not a date' }],
+    ['normalized-invalid-date', { completedAt: '2000-02-31T00:00:00.000Z' }],
+    ['noncanonical-completion', { completedAt: '2000-01-02T01:00:00.000+01:00' }],
+    ['completion-before-start', { completedAt: '1999-12-31T00:00:00.000Z' }],
+  ];
+  for (const [name, changes] of malformed) {
+    const path = join(history, `packaged-${name}`);
+    await mkdir(path);
+    await writeFile(join(path, '.browser-run.json'), JSON.stringify({ ...complete, ...changes }));
+    await writeFile(join(path, 'producer.log'), `preserve ${name}`);
+  }
+  for (let index = 0; index < 4; index++) {
+    const result = f.run();
+    assert.equal(result.status, 0, result.stderr);
+  }
+  for (const [name] of malformed)
+    assert.equal(await readFile(join(history, `packaged-${name}`, 'producer.log'), 'utf8'), `preserve ${name}`);
+  assert.equal((await readdir(history)).length, malformed.length + 3);
+});
+
+test('retention keeps the three newest real completion times across canonical date formats', async t => {
+  const f = await fixture(t);
+  const clock = join(f.root, 'clock.mjs');
+  await writeFile(clock, `const NativeDate = Date;
+globalThis.Date = class extends NativeDate {
+  constructor(...args) { super(...(args.length ? args : [process.env.FIXTURE_RUN_TIME])); }
+};
+`);
+  for (const date of ['2030-01-01T00:00:00.000Z', '2040-01-01T00:00:00.000Z', '2050-01-01T00:00:00.000Z', '+010000-01-01T00:00:00.000Z']) {
+    const result = f.run({ NODE_OPTIONS: `--import=${clock}`, FIXTURE_RUN_TIME: date });
+    assert.equal(result.status, 0, result.stderr);
+  }
+  assert.equal(f.run().status, 0);
+  const history = join(f.root, '.artifacts/browser-runs');
+  const dates = await Promise.all((await readdir(history)).map(async name =>
+    JSON.parse(await readFile(join(history, name, '.browser-run.json'), 'utf8')).completedAt));
+  assert.deepEqual(dates.sort(), ['+010000-01-01T00:00:00.000Z', '2040-01-01T00:00:00.000Z', '2050-01-01T00:00:00.000Z']);
+});
+
+test('a protected failed producer retains its lock until evidence is preserved and protection is resolved', async t => {
+  for (const protection of ['symlink', 'tracked']) {
+    await t.test(protection, async t => {
+      const f = await fixture(t);
+      await writeFile(join(f.root, 'external-evidence'), 'external producer bytes');
+      const result = f.run({ FIXTURE_REPORT: 'failure producer bytes', FAIL_BROWSER: '1', FIXTURE_REPORT_PROTECTION: protection });
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stderr, /Refusing to retain protected browser output/);
+      assert.match(result.stderr, /Browser lock retained.*output retention did not complete/);
+      assert.match(result.stderr, /Preserve the latest output before clearing this directory/);
+      const lock = join(f.root, '.artifacts/browser-run.lock');
+      await access(lock);
+      const history = join(f.root, '.artifacts/browser-runs');
+      const owned = join(history, (await readdir(history))[0]);
+      await access(join(owned, '.pin'));
+      assert.equal(await readFile(join(f.root, '.artifacts/playwright/report'), 'utf8'), 'failure producer bytes');
+      assert.equal(await readFile(join(f.root, 'external-evidence'), 'utf8'), 'external producer bytes');
+      const before = await readFile(join(f.root, 'commands'), 'utf8');
+      const blocked = f.run({ FIXTURE_REPORT: 'replacement producer bytes' });
+      assert.equal(blocked.status, 1, blocked.stderr);
+      assert.equal(await readFile(join(f.root, 'commands'), 'utf8'), before);
+      assert.equal(await readFile(join(f.root, '.artifacts/playwright/report'), 'utf8'), 'failure producer bytes');
+      // An owner explicitly retains the producer before clearing the lock. The
+      // symlink target or tracked file is preserved outside later replacement.
+      await copyFile(join(f.root, '.artifacts/playwright/report'), join(owned, 'retained-failure.log'));
+      if (protection === 'symlink') await rm(join(f.root, '.artifacts/playwright/external'));
+      else assert.equal(spawnSync('git', ['rm', '--cached', '--', '.artifacts/playwright/report'], { cwd: f.root }).status, 0);
+      await rm(lock, { recursive: true });
+      const recovered = f.run({ FIXTURE_REPORT: 'recovered producer bytes' });
+      assert.equal(recovered.status, 0, recovered.stderr);
+      assert.equal(await readFile(join(owned, 'retained-failure.log'), 'utf8'), 'failure producer bytes');
+      assert.equal(await readFile(join(f.root, 'external-evidence'), 'utf8'), 'external producer bytes');
+    });
+  }
 });
 
 test('explicit per-run capacity overrides and app arguments reach the normal command', async t => {

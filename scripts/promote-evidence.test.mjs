@@ -163,25 +163,27 @@ test('promotion and browser retention preserve pinned evidence until its owner r
   try {
     const create = f.run(process.execPath, ['--input-type=module', '-e', `
       import { claimBrowserRun } from ${JSON.stringify(resources)};
-      import { cpSync, mkdirSync, writeFileSync } from 'node:fs';
+      import { cpSync, rmSync } from 'node:fs';
       import { resolve } from 'node:path';
       process.env.RIDGELINE_BROWSER_MIN_FREE_BYTES = '0';
       const root = process.argv[1];
       const selected = claimBrowserRun(root, 'packaged');
       cpSync(resolve(root, '.artifacts/browser-runs/packaged-fixture'), selected.directory, { recursive: true });
       selected.finish(true);
+      const protectedRuns = [];
       for (const status of ['running', 'interrupted']) {
-        const directory = resolve(root, '.artifacts/browser-runs', 'packaged-' + status);
-        mkdirSync(directory);
-        writeFileSync(resolve(directory, '.browser-run.json'), JSON.stringify({
-          owner: 'ridgeline-browser', version: 1, command: 'packaged', pid: process.pid, status,
-        }));
+        const owner = claimBrowserRun(root, 'packaged');
+        protectedRuns.push(owner.directory);
+        if (status === 'interrupted') { owner.interrupt(); owner.finish(); }
+        // This fixture starts no child work. Explicitly release its lock while
+        // retaining the real producer's unfinished ownership record.
+        rmSync(resolve(root, '.artifacts/browser-run.lock'), { recursive: true });
       }
       for (let i = 0; i < 5; i++) claimBrowserRun(root, 'packaged').finish();
-      console.log(JSON.stringify({ selected: selected.directory }));
+      console.log(JSON.stringify({ selected: selected.directory, protectedRuns }));
     `, f.root]);
     assert.equal(create.status, 0, create.stderr);
-    const selected = JSON.parse(create.stdout.trim().split('\n').at(-1)).selected;
+    const { selected, protectedRuns } = JSON.parse(create.stdout.trim().split('\n').at(-1));
     const producer = selected.slice(f.root.length + 1);
     for (const entry of [...f.plan.files, ...f.plan.rawReports])
       entry.source = entry.source.replace(f.producer, producer);
@@ -200,8 +202,7 @@ test('promotion and browser retention preserve pinned evidence until its owner r
     `, f.root, selected]);
     assert.equal(release.status, 0, release.stderr);
     assert.equal(existsSync(selected), false, 'Released old producer should become eligible for retention');
-    for (const status of ['running', 'interrupted'])
-      assert.ok(existsSync(resolve(f.root, '.artifacts/browser-runs', 'packaged-' + status)));
+    assert.deepEqual(protectedRuns.map(path => JSON.parse(readFileSync(resolve(path, '.browser-run.json'), 'utf8')).status), ['running', 'interrupted']);
     const archive = resolve(f.root, f.plan.destination, 'raw-reports.tar.gz');
     assert.equal(f.run('tar', ['-xOzf', archive, 'raw.json']).stdout, 'abc');
     assert.equal(readFileSync(resolve(f.root, f.plan.destination, 'summary.md'), 'utf8'), '# Final summary\n[Spec](../../spec.md)\n');

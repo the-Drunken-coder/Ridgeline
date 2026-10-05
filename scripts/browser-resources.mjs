@@ -42,6 +42,18 @@ function isIgnoredAndUntracked(root, path) {
   return tracked.status === 0 && tracked.stdout === '' && ignored.status === 0;
 }
 
+function completedRunTime(record, command) {
+  if (record?.owner !== 'ridgeline-browser' || record.version !== 1 || record.command !== command ||
+      !['complete', 'failed'].includes(record.status) || !Number.isSafeInteger(record.pid) || record.pid <= 0 ||
+      !Array.isArray(record.invocation) || !record.invocation.length ||
+      !record.invocation.every(argument => typeof argument === 'string' && argument.length > 0) ||
+      typeof record.startedAt !== 'string' || typeof record.completedAt !== 'string') return;
+  const started = Date.parse(record.startedAt), completed = Date.parse(record.completedAt);
+  if (!Number.isFinite(started) || !Number.isFinite(completed) || completed < started ||
+      new Date(started).toISOString() !== record.startedAt || new Date(completed).toISOString() !== record.completedAt) return;
+  return completed;
+}
+
 function pruneRuns(root, pool, command) {
   const eligible = [];
   for (const name of readdirSync(pool)) {
@@ -52,11 +64,11 @@ function pruneRuns(root, pool, command) {
     try { record = JSON.parse(readFileSync(resolve(path, '.browser-run.json'), 'utf8')); } catch { continue; }
     // Running, interrupted, unknown, and malformed records never become eligible
     // merely because their original parent PID no longer exists.
-    if (record?.owner !== 'ridgeline-browser' || record.version !== 1 || record.command !== command ||
-        !['complete', 'failed'].includes(record.status) || typeof record.completedAt !== 'string' || !Number.isFinite(Date.parse(record.completedAt))) continue;
-    eligible.push({ path, completedAt: record.completedAt });
+    const completedAt = completedRunTime(record, command);
+    if (completedAt === undefined) continue;
+    eligible.push({ path, completedAt });
   }
-  eligible.sort((a, b) => b.completedAt.localeCompare(a.completedAt));
+  eligible.sort((a, b) => b.completedAt - a.completedAt);
   for (const { path } of eligible.slice(retainedRuns)) {
     rmSync(path, { recursive: true });
     console.log(`Removed generated browser output: ${path}`);
@@ -169,9 +181,10 @@ export function claimBrowserRun(root, command) {
         if (captureOutputs) {
           for (const output of outputs[command]) {
             const source = resolve(root, output);
-            if (existsSync(source) && !hasSymlink(source) && isIgnoredAndUntracked(root, source)) {
-              cpSync(source, resolve(directory, basename(output)), { recursive: true });
-            }
+            if (!statIfPresent(source)) continue;
+            if (hasSymlink(source) || !isIgnoredAndUntracked(root, source))
+              throw new Error(`Refusing to retain protected browser output: ${source}`);
+            cpSync(source, resolve(directory, basename(output)), { recursive: true });
           }
         }
         writeFileSync(resolve(directory, '.browser-run.json'), JSON.stringify({ ...record, status: failed ? 'failed' : 'complete', completedAt: new Date().toISOString() }, null, 2));
