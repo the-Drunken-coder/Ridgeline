@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 
 const script = resolve(import.meta.dirname, 'promote-evidence.mjs');
@@ -153,5 +154,56 @@ test('curated links cannot depend on ignored transient producer paths', () => {
     assert.match(result.stderr, /transient|retained/);
     assert.equal(existsSync(resolve(f.root, f.plan.destination)), false);
     assert.equal(readFileSync(resolve(f.root, f.producer, '.pin'), 'utf8'), 'selected failure\n');
+  } finally { f.cleanup(); }
+});
+
+test('promotion and browser retention preserve pinned evidence until its owner releases it', () => {
+  const f = fixture();
+  const resources = pathToFileURL(resolve(import.meta.dirname, 'browser-resources.mjs')).href;
+  try {
+    const create = f.run(process.execPath, ['--input-type=module', '-e', `
+      import { claimBrowserRun } from ${JSON.stringify(resources)};
+      import { cpSync, mkdirSync, writeFileSync } from 'node:fs';
+      import { resolve } from 'node:path';
+      process.env.RIDGELINE_BROWSER_MIN_FREE_BYTES = '0';
+      const root = process.argv[1];
+      const selected = claimBrowserRun(root, 'packaged');
+      cpSync(resolve(root, '.artifacts/browser-runs/packaged-fixture'), selected.directory, { recursive: true });
+      selected.finish(true);
+      for (const status of ['running', 'interrupted']) {
+        const directory = resolve(root, '.artifacts/browser-runs', 'packaged-' + status);
+        mkdirSync(directory);
+        writeFileSync(resolve(directory, '.browser-run.json'), JSON.stringify({
+          owner: 'ridgeline-browser', version: 1, command: 'packaged', pid: process.pid, status,
+        }));
+      }
+      for (let i = 0; i < 5; i++) claimBrowserRun(root, 'packaged').finish();
+      console.log(JSON.stringify({ selected: selected.directory }));
+    `, f.root]);
+    assert.equal(create.status, 0, create.stderr);
+    const selected = JSON.parse(create.stdout.trim().split('\n').at(-1)).selected;
+    const producer = selected.slice(f.root.length + 1);
+    for (const entry of [...f.plan.files, ...f.plan.rawReports])
+      entry.source = entry.source.replace(f.producer, producer);
+    assert.equal(f.promote('--dry-run').status, 0);
+    const published = f.promote();
+    assert.equal(published.status, 0, published.stderr);
+    assert.equal(readFileSync(resolve(selected, 'raw.json'), 'utf8'), 'abc');
+    assert.ok(existsSync(resolve(selected, '.pin')));
+    const release = f.run(process.execPath, ['--input-type=module', '-e', `
+      import { claimBrowserRun } from ${JSON.stringify(resources)};
+      import { rmSync } from 'node:fs';
+      import { resolve } from 'node:path';
+      process.env.RIDGELINE_BROWSER_MIN_FREE_BYTES = '0';
+      rmSync(resolve(process.argv[2], '.pin'));
+      claimBrowserRun(process.argv[1], 'packaged').finish();
+    `, f.root, selected]);
+    assert.equal(release.status, 0, release.stderr);
+    assert.equal(existsSync(selected), false, 'Released old producer should become eligible for retention');
+    for (const status of ['running', 'interrupted'])
+      assert.ok(existsSync(resolve(f.root, '.artifacts/browser-runs', 'packaged-' + status)));
+    const archive = resolve(f.root, f.plan.destination, 'raw-reports.tar.gz');
+    assert.equal(f.run('tar', ['-xOzf', archive, 'raw.json']).stdout, 'abc');
+    assert.equal(readFileSync(resolve(f.root, f.plan.destination, 'summary.md'), 'utf8'), '# Final summary\n[Spec](../../spec.md)\n');
   } finally { f.cleanup(); }
 });
