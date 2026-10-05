@@ -17,7 +17,7 @@ const center: [number, number] = [6.869, 45.925];
 export function mountModelExample(viewport: Viewport<Sample>, container: HTMLElement) {
   const lifetime = new AbortController(), appearances = new Map<string, string>();
   const previousVisibility = viewport.getConfiguration().entityVisibility;
-  let disposed = false, busy = false, failure = '';
+  let disposed = false, busy = false, failure = '', revision = 0;
   container.innerHTML = `<h2>Entity models</h2><p>Two samples share each model. Hover or select one on the map.</p>
     <label class="setting">Sample<select aria-label="Model sample"><option value="">Choose on map</option></select></label>
     <label class="setting">Appearance<select aria-label="Model appearance"><option value="original">Original</option><option value="fallback">Magenta fallback</option><option value="teal">Teal</option><option value="orange">Orange</option><option value="indigo">Indigo</option></select></label>
@@ -59,24 +59,28 @@ export function mountModelExample(viewport: Viewport<Sample>, container: HTMLEle
     const states = samples.flatMap(feature => { const state = viewport.getEntityState(feature.id); return state ? [state] : []; });
     status.textContent = failure || (busy ? 'Loading models…' : `${states.filter(state => state.representation === 'model').length} models · ${states.filter(state => state.representation === 'icon').length} icons`);
   }
-  async function load(target: string, asset: typeof catalog[number]) {
+  async function load(target: string, asset: typeof catalog[number], owner: number) {
     const response = await fetch(`/entity-models/${asset.id}.glb`, { signal: lifetime.signal });
     if (!response.ok) throw new Error(`Could not load ${asset.name} (${response.status}).`);
     const bytes = await response.arrayBuffer();
-    if (!disposed) await viewport.registerModel(target, { bytes, metersPerUnit: 1, headingOffset: asset.headingOffset });
+    if (!disposed && owner === revision) await viewport.registerModel(target, { bytes, metersPerUnit: 1, headingOffset: asset.headingOffset });
   }
-  async function run(work: () => Promise<unknown>) {
+  async function run(work: (owner: number) => Promise<unknown>) {
     if (busy || disposed) return;
+    const owner = ++revision;
     busy = true; failure = ''; render();
-    try { await work(); } catch (error) { if (!disposed) failure = error instanceof Error ? error.message : 'Model could not load.'; }
-    finally { if (!disposed) { busy = false; render(); } }
+    try { await work(owner); } catch (error) { if (!disposed && owner === revision) failure = error instanceof Error ? error.message : 'Model could not load.'; }
+    finally {
+      // A failed reset can leave sibling fetches pending after Promise.all settles.
+      if (!disposed && owner === revision) { ++revision; busy = false; render(); }
+    }
   }
   function reset() {
     appearances.clear();
     for (const feature of samples) appearances.set(feature.id, feature.id.endsWith('-original') ? 'original' : 'teal');
-    void run(async () => {
-      await Promise.all(catalog.map(asset => load(`example:${asset.id}`, asset)));
-      if (!disposed) { viewport.upsert(samples); viewport.setSelection(['model-drone-color']); }
+    void run(async owner => {
+      await Promise.all(catalog.map(asset => load(`example:${asset.id}`, asset, owner)));
+      if (!disposed && owner === revision) { viewport.upsert(samples); viewport.setSelection(['model-drone-color']); }
     });
   }
   function resetCamera() { viewport.setCamera({ center, zoom: 17, pitch: 50, bearing: -20 }); }
@@ -93,8 +97,8 @@ export function mountModelExample(viewport: Viewport<Sample>, container: HTMLEle
       case 'reset': reset(); break;
       case 'remove': if (feature) { viewport.remove([feature.id]); render(); } break;
       case 'unload': if (target) { viewport.unregisterModel(target); render(); } break;
-      case 'load': { const asset = catalog.find(asset => `example:${asset.id}` === target); if (target && asset) void run(() => load(target, asset)); break; }
-      case 'replace': { const asset = catalog.find(asset => asset.id === replacement.value); if (target && asset) void run(() => load(target, asset)); break; }
+      case 'load': { const asset = catalog.find(asset => `example:${asset.id}` === target); if (target && asset) void run(owner => load(target, asset, owner)); break; }
+      case 'replace': { const asset = catalog.find(asset => asset.id === replacement.value); if (target && asset) void run(owner => load(target, asset, owner)); break; }
     }
   }, { signal: lifetime.signal });
   const offSelection = viewport.on('selectionchange', render), offEntities = viewport.on('entitychange', render);
@@ -105,7 +109,7 @@ export function mountModelExample(viewport: Viewport<Sample>, container: HTMLEle
     resetCamera,
     destroy() {
       if (disposed) return;
-      disposed = true; lifetime.abort(); offSelection(); offEntities();
+      disposed = true; ++revision; lifetime.abort(); offSelection(); offEntities();
       for (const asset of catalog) viewport.unregisterModel(`example:${asset.id}`);
       viewport.configure({ entityVisibility: previousVisibility });
       container.replaceChildren();
