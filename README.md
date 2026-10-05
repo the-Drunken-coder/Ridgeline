@@ -54,7 +54,7 @@ pnpm build:playground
 pnpm measure
 ```
 
-`pnpm test` runs the fast module and control-lab state tests. `pnpm validate` runs type checking, those tests, all three browser suites, and the playground and control-lab builds. CI runs these checks in independent jobs on every pull request and push to `main`, and supports manual runs.
+`pnpm test` runs the fast module and control-lab state tests. `pnpm validate` runs type checking, those tests, all three browser suites, the playground and control-lab builds, and model measurement verification. CI runs these checks in independent jobs on every pull request and push to `main`, and supports manual runs.
 
 `pnpm build` produces the importable ESM library and declarations in `dist`. `pnpm build:playground` also builds the playground against those exports, without development source aliases. This package is private and has not been published to npm. Install a local tarball in another application:
 
@@ -325,7 +325,7 @@ pnpm test:controls:browser
 
 `pnpm test:playground:browser` builds and previews the real playground against package exports. It verifies applied drawing selection, accepted drawings, clearing, and scenario changes with real input and deterministic map resources. Its failure screenshots and traces are in `.artifacts/playground-tests/`.
 
-`pnpm validate` runs all three browser suites with type checking, module tests, and affected consumer builds. CI distributes the packaged browser suite across four runners, each installing and building its own packed consumer, with one browser worker per runner. See [CI and nightly validation](docs/ci-validation.md) for required jobs, reports, stress runs, and enforcement. Dependency and browser installation require network access on a fresh machine. Playwright is a development dependency only. Desktop Chromium with software WebGL does not establish Firefox, WebKit, touch behavior, complete accessibility, hardware GPU coverage, or long-session memory guarantees.
+`pnpm validate` runs all three browser suites with type checking, module tests, affected consumer builds, and `pnpm test:measurement` once. CI distributes the packaged browser suite across four runners, each installing and building its own packed consumer, with one browser worker per runner. See [CI and nightly validation](docs/ci-validation.md) for required jobs, disk preflight, generated-output retention, reports, stress runs, and enforcement. Dependency and browser installation require network access on a fresh machine. Playwright is a development dependency only. Desktop Chromium with software WebGL does not establish Firefox, WebKit, touch behavior, complete accessibility, hardware GPU coverage, or long-session memory guarantees.
 
 Add `--headed` to the targeted browser command to watch the case run. See [measured results](docs/performance.md) for bundle size, workload observations, and validation limits.
 
