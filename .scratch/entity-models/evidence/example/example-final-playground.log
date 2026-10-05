@@ -1,0 +1,220 @@
+[WebServer] (node:947966) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] $ pnpm build && vite build --config vite.playground.config.ts
+[WebServer] (node:947979) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] $ vite build && tsc -p tsconfig.build.json
+[WebServer] (node:948008) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:948090) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] [plugin builtin:vite-reporter] 
+[WebServer] (!) Some chunks are larger than 500 kB after minification. Consider:
+[WebServer] - Using dynamic import() to code-split the application
+[WebServer] - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+[WebServer] - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+[WebServer] (node:948202) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:948215) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 5 tests using 1 worker
+
+{"event":"begin","at":"2026-10-05T00:42:17.813Z","globalTimeout":0,"tests":[{"title":"model example uses shared registrations and independent consumer appearances","timeout":60000},{"title":"leaving the model example cancels pending consumer fetches","timeout":60000},{"title":"model example opens from the default terrain scene","timeout":60000},{"title":"a failed reset cannot replace a newer accepted shared model","timeout":60000},{"title":"applied drawing selection updates the production sidebar and actions","timeout":60000}]}
+(node:948334) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+2026-10-05T00:42:18.393Z model example uses shared registrations and independent consumer appearances Launch browser
+2026-10-05T00:42:18.473Z model example uses shared registrations and independent consumer appearances Create context
+2026-10-05T00:42:18.504Z model example uses shared registrations and independent consumer appearances Create page
+2026-10-05T00:42:18.581Z model example uses shared registrations and independent consumer appearances Navigate
+2026-10-05T00:42:19.619Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:42:24.233Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:42:27.257Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:42:27.536Z model example uses shared registrations and independent consumer appearances Screenshot
+2026-10-05T00:42:45.151Z model example uses shared registrations and independent consumer appearances Evaluate
+2026-10-05T00:42:45.351Z model example uses shared registrations and independent consumer appearances A custom model must have visible rendered pixels
+2026-10-05T00:42:45.353Z model example uses shared registrations and independent consumer appearances Hover
+2026-10-05T00:42:45.444Z model example uses shared registrations and independent consumer appearances Expect "toBeVisible"
+2026-10-05T00:42:45.477Z model example uses shared registrations and independent consumer appearances Click
+2026-10-05T00:42:45.618Z model example uses shared registrations and independent consumer appearances Expect "not toHaveText"
+2026-10-05T00:42:45.655Z model example uses shared registrations and independent consumer appearances Mouse move
+2026-10-05T00:42:45.721Z model example uses shared registrations and independent consumer appearances Screenshot
+2026-10-05T00:43:06.909Z model example uses shared registrations and independent consumer appearances Select option
+2026-10-05T00:43:06.971Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:43:07.055Z model example uses shared registrations and independent consumer appearances Select option
+2026-10-05T00:43:07.134Z model example uses shared registrations and independent consumer appearances Select option
+2026-10-05T00:43:11.394Z model example uses shared registrations and independent consumer appearances Expect "toHaveValue"
+2026-10-05T00:43:17.444Z model example uses shared registrations and independent consumer appearances Click
+2026-10-05T00:43:25.630Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:43:30.900Z model example uses shared registrations and independent consumer appearances Click
+2026-10-05T00:43:36.126Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:43:42.715Z model example uses shared registrations and independent consumer appearances Select option
+2026-10-05T00:43:55.202Z model example uses shared registrations and independent consumer appearances Click
+2026-10-05T00:43:55.292Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:43:56.089Z model example uses shared registrations and independent consumer appearances Click
+2026-10-05T00:44:04.036Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:44:14.603Z model example uses shared registrations and independent consumer appearances Click
+2026-10-05T00:44:39.878Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:44:45.303Z model example uses shared registrations and independent consumer appearances Click
+2026-10-05T00:44:48.517Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:44:53.778Z model example uses shared registrations and independent consumer appearances Select option
+2026-10-05T00:45:04.845Z model example uses shared registrations and independent consumer appearances Expect "toBeHidden"
+2026-10-05T00:45:12.710Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:45:14.907Z model example uses shared registrations and independent consumer appearances Expect "toEqual"
+2026-10-05T00:45:19.944Z model example uses shared registrations and independent consumer appearances Close context
+  ✓  1 tests/playground/model-example.spec.ts:15:1 › model example uses shared registrations and independent consumer appearances (3.0m)
+{"event":"result","at":"2026-10-05T00:45:20.000Z","title":"model example uses shared registrations and independent consumer appearances","status":"passed","duration":181508,"errors":[]}
+2026-10-05T00:45:20.017Z leaving the model example cancels pending consumer fetches Create context
+2026-10-05T00:45:38.974Z leaving the model example cancels pending consumer fetches Create page
+2026-10-05T00:45:39.042Z leaving the model example cancels pending consumer fetches Navigate
+2026-10-05T00:45:39.503Z leaving the model example cancels pending consumer fetches Expect "poll toBe"
+2026-10-05T00:45:39.506Z leaving the model example cancels pending consumer fetches Expect "toBe"
+2026-10-05T00:45:39.508Z leaving the model example cancels pending consumer fetches Expect "toHaveText"
+2026-10-05T00:45:39.665Z leaving the model example cancels pending consumer fetches Select option
+2026-10-05T00:45:39.763Z leaving the model example cancels pending consumer fetches Expect "toBeHidden"
+2026-10-05T00:45:39.889Z leaving the model example cancels pending consumer fetches Expect "toHaveText"
+2026-10-05T00:45:40.796Z leaving the model example cancels pending consumer fetches Select option
+2026-10-05T00:45:48.244Z leaving the model example cancels pending consumer fetches Expect "toHaveText"
+2026-10-05T00:46:20.089Z leaving the model example cancels pending consumer fetches Expect "toHaveText"
+2026-10-05T00:46:20.105Z leaving the model example cancels pending consumer fetches Expect "toEqual"
+2026-10-05T00:46:25.116Z leaving the model example cancels pending consumer fetches Close context
+  ✓  2 tests/playground/model-example.spec.ts:75:1 › leaving the model example cancels pending consumer fetches (1.1m)
+{"event":"result","at":"2026-10-05T00:46:25.134Z","title":"leaving the model example cancels pending consumer fetches","status":"passed","duration":65110,"errors":[]}
+2026-10-05T00:46:25.148Z model example opens from the default terrain scene Create context
+2026-10-05T00:46:34.133Z model example opens from the default terrain scene Create page
+2026-10-05T00:46:34.186Z model example opens from the default terrain scene Navigate
+2026-10-05T00:46:34.712Z model example opens from the default terrain scene Expect "toHaveText"
+2026-10-05T00:46:34.919Z model example opens from the default terrain scene Select option
+2026-10-05T00:46:40.922Z model example opens from the default terrain scene Expect "toHaveText"
+2026-10-05T00:47:12.315Z model example opens from the default terrain scene Expect "toHaveText"
+2026-10-05T00:47:12.392Z model example opens from the default terrain scene Expect "toBeHidden"
+2026-10-05T00:47:17.476Z model example opens from the default terrain scene Close context
+  ✓  3 tests/playground/model-example.spec.ts:99:1 › model example opens from the default terrain scene (52.3s)
+{"event":"result","at":"2026-10-05T00:47:17.507Z","title":"model example opens from the default terrain scene","status":"passed","duration":52340,"errors":[]}
+2026-10-05T00:47:17.532Z a failed reset cannot replace a newer accepted shared model Create context
+2026-10-05T00:47:28.211Z a failed reset cannot replace a newer accepted shared model Create page
+2026-10-05T00:47:28.261Z a failed reset cannot replace a newer accepted shared model Navigate
+2026-10-05T00:47:28.714Z a failed reset cannot replace a newer accepted shared model Expect "poll toBe"
+2026-10-05T00:47:28.714Z a failed reset cannot replace a newer accepted shared model Expect "toBe"
+2026-10-05T00:47:28.717Z a failed reset cannot replace a newer accepted shared model Expect "toHaveText"
+2026-10-05T00:47:28.841Z a failed reset cannot replace a newer accepted shared model Click
+2026-10-05T00:47:28.994Z a failed reset cannot replace a newer accepted shared model Expect "toHaveText"
+2026-10-05T00:47:56.901Z a failed reset cannot replace a newer accepted shared model Select option
+2026-10-05T00:47:57.180Z a failed reset cannot replace a newer accepted shared model Click
+2026-10-05T00:48:15.730Z a failed reset cannot replace a newer accepted shared model Expect "poll toBeGreaterThan"
+2026-10-05T00:48:15.733Z a failed reset cannot replace a newer accepted shared model Screenshot
+2026-10-05T00:48:44.387Z a failed reset cannot replace a newer accepted shared model Evaluate
+2026-10-05T00:48:44.455Z a failed reset cannot replace a newer accepted shared model Expect "toBeGreaterThan"
+2026-10-05T00:48:44.455Z a failed reset cannot replace a newer accepted shared model Select option
+2026-10-05T00:48:44.473Z a failed reset cannot replace a newer accepted shared model Click
+2026-10-05T00:48:44.527Z a failed reset cannot replace a newer accepted shared model Expect "toHaveText"
+2026-10-05T00:48:44.653Z a failed reset cannot replace a newer accepted shared model Expect "poll toBeLessThan"
+2026-10-05T00:48:44.663Z a failed reset cannot replace a newer accepted shared model Screenshot
+2026-10-05T00:49:02.681Z a failed reset cannot replace a newer accepted shared model Evaluate
+2026-10-05T00:49:02.745Z a failed reset cannot replace a newer accepted shared model Expect "toBeLessThan"
+2026-10-05T00:49:02.746Z a failed reset cannot replace a newer accepted shared model Expect "poll toBe"
+2026-10-05T00:49:02.747Z a failed reset cannot replace a newer accepted shared model Expect "toBe"
+2026-10-05T00:49:02.849Z a failed reset cannot replace a newer accepted shared model Expect "toBe"
+2026-10-05T00:49:02.850Z a failed reset cannot replace a newer accepted shared model Screenshot
+2026-10-05T00:49:02.965Z a failed reset cannot replace a newer accepted shared model Evaluate
+2026-10-05T00:49:03.030Z a failed reset cannot replace a newer accepted shared model The late blue boat must not overwrite the accepted tank
+2026-10-05T00:49:03.034Z a failed reset cannot replace a newer accepted shared model Wait for timeout
+2026-10-05T00:49:03.291Z a failed reset cannot replace a newer accepted shared model Screenshot
+2026-10-05T00:49:03.411Z a failed reset cannot replace a newer accepted shared model Evaluate
+2026-10-05T00:49:03.463Z a failed reset cannot replace a newer accepted shared model The late blue boat must not overwrite the accepted tank
+2026-10-05T00:49:03.463Z a failed reset cannot replace a newer accepted shared model Wait for timeout
+2026-10-05T00:49:03.719Z a failed reset cannot replace a newer accepted shared model Screenshot
+2026-10-05T00:49:03.830Z a failed reset cannot replace a newer accepted shared model Evaluate
+2026-10-05T00:49:03.881Z a failed reset cannot replace a newer accepted shared model The late blue boat must not overwrite the accepted tank
+2026-10-05T00:49:03.882Z a failed reset cannot replace a newer accepted shared model Wait for timeout
+2026-10-05T00:49:04.139Z a failed reset cannot replace a newer accepted shared model Screenshot
+2026-10-05T00:49:04.268Z a failed reset cannot replace a newer accepted shared model Evaluate
+2026-10-05T00:49:04.324Z a failed reset cannot replace a newer accepted shared model The late blue boat must not overwrite the accepted tank
+2026-10-05T00:49:04.324Z a failed reset cannot replace a newer accepted shared model Wait for timeout
+2026-10-05T00:49:04.581Z a failed reset cannot replace a newer accepted shared model Screenshot
+2026-10-05T00:49:04.696Z a failed reset cannot replace a newer accepted shared model Evaluate
+2026-10-05T00:49:04.753Z a failed reset cannot replace a newer accepted shared model The late blue boat must not overwrite the accepted tank
+2026-10-05T00:49:04.754Z a failed reset cannot replace a newer accepted shared model Wait for timeout
+2026-10-05T00:49:05.012Z a failed reset cannot replace a newer accepted shared model Screenshot
+2026-10-05T00:49:05.132Z a failed reset cannot replace a newer accepted shared model Evaluate
+2026-10-05T00:49:05.185Z a failed reset cannot replace a newer accepted shared model The late blue boat must not overwrite the accepted tank
+2026-10-05T00:49:05.186Z a failed reset cannot replace a newer accepted shared model Wait for timeout
+2026-10-05T00:49:05.443Z a failed reset cannot replace a newer accepted shared model Screenshot
+2026-10-05T00:49:05.567Z a failed reset cannot replace a newer accepted shared model Evaluate
+2026-10-05T00:49:05.626Z a failed reset cannot replace a newer accepted shared model The late blue boat must not overwrite the accepted tank
+2026-10-05T00:49:05.626Z a failed reset cannot replace a newer accepted shared model Wait for timeout
+2026-10-05T00:49:05.886Z a failed reset cannot replace a newer accepted shared model Screenshot
+2026-10-05T00:49:06.038Z a failed reset cannot replace a newer accepted shared model Evaluate
+2026-10-05T00:49:06.104Z a failed reset cannot replace a newer accepted shared model The late blue boat must not overwrite the accepted tank
+2026-10-05T00:49:06.106Z a failed reset cannot replace a newer accepted shared model Wait for timeout
+2026-10-05T00:49:06.363Z a failed reset cannot replace a newer accepted shared model Screenshot
+2026-10-05T00:49:06.496Z a failed reset cannot replace a newer accepted shared model Evaluate
+2026-10-05T00:49:06.569Z a failed reset cannot replace a newer accepted shared model The late blue boat must not overwrite the accepted tank
+2026-10-05T00:49:06.569Z a failed reset cannot replace a newer accepted shared model Wait for timeout
+2026-10-05T00:49:06.828Z a failed reset cannot replace a newer accepted shared model Screenshot
+2026-10-05T00:49:06.967Z a failed reset cannot replace a newer accepted shared model Evaluate
+2026-10-05T00:49:07.021Z a failed reset cannot replace a newer accepted shared model The late blue boat must not overwrite the accepted tank
+2026-10-05T00:49:07.022Z a failed reset cannot replace a newer accepted shared model Wait for timeout
+2026-10-05T00:49:07.279Z a failed reset cannot replace a newer accepted shared model Screenshot
+2026-10-05T00:49:07.394Z a failed reset cannot replace a newer accepted shared model Evaluate
+2026-10-05T00:49:07.449Z a failed reset cannot replace a newer accepted shared model The late blue boat must not overwrite the accepted tank
+2026-10-05T00:49:07.450Z a failed reset cannot replace a newer accepted shared model Wait for timeout
+2026-10-05T00:49:07.708Z a failed reset cannot replace a newer accepted shared model Screenshot
+2026-10-05T00:49:07.831Z a failed reset cannot replace a newer accepted shared model Evaluate
+2026-10-05T00:49:07.883Z a failed reset cannot replace a newer accepted shared model The late blue boat must not overwrite the accepted tank
+2026-10-05T00:49:07.884Z a failed reset cannot replace a newer accepted shared model Wait for timeout
+2026-10-05T00:49:08.216Z a failed reset cannot replace a newer accepted shared model Close context
+  ✓  4 tests/playground/model-example.spec.ts:109:1 › a failed reset cannot replace a newer accepted shared model (1.8m)
+{"event":"result","at":"2026-10-05T00:49:08.232Z","title":"a failed reset cannot replace a newer accepted shared model","status":"passed","duration":110693,"errors":[]}
+2026-10-05T00:49:08.259Z applied drawing selection updates the production sidebar and actions Create context
+2026-10-05T00:49:08.278Z applied drawing selection updates the production sidebar and actions Create page
+2026-10-05T00:49:08.336Z applied drawing selection updates the production sidebar and actions Navigate
+2026-10-05T00:49:08.810Z applied drawing selection updates the production sidebar and actions Expect "toHaveText"
+2026-10-05T00:49:09.009Z applied drawing selection updates the production sidebar and actions Expect "toHaveText"
+2026-10-05T00:49:09.220Z applied drawing selection updates the production sidebar and actions Expect "toBeEnabled"
+2026-10-05T00:49:09.265Z applied drawing selection updates the production sidebar and actions Expect "toBeEnabled"
+2026-10-05T00:49:09.305Z applied drawing selection updates the production sidebar and actions Expect "toContainText"
+2026-10-05T00:49:09.337Z applied drawing selection updates the production sidebar and actions Click
+2026-10-05T00:49:22.004Z applied drawing selection updates the production sidebar and actions Uncheck
+2026-10-05T00:49:22.399Z applied drawing selection updates the production sidebar and actions Uncheck
+2026-10-05T00:49:22.474Z applied drawing selection updates the production sidebar and actions Click
+2026-10-05T00:49:22.562Z applied drawing selection updates the production sidebar and actions Click
+2026-10-05T00:49:22.677Z applied drawing selection updates the production sidebar and actions Click
+2026-10-05T00:49:24.868Z applied drawing selection updates the production sidebar and actions Click
+2026-10-05T00:49:25.018Z applied drawing selection updates the production sidebar and actions Click
+2026-10-05T00:49:25.795Z applied drawing selection updates the production sidebar and actions Expect "toHaveText"
+2026-10-05T00:49:26.137Z applied drawing selection updates the production sidebar and actions Expect "not toHaveText"
+2026-10-05T00:49:26.419Z applied drawing selection updates the production sidebar and actions Expect "toBeEnabled"
+2026-10-05T00:49:26.433Z applied drawing selection updates the production sidebar and actions Expect "toBeEnabled"
+2026-10-05T00:49:26.443Z applied drawing selection updates the production sidebar and actions Click
+2026-10-05T00:49:26.586Z applied drawing selection updates the production sidebar and actions Expect "toHaveText"
+2026-10-05T00:49:26.601Z applied drawing selection updates the production sidebar and actions Expect "toBeDisabled"
+2026-10-05T00:49:26.615Z applied drawing selection updates the production sidebar and actions Expect "toBeDisabled"
+2026-10-05T00:49:26.625Z applied drawing selection updates the production sidebar and actions Select option
+2026-10-05T00:49:26.663Z applied drawing selection updates the production sidebar and actions Expect "toHaveText"
+2026-10-05T00:49:26.697Z applied drawing selection updates the production sidebar and actions Expect "toBeDisabled"
+2026-10-05T00:49:27.003Z applied drawing selection updates the production sidebar and actions Expect "toBeDisabled"
+2026-10-05T00:49:27.153Z applied drawing selection updates the production sidebar and actions Expect "toHaveCount"
+2026-10-05T00:49:27.237Z applied drawing selection updates the production sidebar and actions Select option
+2026-10-05T00:49:27.273Z applied drawing selection updates the production sidebar and actions Expect "toHaveText"
+2026-10-05T00:49:27.283Z applied drawing selection updates the production sidebar and actions Expect "toBeEnabled"
+2026-10-05T00:49:27.291Z applied drawing selection updates the production sidebar and actions Expect "toBeEnabled"
+2026-10-05T00:49:27.580Z applied drawing selection updates the production sidebar and actions Select option
+2026-10-05T00:49:28.181Z applied drawing selection updates the production sidebar and actions Expect "toHaveText"
+2026-10-05T00:49:28.454Z applied drawing selection updates the production sidebar and actions Expect "toBeDisabled"
+2026-10-05T00:49:28.731Z applied drawing selection updates the production sidebar and actions Expect "toBeDisabled"
+2026-10-05T00:49:28.897Z applied drawing selection updates the production sidebar and actions Expect "toHaveCount"
+2026-10-05T00:49:28.997Z applied drawing selection updates the production sidebar and actions Select option
+2026-10-05T00:49:29.183Z applied drawing selection updates the production sidebar and actions Expect "toHaveText"
+2026-10-05T00:49:29.440Z applied drawing selection updates the production sidebar and actions Expect "toBeEnabled"
+2026-10-05T00:49:29.720Z applied drawing selection updates the production sidebar and actions Expect "toBeEnabled"
+2026-10-05T00:49:29.987Z applied drawing selection updates the production sidebar and actions Navigate
+2026-10-05T00:49:31.376Z applied drawing selection updates the production sidebar and actions Expect "toEqual"
+2026-10-05T00:49:31.451Z applied drawing selection updates the production sidebar and actions Close context
+  ✓  5 tests/playground/selection.spec.ts:3:1 › applied drawing selection updates the production sidebar and actions (23.2s)
+{"event":"result","at":"2026-10-05T00:49:31.471Z","title":"applied drawing selection updates the production sidebar and actions","status":"passed","duration":23197,"errors":[]}
+
+  Slow test file: tests/playground/model-example.spec.ts (6.8m)
+  Consider running tests from slow files in parallel. See: https://playwright.dev/docs/test-parallel
+  5 passed (7.3m)
+{"event":"end","status":"passed","startTime":"2026-10-05T00:42:11.844Z","duration":439727.36}

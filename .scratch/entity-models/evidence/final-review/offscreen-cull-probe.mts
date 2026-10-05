@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import { EntityScene, DEFAULT_ENTITY_VISIBILITY } from '/home/ubuntu/.t3/worktrees/Ridgeline/t3code-7c4f2af4/src/entities.ts';
+import { ModelRegistry } from '/home/ubuntu/.t3/worktrees/Ridgeline/t3code-7c4f2af4/src/models.ts';
+import { ModelRenderer } from '/home/ubuntu/.t3/worktrees/Ridgeline/t3code-7c4f2af4/src/model-renderer.ts';
+import { EntityProjection, entityVertex } from '/home/ubuntu/.t3/worktrees/Ridgeline/t3code-7c4f2af4/src/entity-projection.ts';
+import { DEFAULT_ENTITY_MODELS } from '/home/ubuntu/.t3/worktrees/Ridgeline/t3code-7c4f2af4/src/model-settings.ts';
+import { solidGlb } from '/home/ubuntu/.t3/worktrees/Ridgeline/t3code-7c4f2af4/tests/model-fixtures.ts';
+const matrix = [100000,0,0,0,0,100000,0,0,0,0,1000,0,-50000,-50000,0,1];
+const input = { shaderData: { define: '', variantName: 'flat' }, defaultProjectionData: { mainMatrix: matrix, fallbackMatrix: matrix, clippingPlane: [0,0,1,1], projectionTransition: 0 } };
+globalThis.OffscreenCanvas = class { getContext() { return { fillStyle: '', fillRect() {}, getImageData() { return { data: new Uint8ClampedArray([33,110,92,255]) }; } }; } };
+let submitted = [];
+ModelRenderer.prototype.initialize = function () { return {}; };
+ModelRenderer.prototype.upload = async function () { return { batches: [], disposed: false, dispose() {} }; };
+ModelRenderer.prototype.prepareFrame = function (_input, _projection, draws) { submitted = draws; return { draw() {} }; };
+const map = { getPixelRatio: () => 1, getCenter: () => ({ lng: 0, lat: 0 }), getCanvas: () => ({ clientWidth: 1000, clientHeight: 1000 }),
+  getLayer: () => undefined, getSource: () => undefined, on() {}, off() {}, triggerRepaint() {},
+  _camera: { transform: { getCameraLngLat: () => [0,0], getCameraAltitude: () => 100, clone() { return this; } } } };
+const configuration = { basemap: {version:8,sources:{},layers:[]}, projection:'flat',terrain:false,hillshade:false,hillshadeOptions:{},exaggeration:1,elevation:{tiles:[]}, entityVisibility:DEFAULT_ENTITY_VISIBILITY,entityModels:{...DEFAULT_ENTITY_MODELS,minimumSizePixels:0} };
+globalThis.requestAnimationFrame = () => 1;
+globalThis.cancelAnimationFrame = () => {};
+let scene;
+const registry = new ModelRegistry({ changed:id => scene.modelsChanged(id), diagnostic:error => { throw error; } });
+scene = new EntityScene({ map, models:registry,configuration:() => configuration, sampler:{sample:() => 0},style:() => ({}),diagnostic:error => {throw error;}, changed(){} });
+const gl = { isContextLost: () => false };
+scene.modelLayer.onAdd(map,gl);
+scene.modelLayer.prerender(gl,input);
+await registry.register('box',{bytes:solidGlb()});
+scene.set([0,.01].map((lng,i) => ({type:'Feature',id:`body-${i}`,properties:{},geometry:{type:'Point',coordinates:[lng,0]},entity:{model:{id:'box'},heading:0}})));
+scene.modelLayer.prerender(gl,input);
+const projection = new EntityProjection(input,0,1000,1000);
+const screen = [0,.01].map(lng => projection.project([lng,0,0], [.5,.5]));
+const submittedInstances = submitted.reduce((n,draw) => n+draw.instances.length,0);
+assert.ok(screen[0].x >= 0 && screen[0].x <=1000);
+assert.ok(screen[1].x >1000);
+assert.equal(submittedInstances,2);
+console.log(JSON.stringify({ revision:'1e4c2c589902ecf9c6509acff725d31912d90de7', scope:'real scene/model-layer CPU preparation, upload and GPU draw stubbed; no browser/pixel claim', screen, cameraDistanceMeters:[100,Math.hypot(1113.19,100)], submittedInstances, expectedWithOffscreenCulling:1 },null,2));
+scene.destroy();registry.destroy();

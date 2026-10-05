@@ -1,0 +1,652 @@
+{
+  "history": "default",
+  "browserVersion": "153.0.8010.12",
+  "source": "a2ef7d3 plus temporary public viewport exposure in example-diagnostic-main.ts",
+  "requests": [
+    {
+      "url": "http://127.0.0.1:5176/",
+      "start": 242,
+      "end": 271
+    },
+    {
+      "url": "http://127.0.0.1:5176/assets/index-DV0EYj4e.js",
+      "start": 267,
+      "end": 352
+    },
+    {
+      "url": "http://127.0.0.1:5176/assets/index-DvgcVRB4.css",
+      "start": 268,
+      "end": 287
+    },
+    {
+      "url": "http://127.0.0.1:5176/assets/maplibre-gl-worker-BbFVVOSM.js",
+      "start": 469,
+      "end": 1014
+    },
+    {
+      "url": "https://tiles.openfreemap.org/styles/liberty",
+      "start": 973,
+      "end": 992
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/tilejson.json",
+      "start": 1045,
+      "end": 1191
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/tilejson.json",
+      "start": 1046,
+      "end": 1192
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/11/1062/729.png",
+      "start": 1241,
+      "end": 3113
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/11/1063/728.png",
+      "start": 1242,
+      "end": 3113
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/11/1062/728.png",
+      "start": 1242,
+      "end": 3113
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/12/2126/1458.png",
+      "start": 1242,
+      "end": 3113
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/12/2126/1459.png",
+      "start": 1242,
+      "end": 3113
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/12/2127/1458.png",
+      "start": 1249,
+      "end": 3113
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/10/531/364.png",
+      "start": 1250,
+      "end": 3116
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/5/16/11.png",
+      "start": 1250,
+      "end": 3116
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/11/1063/729.png",
+      "start": 1250,
+      "end": 3116
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/12/2126/1458.png",
+      "start": 1250,
+      "end": 3116
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/12/2125/1458.png",
+      "start": 1250,
+      "end": 3116
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/12/2126/1459.png",
+      "start": 1250,
+      "end": 3116
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/12/2126/1457.png",
+      "start": 1250,
+      "end": 3116
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/12/2127/1458.png",
+      "start": 1254,
+      "end": 3116
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/12/2125/1459.png",
+      "start": 1255,
+      "end": 3116
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/12/2125/1457.png",
+      "start": 1255,
+      "end": 3117
+    },
+    {
+      "url": "https://example.test/fonts/Noto%20Sans%20Regular/0-255.pbf",
+      "start": 3075,
+      "end": 3117
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/12/2127/1457.png",
+      "start": 3191,
+      "end": 3312,
+      "failure": {
+        "errorText": "net::ERR_ABORTED"
+      }
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/12/2124/1458.png",
+      "start": 3194,
+      "end": 3313,
+      "failure": {
+        "errorText": "net::ERR_ABORTED"
+      }
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/12/2126/1456.png",
+      "start": 3201,
+      "end": 3313,
+      "failure": {
+        "errorText": "net::ERR_ABORTED"
+      }
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/12/2124/1457.png",
+      "start": 3202,
+      "end": 3313,
+      "failure": {
+        "errorText": "net::ERR_ABORTED"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:5176/entity-models/drone.glb",
+      "start": 3226,
+      "end": 3314
+    },
+    {
+      "url": "http://127.0.0.1:5176/entity-models/tank.glb",
+      "start": 3226,
+      "end": 3314
+    },
+    {
+      "url": "http://127.0.0.1:5176/entity-models/plane.glb",
+      "start": 3226,
+      "end": 3314
+    },
+    {
+      "url": "http://127.0.0.1:5176/entity-models/boat.glb",
+      "start": 3226,
+      "end": 3314
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/12/2125/1456.png",
+      "start": 3228,
+      "end": 3313,
+      "failure": {
+        "errorText": "net::ERR_ABORTED"
+      }
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/12/2127/1456.png",
+      "start": 3229,
+      "end": 3313,
+      "failure": {
+        "errorText": "net::ERR_ABORTED"
+      }
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/12/2124/1456.png",
+      "start": 3238,
+      "end": 3313,
+      "failure": {
+        "errorText": "net::ERR_ABORTED"
+      }
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/tilejson.json",
+      "start": 5843,
+      "end": 5932
+    },
+    {
+      "url": "https://tiles.mapterhorn.com/flat/12/2126/1458.png",
+      "start": 5951,
+      "end": 6059
+    }
+  ],
+  "snapshots": [
+    {
+      "at": 3064.800000011921,
+      "status": "Loading models…",
+      "featureCount": "0 features",
+      "diagnostics": "×Retry default elevation",
+      "diagnosticsHidden": true,
+      "camera": {
+        "center": {
+          "lng": 6.869,
+          "lat": 45.925
+        },
+        "zoom": 17,
+        "pitch": 50,
+        "bearing": -20,
+        "targetElevation": 0
+      },
+      "configuration": {
+        "terrain": true,
+        "hillshade": true,
+        "elevation": {
+          "url": "https://tiles.mapterhorn.com/tilejson.json",
+          "encoding": "terrarium",
+          "tileSize": 512
+        },
+        "exaggeration": 1,
+        "entityVisibility": {
+          "footprints": true,
+          "zones": true,
+          "groundLines": true
+        },
+        "entityModels": {
+          "switchDistanceMeters": 2000,
+          "deadZoneMeters": 200,
+          "minimumSizePixels": 40
+        }
+      },
+      "tilesLoaded": false,
+      "styleLoaded": false,
+      "moving": false,
+      "renderCount": 4,
+      "idleCount": 0,
+      "lastRender": 3052.800000011921,
+      "features": [],
+      "events": [],
+      "elapsed": 3308
+    },
+    {
+      "at": 25998.5,
+      "status": "8 models · 0 icons",
+      "featureCount": "8 features",
+      "diagnostics": "×Retry default elevation",
+      "diagnosticsHidden": true,
+      "camera": {
+        "center": {
+          "lng": 6.869,
+          "lat": 45.925
+        },
+        "zoom": 17,
+        "pitch": 50,
+        "bearing": -20,
+        "targetElevation": 0
+      },
+      "configuration": {
+        "terrain": true,
+        "hillshade": true,
+        "elevation": {
+          "url": "https://tiles.mapterhorn.com/tilejson.json",
+          "encoding": "terrarium",
+          "tileSize": 512
+        },
+        "exaggeration": 1,
+        "entityVisibility": {
+          "footprints": true,
+          "zones": true,
+          "groundLines": true
+        },
+        "entityModels": {
+          "switchDistanceMeters": 2000,
+          "deadZoneMeters": 200,
+          "minimumSizePixels": 40
+        }
+      },
+      "tilesLoaded": true,
+      "styleLoaded": false,
+      "moving": false,
+      "renderCount": 13,
+      "idleCount": 1,
+      "lastRender": 25995,
+      "features": [
+        {
+          "id": "model-drone-original",
+          "entity": {
+            "heading": 25,
+            "model": {
+              "id": "example:drone"
+            },
+            "altitude": {
+              "meters": 35,
+              "reference": "ground"
+            },
+            "attachments": []
+          },
+          "state": {
+            "placement": "airborne",
+            "representation": "model",
+            "altitude": 35,
+            "ground": 0,
+            "coverage": "ready",
+            "footprintTriangles": 0,
+            "computedAt": 1791160409637.9,
+            "computationMs": 0.19999998807907104,
+            "model": {
+              "id": "example:drone",
+              "status": "ready",
+              "replacementPending": false
+            }
+          },
+          "nativeGround": 0
+        },
+        {
+          "id": "model-drone-color",
+          "entity": {
+            "heading": 25,
+            "model": {
+              "id": "example:drone"
+            },
+            "altitude": {
+              "meters": 35,
+              "reference": "ground"
+            },
+            "attachments": [
+              {
+                "id": "sensor",
+                "type": "camera",
+                "bearing": 90,
+                "elevation": -35,
+                "fovX": 35,
+                "fovY": 25,
+                "range": 100,
+                "color": "#3875aa",
+                "volumeOpacity": 0.1,
+                "wireframe": true
+              }
+            ]
+          },
+          "state": {
+            "placement": "airborne",
+            "representation": "model",
+            "altitude": 35,
+            "ground": 0,
+            "coverage": "ready",
+            "footprintTriangles": 2,
+            "computedAt": 1791160409638,
+            "computationMs": 0,
+            "model": {
+              "id": "example:drone",
+              "status": "ready",
+              "replacementPending": false
+            }
+          },
+          "nativeGround": 0
+        },
+        {
+          "id": "model-tank-original",
+          "entity": {
+            "heading": 25,
+            "model": {
+              "id": "example:tank"
+            },
+            "attachments": []
+          },
+          "state": {
+            "placement": "ground",
+            "representation": "model",
+            "altitude": 0,
+            "ground": 0,
+            "coverage": "ready",
+            "footprintTriangles": 0,
+            "computedAt": 1791160409642.8,
+            "computationMs": 0.09999999403953552,
+            "model": {
+              "id": "example:tank",
+              "status": "ready",
+              "replacementPending": false
+            }
+          },
+          "nativeGround": 0
+        },
+        {
+          "id": "model-tank-color",
+          "entity": {
+            "heading": 25,
+            "model": {
+              "id": "example:tank"
+            },
+            "attachments": [
+              {
+                "id": "physical-area",
+                "type": "circle",
+                "radius": 20,
+                "color": "#3875aa"
+              }
+            ]
+          },
+          "state": {
+            "placement": "ground",
+            "representation": "model",
+            "altitude": 0,
+            "ground": 0,
+            "coverage": "ready",
+            "footprintTriangles": 0,
+            "computedAt": 1791160409646.5,
+            "computationMs": 3.699999988079071,
+            "model": {
+              "id": "example:tank",
+              "status": "ready",
+              "replacementPending": false
+            }
+          },
+          "nativeGround": 0
+        },
+        {
+          "id": "model-plane-original",
+          "entity": {
+            "heading": 25,
+            "model": {
+              "id": "example:plane"
+            },
+            "altitude": {
+              "meters": 60,
+              "reference": "ground"
+            },
+            "attachments": []
+          },
+          "state": {
+            "placement": "airborne",
+            "representation": "model",
+            "altitude": 60,
+            "ground": 0,
+            "coverage": "ready",
+            "footprintTriangles": 0,
+            "computedAt": 1791160409646.5,
+            "computationMs": 0,
+            "model": {
+              "id": "example:plane",
+              "status": "ready",
+              "replacementPending": false
+            }
+          },
+          "nativeGround": 0
+        },
+        {
+          "id": "model-plane-color",
+          "entity": {
+            "heading": 25,
+            "model": {
+              "id": "example:plane"
+            },
+            "altitude": {
+              "meters": 60,
+              "reference": "ground"
+            },
+            "attachments": [
+              {
+                "id": "sensor",
+                "type": "camera",
+                "bearing": 90,
+                "elevation": -35,
+                "fovX": 35,
+                "fovY": 25,
+                "range": 100,
+                "color": "#3875aa",
+                "volumeOpacity": 0.1,
+                "wireframe": true
+              }
+            ]
+          },
+          "state": {
+            "placement": "airborne",
+            "representation": "model",
+            "altitude": 60,
+            "ground": 0,
+            "coverage": "ready",
+            "footprintTriangles": 2,
+            "computedAt": 1791160409646.6,
+            "computationMs": 0,
+            "model": {
+              "id": "example:plane",
+              "status": "ready",
+              "replacementPending": false
+            }
+          },
+          "nativeGround": 0
+        },
+        {
+          "id": "model-boat-original",
+          "entity": {
+            "heading": 25,
+            "model": {
+              "id": "example:boat"
+            },
+            "attachments": []
+          },
+          "state": {
+            "placement": "ground",
+            "representation": "model",
+            "altitude": 0,
+            "ground": 0,
+            "coverage": "ready",
+            "footprintTriangles": 0,
+            "computedAt": 1791160409646.7,
+            "computationMs": 0,
+            "model": {
+              "id": "example:boat",
+              "status": "ready",
+              "replacementPending": false
+            }
+          },
+          "nativeGround": 0
+        },
+        {
+          "id": "model-boat-color",
+          "entity": {
+            "heading": 25,
+            "model": {
+              "id": "example:boat"
+            },
+            "attachments": [
+              {
+                "id": "physical-area",
+                "type": "circle",
+                "radius": 20,
+                "color": "#3875aa"
+              }
+            ]
+          },
+          "state": {
+            "placement": "ground",
+            "representation": "model",
+            "altitude": 0,
+            "ground": 0,
+            "coverage": "ready",
+            "footprintTriangles": 0,
+            "computedAt": 1791160409648.3,
+            "computationMs": 1.5999999940395355,
+            "model": {
+              "id": "example:boat",
+              "status": "ready",
+              "replacementPending": false
+            }
+          },
+          "nativeGround": 0
+        }
+      ],
+      "events": [
+        {
+          "time": 5599.700000017881,
+          "ids": [
+            "model-drone-original",
+            "model-drone-color",
+            "model-tank-original",
+            "model-tank-color",
+            "model-plane-original",
+            "model-plane-color",
+            "model-boat-original",
+            "model-boat-color"
+          ]
+        },
+        {
+          "time": 5602.700000017881,
+          "ids": [
+            "model-drone-original",
+            "model-drone-color",
+            "model-tank-original",
+            "model-tank-color",
+            "model-plane-original",
+            "model-plane-color",
+            "model-boat-original",
+            "model-boat-color"
+          ]
+        },
+        {
+          "time": 5707.300000011921,
+          "ids": [
+            "model-drone-original",
+            "model-drone-color",
+            "model-tank-original",
+            "model-tank-color",
+            "model-plane-original",
+            "model-plane-color",
+            "model-boat-original",
+            "model-boat-color"
+          ]
+        },
+        {
+          "time": 5811.600000023842,
+          "ids": [
+            "model-drone-original",
+            "model-drone-color",
+            "model-tank-original",
+            "model-tank-color",
+            "model-plane-original",
+            "model-plane-color",
+            "model-boat-original",
+            "model-boat-color"
+          ]
+        },
+        {
+          "time": 25974.30000001192,
+          "ids": [
+            "model-drone-original",
+            "model-drone-color",
+            "model-tank-original",
+            "model-tank-color",
+            "model-plane-original",
+            "model-plane-color",
+            "model-boat-original",
+            "model-boat-color"
+          ]
+        },
+        {
+          "time": 25994.600000023842,
+          "ids": [
+            "model-drone-original",
+            "model-drone-color",
+            "model-tank-original",
+            "model-tank-color",
+            "model-plane-original",
+            "model-plane-color",
+            "model-boat-original",
+            "model-boat-color"
+          ]
+        }
+      ],
+      "elapsed": 26241
+    }
+  ],
+  "errors": []
+}
