@@ -39,6 +39,7 @@ Prioritize these qualities over being lightweight for its own sake. Bundle size,
 - Give listeners, observers, scheduled work, interaction leases, and GPU resources a clear owner and disposal path. Teardown must tolerate partial initialization and repeated calls.
 - Guard asynchronous completion against destruction, replacement, and newer state. A stale render or terrain result must not overwrite current data.
 - Consumer callbacks may synchronously cancel, destroy, or replace the active operation. Before continuing side effects, verify that the owner and operation are still current.
+- For entity preparation, publication, callback, recovery, or disposal changes, use the [entity review reference](docs/agents/entity-review.md) to trace owners and attempt the relevant callback histories.
 - Schedule rendering when data or the view changes. Keep idle interfaces idle and bound caches and repeated work.
 - When skipping duplicate updates, account for other code that clears or replaces the destination state. Unchanged input alone does not prove that the destination is current.
 - Use the existing `RidgelineError` and diagnostic mechanisms for library failures, preserving operation context and causes. Honor documented recovery behavior; avoid silent fallback or unbounded automatic retry.
