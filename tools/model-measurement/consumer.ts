@@ -12,6 +12,7 @@ import type { NativeObservation, Update } from './report';
 import { camera, caseId, features, matrix, modelSettings, style, validateSettings } from './workload';
 import type { Machine, Settings, WorkloadProperties } from './workload';
 import { verify } from './verify';
+import { foregroundPixels } from './pixels';
 
 type Variant = { path: string; variant: string; triangles: number; sha256: string; bytes: number };
 type Manifest = { assets: { id: string; variants: Variant[] }[]; fixtures: ({ id: string } & Variant)[] };
@@ -49,13 +50,9 @@ async function snapshot(viewport: Viewport<WorkloadProperties>, current: MapFeat
       copy.getContext('2d')!.putImageData(image, 0, 0);
       const ratio = canvas.width / canvas.clientWidth;
       const patches = current.slice(0, 100).map(feature => {
-        const c = coordinates(feature), point = viewport.map.project([c[0]!, c[1]!]); let count = 0;
-        for (let y = Math.max(0, Math.floor((point.y - 23) * ratio)); y < Math.min(canvas.height, (point.y + 6) * ratio); y++)
-          for (let x = Math.max(0, Math.floor((point.x - 14) * ratio)); x < Math.min(canvas.width, (point.x + 14) * ratio); x++) {
-            const i = (y * canvas.width + x) * 4;
-            if (Math.max(Math.abs(image.data[i]! - 247), Math.abs(image.data[i + 1]! - 247), Math.abs(image.data[i + 2]! - 247)) > 30) count++;
-          }
-        return count;
+        const c = coordinates(feature), point = viewport.map.project([c[0]!, c[1]!]);
+        return foregroundPixels(image, { minX: (point.x - 14) * ratio, minY: (point.y - 23) * ratio,
+          maxX: (point.x + 14) * ratio, maxY: (point.y + 6) * ratio });
       });
       const native = viewport.map.queryRenderedFeatures(undefined, { layers: ['rl:icons'] });
       resolve({ png: copy.toDataURL(), nativeRenderedIds: new Set(native.filter(feature => current.some(value => value.id === feature.properties._rl_feature_id && !value.entity?.model)).map(feature => feature.properties._rl_feature_id)).size,
