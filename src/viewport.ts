@@ -466,7 +466,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       for (const id of removed) { availableMarkers.delete(id); publishedMarkerKeys.delete(id); }
       if (removed.length) entities.selection([...selected]);
       emit('datachange', { ids: [], removed });
-      if (removed.includes(hovered)) scheduleHover();
+      if (removed.includes(hovered)) refreshHover();
     },
     clear() { viewport.remove(store.ids()); },
     retryUpdates() {
