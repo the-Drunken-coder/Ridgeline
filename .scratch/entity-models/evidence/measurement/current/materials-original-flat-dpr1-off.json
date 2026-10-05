@@ -1,0 +1,2518 @@
+{
+  "provenance": {
+    "date": "2026-10-05T00:22:56.062Z",
+    "revision": "7ca9649811ca52da28edc88e485e4016b96f60f6",
+    "status": "",
+    "diffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "package": "@ridgeline/map",
+    "version": "0.1.0",
+    "archiveSha256": "f3831fb26edfcba1745b6ca9e1cf8d3df6356dbb4eeb00bef217bb3be65bb4a2",
+    "manifestSha256": "eb35134dddf6c2f43b7847db66cd3ceb5fe2df896ca9235cbf627727b1884daa",
+    "maplibre": "6.11.0",
+    "node": "v24.21.0"
+  },
+  "browserVersion": "153.0.8010.12",
+  "softwareFlags": true,
+  "screenshot": "materials-original-flat-dpr1-off.png",
+  "schema": 1,
+  "date": "2026-10-05T00:23:33.289Z",
+  "caseId": "materials-original-flat-dpr1",
+  "settings": {
+    "variant": "materials",
+    "appearance": "original",
+    "projection": "flat",
+    "pixelRatio": 1,
+    "mode": "smoke",
+    "instrumentation": false,
+    "gpu": true,
+    "warmupMs": 1000,
+    "durationMs": 2000,
+    "repeats": 1
+  },
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+  "backend": {
+    "vendor": "Google Inc. (Google)",
+    "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+    "shadingLanguage": "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)"
+  },
+  "canvas": {
+    "cssWidth": 1280,
+    "cssHeight": 720,
+    "width": 1280,
+    "height": 720,
+    "devicePixelRatio": 1,
+    "mapPixelRatio": 1
+  },
+  "projection": {
+    "configured": "flat",
+    "effective": {
+      "type": "mercator"
+    },
+    "transitionsObserved": []
+  },
+  "configuration": {
+    "camera": {
+      "center": [
+        6.87,
+        46
+      ],
+      "zoom": 15.2,
+      "pitch": 25,
+      "bearing": 0
+    },
+    "modelSettings": {
+      "switchDistanceMeters": 100000000,
+      "deadZoneMeters": 0,
+      "minimumSizePixels": 20
+    },
+    "terrain": true,
+    "terrainSource": "embedded Terrarium zero meters",
+    "exaggeration": 1,
+    "updateEveryMs": 100,
+    "features": 1100,
+    "modelTypes": 4,
+    "instancesPerType": 25,
+    "nativeLatencyScope": "all expected native icon IDs at one accepted revision",
+    "expectedNative": 1000,
+    "selection": [
+      "model-0",
+      "model-4"
+    ],
+    "previewId": "model-8",
+    "pointer": "synthetic DOM mousemove once per update, plus stationary hover refresh"
+  },
+  "manifest": {
+    "schemaVersion": 1,
+    "transformation": {
+      "version": 1,
+      "original": "Byte-for-byte copy of the licensed source GLB.",
+      "normalized": "Production parser bakes node transforms; serialize identity nodes in authored glTF axes with float32 attributes and uint32 indices. Preserve parsed materials, embedded images, samplers and UV transforms. Unsupported or ignored source features are not added to the renderer.",
+      "subdivision": "Each indexed triangle becomes four non-overlapping triangles using shared edge midpoints within its material batch; repeat twice for 16x. Interpolate positions, UVs and vertex RGBA linearly. Normalize interpolated normals at each pass, matching production normal loading. Original corners retain their normal directions; smooth shading can differ at new vertices.",
+      "precision": "Float32 attribute serialization can round baked bounds. Normalized 1x is the packing control; compare each stress variant with this control as well as the original."
+    },
+    "provenanceFiles": [
+      {
+        "path": "sources.json",
+        "sha256": "8d484b5e5ab4dad5694a71c4d6c8e576f7f40f4ba6bd504d46bde3a624207ab0",
+        "bytes": 1477
+      },
+      {
+        "path": "Kenney-License.txt",
+        "sha256": "7c9263e8c136e010b78d13b655c73b9661a78201feb3b1a3d0efef8828487242",
+        "bytes": 687
+      },
+      {
+        "path": "credits.html",
+        "sha256": "c2700b7c3ffc607ccbf4a2e539cc98e0f7dd36716a4fc825b850db955cfbc5c6",
+        "bytes": 1106
+      }
+    ],
+    "assets": [
+      {
+        "id": "drone",
+        "source": {
+          "name": "drone",
+          "author": "NateGazzard",
+          "page": "https://poly.pizza/m/DNbUoMtG3H",
+          "url": "https://static.poly.pizza/4eb88feb-cb2d-46c3-980d-3e704868361c.glb",
+          "license": "CC BY 3.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+          "sha256": "bc9f0d765e0fdb838a9baf26b472f955a11bb2509a3337e918054241b134638d",
+          "bytes": 259676
+        },
+        "variants": [
+          {
+            "variant": "original",
+            "factor": 1,
+            "sha256": "bc9f0d765e0fdb838a9baf26b472f955a11bb2509a3337e918054241b134638d",
+            "bytes": 259676,
+            "triangles": 4564,
+            "vertices": 6956,
+            "materials": 1,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  1,
+                  1,
+                  1,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false,
+                "texture": 0,
+                "sampler": {
+                  "magFilter": 9729,
+                  "minFilter": 9987,
+                  "wrapS": 10497,
+                  "wrapT": 10497
+                },
+                "uvTransform": {
+                  "offset": [
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1,
+                    1
+                  ],
+                  "rotation": 0
+                }
+              }
+            ],
+            "bounds": {
+              "min": [
+                -0.28671500086784363,
+                -0.1592079997062683,
+                -0.5247309803962708
+              ],
+              "max": [
+                0.2868559956550598,
+                0.04837999865412712,
+                0.2565689980983734
+              ]
+            },
+            "images": [
+              {
+                "sha256": "588cb24deb987f812616083db446d95abc476d549966e600836b9bc99d73d480",
+                "mimeType": "image/png",
+                "bytes": 2882
+              }
+            ],
+            "samplers": 1,
+            "path": "drone.original.glb"
+          },
+          {
+            "variant": "normalized",
+            "factor": 1,
+            "sha256": "138a52f10df8c17fd6baa7f5df63fe2686e9bf91c1a0f736717ce93dd31cf575",
+            "bytes": 393188,
+            "triangles": 4564,
+            "vertices": 6956,
+            "materials": 1,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  1,
+                  1,
+                  1,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false,
+                "texture": 0,
+                "sampler": {
+                  "magFilter": 9729,
+                  "minFilter": 9987,
+                  "wrapS": 10497,
+                  "wrapT": 10497
+                },
+                "uvTransform": {
+                  "offset": [
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1,
+                    1
+                  ],
+                  "rotation": 0
+                }
+              }
+            ],
+            "bounds": {
+              "min": [
+                -0.28671500086784363,
+                -0.1592079997062683,
+                -0.5247309803962708
+              ],
+              "max": [
+                0.2868559956550598,
+                0.04837999865412712,
+                0.2565689980983734
+              ]
+            },
+            "images": [
+              {
+                "sha256": "588cb24deb987f812616083db446d95abc476d549966e600836b9bc99d73d480",
+                "mimeType": "image/png",
+                "bytes": 2882
+              }
+            ],
+            "samplers": 1,
+            "path": "drone.normalized.glb"
+          },
+          {
+            "variant": "4x",
+            "factor": 4,
+            "sha256": "0ff65647a5ae8962856ad167c356d10c022a37c415b346d6c557753d0f767889",
+            "bytes": 1051520,
+            "triangles": 18256,
+            "vertices": 17248,
+            "materials": 1,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  1,
+                  1,
+                  1,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false,
+                "texture": 0,
+                "sampler": {
+                  "magFilter": 9729,
+                  "minFilter": 9987,
+                  "wrapS": 10497,
+                  "wrapT": 10497
+                },
+                "uvTransform": {
+                  "offset": [
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1,
+                    1
+                  ],
+                  "rotation": 0
+                }
+              }
+            ],
+            "bounds": {
+              "min": [
+                -0.28671500086784363,
+                -0.1592079997062683,
+                -0.5247309803962708
+              ],
+              "max": [
+                0.2868559956550598,
+                0.04837999865412712,
+                0.2565689980983734
+              ]
+            },
+            "images": [
+              {
+                "sha256": "588cb24deb987f812616083db446d95abc476d549966e600836b9bc99d73d480",
+                "mimeType": "image/png",
+                "bytes": 2882
+              }
+            ],
+            "samplers": 1,
+            "path": "drone.4x.glb"
+          },
+          {
+            "variant": "16x",
+            "factor": 16,
+            "sha256": "37ee1623a4da3a87b696f4cd1c987ad437676957e5602fae2a7b4c431e6fd0ab",
+            "bytes": 3353988,
+            "triangles": 73024,
+            "vertices": 51524,
+            "materials": 1,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  1,
+                  1,
+                  1,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false,
+                "texture": 0,
+                "sampler": {
+                  "magFilter": 9729,
+                  "minFilter": 9987,
+                  "wrapS": 10497,
+                  "wrapT": 10497
+                },
+                "uvTransform": {
+                  "offset": [
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1,
+                    1
+                  ],
+                  "rotation": 0
+                }
+              }
+            ],
+            "bounds": {
+              "min": [
+                -0.28671500086784363,
+                -0.1592079997062683,
+                -0.5247309803962708
+              ],
+              "max": [
+                0.2868559956550598,
+                0.04837999865412712,
+                0.2565689980983734
+              ]
+            },
+            "images": [
+              {
+                "sha256": "588cb24deb987f812616083db446d95abc476d549966e600836b9bc99d73d480",
+                "mimeType": "image/png",
+                "bytes": 2882
+              }
+            ],
+            "samplers": 1,
+            "path": "drone.16x.glb"
+          }
+        ]
+      },
+      {
+        "id": "tank",
+        "source": {
+          "name": "tank",
+          "author": "KolosStudios",
+          "page": "https://poly.pizza/m/egcLMSGiuA",
+          "url": "https://static.poly.pizza/ba4513d6-e5c6-4a4b-a027-2eb7097d6516.glb",
+          "license": "CC BY 3.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+          "sha256": "e6050023af3c703a912418adf2f6564b3e0068ba9cfdbc11dba18e047a50e653",
+          "bytes": 44716
+        },
+        "variants": [
+          {
+            "variant": "original",
+            "factor": 1,
+            "sha256": "e6050023af3c703a912418adf2f6564b3e0068ba9cfdbc11dba18e047a50e653",
+            "bytes": 44716,
+            "triangles": 760,
+            "vertices": 1426,
+            "materials": 5,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  0.138005003333092,
+                  0.142400518059731,
+                  0.0649363845586777,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.0439749695360661,
+                  0.0439749695360661,
+                  0.0439749695360661,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.117851056158543,
+                  0.117851056158543,
+                  0.117851056158543,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.293505847454071,
+                  0.303197652101517,
+                  0.133690714836121,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.64000004529953,
+                  0.614798724651337,
+                  0.0518931411206722,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              }
+            ],
+            "bounds": {
+              "min": [
+                -7.401290523432639,
+                -0.04145174128004725,
+                -2.487615729491551
+              ],
+              "max": [
+                3.944094054482152,
+                3.537172664229805,
+                2.5747590763575965
+              ]
+            },
+            "images": [],
+            "samplers": 0,
+            "path": "tank.original.glb"
+          },
+          {
+            "variant": "normalized",
+            "factor": 1,
+            "sha256": "1f32c6af85c858d3c3574d932988df6113fb816745692eccbfd92545cedc1de7",
+            "bytes": 83048,
+            "triangles": 760,
+            "vertices": 1426,
+            "materials": 5,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  0.138005003333092,
+                  0.142400518059731,
+                  0.0649363845586777,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.0439749695360661,
+                  0.0439749695360661,
+                  0.0439749695360661,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.117851056158543,
+                  0.117851056158543,
+                  0.117851056158543,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.293505847454071,
+                  0.303197652101517,
+                  0.133690714836121,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.64000004529953,
+                  0.614798724651337,
+                  0.0518931411206722,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              }
+            ],
+            "bounds": {
+              "min": [
+                -7.401290416717529,
+                -0.04145174100995064,
+                -2.4876158237457275
+              ],
+              "max": [
+                3.944093942642212,
+                3.537172555923462,
+                2.574759006500244
+              ]
+            },
+            "images": [],
+            "samplers": 0,
+            "path": "tank.normalized.glb"
+          },
+          {
+            "variant": "4x",
+            "factor": 4,
+            "sha256": "e2c6358522604088fd714d789b08578f7b34e72ce3cd31ce06348d2e2492890f",
+            "bytes": 199396,
+            "triangles": 3040,
+            "vertices": 3279,
+            "materials": 5,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  0.138005003333092,
+                  0.142400518059731,
+                  0.0649363845586777,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.0439749695360661,
+                  0.0439749695360661,
+                  0.0439749695360661,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.117851056158543,
+                  0.117851056158543,
+                  0.117851056158543,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.293505847454071,
+                  0.303197652101517,
+                  0.133690714836121,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.64000004529953,
+                  0.614798724651337,
+                  0.0518931411206722,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              }
+            ],
+            "bounds": {
+              "min": [
+                -7.401290416717529,
+                -0.04145174100995064,
+                -2.4876158237457275
+              ],
+              "max": [
+                3.944093942642212,
+                3.537172555923462,
+                2.574759006500244
+              ]
+            },
+            "images": [],
+            "samplers": 0,
+            "path": "tank.4x.glb"
+          },
+          {
+            "variant": "16x",
+            "factor": 16,
+            "sha256": "57baadebf898e45b5c538ee9c309aceda233dbf01a7e8ca740145476112ee05d",
+            "bytes": 596196,
+            "triangles": 12160,
+            "vertices": 9265,
+            "materials": 5,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  0.138005003333092,
+                  0.142400518059731,
+                  0.0649363845586777,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.0439749695360661,
+                  0.0439749695360661,
+                  0.0439749695360661,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.117851056158543,
+                  0.117851056158543,
+                  0.117851056158543,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.293505847454071,
+                  0.303197652101517,
+                  0.133690714836121,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.64000004529953,
+                  0.614798724651337,
+                  0.0518931411206722,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              }
+            ],
+            "bounds": {
+              "min": [
+                -7.401290416717529,
+                -0.04145174100995064,
+                -2.4876158237457275
+              ],
+              "max": [
+                3.944093942642212,
+                3.537172555923462,
+                2.574759006500244
+              ]
+            },
+            "images": [],
+            "samplers": 0,
+            "path": "tank.16x.glb"
+          }
+        ]
+      },
+      {
+        "id": "plane",
+        "source": {
+          "name": "plane",
+          "author": "jeremy",
+          "page": "https://poly.pizza/m/6fyLMORhgGK",
+          "url": "https://static.poly.pizza/19d58465-dafb-4df0-a3b8-b0500bd9ed4b.glb",
+          "license": "CC BY 3.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+          "sha256": "4196c1920cec466a5211f8d9a86b3eb08ec1772e7e96e73cda7fede525f6e950",
+          "bytes": 77620
+        },
+        "variants": [
+          {
+            "variant": "original",
+            "factor": 1,
+            "sha256": "4196c1920cec466a5211f8d9a86b3eb08ec1772e7e96e73cda7fede525f6e950",
+            "bytes": 77620,
+            "triangles": 1434,
+            "vertices": 2706,
+            "materials": 4,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  0.06,
+                  0.1,
+                  0.13,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.22,
+                  0.74,
+                  0.83,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.01,
+                  0.01,
+                  0.01,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.19,
+                  0.28,
+                  0.34,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              }
+            ],
+            "bounds": {
+              "min": [
+                -4.975481033325195,
+                -0.6715360283851624,
+                -4.986669063568115
+              ],
+              "max": [
+                4.975473880767822,
+                1.7301820516586304,
+                6.0785698890686035
+              ]
+            },
+            "images": [],
+            "samplers": 0,
+            "path": "plane.original.glb"
+          },
+          {
+            "variant": "normalized",
+            "factor": 1,
+            "sha256": "15c3cfa55fdcc1fdfc11c1cde979331b4f777e6d653ea5f4ea0b352f7da7079a",
+            "bytes": 151392,
+            "triangles": 1434,
+            "vertices": 2706,
+            "materials": 4,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  0.06,
+                  0.1,
+                  0.13,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.22,
+                  0.74,
+                  0.83,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.01,
+                  0.01,
+                  0.01,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.19,
+                  0.28,
+                  0.34,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              }
+            ],
+            "bounds": {
+              "min": [
+                -4.975481033325195,
+                -0.6715360283851624,
+                -4.986669063568115
+              ],
+              "max": [
+                4.975473880767822,
+                1.7301820516586304,
+                6.0785698890686035
+              ]
+            },
+            "images": [],
+            "samplers": 0,
+            "path": "plane.normalized.glb"
+          },
+          {
+            "variant": "4x",
+            "factor": 4,
+            "sha256": "604a4118af99f9dc7afb34581d3e2a38dfa0a0aaa48c6dff3517697dd2b1a811",
+            "bytes": 371176,
+            "triangles": 5736,
+            "vertices": 6209,
+            "materials": 4,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  0.06,
+                  0.1,
+                  0.13,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.22,
+                  0.74,
+                  0.83,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.01,
+                  0.01,
+                  0.01,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.19,
+                  0.28,
+                  0.34,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              }
+            ],
+            "bounds": {
+              "min": [
+                -4.975481033325195,
+                -0.6715360283851624,
+                -4.986669063568115
+              ],
+              "max": [
+                4.975473880767822,
+                1.7301820516586304,
+                6.0785698890686035
+              ]
+            },
+            "images": [],
+            "samplers": 0,
+            "path": "plane.4x.glb"
+          },
+          {
+            "variant": "16x",
+            "factor": 16,
+            "sha256": "5d25a5669f7bc35fa9e8dfe8a64af6c4f2e34a3dfb25b0fbc72074b05107fe1d",
+            "bytes": 1120488,
+            "triangles": 22944,
+            "vertices": 17517,
+            "materials": 4,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  0.06,
+                  0.1,
+                  0.13,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.22,
+                  0.74,
+                  0.83,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.01,
+                  0.01,
+                  0.01,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.19,
+                  0.28,
+                  0.34,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              }
+            ],
+            "bounds": {
+              "min": [
+                -4.975481033325195,
+                -0.6715360283851624,
+                -4.986669063568115
+              ],
+              "max": [
+                4.975473880767822,
+                1.7301820516586304,
+                6.0785698890686035
+              ]
+            },
+            "images": [],
+            "samplers": 0,
+            "path": "plane.16x.glb"
+          }
+        ]
+      },
+      {
+        "id": "boat",
+        "source": {
+          "name": "boat",
+          "author": "Kenney",
+          "page": "https://kenney.nl/assets/watercraft-kit",
+          "url": "https://kenney.nl/media/pages/assets/watercraft-kit/a335cfed49-1713519620/kenney_watercraft-pack.zip",
+          "license": "CC0 1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "modification": "One gltf-transform copy pass to embed colormap.png",
+          "sourceBytes": 16520,
+          "sha256": "5c4c573f34b9dce89f551eb6501b031dc19f799d6cd9adf97e36857262968740",
+          "bytes": 25084
+        },
+        "variants": [
+          {
+            "variant": "original",
+            "factor": 1,
+            "sha256": "5c4c573f34b9dce89f551eb6501b031dc19f799d6cd9adf97e36857262968740",
+            "bytes": 25084,
+            "triangles": 156,
+            "vertices": 288,
+            "materials": 1,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  1,
+                  1,
+                  1,
+                  1
+                ],
+                "doubleSided": true,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false,
+                "texture": 0,
+                "sampler": {
+                  "magFilter": 9728,
+                  "minFilter": 9984,
+                  "wrapS": 10497,
+                  "wrapT": 10497
+                },
+                "uvTransform": {
+                  "offset": [
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1,
+                    1
+                  ],
+                  "rotation": 0
+                }
+              }
+            ],
+            "bounds": {
+              "min": [
+                -0.8924999833106995,
+                0,
+                -1.6850000619888306
+              ],
+              "max": [
+                0.8924999833106995,
+                1.5,
+                1.6850000619888306
+              ]
+            },
+            "images": [
+              {
+                "sha256": "311138350e74e35c5497a1bd8076a01740b7c302bed11027639fa553459a68de",
+                "mimeType": "image/png",
+                "bytes": 8814
+              }
+            ],
+            "samplers": 1,
+            "path": "boat.original.glb"
+          },
+          {
+            "variant": "normalized",
+            "factor": 1,
+            "sha256": "4bf705b069b606a2ac901ead74313c92e575c0ec306c4d4d30933a2debb04734",
+            "bytes": 26108,
+            "triangles": 156,
+            "vertices": 288,
+            "materials": 1,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  1,
+                  1,
+                  1,
+                  1
+                ],
+                "doubleSided": true,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false,
+                "texture": 0,
+                "sampler": {
+                  "magFilter": 9728,
+                  "minFilter": 9984,
+                  "wrapS": 10497,
+                  "wrapT": 10497
+                },
+                "uvTransform": {
+                  "offset": [
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1,
+                    1
+                  ],
+                  "rotation": 0
+                }
+              }
+            ],
+            "bounds": {
+              "min": [
+                -0.8924999833106995,
+                0,
+                -1.6850000619888306
+              ],
+              "max": [
+                0.8924999833106995,
+                1.5,
+                1.6850000619888306
+              ]
+            },
+            "images": [
+              {
+                "sha256": "311138350e74e35c5497a1bd8076a01740b7c302bed11027639fa553459a68de",
+                "mimeType": "image/png",
+                "bytes": 8814
+              }
+            ],
+            "samplers": 1,
+            "path": "boat.normalized.glb"
+          },
+          {
+            "variant": "4x",
+            "factor": 4,
+            "sha256": "776798e9a865eb1d9622df379c3969f668d06d8fbbf58940011470da6028e9ce",
+            "bytes": 49872,
+            "triangles": 624,
+            "vertices": 666,
+            "materials": 1,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  1,
+                  1,
+                  1,
+                  1
+                ],
+                "doubleSided": true,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false,
+                "texture": 0,
+                "sampler": {
+                  "magFilter": 9728,
+                  "minFilter": 9984,
+                  "wrapS": 10497,
+                  "wrapT": 10497
+                },
+                "uvTransform": {
+                  "offset": [
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1,
+                    1
+                  ],
+                  "rotation": 0
+                }
+              }
+            ],
+            "bounds": {
+              "min": [
+                -0.8924999833106995,
+                0,
+                -1.6850000619888306
+              ],
+              "max": [
+                0.8924999833106995,
+                1.5,
+                1.6850000619888306
+              ]
+            },
+            "images": [
+              {
+                "sha256": "311138350e74e35c5497a1bd8076a01740b7c302bed11027639fa553459a68de",
+                "mimeType": "image/png",
+                "bytes": 8814
+              }
+            ],
+            "samplers": 1,
+            "path": "boat.4x.glb"
+          },
+          {
+            "variant": "16x",
+            "factor": 16,
+            "sha256": "00584cd6b720ca883b197ede5c8f38035e53b0aee14c0f5367b2f02557f11b35",
+            "bytes": 131096,
+            "triangles": 2496,
+            "vertices": 1890,
+            "materials": 1,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  1,
+                  1,
+                  1,
+                  1
+                ],
+                "doubleSided": true,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false,
+                "texture": 0,
+                "sampler": {
+                  "magFilter": 9728,
+                  "minFilter": 9984,
+                  "wrapS": 10497,
+                  "wrapT": 10497
+                },
+                "uvTransform": {
+                  "offset": [
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1,
+                    1
+                  ],
+                  "rotation": 0
+                }
+              }
+            ],
+            "bounds": {
+              "min": [
+                -0.8924999833106995,
+                0,
+                -1.6850000619888306
+              ],
+              "max": [
+                0.8924999833106995,
+                1.5,
+                1.6850000619888306
+              ]
+            },
+            "images": [
+              {
+                "sha256": "311138350e74e35c5497a1bd8076a01740b7c302bed11027639fa553459a68de",
+                "mimeType": "image/png",
+                "bytes": 8814
+              }
+            ],
+            "samplers": 1,
+            "path": "boat.16x.glb"
+          }
+        ]
+      }
+    ],
+    "fixtures": [
+      {
+        "id": "opaque",
+        "path": "material-opaque.glb",
+        "sha256": "84b310d4e235bf449063c8c28e44e6cf83a9d48d92dd38907c3774397cef002e",
+        "bytes": 1936,
+        "triangles": 2,
+        "vertices": 6,
+        "materials": 1,
+        "materialDetails": [
+          {
+            "baseColor": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "doubleSided": false,
+            "alphaMode": "OPAQUE",
+            "alphaCutoff": 0.5,
+            "emissive": [
+              0,
+              0,
+              0
+            ],
+            "unlit": false,
+            "texture": 0,
+            "sampler": {
+              "magFilter": 9728,
+              "minFilter": 9984,
+              "wrapS": 10497,
+              "wrapT": 10497
+            },
+            "uvTransform": {
+              "offset": [
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1
+              ],
+              "rotation": 0
+            }
+          }
+        ],
+        "bounds": {
+          "min": [
+            -1,
+            0,
+            -1
+          ],
+          "max": [
+            1,
+            0,
+            1
+          ]
+        },
+        "images": [
+          {
+            "sha256": "ba341e2fd04f26d1fffcd8c359270267d99484bd66115f9799da5542059d36be",
+            "mimeType": "image/png",
+            "bytes": 126
+          }
+        ],
+        "samplers": 1,
+        "origin": {
+          "kind": "synthetic",
+          "source": "tests/model-material-fixtures.ts",
+          "description": "Project-authored planar geometry and a 16 x 16 embedded RGBA PNG; identical geometry and image for each material cost case.",
+          "license": null,
+          "licenseNote": "No separate license declaration; repository-authored test fixture, not a third-party vehicle asset."
+        }
+      },
+      {
+        "id": "mask",
+        "path": "material-mask.glb",
+        "sha256": "ad6df0781f41f97059a1beb847110ed67906a3f1b5460370e39b54cb7aec4d27",
+        "bytes": 1952,
+        "triangles": 2,
+        "vertices": 6,
+        "materials": 1,
+        "materialDetails": [
+          {
+            "baseColor": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "doubleSided": false,
+            "alphaMode": "MASK",
+            "alphaCutoff": 0.6,
+            "emissive": [
+              0,
+              0,
+              0
+            ],
+            "unlit": false,
+            "texture": 0,
+            "sampler": {
+              "magFilter": 9728,
+              "minFilter": 9984,
+              "wrapS": 10497,
+              "wrapT": 10497
+            },
+            "uvTransform": {
+              "offset": [
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1
+              ],
+              "rotation": 0
+            }
+          }
+        ],
+        "bounds": {
+          "min": [
+            -1,
+            0,
+            -1
+          ],
+          "max": [
+            1,
+            0,
+            1
+          ]
+        },
+        "images": [
+          {
+            "sha256": "ba341e2fd04f26d1fffcd8c359270267d99484bd66115f9799da5542059d36be",
+            "mimeType": "image/png",
+            "bytes": 126
+          }
+        ],
+        "samplers": 1,
+        "origin": {
+          "kind": "synthetic",
+          "source": "tests/model-material-fixtures.ts",
+          "description": "Project-authored planar geometry and a 16 x 16 embedded RGBA PNG; identical geometry and image for each material cost case.",
+          "license": null,
+          "licenseNote": "No separate license declaration; repository-authored test fixture, not a third-party vehicle asset."
+        }
+      },
+      {
+        "id": "double-sided",
+        "path": "material-double-sided.glb",
+        "sha256": "13cadbb9e92e2e4077f0c3cffb838e8e456bc9dfee9d320325b1d55c182609d9",
+        "bytes": 1936,
+        "triangles": 2,
+        "vertices": 6,
+        "materials": 1,
+        "materialDetails": [
+          {
+            "baseColor": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "doubleSided": true,
+            "alphaMode": "OPAQUE",
+            "alphaCutoff": 0.5,
+            "emissive": [
+              0,
+              0,
+              0
+            ],
+            "unlit": false,
+            "texture": 0,
+            "sampler": {
+              "magFilter": 9728,
+              "minFilter": 9984,
+              "wrapS": 10497,
+              "wrapT": 10497
+            },
+            "uvTransform": {
+              "offset": [
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1
+              ],
+              "rotation": 0
+            }
+          }
+        ],
+        "bounds": {
+          "min": [
+            -1,
+            0,
+            -1
+          ],
+          "max": [
+            1,
+            0,
+            1
+          ]
+        },
+        "images": [
+          {
+            "sha256": "ba341e2fd04f26d1fffcd8c359270267d99484bd66115f9799da5542059d36be",
+            "mimeType": "image/png",
+            "bytes": 126
+          }
+        ],
+        "samplers": 1,
+        "origin": {
+          "kind": "synthetic",
+          "source": "tests/model-material-fixtures.ts",
+          "description": "Project-authored planar geometry and a 16 x 16 embedded RGBA PNG; identical geometry and image for each material cost case.",
+          "license": null,
+          "licenseNote": "No separate license declaration; repository-authored test fixture, not a third-party vehicle asset."
+        }
+      },
+      {
+        "id": "blend",
+        "path": "material-blend.glb",
+        "sha256": "e1232e25d10e0bdb41ac9e71fbe4cf0fc397f092b61ea1c9b67f658fa758160c",
+        "bytes": 1936,
+        "triangles": 2,
+        "vertices": 6,
+        "materials": 1,
+        "materialDetails": [
+          {
+            "baseColor": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "doubleSided": false,
+            "alphaMode": "BLEND",
+            "alphaCutoff": 0.5,
+            "emissive": [
+              0,
+              0,
+              0
+            ],
+            "unlit": false,
+            "texture": 0,
+            "sampler": {
+              "magFilter": 9728,
+              "minFilter": 9984,
+              "wrapS": 10497,
+              "wrapT": 10497
+            },
+            "uvTransform": {
+              "offset": [
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1
+              ],
+              "rotation": 0
+            }
+          }
+        ],
+        "bounds": {
+          "min": [
+            -1,
+            0,
+            -1
+          ],
+          "max": [
+            1,
+            0,
+            1
+          ]
+        },
+        "images": [
+          {
+            "sha256": "ba341e2fd04f26d1fffcd8c359270267d99484bd66115f9799da5542059d36be",
+            "mimeType": "image/png",
+            "bytes": 126
+          }
+        ],
+        "samplers": 1,
+        "origin": {
+          "kind": "synthetic",
+          "source": "tests/model-material-fixtures.ts",
+          "description": "Project-authored planar geometry and a 16 x 16 embedded RGBA PNG; identical geometry and image for each material cost case.",
+          "license": null,
+          "licenseNote": "No separate license declaration; repository-authored test fixture, not a third-party vehicle asset."
+        }
+      }
+    ]
+  },
+  "cold": {
+    "start": 555.8000000119209,
+    "warmReady": 6489.5999999940395,
+    "registrations": [
+      {
+        "id": "opaque",
+        "start": 706.9000000059605,
+        "end": 720.3000000119209,
+        "status": "ready"
+      },
+      {
+        "id": "mask",
+        "start": 732.0999999940395,
+        "end": 746.0999999940395,
+        "status": "ready"
+      },
+      {
+        "id": "double-sided",
+        "start": 769.9000000059605,
+        "end": 780,
+        "status": "ready"
+      },
+      {
+        "id": "blend",
+        "start": 799.9000000059605,
+        "end": 822.0999999940395,
+        "status": "ready"
+      }
+    ]
+  },
+  "results": [
+    {
+      "camera": "stationary",
+      "repeat": 0,
+      "start": 6493,
+      "end": 8628.800000011921,
+      "frameIntervalMs": {
+        "samples": 14,
+        "status": "available",
+        "p50": 100,
+        "p95": 466.60000000000036,
+        "p99": 466.60000000000036
+      },
+      "upsertCpuMs": {
+        "samples": 11,
+        "status": "available",
+        "p50": 22.099999994039536,
+        "p95": 46.400000005960464,
+        "p99": 46.400000005960464
+      },
+      "modelVisibleLatencyMs": {
+        "samples": 0,
+        "status": "unavailable"
+      },
+      "nativeProbeVisibleLatencyMs": {
+        "samples": 0,
+        "status": "unavailable"
+      },
+      "latencyOutcomes": {
+        "model": [
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable"
+        ],
+        "native": [
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable"
+        ]
+      },
+      "phases": {
+        "parse": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "decode-wall": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "texture-upload": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "geometry-upload": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "shader-compile": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "instance-preparation": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "submit": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "picking": {
+          "samples": 0,
+          "status": "unavailable"
+        }
+      },
+      "placementCpuMs": {
+        "samples": 0,
+        "status": "unavailable"
+      },
+      "projectionScalingCpuMs": {
+        "samples": 0,
+        "status": "unavailable"
+      },
+      "latency": [
+        {
+          "sequence": 6,
+          "start": 6496.5,
+          "end": 6525.5999999940395,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 7,
+          "start": 6694.4000000059605,
+          "end": 6740.800000011921,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 8,
+          "start": 6938.800000011921,
+          "end": 6963.800000011921,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 9,
+          "start": 7115.300000011921,
+          "end": 7140.200000017881,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 10,
+          "start": 7240.700000017881,
+          "end": 7258.300000011921,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 11,
+          "start": 7384.5999999940395,
+          "end": 7399.800000011921,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 12,
+          "start": 7583.5,
+          "end": 7599.700000017881,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 13,
+          "start": 7699.200000017881,
+          "end": 7721.300000011921,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 14,
+          "start": 7975,
+          "end": 7995.700000017881,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 15,
+          "start": 8147.800000011921,
+          "end": 8171,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 16,
+          "start": 8610.700000017881,
+          "end": 8628.09999999404,
+          "model": "unavailable",
+          "native": "unavailable"
+        }
+      ],
+      "gpuMs": {
+        "samples": 0,
+        "status": "unavailable"
+      }
+    },
+    {
+      "camera": "moving",
+      "repeat": 0,
+      "start": 8628.800000011921,
+      "end": 11177.800000011921,
+      "frameIntervalMs": {
+        "samples": 4,
+        "status": "available",
+        "p50": 483.2000000000007,
+        "p95": 633.3999999999996,
+        "p99": 633.3999999999996
+      },
+      "upsertCpuMs": {
+        "samples": 3,
+        "status": "available",
+        "p50": 16.19999998807907,
+        "p95": 21.30000001192093,
+        "p99": 21.30000001192093
+      },
+      "modelVisibleLatencyMs": {
+        "samples": 0,
+        "status": "unavailable"
+      },
+      "nativeProbeVisibleLatencyMs": {
+        "samples": 0,
+        "status": "unavailable"
+      },
+      "latencyOutcomes": {
+        "model": [
+          "unavailable",
+          "unavailable",
+          "unavailable"
+        ],
+        "native": [
+          "unavailable",
+          "unavailable",
+          "unavailable"
+        ]
+      },
+      "phases": {
+        "parse": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "decode-wall": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "texture-upload": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "geometry-upload": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "shader-compile": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "instance-preparation": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "submit": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "picking": {
+          "samples": 0,
+          "status": "unavailable"
+        }
+      },
+      "placementCpuMs": {
+        "samples": 0,
+        "status": "unavailable"
+      },
+      "projectionScalingCpuMs": {
+        "samples": 0,
+        "status": "unavailable"
+      },
+      "latency": [
+        {
+          "sequence": 17,
+          "start": 9727,
+          "end": 9748.300000011921,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 18,
+          "start": 10234.800000011921,
+          "end": 10250.200000017881,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 19,
+          "start": 11160.800000011921,
+          "end": 11177,
+          "model": "unavailable",
+          "native": "unavailable"
+        }
+      ],
+      "gpuMs": {
+        "samples": 0,
+        "status": "unavailable"
+      }
+    }
+  ],
+  "raw": {
+    "raf": [
+      {
+        "time": 5435.5,
+        "interval": 66.69999999999982
+      },
+      {
+        "time": 5535.5,
+        "interval": 100
+      },
+      {
+        "time": 5585.4,
+        "interval": 49.899999999999636
+      },
+      {
+        "time": 5735.5,
+        "interval": 150.10000000000036
+      },
+      {
+        "time": 5835.5,
+        "interval": 100
+      },
+      {
+        "time": 6035.5,
+        "interval": 200
+      },
+      {
+        "time": 6168.8,
+        "interval": 133.30000000000018
+      },
+      {
+        "time": 6335.4,
+        "interval": 166.59999999999945
+      },
+      {
+        "time": 6452.1,
+        "interval": 116.70000000000073
+      },
+      {
+        "time": 6685.4,
+        "interval": 233.29999999999927
+      },
+      {
+        "time": 6868.8,
+        "interval": 183.40000000000055
+      },
+      {
+        "time": 7102.1,
+        "interval": 233.30000000000018
+      },
+      {
+        "time": 7202.1,
+        "interval": 100
+      },
+      {
+        "time": 7368.7,
+        "interval": 166.59999999999945
+      },
+      {
+        "time": 7468.7,
+        "interval": 100
+      },
+      {
+        "time": 7568.7,
+        "interval": 100
+      },
+      {
+        "time": 7652.1,
+        "interval": 83.40000000000055
+      },
+      {
+        "time": 7802.1,
+        "interval": 150
+      },
+      {
+        "time": 7885.4,
+        "interval": 83.29999999999927
+      },
+      {
+        "time": 7968.7,
+        "interval": 83.30000000000018
+      },
+      {
+        "time": 8068.8,
+        "interval": 100.10000000000036
+      },
+      {
+        "time": 8135.4,
+        "interval": 66.59999999999945
+      },
+      {
+        "time": 8602,
+        "interval": 466.60000000000036
+      },
+      {
+        "time": 9235.4,
+        "interval": 633.3999999999996
+      },
+      {
+        "time": 9718.6,
+        "interval": 483.2000000000007
+      },
+      {
+        "time": 10185.3,
+        "interval": 466.6999999999989
+      },
+      {
+        "time": 10668.7,
+        "interval": 483.40000000000146
+      }
+    ],
+    "renders": [
+      5440.4000000059605,
+      5544.200000017881,
+      5588.4000000059605,
+      5712.5,
+      5840.0999999940395,
+      6021.5999999940395,
+      6171.5999999940395,
+      6324.700000017881,
+      6458.200000017881,
+      6667.5,
+      6875.700000017881,
+      7090,
+      7214.0999999940395,
+      7364.200000017881,
+      7474.0999999940395,
+      7555.4000000059605,
+      7662.300000011921,
+      7797.5,
+      7890.0999999940395,
+      7973,
+      8055.200000017881,
+      8144.0999999940395,
+      8592.300000011921,
+      9232.200000017881,
+      9685.90000000596,
+      10184.700000017881,
+      10634.09999999404,
+      11154,
+      11646.90000000596,
+      12744.40000000596,
+      13457.5,
+      14061.09999999404,
+      14643.200000017881,
+      28367.20000001788
+    ],
+    "updates": [
+      {
+        "sequence": 0,
+        "start": 823.8000000119209,
+        "end": 854
+      },
+      {
+        "sequence": 1,
+        "start": 5594.800000011921,
+        "end": 5614.0999999940395
+      },
+      {
+        "sequence": 2,
+        "start": 5845.200000017881,
+        "end": 5888.300000011921
+      },
+      {
+        "sequence": 3,
+        "start": 6050.9000000059605,
+        "end": 6073.700000017881
+      },
+      {
+        "sequence": 4,
+        "start": 6203.800000011921,
+        "end": 6236.300000011921
+      },
+      {
+        "sequence": 5,
+        "start": 6351.0999999940395,
+        "end": 6370.800000011921
+      },
+      {
+        "sequence": 6,
+        "start": 6496.5,
+        "end": 6525.5999999940395
+      },
+      {
+        "sequence": 7,
+        "start": 6694.4000000059605,
+        "end": 6740.800000011921
+      },
+      {
+        "sequence": 8,
+        "start": 6938.800000011921,
+        "end": 6963.800000011921
+      },
+      {
+        "sequence": 9,
+        "start": 7115.300000011921,
+        "end": 7140.200000017881
+      },
+      {
+        "sequence": 10,
+        "start": 7240.700000017881,
+        "end": 7258.300000011921
+      },
+      {
+        "sequence": 11,
+        "start": 7384.5999999940395,
+        "end": 7399.800000011921
+      },
+      {
+        "sequence": 12,
+        "start": 7583.5,
+        "end": 7599.700000017881
+      },
+      {
+        "sequence": 13,
+        "start": 7699.200000017881,
+        "end": 7721.300000011921
+      },
+      {
+        "sequence": 14,
+        "start": 7975,
+        "end": 7995.700000017881
+      },
+      {
+        "sequence": 15,
+        "start": 8147.800000011921,
+        "end": 8171
+      },
+      {
+        "sequence": 16,
+        "start": 8610.700000017881,
+        "end": 8628.09999999404
+      },
+      {
+        "sequence": 17,
+        "start": 9727,
+        "end": 9748.300000011921
+      },
+      {
+        "sequence": 18,
+        "start": 10234.800000011921,
+        "end": 10250.200000017881
+      },
+      {
+        "sequence": 19,
+        "start": 11160.800000011921,
+        "end": 11177
+      }
+    ],
+    "native": [],
+    "nativeCoverage": [],
+    "nativeProbeCpu": [],
+    "timings": [],
+    "gpu": [],
+    "rejectedGpu": []
+  },
+  "gpuStatus": "disabled",
+  "visibility": {
+    "nativeRenderedIds": 1000,
+    "modelPatchPixels": [
+      411,
+      54,
+      243,
+      174,
+      475,
+      55,
+      188,
+      96,
+      384,
+      51,
+      212,
+      91,
+      208,
+      57,
+      313,
+      110,
+      202,
+      49,
+      220,
+      139,
+      236,
+      51,
+      189,
+      115,
+      277,
+      53,
+      215,
+      106,
+      188,
+      51,
+      283,
+      97,
+      195,
+      44,
+      236,
+      93,
+      241,
+      52,
+      186,
+      99,
+      321,
+      67,
+      194,
+      93,
+      204,
+      66,
+      298,
+      118,
+      193,
+      49,
+      250,
+      141,
+      216,
+      43,
+      191,
+      102,
+      285,
+      68,
+      207,
+      95,
+      217,
+      76,
+      261,
+      108,
+      181,
+      51,
+      241,
+      172,
+      227,
+      49,
+      189,
+      81,
+      293,
+      49,
+      193,
+      64,
+      209,
+      41,
+      255,
+      98,
+      177,
+      51,
+      264,
+      86,
+      214,
+      56,
+      156,
+      110,
+      299,
+      58,
+      179,
+      91,
+      168,
+      67,
+      247,
+      88,
+      184,
+      44,
+      235,
+      130
+    ],
+    "stateModelCount": 100
+  },
+  "idleFrames": 0,
+  "diagnostics": [],
+  "validation": {
+    "status": "observed",
+    "failures": []
+  },
+  "acceptance": "unrated tooling smoke; target hardware acceptance pending"
+}

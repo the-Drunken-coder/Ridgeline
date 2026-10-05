@@ -1,3 +1,4 @@
+import type { ModelMeasurement } from './model-measurement';
 import { Color } from '@maplibre/maplibre-gl-style-spec';
 import type { CustomRenderMethodInput } from 'maplibre-gl';
 import { EntityProjection, entityProjectionShader } from './entity-projection';
@@ -46,7 +47,7 @@ export class ModelRenderer {
   private programs = new Map<string, WebGLProgram>();
   private generation = 0;
   private destroyed = false;
-  constructor(private gl: WebGL2RenderingContext) {}
+  constructor(private gl: WebGL2RenderingContext, private measurement?: ModelMeasurement) {}
   initialize(input: CustomRenderMethodInput) {
     if (this.destroyed || this.gl.isContextLost()) throw new Error('Model renderer unavailable.');
     let program = this.programs.get(input.shaderData.variantName);
@@ -60,7 +61,7 @@ export class ModelRenderer {
     this.programs.clear();
   }
   async upload(model: ParsedModel, current: () => boolean, signal: AbortSignal): Promise<ModelGpu> {
-    const gl = this.gl;
+    const gl = this.gl, measuredAttempt = this.measurement?.attempt(signal);
     if (this.destroyed || gl.isContextLost()) throw new Error('Model renderer unavailable.');
     const releases: (() => void)[] = [];
     const textures: WebGLTexture[] = [], samplers = new Map<string, WebGLSampler>();
@@ -81,9 +82,14 @@ export class ModelRenderer {
     const buffer = () => { active(); return own(gl.createBuffer(), value => gl.deleteBuffer(value), 'buffer'); };
     signal.addEventListener('abort', dispose, { once: true });
     try {
-      for (const image of model.images) {
+      for (let imageIndex = 0; imageIndex < model.images.length; imageIndex++) {
+        const image = model.images[imageIndex]!;
         active();
-        const bitmap = await decode(image, current, signal);
+        const decodeStart = this.measurement?.begin();
+        let bitmap: ImageBitmap;
+        try { bitmap = await decode(image, current, signal); }
+        finally { if (decodeStart !== undefined) this.measurement!.end('decode-wall', decodeStart, { ...measuredAttempt, image: imageIndex, cancelled: signal.aborted }); }
+        const uploadStart = this.measurement?.begin();
         const binding = gl.getParameter(gl.TEXTURE_BINDING_2D);
         try {
           active();
@@ -98,8 +104,11 @@ export class ModelRenderer {
           bitmap.close();
           // Reentrant removal may have deleted the formerly bound registration texture.
           gl.bindTexture(gl.TEXTURE_2D, binding && gl.isTexture(binding) ? binding : null);
+          if (uploadStart !== undefined) this.measurement!.end('texture-upload', uploadStart, { ...measuredAttempt, image: imageIndex });
         }
       }
+      const uploadStart = this.measurement?.begin();
+      try {
       const batches = model.batches.map(batch => {
         active();
         let sampler: WebGLSampler | undefined;
@@ -132,11 +141,13 @@ export class ModelRenderer {
       const error = gl.getError();
       if (error !== gl.NO_ERROR) throw new Error(`Model upload failed with WebGL error ${error}.`);
       return { batches, get disposed() { return released; }, dispose };
+      } finally { if (uploadStart !== undefined) this.measurement!.end('geometry-upload', uploadStart, measuredAttempt); }
     } catch (cause) { dispose(); throw cause; }
     finally { signal.removeEventListener('abort', dispose); gl.bindVertexArray(null); }
   }
   prepareFrame(input: CustomRenderMethodInput, projection: EntityProjection, draws: ModelDraw[]): PreparedModelFrame {
     const gl = this.gl, program = this.initialize(input), generation = ++this.generation;
+    const preparationStart = this.measurement?.begin();
     const groups = new Map<RegisteredModel<ModelGpu>, number[]>();
     const prepared = draws.map(draw => {
       const values = groups.get(draw.asset) ?? [], offset = values.length / STRIDE;
@@ -161,8 +172,10 @@ export class ModelRenderer {
     }
     const error = gl.getError();
     if (error !== gl.NO_ERROR) throw new Error(`Model instance upload failed with WebGL error ${error}.`);
+    if (preparationStart !== undefined) this.measurement!.end('instance-preparation', preparationStart);
     return { draw: () => {
       if (this.destroyed || generation !== this.generation || gl.isContextLost()) return;
+      const start = this.measurement?.begin();
       try {
         gl.useProgram(program); projection.bindFrame(gl, program);
         const uniform = (name: string) => gl.getUniformLocation(program, name);
@@ -197,10 +210,14 @@ export class ModelRenderer {
             }
           }
         }
-      } finally { gl.bindSampler(0, null); gl.bindVertexArray(null); gl.depthMask(true); }
+      } finally {
+        gl.bindSampler(0, null); gl.bindVertexArray(null); gl.depthMask(true);
+        if (start !== undefined) this.measurement!.end('submit', start);
+      }
     } };
   }
   private compile(gl: WebGL2RenderingContext, input: CustomRenderMethodInput) {
+    const start = this.measurement?.begin();
     const program = gl.createProgram(); if (!program) throw new Error('Cannot allocate model program.');
     const shaders: WebGLShader[] = [];
     try {
@@ -241,6 +258,9 @@ color=vec4(srgb(mix(rgb,vec3(1.),v_feedback)),u_alphaMode==2?alpha:1.);}`;
       if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) ?? 'Model program failed.');
       return program;
     } catch (cause) { gl.deleteProgram(program); throw cause; }
-    finally { for (const shader of shaders) gl.deleteShader(shader); }
+    finally {
+      for (const shader of shaders) gl.deleteShader(shader);
+      if (start !== undefined) this.measurement!.end('shader-compile', start, { variant: input.shaderData.variantName });
+    }
   }
 }
