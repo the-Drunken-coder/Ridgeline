@@ -189,7 +189,8 @@ export const modelPickingCases: readonly { name: string; run(context: Context): 
       await context.until(()=>hovers.at(-1)==='','stationary representation exit');
       viewport.configure({entityModels:{switchDistanceMeters:1e7,deadZoneMeters:0,minimumSizePixels:120}});
       await context.until(()=>hovers.at(-1)==='model','stationary representation return');
-      await pause(500); let renders=0; const before=hovers.length, count=()=>{renders++;}; viewport.map.on('render',count); await pause(5000); viewport.map.off('render',count);
+      await new Promise<void>(resolve => { viewport.map.once('idle', () => resolve()); viewport.map.triggerRepaint(); });
+      let renders=0; const before=hovers.length, count=()=>{renders++;}; viewport.map.on('render',count); await pause(5000); viewport.map.off('render',count);
       check(renders===0 && hovers.length===before, `Settled hover stayed active: ${renders} renders, ${hovers.length-before} events`);
       ui.destroy(); viewport.remove(['model']); await context.until(()=>hovers.at(-1)==='','hover removal');
       const cancelled:string[]=[]; const cancel=viewport.on('hover',value=>{if(value.features[0])viewport.remove([value.features[0].id]);});
