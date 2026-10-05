@@ -48,13 +48,13 @@ function subdivide(batch: ModelBatch): ModelBatch {
 }
 
 function serialize(model: ParsedModel): ArrayBuffer {
-  const chunks: Uint8Array[] = [], bufferViews: { buffer: number; byteOffset: number; byteLength: number }[] = [];
+  const chunks: Uint8Array[] = [], bufferViews: { buffer: number; byteOffset: number; byteLength: number; target?: number }[] = [];
   let length = 0;
-  const append = (bytes: Uint8Array) => {
+  const append = (bytes: Uint8Array, target?: number) => {
     const byteOffset = Math.ceil(length / 4) * 4;
     chunks.push(new Uint8Array(byteOffset - length), bytes);
     length = byteOffset + bytes.length;
-    return bufferViews.push({ buffer: 0, byteOffset, byteLength: bytes.length }) - 1;
+    return bufferViews.push({ buffer: 0, byteOffset, byteLength: bytes.length, target }) - 1;
   };
   const accessors: { bufferView: number; componentType: number; count: number; type: string; min?: number[]; max?: number[] }[] = [];
   const attribute = (values: Float32Array | Uint32Array, type: string, size: number, bounds = false) => {
@@ -64,7 +64,7 @@ function serialize(model: ParsedModel): ArrayBuffer {
       extrema.min[axis] = Math.min(extrema.min[axis]!, value);
       extrema.max[axis] = Math.max(extrema.max[axis]!, value);
     }
-    return accessors.push({ bufferView: append(new Uint8Array(values.buffer, values.byteOffset, values.byteLength)),
+    return accessors.push({ bufferView: append(new Uint8Array(values.buffer, values.byteOffset, values.byteLength), values instanceof Uint32Array ? 34963 : 34962),
       componentType: values instanceof Uint32Array ? 5125 : 5126, count: values.length / size, type, ...extrema }) - 1;
   };
   const images = model.images.map(image => ({ bufferView: append(image.bytes), mimeType: image.mimeType }));
@@ -86,7 +86,8 @@ function serialize(model: ParsedModel): ArrayBuffer {
     return { pbrMetallicRoughness: { baseColorFactor: material.baseColor,
       baseColorTexture: texture === undefined ? undefined : { index: texture,
         extensions: material.uvTransform ? { KHR_texture_transform: material.uvTransform } : undefined } },
-      alphaMode: material.alphaMode, alphaCutoff: material.alphaCutoff, doubleSided: material.doubleSided,
+      alphaMode: material.alphaMode, alphaCutoff: material.alphaMode === 'MASK' || material.alphaCutoff !== 0.5 ? material.alphaCutoff : undefined,
+      doubleSided: material.doubleSided,
       emissiveFactor: material.emissive, extensions: material.unlit ? { KHR_materials_unlit: {} } : undefined };
   });
   const primitives = model.batches.map((batch, material) => ({ material,
@@ -97,9 +98,11 @@ function serialize(model: ParsedModel): ArrayBuffer {
   const binary = new Uint8Array(length); let offset = 0;
   for (const chunk of chunks) { binary.set(chunk, offset); offset += chunk.byteLength; }
   return encodeGlb({ asset: { version: '2.0', generator: 'Ridgeline offline model workloads v1' },
-    buffers: [{ byteLength: length }], bufferViews, accessors, images, textures, samplers, materials,
+    buffers: [{ byteLength: length }], bufferViews, accessors, materials,
+    images: images.length ? images : undefined, textures: textures.length ? textures : undefined,
+    samplers: samplers.length ? samplers : undefined,
     meshes: [{ primitives }], nodes: [{ mesh: 0 }], scenes: [{ nodes: [0] }], scene: 0,
-    extensionsUsed: [...extensionsUsed],
+    extensionsUsed: extensionsUsed.size ? [...extensionsUsed] : undefined,
   }, binary);
 }
 
@@ -168,7 +171,7 @@ export async function writeModelWorkloads(sourceDir = 'playground/public/entity-
   ];
   const fixtures = [];
   for (const { id, panel } of cases) {
-    const data = materialGlb([panel]), path = `material-${id}.glb`;
+    const data = serialize(parseGlb(materialGlb([panel]))), path = `material-${id}.glb`;
     await writeFile(resolve(outputDir, path), new Uint8Array(data));
     fixtures.push({ id, path, ...describe(data), origin: { kind: 'synthetic',
       source: 'tests/model-material-fixtures.ts',
