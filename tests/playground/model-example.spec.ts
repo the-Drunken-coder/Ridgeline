@@ -1,5 +1,9 @@
 import { expect, test } from 'playwright/test';
 
+// Software WebGL can block a single render or screenshot for over a minute in CI.
+// These workflows verify correctness; target-hardware performance is tracked separately.
+const renderTimeout = 120_000;
+
 test.beforeEach(async ({ page }) => {
   await page.route('https://tiles.openfreemap.org/styles/*', route => route.fulfill({ json: {
     version: 8, glyphs: 'https://example.test/fonts/{fontstack}/{range}.pbf', sources: {},
@@ -13,11 +17,11 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('model example uses shared registrations and independent consumer appearances', async ({ page }, testInfo) => {
-  test.setTimeout(240_000);
+  test.setTimeout(600_000);
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/?scenario=models'); await expect(page.locator('#map-status')).toHaveText('Ready');
-  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 20000 });
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: renderTimeout });
   await expect(page.locator('#feature-count')).toHaveText('8 features');
   const canvas = page.locator('#map canvas').first();
   const png = await canvas.screenshot();
@@ -55,16 +59,16 @@ test('model example uses shared registrations and independent consumer appearanc
   await expect(page.getByLabel('Model appearance')).toHaveValue('original');
   await page.getByRole('button', { name: 'Unload shared model' }).click();
   // Representation changes publish after rendering, which is slower with software WebGL.
-  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('6 models · 2 icons', { timeout: 60000 });
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('6 models · 2 icons', { timeout: renderTimeout });
   await page.getByRole('button', { name: 'Load shared model', exact: true }).click();
-  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 20000 });
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: renderTimeout });
   await page.getByLabel('Replacement model').selectOption('plane');
   await page.getByRole('button', { name: 'Replace shared model' }).click();
-  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 20000 });
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: renderTimeout });
   await page.getByRole('button', { name: 'Icons at distance' }).click();
-  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('0 models · 8 icons', { timeout: 60000 });
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('0 models · 8 icons', { timeout: renderTimeout });
   await page.getByRole('button', { name: 'Models up close' }).click();
-  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 20000 });
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: renderTimeout });
   await page.getByRole('button', { name: 'Remove sample' }).click();
   await expect(page.locator('#feature-count')).toHaveText('7 features');
   await page.getByLabel('Test scenario').selectOption('empty');
@@ -74,7 +78,7 @@ test('model example uses shared registrations and independent consumer appearanc
 });
 
 test('leaving the model example cancels pending consumer fetches', async ({ page }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   let requested = false, release!: () => void;
@@ -92,23 +96,23 @@ test('leaving the model example cancels pending consumer fetches', async ({ page
   await expect(page.locator('#model-example')).toBeHidden();
   await expect(page.locator('#feature-count')).toHaveText('0 features');
   await page.getByLabel('Test scenario').selectOption('models');
-  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 60000 });
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: renderTimeout });
   await expect(page.locator('#feature-count')).toHaveText('8 features');
   expect(errors).toEqual([]);
 });
 
 test('model example opens from the default terrain scene', async ({ page }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
   await page.goto('/');
   await expect(page.locator('#map-status')).toHaveText('Ready');
   await page.getByLabel('Test scenario').selectOption('models');
-  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 60000 });
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: renderTimeout });
   await expect(page.locator('#feature-count')).toHaveText('8 features');
   await expect(page.locator('#diagnostics')).toBeHidden();
 });
 
 test('a failed reset cannot replace a newer accepted shared model', async ({ page }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(600_000);
   let firstDrone = true, firstBoat = true, oldBoatRequested = false, oldBoatDelivered = false, releaseBoat!: () => void, boatStarted!: () => void;
   const delayedBoat = new Promise<void>(resolve => { releaseBoat = resolve; });
   const pendingBoat = new Promise<void>(resolve => { boatStarted = resolve; });
@@ -126,14 +130,14 @@ test('a failed reset cannot replace a newer accepted shared model', async ({ pag
   await expect.poll(() => oldBoatRequested).toBe(true);
   await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('Could not load Drone (500).');
   await page.getByRole('button', { name: 'Reset samples' }).click();
-  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 60000 });
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: renderTimeout });
   const canvas = page.locator('#map canvas').first();
   await page.getByLabel('Model sample', { exact: true }).selectOption('model-boat-original');
   await page.getByRole('button', { name: 'Locate', exact: true }).click();
-  await expect.poll(blueBoatPixels, { timeout: 60000 }).toBeGreaterThan(10);
+  await expect.poll(blueBoatPixels, { timeout: renderTimeout }).toBeGreaterThan(10);
   await page.getByLabel('Replacement model').selectOption('tank');
   await page.getByRole('button', { name: 'Replace shared model' }).click();
-  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 20000 });
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: renderTimeout });
   async function blueBoatPixels() {
     const png = await canvas.screenshot();
     return page.evaluate(async data => {
@@ -147,7 +151,7 @@ test('a failed reset cannot replace a newer accepted shared model', async ({ pag
       return count;
     }, png.toString('base64'));
   }
-  await expect.poll(blueBoatPixels, { timeout: 60000 }).toBeLessThan(5);
+  await expect.poll(blueBoatPixels, { timeout: renderTimeout }).toBeLessThan(5);
   releaseBoat();
   await expect.poll(() => oldBoatDelivered).toBe(true);
   const until = Date.now() + 5000;

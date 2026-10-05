@@ -2,6 +2,14 @@
 
 Spec: [Approved requirements](spec.md), imported unchanged from `21805ecb7543098f8c9820c476725654e20b31ec`. Parent [#81](https://github.com/the-Drunken-coder/Ridgeline/issues/81) remains open and unchanged. Root is the integration and verification owner.
 
+## PR #92 software-rendering test budgets, 2026-10-05
+
+The capture change alone did not resolve hosted timing. [Run 37274134406](https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37274134406) exercised PR head `5abf78cf4413998b814727f705e52dceb21c6954` at merge checkout `2a6d1cab90e879b76fb259a25e453da731e372a6`. All 187 packed workflows and non-playground checks pass; three playground workflows time out. The retained traces show successful reentry after 63.1 seconds and a successful boat-pixel assertion after a 91.4-second screenshot. Every rendering/interaction assertion in the main workflow passes, but its 240-second overall deadline expires before removal runs.
+
+Root and the independent diagnosis reviewer inspected these exact histories. Rendering assertions now allow 120 seconds; the two complete workflows allow 600 seconds and the smaller workflows 240 seconds. Every assertion, actual input, pixel check, cancellation sequence and bounded negative observation remains intact. Software correctness checks do not establish the separate target-hardware performance acceptance.
+
+Root reviewed and exercised `5abf78cf4413998b814727f705e52dceb21c6954` plus the uncommitted test-budget change. Its diff SHA-256 is `90c25316c8b2e0821bea692f1b7bffa04062213c3d41436f39bd6a191d3336eb`, using `git diff --binary HEAD -- tests/playground/model-example.spec.ts | sha256sum`. `pnpm check` and all five `pnpm test:playground:browser` workflows pass, including production builds. The latter completes in 7.1 minutes. This is local evidence; current hosted verification is recorded on [PR #92](https://github.com/the-Drunken-coder/Ridgeline/pull/92) at the exact final pushed revision.
+
 ## PR #92 playground CI follow-up, 2026-10-05
 
 Hosted [run 37271865676](https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37271865676) on PR head `60dd1b545afda985a95acf27600f82556b34b632`, tested merge checkout `a99eb1065ecbb0178099b33e8141160df00687a4`, passed all 187 packed browser workflows, type checks, module tests, control browser and consumer builds. Four playground Model workflows timed out. Their retained traces show the expected Model state or pixels appearing after the deadlines, including a screenshot that took 66.54 seconds. No unexpected console or network failure appeared, and review of scheduling found no stationary render loop.
