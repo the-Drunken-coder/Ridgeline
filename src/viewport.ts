@@ -1,3 +1,4 @@
+import { ModelMeasurement } from './model-measurement';
 import { ModelLabels } from './model-labels';
 import { ModelVisibility } from './model-visibility';
 import { shapeGeometry } from './drawing-shapes';
@@ -128,8 +129,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   let nativeSource: unknown;
   let availableMarkers = new Map<string, string>();
   let frameMarkers: Map<string, string> | undefined;
-  const models = new ModelRegistry<ModelGpu>({ diagnostic, changed: id => entities.modelsChanged(id) });
-  const entities = new EntityScene<P>({ models, map, configuration: () => configuration, style: getStyle, sampler: options.elevationSampler, diagnostic,
+  const measurement = new ModelMeasurement(map.getCanvas());
+  const models = new ModelRegistry<ModelGpu>({ measurement, diagnostic, changed: id => entities.modelsChanged(id) });
+  const entities = new EntityScene<P>({ measurement, models, map, configuration: () => configuration, style: getStyle, sampler: options.elevationSampler, diagnostic,
     contextLost: () => {
       contextLost = true; prepared = false; sceneGeneration++; interactionRevision++;
       publication.retire(); modelVisibility.invalidate(); modelLabels.invalidate();
@@ -444,6 +446,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       try {
         for (const feature of features) if (feature.entity?.model) modelSettings(configuration.entityModels, feature.entity.model);
         const changed = store.upsert(features);
+        measurement.accepted(changed.length);
         interactionRevision++;
         entities.set(changed);
         if (destroyed) return;
@@ -578,7 +581,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       publication.destroy();
       if (!readySettled) { readySettled = true; rejectReady(new RidgelineError('DESTROYED', 'Viewport was destroyed before initialization completed.', { operation: 'initialize', recoverable: false })); }
       clearTimeout(timer); resize.disconnect();
-      entities.destroy(); models.destroy(); modelLabels.destroy();
+      entities.destroy(); models.destroy(); modelLabels.destroy(); measurement.destroy();
       arrowheads.remove(); preparedListeners.clear(); sceneListeners.clear(); drawingInternals.delete(map);
       map.getCanvas().removeEventListener('mouseleave', onLeave);
       map.remove(); icons.clear(); selected.clear(); publishedMarkerKeys.clear(); availableMarkers.clear(); store.remove(store.ids());

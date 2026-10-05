@@ -1,0 +1,136 @@
+{
+  "date": "2026-10-05",
+  "scope": "Software Chromium tooling/correctness smoke only. Hardware/browser acceptance and full72-case matrix remain pending.",
+  "interruption": "Original sweep intentionally interrupted after six reports; only unfinished material pair reran. Globe pair then reran after alpha-aware foreground validation correction.",
+  "superseded": "historical/globe-rgb-only contains old reports whose foreground counter counted transparent pixels. Do not use their patch counts or validation flag as evidence.",
+  "reports": [
+    {
+      "file": "current/icons-mixed-flat-dpr1-off.json",
+      "sha256": "6fa02ea201ac815268268afb46351e29f752bdef8720b2cc4cb3faa652586724",
+      "case": "icons-mixed-flat-dpr1",
+      "instrumentation": false,
+      "revision": "7ca9649811ca52da28edc88e485e4016b96f60f6",
+      "clean": true,
+      "validation": {
+        "status": "observed",
+        "failures": []
+      },
+      "idleFrames": 0,
+      "nativeCount": 1100,
+      "foregroundPatches": 100,
+      "gpuSamples": 0
+    },
+    {
+      "file": "current/icons-mixed-flat-dpr1-on.json",
+      "sha256": "489aefb40bf77c0a0f147e3c8ffa3b9599bbdb6820360f94be90ed73eed2a6d9",
+      "case": "icons-mixed-flat-dpr1",
+      "instrumentation": true,
+      "revision": "7ca9649811ca52da28edc88e485e4016b96f60f6",
+      "clean": true,
+      "validation": {
+        "status": "observed",
+        "failures": []
+      },
+      "idleFrames": 0,
+      "nativeCount": 1100,
+      "foregroundPatches": 100,
+      "gpuSamples": 1
+    },
+    {
+      "file": "current/materials-original-flat-dpr1-off.json",
+      "sha256": "0f2272a9b40ff1f3e6f6b2e0846edb5160cd5400683568044e38b72acb92a1fb",
+      "case": "materials-original-flat-dpr1",
+      "instrumentation": false,
+      "revision": "7ca9649811ca52da28edc88e485e4016b96f60f6",
+      "clean": true,
+      "validation": {
+        "status": "observed",
+        "failures": []
+      },
+      "idleFrames": 0,
+      "nativeCount": 1000,
+      "foregroundPatches": 100,
+      "gpuSamples": 0
+    },
+    {
+      "file": "current/materials-original-flat-dpr1-on.json",
+      "sha256": "f256ecd449a1d227d896ea8ffdeec797f838cd5d6a7daecc5402674ca5ba397f",
+      "case": "materials-original-flat-dpr1",
+      "instrumentation": true,
+      "revision": "7ca9649811ca52da28edc88e485e4016b96f60f6",
+      "clean": true,
+      "validation": {
+        "status": "observed",
+        "failures": []
+      },
+      "idleFrames": 0,
+      "nativeCount": 1000,
+      "foregroundPatches": 100,
+      "gpuSamples": 2
+    },
+    {
+      "file": "current/original-assigned-globe-dpr2-off.json",
+      "sha256": "d70e655d17b70fdfc0cdb4320d8a9df38bfaeef92de354e9186a145f4e2dd09a",
+      "case": "original-assigned-globe-dpr2",
+      "instrumentation": false,
+      "revision": "c295a872407c19b58a7e051823ca3f147076b980",
+      "clean": true,
+      "validation": {
+        "status": "observed",
+        "failures": []
+      },
+      "idleFrames": 0,
+      "nativeCount": 1000,
+      "foregroundPatches": 100,
+      "gpuSamples": 0
+    },
+    {
+      "file": "current/original-assigned-globe-dpr2-on.json",
+      "sha256": "5662b668f60178db89eb30b964cb2a80f63b5abad7680316729bee900d657a5e",
+      "case": "original-assigned-globe-dpr2",
+      "instrumentation": true,
+      "revision": "c295a872407c19b58a7e051823ca3f147076b980",
+      "clean": true,
+      "validation": {
+        "status": "observed",
+        "failures": []
+      },
+      "idleFrames": 0,
+      "nativeCount": 1000,
+      "foregroundPatches": 100,
+      "gpuSamples": 1
+    },
+    {
+      "file": "current/original-mixed-flat-dpr1-off.json",
+      "sha256": "9017062a678740a8a5cdeac4cd664c57f99b56de11cf323ef9b7019bd344b7c9",
+      "case": "original-mixed-flat-dpr1",
+      "instrumentation": false,
+      "revision": "7ca9649811ca52da28edc88e485e4016b96f60f6",
+      "clean": true,
+      "validation": {
+        "status": "observed",
+        "failures": []
+      },
+      "idleFrames": 0,
+      "nativeCount": 1000,
+      "foregroundPatches": 100,
+      "gpuSamples": 0
+    },
+    {
+      "file": "current/original-mixed-flat-dpr1-on.json",
+      "sha256": "37d4b2f9782db3496beaa13c87af05ce7f17a458a99c6e29a92649201e75248e",
+      "case": "original-mixed-flat-dpr1",
+      "instrumentation": true,
+      "revision": "7ca9649811ca52da28edc88e485e4016b96f60f6",
+      "clean": true,
+      "validation": {
+        "status": "observed",
+        "failures": []
+      },
+      "idleFrames": 0,
+      "nativeCount": 1000,
+      "foregroundPatches": 100,
+      "gpuSamples": 1
+    }
+  ]
+}

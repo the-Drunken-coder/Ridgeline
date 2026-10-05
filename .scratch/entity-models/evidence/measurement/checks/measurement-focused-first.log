@@ -1,0 +1,17 @@
+✔ workload variants subdivide actual triangles without changing shape or winding (15.568638ms)
+✔ normalized output omits empty optional glTF arrays (2.529281ms)
+✔ generated GLBs retain embedded images, independent samplers, material alpha and source attributes (18.736881ms)
+✔ offline workflow writes four licensed vehicles and separate material cases with verifiable provenance (1291.732655ms)
+✔ measurement reports unavailable and insufficient samples without invented percentiles (2.284049ms)
+✔ latency belongs to the accepted revision, with overwritten updates retained as superseded (0.95938ms)
+✔ icon baseline has no model latency, invalid samples fail, and nested accepted updates stay ambiguous (0.739513ms)
+✔ the matrix isolates appearance, geometry, projection and pixel ratio while keeping the icon baseline workload (21.478827ms)
+✔ short or unidentified runs cannot claim hardware sampling (1.483821ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1681.153694

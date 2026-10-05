@@ -1,0 +1,14 @@
+✔ transparent globe background is empty while opaque and translucent model pixels count (1.009768ms)
+✔ measurement reports unavailable and insufficient samples without invented percentiles (1.947515ms)
+✔ latency belongs to the accepted revision, with overwritten updates retained as superseded (0.649808ms)
+✔ icon baseline has no model latency, invalid samples fail, and nested accepted updates stay ambiguous (0.679633ms)
+✔ the matrix isolates appearance, geometry, projection and pixel ratio while keeping the icon baseline workload (33.949999ms)
+✔ short or unidentified runs cannot claim hardware sampling (1.0927ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 540.365088

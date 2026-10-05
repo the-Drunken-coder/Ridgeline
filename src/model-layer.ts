@@ -1,3 +1,4 @@
+import type { ModelMeasurement } from './model-measurement';
 import type { CustomLayerInterface, CustomRenderMethodInput, Map as GLMap } from 'maplibre-gl';
 import { EntityProjection } from './entity-projection';
 import { ModelRegistry } from './models';
@@ -12,6 +13,7 @@ export type ModelFrame = {
   publish(modelsDrawn: boolean): void;
 };
 type FrameOptions = {
+  measurement?: ModelMeasurement;
   prepare(projection: EntityProjection, rendererAvailable: boolean): ModelFrame | undefined;
   diagnostic(error: RidgelineError): void;
   contextLost?(): void;
@@ -39,7 +41,7 @@ export class ModelLayer implements CustomLayerInterface {
   constructor(private registry: ModelRegistry<ModelGpu>, private options: FrameOptions) {}
   onAdd(map: GLMap, gl: WebGL2RenderingContext) {
     if (this.destroyed) return;
-    this.map = map; this.gl = gl; this.renderer ??= new ModelRenderer(gl); this.failed = false;
+    this.map = map; this.gl = gl; this.renderer ??= new ModelRenderer(gl, this.options.measurement); this.failed = false;
     map.on('render', this.completed);
     if (this.lost) { this.lost = false; this.options.contextRestored?.(); }
   }

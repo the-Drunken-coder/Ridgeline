@@ -1,0 +1,5338 @@
+{
+  "provenance": {
+    "date": "2026-10-05T00:16:29.421Z",
+    "revision": "7ca9649811ca52da28edc88e485e4016b96f60f6",
+    "status": "",
+    "diffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "package": "@ridgeline/map",
+    "version": "0.1.0",
+    "archiveSha256": "f3831fb26edfcba1745b6ca9e1cf8d3df6356dbb4eeb00bef217bb3be65bb4a2",
+    "manifestSha256": "eb35134dddf6c2f43b7847db66cd3ceb5fe2df896ca9235cbf627727b1884daa",
+    "maplibre": "6.11.0",
+    "node": "v24.21.0"
+  },
+  "browserVersion": "153.0.8010.12",
+  "softwareFlags": true,
+  "screenshot": "original-assigned-globe-dpr2-on.png",
+  "schema": 1,
+  "date": "2026-10-05T00:20:09.136Z",
+  "caseId": "original-assigned-globe-dpr2",
+  "settings": {
+    "variant": "original",
+    "appearance": "assigned",
+    "projection": "globe",
+    "pixelRatio": 2,
+    "mode": "smoke",
+    "instrumentation": true,
+    "gpu": true,
+    "warmupMs": 1000,
+    "durationMs": 2000,
+    "repeats": 1
+  },
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+  "backend": {
+    "vendor": "Google Inc. (Google)",
+    "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+    "shadingLanguage": "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)"
+  },
+  "canvas": {
+    "cssWidth": 1280,
+    "cssHeight": 720,
+    "width": 2560,
+    "height": 1440,
+    "devicePixelRatio": 1,
+    "mapPixelRatio": 2
+  },
+  "projection": {
+    "configured": "globe",
+    "effective": {
+      "type": "vertical-perspective"
+    },
+    "transitionsObserved": [
+      1
+    ]
+  },
+  "configuration": {
+    "camera": {
+      "center": [
+        6.87,
+        46
+      ],
+      "zoom": 15.2,
+      "pitch": 25,
+      "bearing": 0
+    },
+    "modelSettings": {
+      "switchDistanceMeters": 100000000,
+      "deadZoneMeters": 0,
+      "minimumSizePixels": 20
+    },
+    "terrain": true,
+    "terrainSource": "embedded Terrarium zero meters",
+    "exaggeration": 1,
+    "updateEveryMs": 100,
+    "features": 1100,
+    "modelTypes": 4,
+    "instancesPerType": 25,
+    "nativeLatencyScope": "all expected native icon IDs at one accepted revision",
+    "expectedNative": 1000,
+    "selection": [
+      "model-0",
+      "model-4"
+    ],
+    "previewId": "model-8",
+    "pointer": "synthetic DOM mousemove once per update, plus stationary hover refresh"
+  },
+  "manifest": {
+    "schemaVersion": 1,
+    "transformation": {
+      "version": 1,
+      "original": "Byte-for-byte copy of the licensed source GLB.",
+      "normalized": "Production parser bakes node transforms; serialize identity nodes in authored glTF axes with float32 attributes and uint32 indices. Preserve parsed materials, embedded images, samplers and UV transforms. Unsupported or ignored source features are not added to the renderer.",
+      "subdivision": "Each indexed triangle becomes four non-overlapping triangles using shared edge midpoints within its material batch; repeat twice for 16x. Interpolate positions, UVs and vertex RGBA linearly. Normalize interpolated normals at each pass, matching production normal loading. Original corners retain their normal directions; smooth shading can differ at new vertices.",
+      "precision": "Float32 attribute serialization can round baked bounds. Normalized 1x is the packing control; compare each stress variant with this control as well as the original."
+    },
+    "provenanceFiles": [
+      {
+        "path": "sources.json",
+        "sha256": "8d484b5e5ab4dad5694a71c4d6c8e576f7f40f4ba6bd504d46bde3a624207ab0",
+        "bytes": 1477
+      },
+      {
+        "path": "Kenney-License.txt",
+        "sha256": "7c9263e8c136e010b78d13b655c73b9661a78201feb3b1a3d0efef8828487242",
+        "bytes": 687
+      },
+      {
+        "path": "credits.html",
+        "sha256": "c2700b7c3ffc607ccbf4a2e539cc98e0f7dd36716a4fc825b850db955cfbc5c6",
+        "bytes": 1106
+      }
+    ],
+    "assets": [
+      {
+        "id": "drone",
+        "source": {
+          "name": "drone",
+          "author": "NateGazzard",
+          "page": "https://poly.pizza/m/DNbUoMtG3H",
+          "url": "https://static.poly.pizza/4eb88feb-cb2d-46c3-980d-3e704868361c.glb",
+          "license": "CC BY 3.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+          "sha256": "bc9f0d765e0fdb838a9baf26b472f955a11bb2509a3337e918054241b134638d",
+          "bytes": 259676
+        },
+        "variants": [
+          {
+            "variant": "original",
+            "factor": 1,
+            "sha256": "bc9f0d765e0fdb838a9baf26b472f955a11bb2509a3337e918054241b134638d",
+            "bytes": 259676,
+            "triangles": 4564,
+            "vertices": 6956,
+            "materials": 1,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  1,
+                  1,
+                  1,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false,
+                "texture": 0,
+                "sampler": {
+                  "magFilter": 9729,
+                  "minFilter": 9987,
+                  "wrapS": 10497,
+                  "wrapT": 10497
+                },
+                "uvTransform": {
+                  "offset": [
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1,
+                    1
+                  ],
+                  "rotation": 0
+                }
+              }
+            ],
+            "bounds": {
+              "min": [
+                -0.28671500086784363,
+                -0.1592079997062683,
+                -0.5247309803962708
+              ],
+              "max": [
+                0.2868559956550598,
+                0.04837999865412712,
+                0.2565689980983734
+              ]
+            },
+            "images": [
+              {
+                "sha256": "588cb24deb987f812616083db446d95abc476d549966e600836b9bc99d73d480",
+                "mimeType": "image/png",
+                "bytes": 2882
+              }
+            ],
+            "samplers": 1,
+            "path": "drone.original.glb"
+          },
+          {
+            "variant": "normalized",
+            "factor": 1,
+            "sha256": "138a52f10df8c17fd6baa7f5df63fe2686e9bf91c1a0f736717ce93dd31cf575",
+            "bytes": 393188,
+            "triangles": 4564,
+            "vertices": 6956,
+            "materials": 1,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  1,
+                  1,
+                  1,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false,
+                "texture": 0,
+                "sampler": {
+                  "magFilter": 9729,
+                  "minFilter": 9987,
+                  "wrapS": 10497,
+                  "wrapT": 10497
+                },
+                "uvTransform": {
+                  "offset": [
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1,
+                    1
+                  ],
+                  "rotation": 0
+                }
+              }
+            ],
+            "bounds": {
+              "min": [
+                -0.28671500086784363,
+                -0.1592079997062683,
+                -0.5247309803962708
+              ],
+              "max": [
+                0.2868559956550598,
+                0.04837999865412712,
+                0.2565689980983734
+              ]
+            },
+            "images": [
+              {
+                "sha256": "588cb24deb987f812616083db446d95abc476d549966e600836b9bc99d73d480",
+                "mimeType": "image/png",
+                "bytes": 2882
+              }
+            ],
+            "samplers": 1,
+            "path": "drone.normalized.glb"
+          },
+          {
+            "variant": "4x",
+            "factor": 4,
+            "sha256": "0ff65647a5ae8962856ad167c356d10c022a37c415b346d6c557753d0f767889",
+            "bytes": 1051520,
+            "triangles": 18256,
+            "vertices": 17248,
+            "materials": 1,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  1,
+                  1,
+                  1,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false,
+                "texture": 0,
+                "sampler": {
+                  "magFilter": 9729,
+                  "minFilter": 9987,
+                  "wrapS": 10497,
+                  "wrapT": 10497
+                },
+                "uvTransform": {
+                  "offset": [
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1,
+                    1
+                  ],
+                  "rotation": 0
+                }
+              }
+            ],
+            "bounds": {
+              "min": [
+                -0.28671500086784363,
+                -0.1592079997062683,
+                -0.5247309803962708
+              ],
+              "max": [
+                0.2868559956550598,
+                0.04837999865412712,
+                0.2565689980983734
+              ]
+            },
+            "images": [
+              {
+                "sha256": "588cb24deb987f812616083db446d95abc476d549966e600836b9bc99d73d480",
+                "mimeType": "image/png",
+                "bytes": 2882
+              }
+            ],
+            "samplers": 1,
+            "path": "drone.4x.glb"
+          },
+          {
+            "variant": "16x",
+            "factor": 16,
+            "sha256": "37ee1623a4da3a87b696f4cd1c987ad437676957e5602fae2a7b4c431e6fd0ab",
+            "bytes": 3353988,
+            "triangles": 73024,
+            "vertices": 51524,
+            "materials": 1,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  1,
+                  1,
+                  1,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false,
+                "texture": 0,
+                "sampler": {
+                  "magFilter": 9729,
+                  "minFilter": 9987,
+                  "wrapS": 10497,
+                  "wrapT": 10497
+                },
+                "uvTransform": {
+                  "offset": [
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1,
+                    1
+                  ],
+                  "rotation": 0
+                }
+              }
+            ],
+            "bounds": {
+              "min": [
+                -0.28671500086784363,
+                -0.1592079997062683,
+                -0.5247309803962708
+              ],
+              "max": [
+                0.2868559956550598,
+                0.04837999865412712,
+                0.2565689980983734
+              ]
+            },
+            "images": [
+              {
+                "sha256": "588cb24deb987f812616083db446d95abc476d549966e600836b9bc99d73d480",
+                "mimeType": "image/png",
+                "bytes": 2882
+              }
+            ],
+            "samplers": 1,
+            "path": "drone.16x.glb"
+          }
+        ]
+      },
+      {
+        "id": "tank",
+        "source": {
+          "name": "tank",
+          "author": "KolosStudios",
+          "page": "https://poly.pizza/m/egcLMSGiuA",
+          "url": "https://static.poly.pizza/ba4513d6-e5c6-4a4b-a027-2eb7097d6516.glb",
+          "license": "CC BY 3.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+          "sha256": "e6050023af3c703a912418adf2f6564b3e0068ba9cfdbc11dba18e047a50e653",
+          "bytes": 44716
+        },
+        "variants": [
+          {
+            "variant": "original",
+            "factor": 1,
+            "sha256": "e6050023af3c703a912418adf2f6564b3e0068ba9cfdbc11dba18e047a50e653",
+            "bytes": 44716,
+            "triangles": 760,
+            "vertices": 1426,
+            "materials": 5,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  0.138005003333092,
+                  0.142400518059731,
+                  0.0649363845586777,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.0439749695360661,
+                  0.0439749695360661,
+                  0.0439749695360661,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.117851056158543,
+                  0.117851056158543,
+                  0.117851056158543,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.293505847454071,
+                  0.303197652101517,
+                  0.133690714836121,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.64000004529953,
+                  0.614798724651337,
+                  0.0518931411206722,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              }
+            ],
+            "bounds": {
+              "min": [
+                -7.401290523432639,
+                -0.04145174128004725,
+                -2.487615729491551
+              ],
+              "max": [
+                3.944094054482152,
+                3.537172664229805,
+                2.5747590763575965
+              ]
+            },
+            "images": [],
+            "samplers": 0,
+            "path": "tank.original.glb"
+          },
+          {
+            "variant": "normalized",
+            "factor": 1,
+            "sha256": "1f32c6af85c858d3c3574d932988df6113fb816745692eccbfd92545cedc1de7",
+            "bytes": 83048,
+            "triangles": 760,
+            "vertices": 1426,
+            "materials": 5,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  0.138005003333092,
+                  0.142400518059731,
+                  0.0649363845586777,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.0439749695360661,
+                  0.0439749695360661,
+                  0.0439749695360661,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.117851056158543,
+                  0.117851056158543,
+                  0.117851056158543,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.293505847454071,
+                  0.303197652101517,
+                  0.133690714836121,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.64000004529953,
+                  0.614798724651337,
+                  0.0518931411206722,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              }
+            ],
+            "bounds": {
+              "min": [
+                -7.401290416717529,
+                -0.04145174100995064,
+                -2.4876158237457275
+              ],
+              "max": [
+                3.944093942642212,
+                3.537172555923462,
+                2.574759006500244
+              ]
+            },
+            "images": [],
+            "samplers": 0,
+            "path": "tank.normalized.glb"
+          },
+          {
+            "variant": "4x",
+            "factor": 4,
+            "sha256": "e2c6358522604088fd714d789b08578f7b34e72ce3cd31ce06348d2e2492890f",
+            "bytes": 199396,
+            "triangles": 3040,
+            "vertices": 3279,
+            "materials": 5,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  0.138005003333092,
+                  0.142400518059731,
+                  0.0649363845586777,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.0439749695360661,
+                  0.0439749695360661,
+                  0.0439749695360661,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.117851056158543,
+                  0.117851056158543,
+                  0.117851056158543,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.293505847454071,
+                  0.303197652101517,
+                  0.133690714836121,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.64000004529953,
+                  0.614798724651337,
+                  0.0518931411206722,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              }
+            ],
+            "bounds": {
+              "min": [
+                -7.401290416717529,
+                -0.04145174100995064,
+                -2.4876158237457275
+              ],
+              "max": [
+                3.944093942642212,
+                3.537172555923462,
+                2.574759006500244
+              ]
+            },
+            "images": [],
+            "samplers": 0,
+            "path": "tank.4x.glb"
+          },
+          {
+            "variant": "16x",
+            "factor": 16,
+            "sha256": "57baadebf898e45b5c538ee9c309aceda233dbf01a7e8ca740145476112ee05d",
+            "bytes": 596196,
+            "triangles": 12160,
+            "vertices": 9265,
+            "materials": 5,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  0.138005003333092,
+                  0.142400518059731,
+                  0.0649363845586777,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.0439749695360661,
+                  0.0439749695360661,
+                  0.0439749695360661,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.117851056158543,
+                  0.117851056158543,
+                  0.117851056158543,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.293505847454071,
+                  0.303197652101517,
+                  0.133690714836121,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.64000004529953,
+                  0.614798724651337,
+                  0.0518931411206722,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              }
+            ],
+            "bounds": {
+              "min": [
+                -7.401290416717529,
+                -0.04145174100995064,
+                -2.4876158237457275
+              ],
+              "max": [
+                3.944093942642212,
+                3.537172555923462,
+                2.574759006500244
+              ]
+            },
+            "images": [],
+            "samplers": 0,
+            "path": "tank.16x.glb"
+          }
+        ]
+      },
+      {
+        "id": "plane",
+        "source": {
+          "name": "plane",
+          "author": "jeremy",
+          "page": "https://poly.pizza/m/6fyLMORhgGK",
+          "url": "https://static.poly.pizza/19d58465-dafb-4df0-a3b8-b0500bd9ed4b.glb",
+          "license": "CC BY 3.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+          "sha256": "4196c1920cec466a5211f8d9a86b3eb08ec1772e7e96e73cda7fede525f6e950",
+          "bytes": 77620
+        },
+        "variants": [
+          {
+            "variant": "original",
+            "factor": 1,
+            "sha256": "4196c1920cec466a5211f8d9a86b3eb08ec1772e7e96e73cda7fede525f6e950",
+            "bytes": 77620,
+            "triangles": 1434,
+            "vertices": 2706,
+            "materials": 4,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  0.06,
+                  0.1,
+                  0.13,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.22,
+                  0.74,
+                  0.83,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.01,
+                  0.01,
+                  0.01,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.19,
+                  0.28,
+                  0.34,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              }
+            ],
+            "bounds": {
+              "min": [
+                -4.975481033325195,
+                -0.6715360283851624,
+                -4.986669063568115
+              ],
+              "max": [
+                4.975473880767822,
+                1.7301820516586304,
+                6.0785698890686035
+              ]
+            },
+            "images": [],
+            "samplers": 0,
+            "path": "plane.original.glb"
+          },
+          {
+            "variant": "normalized",
+            "factor": 1,
+            "sha256": "15c3cfa55fdcc1fdfc11c1cde979331b4f777e6d653ea5f4ea0b352f7da7079a",
+            "bytes": 151392,
+            "triangles": 1434,
+            "vertices": 2706,
+            "materials": 4,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  0.06,
+                  0.1,
+                  0.13,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.22,
+                  0.74,
+                  0.83,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.01,
+                  0.01,
+                  0.01,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.19,
+                  0.28,
+                  0.34,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              }
+            ],
+            "bounds": {
+              "min": [
+                -4.975481033325195,
+                -0.6715360283851624,
+                -4.986669063568115
+              ],
+              "max": [
+                4.975473880767822,
+                1.7301820516586304,
+                6.0785698890686035
+              ]
+            },
+            "images": [],
+            "samplers": 0,
+            "path": "plane.normalized.glb"
+          },
+          {
+            "variant": "4x",
+            "factor": 4,
+            "sha256": "604a4118af99f9dc7afb34581d3e2a38dfa0a0aaa48c6dff3517697dd2b1a811",
+            "bytes": 371176,
+            "triangles": 5736,
+            "vertices": 6209,
+            "materials": 4,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  0.06,
+                  0.1,
+                  0.13,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.22,
+                  0.74,
+                  0.83,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.01,
+                  0.01,
+                  0.01,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.19,
+                  0.28,
+                  0.34,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              }
+            ],
+            "bounds": {
+              "min": [
+                -4.975481033325195,
+                -0.6715360283851624,
+                -4.986669063568115
+              ],
+              "max": [
+                4.975473880767822,
+                1.7301820516586304,
+                6.0785698890686035
+              ]
+            },
+            "images": [],
+            "samplers": 0,
+            "path": "plane.4x.glb"
+          },
+          {
+            "variant": "16x",
+            "factor": 16,
+            "sha256": "5d25a5669f7bc35fa9e8dfe8a64af6c4f2e34a3dfb25b0fbc72074b05107fe1d",
+            "bytes": 1120488,
+            "triangles": 22944,
+            "vertices": 17517,
+            "materials": 4,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  0.06,
+                  0.1,
+                  0.13,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.22,
+                  0.74,
+                  0.83,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.01,
+                  0.01,
+                  0.01,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              },
+              {
+                "baseColor": [
+                  0.19,
+                  0.28,
+                  0.34,
+                  1
+                ],
+                "doubleSided": false,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false
+              }
+            ],
+            "bounds": {
+              "min": [
+                -4.975481033325195,
+                -0.6715360283851624,
+                -4.986669063568115
+              ],
+              "max": [
+                4.975473880767822,
+                1.7301820516586304,
+                6.0785698890686035
+              ]
+            },
+            "images": [],
+            "samplers": 0,
+            "path": "plane.16x.glb"
+          }
+        ]
+      },
+      {
+        "id": "boat",
+        "source": {
+          "name": "boat",
+          "author": "Kenney",
+          "page": "https://kenney.nl/assets/watercraft-kit",
+          "url": "https://kenney.nl/media/pages/assets/watercraft-kit/a335cfed49-1713519620/kenney_watercraft-pack.zip",
+          "license": "CC0 1.0",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "modification": "One gltf-transform copy pass to embed colormap.png",
+          "sourceBytes": 16520,
+          "sha256": "5c4c573f34b9dce89f551eb6501b031dc19f799d6cd9adf97e36857262968740",
+          "bytes": 25084
+        },
+        "variants": [
+          {
+            "variant": "original",
+            "factor": 1,
+            "sha256": "5c4c573f34b9dce89f551eb6501b031dc19f799d6cd9adf97e36857262968740",
+            "bytes": 25084,
+            "triangles": 156,
+            "vertices": 288,
+            "materials": 1,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  1,
+                  1,
+                  1,
+                  1
+                ],
+                "doubleSided": true,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false,
+                "texture": 0,
+                "sampler": {
+                  "magFilter": 9728,
+                  "minFilter": 9984,
+                  "wrapS": 10497,
+                  "wrapT": 10497
+                },
+                "uvTransform": {
+                  "offset": [
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1,
+                    1
+                  ],
+                  "rotation": 0
+                }
+              }
+            ],
+            "bounds": {
+              "min": [
+                -0.8924999833106995,
+                0,
+                -1.6850000619888306
+              ],
+              "max": [
+                0.8924999833106995,
+                1.5,
+                1.6850000619888306
+              ]
+            },
+            "images": [
+              {
+                "sha256": "311138350e74e35c5497a1bd8076a01740b7c302bed11027639fa553459a68de",
+                "mimeType": "image/png",
+                "bytes": 8814
+              }
+            ],
+            "samplers": 1,
+            "path": "boat.original.glb"
+          },
+          {
+            "variant": "normalized",
+            "factor": 1,
+            "sha256": "4bf705b069b606a2ac901ead74313c92e575c0ec306c4d4d30933a2debb04734",
+            "bytes": 26108,
+            "triangles": 156,
+            "vertices": 288,
+            "materials": 1,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  1,
+                  1,
+                  1,
+                  1
+                ],
+                "doubleSided": true,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false,
+                "texture": 0,
+                "sampler": {
+                  "magFilter": 9728,
+                  "minFilter": 9984,
+                  "wrapS": 10497,
+                  "wrapT": 10497
+                },
+                "uvTransform": {
+                  "offset": [
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1,
+                    1
+                  ],
+                  "rotation": 0
+                }
+              }
+            ],
+            "bounds": {
+              "min": [
+                -0.8924999833106995,
+                0,
+                -1.6850000619888306
+              ],
+              "max": [
+                0.8924999833106995,
+                1.5,
+                1.6850000619888306
+              ]
+            },
+            "images": [
+              {
+                "sha256": "311138350e74e35c5497a1bd8076a01740b7c302bed11027639fa553459a68de",
+                "mimeType": "image/png",
+                "bytes": 8814
+              }
+            ],
+            "samplers": 1,
+            "path": "boat.normalized.glb"
+          },
+          {
+            "variant": "4x",
+            "factor": 4,
+            "sha256": "776798e9a865eb1d9622df379c3969f668d06d8fbbf58940011470da6028e9ce",
+            "bytes": 49872,
+            "triangles": 624,
+            "vertices": 666,
+            "materials": 1,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  1,
+                  1,
+                  1,
+                  1
+                ],
+                "doubleSided": true,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false,
+                "texture": 0,
+                "sampler": {
+                  "magFilter": 9728,
+                  "minFilter": 9984,
+                  "wrapS": 10497,
+                  "wrapT": 10497
+                },
+                "uvTransform": {
+                  "offset": [
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1,
+                    1
+                  ],
+                  "rotation": 0
+                }
+              }
+            ],
+            "bounds": {
+              "min": [
+                -0.8924999833106995,
+                0,
+                -1.6850000619888306
+              ],
+              "max": [
+                0.8924999833106995,
+                1.5,
+                1.6850000619888306
+              ]
+            },
+            "images": [
+              {
+                "sha256": "311138350e74e35c5497a1bd8076a01740b7c302bed11027639fa553459a68de",
+                "mimeType": "image/png",
+                "bytes": 8814
+              }
+            ],
+            "samplers": 1,
+            "path": "boat.4x.glb"
+          },
+          {
+            "variant": "16x",
+            "factor": 16,
+            "sha256": "00584cd6b720ca883b197ede5c8f38035e53b0aee14c0f5367b2f02557f11b35",
+            "bytes": 131096,
+            "triangles": 2496,
+            "vertices": 1890,
+            "materials": 1,
+            "materialDetails": [
+              {
+                "baseColor": [
+                  1,
+                  1,
+                  1,
+                  1
+                ],
+                "doubleSided": true,
+                "alphaMode": "OPAQUE",
+                "alphaCutoff": 0.5,
+                "emissive": [
+                  0,
+                  0,
+                  0
+                ],
+                "unlit": false,
+                "texture": 0,
+                "sampler": {
+                  "magFilter": 9728,
+                  "minFilter": 9984,
+                  "wrapS": 10497,
+                  "wrapT": 10497
+                },
+                "uvTransform": {
+                  "offset": [
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1,
+                    1
+                  ],
+                  "rotation": 0
+                }
+              }
+            ],
+            "bounds": {
+              "min": [
+                -0.8924999833106995,
+                0,
+                -1.6850000619888306
+              ],
+              "max": [
+                0.8924999833106995,
+                1.5,
+                1.6850000619888306
+              ]
+            },
+            "images": [
+              {
+                "sha256": "311138350e74e35c5497a1bd8076a01740b7c302bed11027639fa553459a68de",
+                "mimeType": "image/png",
+                "bytes": 8814
+              }
+            ],
+            "samplers": 1,
+            "path": "boat.16x.glb"
+          }
+        ]
+      }
+    ],
+    "fixtures": [
+      {
+        "id": "opaque",
+        "path": "material-opaque.glb",
+        "sha256": "84b310d4e235bf449063c8c28e44e6cf83a9d48d92dd38907c3774397cef002e",
+        "bytes": 1936,
+        "triangles": 2,
+        "vertices": 6,
+        "materials": 1,
+        "materialDetails": [
+          {
+            "baseColor": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "doubleSided": false,
+            "alphaMode": "OPAQUE",
+            "alphaCutoff": 0.5,
+            "emissive": [
+              0,
+              0,
+              0
+            ],
+            "unlit": false,
+            "texture": 0,
+            "sampler": {
+              "magFilter": 9728,
+              "minFilter": 9984,
+              "wrapS": 10497,
+              "wrapT": 10497
+            },
+            "uvTransform": {
+              "offset": [
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1
+              ],
+              "rotation": 0
+            }
+          }
+        ],
+        "bounds": {
+          "min": [
+            -1,
+            0,
+            -1
+          ],
+          "max": [
+            1,
+            0,
+            1
+          ]
+        },
+        "images": [
+          {
+            "sha256": "ba341e2fd04f26d1fffcd8c359270267d99484bd66115f9799da5542059d36be",
+            "mimeType": "image/png",
+            "bytes": 126
+          }
+        ],
+        "samplers": 1,
+        "origin": {
+          "kind": "synthetic",
+          "source": "tests/model-material-fixtures.ts",
+          "description": "Project-authored planar geometry and a 16 x 16 embedded RGBA PNG; identical geometry and image for each material cost case.",
+          "license": null,
+          "licenseNote": "No separate license declaration; repository-authored test fixture, not a third-party vehicle asset."
+        }
+      },
+      {
+        "id": "mask",
+        "path": "material-mask.glb",
+        "sha256": "ad6df0781f41f97059a1beb847110ed67906a3f1b5460370e39b54cb7aec4d27",
+        "bytes": 1952,
+        "triangles": 2,
+        "vertices": 6,
+        "materials": 1,
+        "materialDetails": [
+          {
+            "baseColor": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "doubleSided": false,
+            "alphaMode": "MASK",
+            "alphaCutoff": 0.6,
+            "emissive": [
+              0,
+              0,
+              0
+            ],
+            "unlit": false,
+            "texture": 0,
+            "sampler": {
+              "magFilter": 9728,
+              "minFilter": 9984,
+              "wrapS": 10497,
+              "wrapT": 10497
+            },
+            "uvTransform": {
+              "offset": [
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1
+              ],
+              "rotation": 0
+            }
+          }
+        ],
+        "bounds": {
+          "min": [
+            -1,
+            0,
+            -1
+          ],
+          "max": [
+            1,
+            0,
+            1
+          ]
+        },
+        "images": [
+          {
+            "sha256": "ba341e2fd04f26d1fffcd8c359270267d99484bd66115f9799da5542059d36be",
+            "mimeType": "image/png",
+            "bytes": 126
+          }
+        ],
+        "samplers": 1,
+        "origin": {
+          "kind": "synthetic",
+          "source": "tests/model-material-fixtures.ts",
+          "description": "Project-authored planar geometry and a 16 x 16 embedded RGBA PNG; identical geometry and image for each material cost case.",
+          "license": null,
+          "licenseNote": "No separate license declaration; repository-authored test fixture, not a third-party vehicle asset."
+        }
+      },
+      {
+        "id": "double-sided",
+        "path": "material-double-sided.glb",
+        "sha256": "13cadbb9e92e2e4077f0c3cffb838e8e456bc9dfee9d320325b1d55c182609d9",
+        "bytes": 1936,
+        "triangles": 2,
+        "vertices": 6,
+        "materials": 1,
+        "materialDetails": [
+          {
+            "baseColor": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "doubleSided": true,
+            "alphaMode": "OPAQUE",
+            "alphaCutoff": 0.5,
+            "emissive": [
+              0,
+              0,
+              0
+            ],
+            "unlit": false,
+            "texture": 0,
+            "sampler": {
+              "magFilter": 9728,
+              "minFilter": 9984,
+              "wrapS": 10497,
+              "wrapT": 10497
+            },
+            "uvTransform": {
+              "offset": [
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1
+              ],
+              "rotation": 0
+            }
+          }
+        ],
+        "bounds": {
+          "min": [
+            -1,
+            0,
+            -1
+          ],
+          "max": [
+            1,
+            0,
+            1
+          ]
+        },
+        "images": [
+          {
+            "sha256": "ba341e2fd04f26d1fffcd8c359270267d99484bd66115f9799da5542059d36be",
+            "mimeType": "image/png",
+            "bytes": 126
+          }
+        ],
+        "samplers": 1,
+        "origin": {
+          "kind": "synthetic",
+          "source": "tests/model-material-fixtures.ts",
+          "description": "Project-authored planar geometry and a 16 x 16 embedded RGBA PNG; identical geometry and image for each material cost case.",
+          "license": null,
+          "licenseNote": "No separate license declaration; repository-authored test fixture, not a third-party vehicle asset."
+        }
+      },
+      {
+        "id": "blend",
+        "path": "material-blend.glb",
+        "sha256": "e1232e25d10e0bdb41ac9e71fbe4cf0fc397f092b61ea1c9b67f658fa758160c",
+        "bytes": 1936,
+        "triangles": 2,
+        "vertices": 6,
+        "materials": 1,
+        "materialDetails": [
+          {
+            "baseColor": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "doubleSided": false,
+            "alphaMode": "BLEND",
+            "alphaCutoff": 0.5,
+            "emissive": [
+              0,
+              0,
+              0
+            ],
+            "unlit": false,
+            "texture": 0,
+            "sampler": {
+              "magFilter": 9728,
+              "minFilter": 9984,
+              "wrapS": 10497,
+              "wrapT": 10497
+            },
+            "uvTransform": {
+              "offset": [
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1
+              ],
+              "rotation": 0
+            }
+          }
+        ],
+        "bounds": {
+          "min": [
+            -1,
+            0,
+            -1
+          ],
+          "max": [
+            1,
+            0,
+            1
+          ]
+        },
+        "images": [
+          {
+            "sha256": "ba341e2fd04f26d1fffcd8c359270267d99484bd66115f9799da5542059d36be",
+            "mimeType": "image/png",
+            "bytes": 126
+          }
+        ],
+        "samplers": 1,
+        "origin": {
+          "kind": "synthetic",
+          "source": "tests/model-material-fixtures.ts",
+          "description": "Project-authored planar geometry and a 16 x 16 embedded RGBA PNG; identical geometry and image for each material cost case.",
+          "license": null,
+          "licenseNote": "No separate license declaration; repository-authored test fixture, not a third-party vehicle asset."
+        }
+      }
+    ]
+  },
+  "cold": {
+    "start": 154965.79999998212,
+    "warmReady": 157160.09999999404,
+    "registrations": [
+      {
+        "id": "drone",
+        "start": 155095.29999998212,
+        "end": 155137.29999998212,
+        "status": "ready"
+      },
+      {
+        "id": "tank",
+        "start": 155147.19999998808,
+        "end": 155152.5,
+        "status": "ready"
+      },
+      {
+        "id": "plane",
+        "start": 155158.09999999404,
+        "end": 155165.59999999404,
+        "status": "ready"
+      },
+      {
+        "id": "boat",
+        "start": 155173.29999998212,
+        "end": 155193.19999998808,
+        "status": "ready"
+      }
+    ]
+  },
+  "results": [
+    {
+      "camera": "stationary",
+      "repeat": 0,
+      "start": 157168.19999998808,
+      "end": 160536.29999998212,
+      "frameIntervalMs": {
+        "samples": 5,
+        "status": "available",
+        "p50": 400,
+        "p95": 1433.2999999999884,
+        "p99": 1433.2999999999884
+      },
+      "upsertCpuMs": {
+        "samples": 3,
+        "status": "available",
+        "p50": 19,
+        "p95": 39.900000005960464,
+        "p99": 39.900000005960464
+      },
+      "modelVisibleLatencyMs": {
+        "samples": 3,
+        "status": "available",
+        "p50": 1025.7000000178814,
+        "p95": 1313.5,
+        "p99": 1313.5
+      },
+      "nativeProbeVisibleLatencyMs": {
+        "samples": 0,
+        "status": "unavailable"
+      },
+      "latencyOutcomes": {
+        "model": [
+          164.80000001192093,
+          1025.7000000178814,
+          1313.5
+        ],
+        "native": [
+          "superseded",
+          "superseded",
+          "superseded"
+        ]
+      },
+      "phases": {
+        "parse": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "decode-wall": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "texture-upload": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "geometry-upload": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "shader-compile": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "instance-preparation": {
+          "samples": 5,
+          "status": "available",
+          "p50": 286.80000001192093,
+          "p95": 1150.199999988079,
+          "p99": 1150.199999988079
+        },
+        "submit": {
+          "samples": 5,
+          "status": "available",
+          "p50": 0.30000001192092896,
+          "p95": 0.4000000059604645,
+          "p99": 0.4000000059604645
+        },
+        "picking": {
+          "samples": 8,
+          "status": "available",
+          "p50": 0.699999988079071,
+          "p95": 3.699999988079071,
+          "p99": 3.699999988079071
+        }
+      },
+      "placementCpuMs": {
+        "samples": 5,
+        "status": "available",
+        "p50": 2.8999999463558197,
+        "p95": 5.100000083446503,
+        "p99": 5.100000083446503
+      },
+      "projectionScalingCpuMs": {
+        "samples": 5,
+        "status": "available",
+        "p50": 31.499999910593033,
+        "p95": 85.90000000596046,
+        "p99": 85.90000000596046
+      },
+      "latency": [
+        {
+          "sequence": 6,
+          "start": 157820.89999997616,
+          "end": 157839.89999997616,
+          "revision": 7,
+          "model": 164.80000001192093,
+          "native": "superseded"
+        },
+        {
+          "sequence": 7,
+          "start": 158035.89999997616,
+          "end": 158052.5,
+          "revision": 8,
+          "model": 1025.7000000178814,
+          "native": "superseded"
+        },
+        {
+          "sequence": 8,
+          "start": 159144.39999997616,
+          "end": 159184.29999998212,
+          "revision": 9,
+          "model": 1313.5,
+          "native": "superseded"
+        }
+      ],
+      "gpuMs": {
+        "samples": 0,
+        "status": "unavailable"
+      }
+    },
+    {
+      "camera": "moving",
+      "repeat": 0,
+      "start": 160536.39999997616,
+      "end": 163390.19999998808,
+      "frameIntervalMs": {
+        "samples": 2,
+        "status": "available",
+        "p50": 183.30000000001746,
+        "p95": 1083.3999999999942,
+        "p99": 1083.3999999999942
+      },
+      "upsertCpuMs": {
+        "samples": 2,
+        "status": "available",
+        "p50": 15.300000011920929,
+        "p95": 22.399999976158142,
+        "p99": 22.399999976158142
+      },
+      "modelVisibleLatencyMs": {
+        "samples": 2,
+        "status": "available",
+        "p50": 1042.7000000178814,
+        "p95": 1125,
+        "p99": 1125
+      },
+      "nativeProbeVisibleLatencyMs": {
+        "samples": 2,
+        "status": "available",
+        "p50": 6845.200000017881,
+        "p95": 8210.399999976158,
+        "p99": 8210.399999976158
+      },
+      "latencyOutcomes": {
+        "model": [
+          1042.7000000178814,
+          1125
+        ],
+        "native": [
+          6845.200000017881,
+          8210.399999976158
+        ]
+      },
+      "phases": {
+        "parse": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "decode-wall": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "texture-upload": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "geometry-upload": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "shader-compile": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "instance-preparation": {
+          "samples": 3,
+          "status": "available",
+          "p50": 840,
+          "p95": 1375.2999999821186,
+          "p99": 1375.2999999821186
+        },
+        "submit": {
+          "samples": 3,
+          "status": "available",
+          "p50": 0.30000001192092896,
+          "p95": 2.300000011920929,
+          "p99": 2.300000011920929
+        },
+        "picking": {
+          "samples": 8,
+          "status": "available",
+          "p50": 0.30000001192092896,
+          "p95": 7.799999982118607,
+          "p99": 7.799999982118607
+        }
+      },
+      "placementCpuMs": {
+        "samples": 3,
+        "status": "available",
+        "p50": 4.60000005364418,
+        "p95": 6.4000000059604645,
+        "p99": 6.4000000059604645
+      },
+      "projectionScalingCpuMs": {
+        "samples": 3,
+        "status": "available",
+        "p50": 27.500000059604645,
+        "p95": 58.599999994039536,
+        "p99": 58.599999994039536
+      },
+      "latency": [
+        {
+          "sequence": 9,
+          "start": 160711.29999998212,
+          "end": 160726.59999999404,
+          "revision": 10,
+          "model": 1042.7000000178814,
+          "native": 6845.200000017881
+        },
+        {
+          "sequence": 10,
+          "start": 163308.5,
+          "end": 163330.89999997616,
+          "revision": 11,
+          "model": 1125,
+          "native": 8210.399999976158
+        }
+      ],
+      "gpuMs": {
+        "samples": 0,
+        "status": "unavailable"
+      }
+    }
+  ],
+  "raw": {
+    "raf": [
+      {
+        "time": 156090.7,
+        "interval": 66.5
+      },
+      {
+        "time": 156140.8,
+        "interval": 50.09999999997672
+      },
+      {
+        "time": 156274.1,
+        "interval": 133.30000000001746
+      },
+      {
+        "time": 156390.7,
+        "interval": 116.60000000000582
+      },
+      {
+        "time": 156557.4,
+        "interval": 166.69999999998254
+      },
+      {
+        "time": 156590.8,
+        "interval": 33.39999999999418
+      },
+      {
+        "time": 156740.8,
+        "interval": 150
+      },
+      {
+        "time": 156840.7,
+        "interval": 99.90000000002328
+      },
+      {
+        "time": 157024.1,
+        "interval": 183.39999999999418
+      },
+      {
+        "time": 157107.4,
+        "interval": 83.29999999998836
+      },
+      {
+        "time": 157407.4,
+        "interval": 300
+      },
+      {
+        "time": 157807.4,
+        "interval": 400
+      },
+      {
+        "time": 158007.4,
+        "interval": 200
+      },
+      {
+        "time": 159090.6,
+        "interval": 1083.2000000000116
+      },
+      {
+        "time": 160523.9,
+        "interval": 1433.2999999999884
+      },
+      {
+        "time": 160707.2,
+        "interval": 183.30000000001746
+      },
+      {
+        "time": 161790.6,
+        "interval": 1083.3999999999942
+      }
+    ],
+    "renders": [
+      156077.69999998808,
+      156131.59999999404,
+      156252.39999997616,
+      156383.89999997616,
+      156521.5,
+      156718.09999999404,
+      156822.5,
+      156996.5,
+      157093.69999998808,
+      157361.59999999404,
+      157796,
+      157985.79999998212,
+      159061.79999998212,
+      160458.09999999404,
+      160687,
+      161754.09999999404,
+      163264.39999997616,
+      164433.59999999404,
+      166050.19999998808,
+      167556.5,
+      169359.69999998808,
+      171518.89999997616,
+      172968.89999997616,
+      174748.79999998212,
+      211290.09999999404
+    ],
+    "updates": [
+      {
+        "sequence": 0,
+        "start": 155194.89999997616,
+        "end": 155208.79999998212
+      },
+      {
+        "sequence": 1,
+        "start": 156150.29999998212,
+        "end": 156167.89999997616
+      },
+      {
+        "sequence": 2,
+        "start": 156291.79999998212,
+        "end": 156309.19999998808
+      },
+      {
+        "sequence": 3,
+        "start": 156560.79999998212,
+        "end": 156575.19999998808
+      },
+      {
+        "sequence": 4,
+        "start": 156845.29999998212,
+        "end": 156858.59999999404
+      },
+      {
+        "sequence": 5,
+        "start": 157116.89999997616,
+        "end": 157130.79999998212
+      },
+      {
+        "sequence": 6,
+        "start": 157820.89999997616,
+        "end": 157839.89999997616
+      },
+      {
+        "sequence": 7,
+        "start": 158035.89999997616,
+        "end": 158052.5
+      },
+      {
+        "sequence": 8,
+        "start": 159144.39999997616,
+        "end": 159184.29999998212
+      },
+      {
+        "sequence": 9,
+        "start": 160711.29999998212,
+        "end": 160726.59999999404
+      },
+      {
+        "sequence": 10,
+        "start": 163308.5,
+        "end": 163330.89999997616
+      }
+    ],
+    "native": [
+      {
+        "sequence": 9,
+        "time": 167556.5
+      },
+      {
+        "sequence": 9,
+        "time": 169359.69999998808
+      },
+      {
+        "sequence": 10,
+        "time": 171518.89999997616
+      },
+      {
+        "sequence": 10,
+        "time": 172968.89999997616
+      },
+      {
+        "sequence": 10,
+        "time": 174748.79999998212
+      },
+      {
+        "sequence": 10,
+        "time": 211290.09999999404
+      }
+    ],
+    "nativeCoverage": [
+      {
+        "time": 156077.69999998808,
+        "visible": 279,
+        "expected": 1000,
+        "revisions": [
+          [
+            0,
+            279
+          ]
+        ],
+        "unattributed": 0
+      },
+      {
+        "time": 156131.59999999404,
+        "visible": 279,
+        "expected": 1000,
+        "revisions": [
+          [
+            0,
+            279
+          ]
+        ],
+        "unattributed": 0
+      },
+      {
+        "time": 156252.39999997616,
+        "visible": 0,
+        "expected": 1000,
+        "revisions": [],
+        "unattributed": 0
+      },
+      {
+        "time": 156383.89999997616,
+        "visible": 0,
+        "expected": 1000,
+        "revisions": [],
+        "unattributed": 0
+      },
+      {
+        "time": 156521.5,
+        "visible": 0,
+        "expected": 1000,
+        "revisions": [],
+        "unattributed": 0
+      },
+      {
+        "time": 156718.09999999404,
+        "visible": 0,
+        "expected": 1000,
+        "revisions": [],
+        "unattributed": 0
+      },
+      {
+        "time": 156822.5,
+        "visible": 0,
+        "expected": 1000,
+        "revisions": [],
+        "unattributed": 0
+      },
+      {
+        "time": 156996.5,
+        "visible": 0,
+        "expected": 1000,
+        "revisions": [],
+        "unattributed": 0
+      },
+      {
+        "time": 157093.69999998808,
+        "visible": 0,
+        "expected": 1000,
+        "revisions": [],
+        "unattributed": 0
+      },
+      {
+        "time": 157361.59999999404,
+        "visible": 0,
+        "expected": 1000,
+        "revisions": [],
+        "unattributed": 0
+      },
+      {
+        "time": 157796,
+        "visible": 0,
+        "expected": 1000,
+        "revisions": [],
+        "unattributed": 0
+      },
+      {
+        "time": 157985.79999998212,
+        "visible": 0,
+        "expected": 1000,
+        "revisions": [],
+        "unattributed": 0
+      },
+      {
+        "time": 159061.79999998212,
+        "visible": 0,
+        "expected": 1000,
+        "revisions": [],
+        "unattributed": 0
+      },
+      {
+        "time": 160458.09999999404,
+        "visible": 0,
+        "expected": 1000,
+        "revisions": [],
+        "unattributed": 0
+      },
+      {
+        "time": 160687,
+        "visible": 0,
+        "expected": 1000,
+        "revisions": [],
+        "unattributed": 0
+      },
+      {
+        "time": 161754.09999999404,
+        "visible": 0,
+        "expected": 1000,
+        "revisions": [],
+        "unattributed": 0
+      },
+      {
+        "time": 163264.39999997616,
+        "visible": 0,
+        "expected": 1000,
+        "revisions": [],
+        "unattributed": 0
+      },
+      {
+        "time": 164433.59999999404,
+        "visible": 0,
+        "expected": 1000,
+        "revisions": [],
+        "unattributed": 0
+      },
+      {
+        "time": 166050.19999998808,
+        "visible": 0,
+        "expected": 1000,
+        "revisions": [],
+        "unattributed": 0
+      },
+      {
+        "time": 167556.5,
+        "visible": 1000,
+        "expected": 1000,
+        "revisions": [
+          [
+            9,
+            1000
+          ]
+        ],
+        "unattributed": 0
+      },
+      {
+        "time": 169359.69999998808,
+        "visible": 1000,
+        "expected": 1000,
+        "revisions": [
+          [
+            9,
+            1000
+          ]
+        ],
+        "unattributed": 0
+      },
+      {
+        "time": 171518.89999997616,
+        "visible": 1000,
+        "expected": 1000,
+        "revisions": [
+          [
+            10,
+            1000
+          ]
+        ],
+        "unattributed": 0
+      },
+      {
+        "time": 172968.89999997616,
+        "visible": 1000,
+        "expected": 1000,
+        "revisions": [
+          [
+            10,
+            1000
+          ]
+        ],
+        "unattributed": 0
+      },
+      {
+        "time": 174748.79999998212,
+        "visible": 1000,
+        "expected": 1000,
+        "revisions": [
+          [
+            10,
+            1000
+          ]
+        ],
+        "unattributed": 0
+      },
+      {
+        "time": 211290.09999999404,
+        "visible": 1000,
+        "expected": 1000,
+        "revisions": [
+          [
+            10,
+            1000
+          ]
+        ],
+        "unattributed": 0
+      }
+    ],
+    "nativeProbeCpu": [
+      6.800000011920929,
+      5.799999982118607,
+      12.400000005960464,
+      10,
+      12.099999994039536,
+      9.799999982118607,
+      9.399999976158142,
+      9,
+      10.199999988079071,
+      14.5,
+      13.199999988079071,
+      12.700000017881393,
+      14.300000011920929,
+      19.599999994039536,
+      11.299999982118607,
+      10.799999982118607,
+      19.700000017881393,
+      11.299999982118607,
+      22.599999994039536,
+      12.5,
+      28.30000001192093,
+      19.600000023841858,
+      12.400000005960464,
+      19.400000005960464,
+      17.69999998807907
+    ],
+    "timings": [
+      {
+        "name": "shader-compile",
+        "startTime": 155003.59999999404,
+        "duration": 21.900000005960464,
+        "detail": {
+          "viewport": 4,
+          "sequence": 1,
+          "variant": "globe"
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 155025.5,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 2,
+          "frame": 1,
+          "updateRevision": 0,
+          "placementMs": 0,
+          "projectionScalingMs": 0
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 155025.79999998212,
+        "duration": 0.20000001788139343,
+        "detail": {
+          "viewport": 4,
+          "sequence": 3
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 155054.09999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 4
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 155072.79999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 5,
+          "frame": 1,
+          "sceneRevision": 1,
+          "updateRevision": 0,
+          "drawnModels": 0,
+          "clippedBoxes": 0,
+          "batches": 0,
+          "triangles": 0
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 155077.89999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 6,
+          "frame": 2,
+          "updateRevision": 0,
+          "placementMs": 0,
+          "projectionScalingMs": 0
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 155078.09999999404,
+        "duration": 5.299999982118607,
+        "detail": {
+          "viewport": 4,
+          "sequence": 7
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 155083.89999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 8
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 155084.09999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 9,
+          "frame": 2,
+          "sceneRevision": 1,
+          "updateRevision": 0,
+          "drawnModels": 0,
+          "clippedBoxes": 0,
+          "batches": 0,
+          "triangles": 0
+        }
+      },
+      {
+        "name": "parse",
+        "startTime": 155095.59999999404,
+        "duration": 19.099999994039536,
+        "detail": {
+          "viewport": 4,
+          "sequence": 10,
+          "attempt": 1,
+          "modelId": "drone",
+          "kind": "register",
+          "status": "success"
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 155118,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 11,
+          "frame": 3,
+          "updateRevision": 0,
+          "placementMs": 0,
+          "projectionScalingMs": 0
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 155118.09999999404,
+        "duration": 0.5999999940395355,
+        "detail": {
+          "viewport": 4,
+          "sequence": 12
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 155120.89999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 13
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 155121,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 14,
+          "frame": 3,
+          "sceneRevision": 2,
+          "updateRevision": 0,
+          "drawnModels": 0,
+          "clippedBoxes": 0,
+          "batches": 0,
+          "triangles": 0
+        }
+      },
+      {
+        "name": "decode-wall",
+        "startTime": 155114.89999997616,
+        "duration": 10.900000005960464,
+        "detail": {
+          "viewport": 4,
+          "sequence": 15,
+          "attempt": 1,
+          "modelId": "drone",
+          "kind": "register",
+          "image": 0,
+          "cancelled": false
+        }
+      },
+      {
+        "name": "texture-upload",
+        "startTime": 155125.79999998212,
+        "duration": 8.300000011920929,
+        "detail": {
+          "viewport": 4,
+          "sequence": 16,
+          "attempt": 1,
+          "modelId": "drone",
+          "kind": "register",
+          "image": 0
+        }
+      },
+      {
+        "name": "geometry-upload",
+        "startTime": 155134.09999999404,
+        "duration": 3.0999999940395355,
+        "detail": {
+          "viewport": 4,
+          "sequence": 17,
+          "attempt": 1,
+          "modelId": "drone",
+          "kind": "register"
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 155142.19999998808,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 18,
+          "frame": 4,
+          "updateRevision": 0,
+          "placementMs": 0,
+          "projectionScalingMs": 0
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 155142.39999997616,
+        "duration": 0.10000002384185791,
+        "detail": {
+          "viewport": 4,
+          "sequence": 19
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 155142.89999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 20
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 155143,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 21,
+          "frame": 4,
+          "sceneRevision": 3,
+          "updateRevision": 0,
+          "drawnModels": 0,
+          "clippedBoxes": 0,
+          "batches": 0,
+          "triangles": 0
+        }
+      },
+      {
+        "name": "parse",
+        "startTime": 155147.29999998212,
+        "duration": 4.300000011920929,
+        "detail": {
+          "viewport": 4,
+          "sequence": 22,
+          "attempt": 2,
+          "modelId": "tank",
+          "kind": "register",
+          "status": "success"
+        }
+      },
+      {
+        "name": "geometry-upload",
+        "startTime": 155151.69999998808,
+        "duration": 0.699999988079071,
+        "detail": {
+          "viewport": 4,
+          "sequence": 23,
+          "attempt": 2,
+          "modelId": "tank",
+          "kind": "register"
+        }
+      },
+      {
+        "name": "parse",
+        "startTime": 155158.19999998808,
+        "duration": 6.5,
+        "detail": {
+          "viewport": 4,
+          "sequence": 24,
+          "attempt": 3,
+          "modelId": "plane",
+          "kind": "register",
+          "status": "success"
+        }
+      },
+      {
+        "name": "geometry-upload",
+        "startTime": 155164.69999998808,
+        "duration": 0.800000011920929,
+        "detail": {
+          "viewport": 4,
+          "sequence": 25,
+          "attempt": 3,
+          "modelId": "plane",
+          "kind": "register"
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 155168.39999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 26,
+          "frame": 5,
+          "updateRevision": 0,
+          "placementMs": 0,
+          "projectionScalingMs": 0
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 155168.59999999404,
+        "duration": 2.699999988079071,
+        "detail": {
+          "viewport": 4,
+          "sequence": 27
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 155172.09999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 28
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 155172.29999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 29,
+          "frame": 5,
+          "sceneRevision": 7,
+          "updateRevision": 0,
+          "drawnModels": 0,
+          "clippedBoxes": 0,
+          "batches": 0,
+          "triangles": 0
+        }
+      },
+      {
+        "name": "parse",
+        "startTime": 155173.39999997616,
+        "duration": 0.800000011920929,
+        "detail": {
+          "viewport": 4,
+          "sequence": 30,
+          "attempt": 4,
+          "modelId": "boat",
+          "kind": "register",
+          "status": "success"
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 155177.69999998808,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 31,
+          "frame": 6,
+          "updateRevision": 0,
+          "placementMs": 0,
+          "projectionScalingMs": 0
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 155177.89999997616,
+        "duration": 1.100000023841858,
+        "detail": {
+          "viewport": 4,
+          "sequence": 32
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 155179.79999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 33
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 155180.09999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 34,
+          "frame": 6,
+          "sceneRevision": 8,
+          "updateRevision": 0,
+          "drawnModels": 0,
+          "clippedBoxes": 0,
+          "batches": 0,
+          "triangles": 0
+        }
+      },
+      {
+        "name": "decode-wall",
+        "startTime": 155174.19999998808,
+        "duration": 9.199999988079071,
+        "detail": {
+          "viewport": 4,
+          "sequence": 35,
+          "attempt": 4,
+          "modelId": "boat",
+          "kind": "register",
+          "image": 0,
+          "cancelled": false
+        }
+      },
+      {
+        "name": "texture-upload",
+        "startTime": 155183.5,
+        "duration": 8.599999994039536,
+        "detail": {
+          "viewport": 4,
+          "sequence": 36,
+          "attempt": 4,
+          "modelId": "boat",
+          "kind": "register",
+          "image": 0
+        }
+      },
+      {
+        "name": "geometry-upload",
+        "startTime": 155192.09999999404,
+        "duration": 1.0999999940395355,
+        "detail": {
+          "viewport": 4,
+          "sequence": 37,
+          "attempt": 4,
+          "modelId": "boat",
+          "kind": "register"
+        }
+      },
+      {
+        "name": "accepted-update",
+        "startTime": 155200.5,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 38,
+          "revision": 1,
+          "features": 1100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 155216.79999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 39,
+          "boxes": 0
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 155314.79999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 40,
+          "frame": 7,
+          "updateRevision": 1,
+          "placementMs": 8.20000010728836,
+          "projectionScalingMs": 47.79999989271164
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 155315.09999999404,
+        "duration": 2.9000000059604645,
+        "detail": {
+          "viewport": 4,
+          "sequence": 41
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 155327.5,
+        "duration": 0.3999999761581421,
+        "detail": {
+          "viewport": 4,
+          "sequence": 42
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 155328.69999998808,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 43,
+          "frame": 7,
+          "sceneRevision": 12,
+          "updateRevision": 1,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 155337.29999998212,
+        "duration": 1.300000011920929,
+        "detail": {
+          "viewport": 4,
+          "sequence": 44,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 155434.69999998808,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 45,
+          "frame": 8,
+          "updateRevision": 1,
+          "placementMs": 5.800000071525574,
+          "projectionScalingMs": 52.30000001192093
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 155435.09999999404,
+        "duration": 0.699999988079071,
+        "detail": {
+          "viewport": 4,
+          "sequence": 46
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 155440.39999997616,
+        "duration": 0.4000000059604645,
+        "detail": {
+          "viewport": 4,
+          "sequence": 47
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 155441.79999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 48,
+          "frame": 8,
+          "sceneRevision": 12,
+          "updateRevision": 1,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 155449.19999998808,
+        "duration": 1.300000011920929,
+        "detail": {
+          "viewport": 4,
+          "sequence": 49,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 155519.89999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 50,
+          "frame": 9,
+          "updateRevision": 1,
+          "placementMs": 3.5999999940395355,
+          "projectionScalingMs": 49.300000071525574
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 155520.09999999404,
+        "duration": 1.699999988079071,
+        "detail": {
+          "viewport": 4,
+          "sequence": 51
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 155523.19999998808,
+        "duration": 1.4000000059604645,
+        "detail": {
+          "viewport": 4,
+          "sequence": 52
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 155524.89999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 53,
+          "frame": 9,
+          "sceneRevision": 12,
+          "updateRevision": 1,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 155536.39999997616,
+        "duration": 1.7000000178813934,
+        "detail": {
+          "viewport": 4,
+          "sequence": 54,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 155702.59999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 55,
+          "frame": 10,
+          "updateRevision": 1,
+          "placementMs": 2.5,
+          "projectionScalingMs": 44.49999991059303
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 155704,
+        "duration": 1.5,
+        "detail": {
+          "viewport": 4,
+          "sequence": 56
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 155714.69999998808,
+        "duration": 0.09999999403953552,
+        "detail": {
+          "viewport": 4,
+          "sequence": 57
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 155801.09999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 58,
+          "frame": 10,
+          "sceneRevision": 12,
+          "updateRevision": 1,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 155807.19999998808,
+        "duration": 1.5,
+        "detail": {
+          "viewport": 4,
+          "sequence": 59,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 155899.29999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 60,
+          "frame": 11,
+          "updateRevision": 1,
+          "placementMs": 3.900000035762787,
+          "projectionScalingMs": 54.99999991059303
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 155900.5,
+        "duration": 2.699999988079071,
+        "detail": {
+          "viewport": 4,
+          "sequence": 61
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 155910,
+        "duration": 2.399999976158142,
+        "detail": {
+          "viewport": 4,
+          "sequence": 62
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 155912.89999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 63,
+          "frame": 11,
+          "sceneRevision": 12,
+          "updateRevision": 1,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 155926.59999999404,
+        "duration": 1.199999988079071,
+        "detail": {
+          "viewport": 4,
+          "sequence": 64,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 155975.29999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 65,
+          "frame": 12,
+          "updateRevision": 1,
+          "placementMs": 5.5,
+          "projectionScalingMs": 29.000000059604645
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 155976,
+        "duration": 0.699999988079071,
+        "detail": {
+          "viewport": 4,
+          "sequence": 66
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 155977.89999997616,
+        "duration": 0.4000000059604645,
+        "detail": {
+          "viewport": 4,
+          "sequence": 67
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 155978.59999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 68,
+          "frame": 12,
+          "sceneRevision": 12,
+          "updateRevision": 1,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 155983.79999998212,
+        "duration": 1.300000011920929,
+        "detail": {
+          "viewport": 4,
+          "sequence": 69,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 156023.69999998808,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 70,
+          "frame": 13,
+          "updateRevision": 1,
+          "placementMs": 2.2000000178813934,
+          "projectionScalingMs": 28.59999993443489
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 156023.89999997616,
+        "duration": 0.9000000059604645,
+        "detail": {
+          "viewport": 4,
+          "sequence": 71
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 156025.69999998808,
+        "duration": 0.19999998807907104,
+        "detail": {
+          "viewport": 4,
+          "sequence": 72
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 156026.29999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 73,
+          "frame": 13,
+          "sceneRevision": 12,
+          "updateRevision": 1,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 156031.69999998808,
+        "duration": 1.4000000059604645,
+        "detail": {
+          "viewport": 4,
+          "sequence": 74,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 156074.5,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 75,
+          "frame": 14,
+          "updateRevision": 1,
+          "placementMs": 3.300000011920929,
+          "projectionScalingMs": 27.80000001192093
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 156074.79999998212,
+        "duration": 0.800000011920929,
+        "detail": {
+          "viewport": 4,
+          "sequence": 76
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 156077,
+        "duration": 0.3999999761581421,
+        "detail": {
+          "viewport": 4,
+          "sequence": 77
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 156077.69999998808,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 78,
+          "frame": 14,
+          "sceneRevision": 12,
+          "updateRevision": 1,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 156089.79999998212,
+        "duration": 1.2000000178813934,
+        "detail": {
+          "viewport": 4,
+          "sequence": 79,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 156128.69999998808,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 80,
+          "frame": 15,
+          "updateRevision": 1,
+          "placementMs": 1.8000000715255737,
+          "projectionScalingMs": 28.09999993443489
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 156129,
+        "duration": 0.699999988079071,
+        "detail": {
+          "viewport": 4,
+          "sequence": 81
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 156130.69999998808,
+        "duration": 0.4000000059604645,
+        "detail": {
+          "viewport": 4,
+          "sequence": 82
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 156131.5,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 83,
+          "frame": 15,
+          "sceneRevision": 12,
+          "updateRevision": 1,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 156142.79999998212,
+        "duration": 1.4000000059604645,
+        "detail": {
+          "viewport": 4,
+          "sequence": 84,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "accepted-update",
+        "startTime": 156156,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 85,
+          "revision": 2,
+          "features": 1100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 156173.19999998808,
+        "duration": 0.09999999403953552,
+        "detail": {
+          "viewport": 4,
+          "sequence": 86,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 156241.59999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 87,
+          "frame": 16,
+          "updateRevision": 2,
+          "placementMs": 3.1000000536441803,
+          "projectionScalingMs": 29.299999982118607
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 156241.89999997616,
+        "duration": 0.9000000059604645,
+        "detail": {
+          "viewport": 4,
+          "sequence": 88
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 156251.5,
+        "duration": 0.3999999761581421,
+        "detail": {
+          "viewport": 4,
+          "sequence": 89
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 156252.19999998808,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 90,
+          "frame": 16,
+          "sceneRevision": 13,
+          "updateRevision": 2,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 156269.69999998808,
+        "duration": 1.9000000059604645,
+        "detail": {
+          "viewport": 4,
+          "sequence": 91,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "accepted-update",
+        "startTime": 156297.69999998808,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 92,
+          "revision": 3,
+          "features": 1100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 156317.59999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 93,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 156381.09999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 94,
+          "frame": 17,
+          "updateRevision": 3,
+          "placementMs": 2.0000000596046448,
+          "projectionScalingMs": 29.799999982118607
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 156381.39999997616,
+        "duration": 0.6000000238418579,
+        "detail": {
+          "viewport": 4,
+          "sequence": 95
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 156383.19999998808,
+        "duration": 0.19999998807907104,
+        "detail": {
+          "viewport": 4,
+          "sequence": 96
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 156383.79999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 97,
+          "frame": 17,
+          "sceneRevision": 14,
+          "updateRevision": 3,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 156402.09999999404,
+        "duration": 1.699999988079071,
+        "detail": {
+          "viewport": 4,
+          "sequence": 98,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 156513.29999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 99,
+          "frame": 18,
+          "updateRevision": 3,
+          "placementMs": 3.5999999344348907,
+          "projectionScalingMs": 48.300000101327896
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 156513.59999999404,
+        "duration": 3.699999988079071,
+        "detail": {
+          "viewport": 4,
+          "sequence": 100
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 156520.79999998212,
+        "duration": 0.20000001788139343,
+        "detail": {
+          "viewport": 4,
+          "sequence": 101
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 156521.39999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 102,
+          "frame": 18,
+          "sceneRevision": 14,
+          "updateRevision": 3,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 156538.5,
+        "duration": 1.0999999940395355,
+        "detail": {
+          "viewport": 4,
+          "sequence": 103,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "accepted-update",
+        "startTime": 156567,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 104,
+          "revision": 4,
+          "features": 1100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 156580.59999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 105,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 156713.19999998808,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 106,
+          "frame": 19,
+          "updateRevision": 4,
+          "placementMs": 6.100000023841858,
+          "projectionScalingMs": 58.200000047683716
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 156713.5,
+        "duration": 0.699999988079071,
+        "detail": {
+          "viewport": 4,
+          "sequence": 107
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 156716.5,
+        "duration": 0.5,
+        "detail": {
+          "viewport": 4,
+          "sequence": 108
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 156718,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 109,
+          "frame": 19,
+          "sceneRevision": 15,
+          "updateRevision": 4,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 156733.29999998212,
+        "duration": 1.300000011920929,
+        "detail": {
+          "viewport": 4,
+          "sequence": 110,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 156817.89999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 111,
+          "frame": 20,
+          "updateRevision": 4,
+          "placementMs": 3.000000089406967,
+          "projectionScalingMs": 28.89999994635582
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 156818.19999998808,
+        "duration": 0.9000000059604645,
+        "detail": {
+          "viewport": 4,
+          "sequence": 112
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 156821,
+        "duration": 0.5,
+        "detail": {
+          "viewport": 4,
+          "sequence": 113
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 156822.5,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 114,
+          "frame": 20,
+          "sceneRevision": 15,
+          "updateRevision": 4,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 156838.39999997616,
+        "duration": 1.2000000178813934,
+        "detail": {
+          "viewport": 4,
+          "sequence": 115,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "accepted-update",
+        "startTime": 156851.09999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 116,
+          "revision": 5,
+          "features": 1100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 156867.19999998808,
+        "duration": 0.09999999403953552,
+        "detail": {
+          "viewport": 4,
+          "sequence": 117,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 156993.5,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 118,
+          "frame": 21,
+          "updateRevision": 5,
+          "placementMs": 3.0999999940395355,
+          "projectionScalingMs": 41.20000001788139
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 156993.69999998808,
+        "duration": 1,
+        "detail": {
+          "viewport": 4,
+          "sequence": 119
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 156995.79999998212,
+        "duration": 0.20000001788139343,
+        "detail": {
+          "viewport": 4,
+          "sequence": 120
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 156996.5,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 121,
+          "frame": 21,
+          "sceneRevision": 16,
+          "updateRevision": 5,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 157012.5,
+        "duration": 0.5,
+        "detail": {
+          "viewport": 4,
+          "sequence": 122,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 157090.19999998808,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 123,
+          "frame": 22,
+          "updateRevision": 5,
+          "placementMs": 2.9000000059604645,
+          "projectionScalingMs": 27.800000101327896
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 157090.5,
+        "duration": 1.0999999940395355,
+        "detail": {
+          "viewport": 4,
+          "sequence": 124
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 157093,
+        "duration": 0.19999998807907104,
+        "detail": {
+          "viewport": 4,
+          "sequence": 125
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 157093.59999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 126,
+          "frame": 22,
+          "sceneRevision": 16,
+          "updateRevision": 5,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 157109.5,
+        "duration": 2.0999999940395355,
+        "detail": {
+          "viewport": 4,
+          "sequence": 127,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "accepted-update",
+        "startTime": 157122.39999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 128,
+          "revision": 6,
+          "features": 1100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 157138.19999998808,
+        "duration": 0.09999999403953552,
+        "detail": {
+          "viewport": 4,
+          "sequence": 129,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 157165.59999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 130,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 157353.69999998808,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 131,
+          "frame": 23,
+          "updateRevision": 6,
+          "placementMs": 5.100000083446503,
+          "projectionScalingMs": 85.90000000596046
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 157354.09999999404,
+        "duration": 3.199999988079071,
+        "detail": {
+          "viewport": 4,
+          "sequence": 132
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 157360.59999999404,
+        "duration": 0.4000000059604645,
+        "detail": {
+          "viewport": 4,
+          "sequence": 133
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 157361.39999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 134,
+          "frame": 23,
+          "sceneRevision": 17,
+          "updateRevision": 6,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 157384.29999998212,
+        "duration": 3.4000000059604645,
+        "detail": {
+          "viewport": 4,
+          "sequence": 135,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 157506.89999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 136,
+          "frame": 24,
+          "updateRevision": 6,
+          "placementMs": 5.000000089406967,
+          "projectionScalingMs": 57.69999998807907
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 157507.19999998808,
+        "duration": 286.80000001192093,
+        "detail": {
+          "viewport": 4,
+          "sequence": 137
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 157795.39999997616,
+        "duration": 0.30000001192092896,
+        "detail": {
+          "viewport": 4,
+          "sequence": 138
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 157795.89999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 139,
+          "frame": 24,
+          "sceneRevision": 17,
+          "updateRevision": 6,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 157815.19999998808,
+        "duration": 0.800000011920929,
+        "detail": {
+          "viewport": 4,
+          "sequence": 140,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "accepted-update",
+        "startTime": 157828.89999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 141,
+          "revision": 7,
+          "features": 1100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 157845.69999998808,
+        "duration": 0.09999999403953552,
+        "detail": {
+          "viewport": 4,
+          "sequence": 142,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 157980.5,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 143,
+          "frame": 25,
+          "updateRevision": 7,
+          "placementMs": 2.6000000536441803,
+          "projectionScalingMs": 30.799999982118607
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 157980.79999998212,
+        "duration": 0.800000011920929,
+        "detail": {
+          "viewport": 4,
+          "sequence": 144
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 157983.89999997616,
+        "duration": 0.10000002384185791,
+        "detail": {
+          "viewport": 4,
+          "sequence": 145
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 157985.69999998808,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 146,
+          "frame": 25,
+          "sceneRevision": 18,
+          "updateRevision": 7,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 158003.59999999404,
+        "duration": 0.699999988079071,
+        "detail": {
+          "viewport": 4,
+          "sequence": 147,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "accepted-update",
+        "startTime": 158044.5,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 148,
+          "revision": 8,
+          "features": 1100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 158057.59999999404,
+        "duration": 0.09999999403953552,
+        "detail": {
+          "viewport": 4,
+          "sequence": 149,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 158130.19999998808,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 150,
+          "frame": 26,
+          "updateRevision": 8,
+          "placementMs": 2.8999999463558197,
+          "projectionScalingMs": 28.000000059604645
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 158130.5,
+        "duration": 924.6999999880791,
+        "detail": {
+          "viewport": 4,
+          "sequence": 151
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 159058.69999998808,
+        "duration": 0.19999998807907104,
+        "detail": {
+          "viewport": 4,
+          "sequence": 152
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 159061.59999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 153,
+          "frame": 26,
+          "sceneRevision": 19,
+          "updateRevision": 8,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 159085.59999999404,
+        "duration": 2,
+        "detail": {
+          "viewport": 4,
+          "sequence": 154,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "accepted-update",
+        "startTime": 159159.29999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 155,
+          "revision": 9,
+          "features": 1100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 159198.39999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 156,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 159302.29999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 157,
+          "frame": 27,
+          "updateRevision": 9,
+          "placementMs": 2.400000035762787,
+          "projectionScalingMs": 31.499999910593033
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 159302.5,
+        "duration": 1150.199999988079,
+        "detail": {
+          "viewport": 4,
+          "sequence": 158
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 160453.89999997616,
+        "duration": 0.30000001192092896,
+        "detail": {
+          "viewport": 4,
+          "sequence": 159
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 160457.89999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 160,
+          "frame": 27,
+          "sceneRevision": 20,
+          "updateRevision": 9,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 160484,
+        "duration": 3.699999988079071,
+        "detail": {
+          "viewport": 4,
+          "sequence": 161,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 160559.5,
+        "duration": 7.799999982118607,
+        "detail": {
+          "viewport": 4,
+          "sequence": 162,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 160679.19999998808,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 163,
+          "frame": 28,
+          "updateRevision": 9,
+          "placementMs": 4.60000005364418,
+          "projectionScalingMs": 58.599999994039536
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 160679.5,
+        "duration": 2.0999999940395355,
+        "detail": {
+          "viewport": 4,
+          "sequence": 164
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 160686.39999997616,
+        "duration": 0.20000001788139343,
+        "detail": {
+          "viewport": 4,
+          "sequence": 165
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 160687,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 166,
+          "frame": 28,
+          "sceneRevision": 20,
+          "updateRevision": 9,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 160703.79999998212,
+        "duration": 0.30000001192092896,
+        "detail": {
+          "viewport": 4,
+          "sequence": 167,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "accepted-update",
+        "startTime": 160719.09999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 168,
+          "revision": 10,
+          "features": 1100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 160732.39999997616,
+        "duration": 0.10000002384185791,
+        "detail": {
+          "viewport": 4,
+          "sequence": 169,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 160808.79999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 170,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 160909.59999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 171,
+          "frame": 29,
+          "updateRevision": 10,
+          "placementMs": 3.399999976158142,
+          "projectionScalingMs": 27.500000059604645
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 160909.79999998212,
+        "duration": 840,
+        "detail": {
+          "viewport": 4,
+          "sequence": 172
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 161751.19999998808,
+        "duration": 2.300000011920929,
+        "detail": {
+          "viewport": 4,
+          "sequence": 173
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 161754,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 174,
+          "frame": 29,
+          "sceneRevision": 21,
+          "updateRevision": 10,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 161772.19999998808,
+        "duration": 2.0999999940395355,
+        "detail": {
+          "viewport": 4,
+          "sequence": 175,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 161814.89999997616,
+        "duration": 1.300000011920929,
+        "detail": {
+          "viewport": 4,
+          "sequence": 176,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 161883.79999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 177,
+          "frame": 30,
+          "updateRevision": 10,
+          "placementMs": 6.4000000059604645,
+          "projectionScalingMs": 24.999999940395355
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 161884.09999999404,
+        "duration": 1375.2999999821186,
+        "detail": {
+          "viewport": 4,
+          "sequence": 178
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 163263.19999998808,
+        "duration": 0.30000001192092896,
+        "detail": {
+          "viewport": 4,
+          "sequence": 179
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 163264.09999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 180,
+          "frame": 30,
+          "sceneRevision": 21,
+          "updateRevision": 10,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 163295.09999999404,
+        "duration": 4.9000000059604645,
+        "detail": {
+          "viewport": 4,
+          "sequence": 181,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "accepted-update",
+        "startTime": 163317.79999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 182,
+          "revision": 11,
+          "features": 1100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 163342,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 183,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 163481.79999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 184,
+          "frame": 31,
+          "updateRevision": 11,
+          "placementMs": 3.400000035762787,
+          "projectionScalingMs": 30.499999910593033
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 163482,
+        "duration": 949.6999999880791,
+        "detail": {
+          "viewport": 4,
+          "sequence": 185
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 164432.79999998212,
+        "duration": 0.20000001788139343,
+        "detail": {
+          "viewport": 4,
+          "sequence": 186
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 164433.5,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 187,
+          "frame": 31,
+          "sceneRevision": 22,
+          "updateRevision": 11,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 164450.29999998212,
+        "duration": 2.300000011920929,
+        "detail": {
+          "viewport": 4,
+          "sequence": 188,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 164582.59999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 189,
+          "frame": 32,
+          "updateRevision": 11,
+          "placementMs": 2.9000001549720764,
+          "projectionScalingMs": 54.799999833106995
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 164582.89999997616,
+        "duration": 1463.1000000238419,
+        "detail": {
+          "viewport": 4,
+          "sequence": 190
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 166049.19999998808,
+        "duration": 0.19999998807907104,
+        "detail": {
+          "viewport": 4,
+          "sequence": 191
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 166050.09999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 192,
+          "frame": 32,
+          "sceneRevision": 22,
+          "updateRevision": 11,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 166083.09999999404,
+        "duration": 3.7999999821186066,
+        "detail": {
+          "viewport": 4,
+          "sequence": 193,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 166214.29999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 194,
+          "frame": 33,
+          "updateRevision": 11,
+          "placementMs": 4.200000077486038,
+          "projectionScalingMs": 58.3999999165535
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 166214.59999999404,
+        "duration": 1327.5999999940395,
+        "detail": {
+          "viewport": 4,
+          "sequence": 195
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 167555.09999999404,
+        "duration": 0.29999998211860657,
+        "detail": {
+          "viewport": 4,
+          "sequence": 196
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 167555.79999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 197,
+          "frame": 33,
+          "sceneRevision": 22,
+          "updateRevision": 11,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 167574,
+        "duration": 1.899999976158142,
+        "detail": {
+          "viewport": 4,
+          "sequence": 198,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 167657.39999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 199,
+          "frame": 34,
+          "updateRevision": 11,
+          "placementMs": 3.4999999701976776,
+          "projectionScalingMs": 62.40000003576279
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 167657.69999998808,
+        "duration": 1698.4000000059605,
+        "detail": {
+          "viewport": 4,
+          "sequence": 200
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 169359.09999999404,
+        "duration": 0.29999998211860657,
+        "detail": {
+          "viewport": 4,
+          "sequence": 201
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 169359.59999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 202,
+          "frame": 34,
+          "sceneRevision": 22,
+          "updateRevision": 11,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 169401.09999999404,
+        "duration": 7,
+        "detail": {
+          "viewport": 4,
+          "sequence": 203,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 169427.69999998808,
+        "duration": 5.9000000059604645,
+        "detail": {
+          "viewport": 4,
+          "sequence": 204,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 169549.59999999404,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 205,
+          "frame": 35,
+          "updateRevision": 11,
+          "placementMs": 6.599999934434891,
+          "projectionScalingMs": 45.80000013113022
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 169550.09999999404,
+        "duration": 1967.0999999940395,
+        "detail": {
+          "viewport": 4,
+          "sequence": 206
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 171518.19999998808,
+        "duration": 0.30000001192092896,
+        "detail": {
+          "viewport": 4,
+          "sequence": 207
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 171518.79999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 208,
+          "frame": 35,
+          "sceneRevision": 22,
+          "updateRevision": 11,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 171544.19999998808,
+        "duration": 1.9000000059604645,
+        "detail": {
+          "viewport": 4,
+          "sequence": 209,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 171584.29999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 210,
+          "frame": 36,
+          "updateRevision": 11,
+          "placementMs": 2.5999999940395355,
+          "projectionScalingMs": 26.200000047683716
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 171585.89999997616,
+        "duration": 1381.5,
+        "detail": {
+          "viewport": 4,
+          "sequence": 211
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 172968.29999998212,
+        "duration": 0.20000001788139343,
+        "detail": {
+          "viewport": 4,
+          "sequence": 212
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 172968.79999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 213,
+          "frame": 36,
+          "sceneRevision": 22,
+          "updateRevision": 11,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 172988.09999999404,
+        "duration": 1.9000000059604645,
+        "detail": {
+          "viewport": 4,
+          "sequence": 214,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 172998.09999999404,
+        "duration": 1.7999999821186066,
+        "detail": {
+          "viewport": 4,
+          "sequence": 215,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 173037.39999997616,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 216,
+          "frame": 37,
+          "updateRevision": 11,
+          "placementMs": 3.4000000655651093,
+          "projectionScalingMs": 27.19999998807907
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 173037.59999999404,
+        "duration": 1709.699999988079,
+        "detail": {
+          "viewport": 4,
+          "sequence": 217
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 174748.09999999404,
+        "duration": 0.29999998211860657,
+        "detail": {
+          "viewport": 4,
+          "sequence": 218
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 174748.69999998808,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 219,
+          "frame": 37,
+          "sceneRevision": 22,
+          "updateRevision": 11,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 211201.29999998212,
+        "duration": 1.800000011920929,
+        "detail": {
+          "viewport": 4,
+          "sequence": 220,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 211211.79999998212,
+        "duration": 1.800000011920929,
+        "detail": {
+          "viewport": 4,
+          "sequence": 221,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "scene-cpu",
+        "startTime": 211285.29999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 222,
+          "frame": 38,
+          "updateRevision": 11,
+          "placementMs": 7.200000017881393,
+          "projectionScalingMs": 53.40000009536743
+        }
+      },
+      {
+        "name": "instance-preparation",
+        "startTime": 211285.59999999404,
+        "duration": 0.7999999821186066,
+        "detail": {
+          "viewport": 4,
+          "sequence": 223
+        }
+      },
+      {
+        "name": "submit",
+        "startTime": 211289.19999998808,
+        "duration": 0.19999998807907104,
+        "detail": {
+          "viewport": 4,
+          "sequence": 224
+        }
+      },
+      {
+        "name": "frame",
+        "startTime": 211289.79999998212,
+        "duration": 0,
+        "detail": {
+          "viewport": 4,
+          "sequence": 225,
+          "frame": 38,
+          "sceneRevision": 22,
+          "updateRevision": 11,
+          "drawnModels": 100,
+          "clippedBoxes": 100,
+          "batches": 11,
+          "triangles": 172850
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 211318.89999997616,
+        "duration": 6.600000023841858,
+        "detail": {
+          "viewport": 4,
+          "sequence": 226,
+          "boxes": 100
+        }
+      },
+      {
+        "name": "picking",
+        "startTime": 211351.29999998212,
+        "duration": 7.700000017881393,
+        "detail": {
+          "viewport": 4,
+          "sequence": 227,
+          "boxes": 100
+        }
+      }
+    ],
+    "gpu": [
+      {
+        "id": 24,
+        "issuedAt": 211289.19999998808,
+        "completedAt": 212531,
+        "milliseconds": 148.37168
+      }
+    ],
+    "rejectedGpu": [
+      {
+        "id": 4,
+        "reason": "timeout"
+      },
+      {
+        "id": 3,
+        "reason": "timeout"
+      },
+      {
+        "id": 2,
+        "reason": "timeout"
+      },
+      {
+        "id": 1,
+        "reason": "timeout"
+      },
+      {
+        "id": 8,
+        "reason": "timeout"
+      },
+      {
+        "id": 7,
+        "reason": "timeout"
+      },
+      {
+        "id": 6,
+        "reason": "timeout"
+      },
+      {
+        "id": 5,
+        "reason": "timeout"
+      },
+      {
+        "id": 11,
+        "reason": "timeout"
+      },
+      {
+        "id": 10,
+        "reason": "timeout"
+      },
+      {
+        "id": 9,
+        "reason": "timeout"
+      },
+      {
+        "id": 12,
+        "reason": "timeout"
+      },
+      {
+        "id": 14,
+        "reason": "timeout"
+      },
+      {
+        "id": 13,
+        "reason": "timeout"
+      },
+      {
+        "id": 15,
+        "reason": "timeout"
+      },
+      {
+        "id": 17,
+        "reason": "timeout"
+      },
+      {
+        "id": 16,
+        "reason": "timeout"
+      },
+      {
+        "id": 18,
+        "reason": "timeout"
+      },
+      {
+        "id": 20,
+        "reason": "timeout"
+      },
+      {
+        "id": 19,
+        "reason": "timeout"
+      },
+      {
+        "id": 23,
+        "reason": "timeout"
+      },
+      {
+        "id": 22,
+        "reason": "timeout"
+      },
+      {
+        "id": 21,
+        "reason": "timeout"
+      }
+    ]
+  },
+  "gpuStatus": "available",
+  "visibility": {
+    "nativeRenderedIds": 1000,
+    "modelPatchPixels": [
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3238,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363,
+      3363
+    ],
+    "stateModelCount": 100
+  },
+  "idleFrames": 0,
+  "diagnostics": [],
+  "validation": {
+    "status": "observed",
+    "failures": []
+  },
+  "acceptance": "unrated tooling smoke; target hardware acceptance pending"
+}
