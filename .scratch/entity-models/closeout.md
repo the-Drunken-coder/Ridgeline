@@ -18,7 +18,7 @@ Approved test boundaries are the packaged public viewport workflow and focused p
 
 ## Current integration closeout, 2026-10-05
 
-Status: implementation complete and locally verified for #82–#90. Production acceptance remains pending in #80/#91 at the user's direction. Parent #81 is unchanged. No PR, push or merge to main was requested or performed.
+Status: #82–#90 resolved for implementation and local verification. [Shared tracker record](https://github.com/the-Drunken-coder/Ridgeline/issues/90#issuecomment-5985961888) and [#90 resolution](https://github.com/the-Drunken-coder/Ridgeline/issues/90#issuecomment-5986983947) were read back exactly; [state audit](evidence/integration/final-tracker-readback.json) confirms #80/#81/#91 remain open. Production acceptance remains pending in #80/#91 at the user's direction. Parent #81 is unchanged. No PR, push or merge to main was requested or performed.
 
 Reviewed: base `2733cee9fe9440237a36e90d9efa2fc4239b87c3` through final worker `cf09290e615dfc4809b09519fdfb0825c4642ba9`. The designated merger integrated that delivery at `708988d1253863412f73915a650b610518ddb9fc`; both independently verified the exact full tree `70a7b68e0c0ac2899ba39213265050b64baac637`. Source tree is `04413b0db510cc12b4794ea53f98cf331003ac53`; test tree is `d7fddd93adccfae4cdb4aa07a5b4dbacf31e7981`.
 
@@ -261,11 +261,13 @@ Hardware #80 and measured limits/advisory/production acceptance #91 remain pendi
 | Approved observable transitions | 185 packaged cases cover actual decode/input, atomic invalid batches, delayed terrain, callbacks, same-frame switching, labels/attachments, precision/planar tolerances, real context loss/recovery and five quiet seconds. The three permanent final regressions prove first completed callback frames, enlarged-box culling/hysteresis and listener remount ownership. Playground/control workflows are checked separately. |
 | Shared revision-specific review/evidence | Initial review findings and actual failing histories are retained as historical. One implementer corrected them; both independent axes rechecked final cf09290. Root reviewed the identical integrated 708988d and exercised the complete combined workflow. All raw settings/logs/patches distinguish exact clean pins from explicitly recorded temporary RED deltas. |
 | Current checks/builds/production size | Current type/ticket/unit, packaged/browser, playground, measurement and control checks pass above, with library/playground/control production builds. [Performance snapshot](../../docs/performance.md) records net 20.53 KiB gzip and isolated entries with default Node gzip; historical prototype figures are not current. |
-| Reviewed hardware handoff and readiness | The reviewed source708988d and portable workflow are handed to existing #80. Hardware #80 and measured guideline/advisory/production acceptance #91 remain open by user direction. Implementation/local verification are complete; hosted checks and production readiness are not claimed. Parent #81 remains unchanged. |
+| Reviewed hardware handoff and readiness | The reviewed source 708988d and portable workflow are [handed to existing #80](https://github.com/the-Drunken-coder/Ridgeline/issues/80#issuecomment-5986983674). Hardware #80 and measured guideline/advisory/production acceptance #91 remain open by user direction. Implementation/local verification are complete; hosted checks and production readiness are not claimed. Parent #81 remains unchanged. |
 
 Observable transitions have one current owner: root reviews integrated slice changes; consumer update/native-worker and scene owners correlate accepted updates with visible frames; registry/scene/interaction/resource owners cancel obsolete callback work. Final real callback, cancellation, terrain, switching, recovery, stationary-pointer and destroy/remount workflows exercise these boundaries rather than inferring them from cached summaries.
 
 ## Hardware handoff
+
+[Published handoff](https://github.com/the-Drunken-coder/Ridgeline/issues/80#issuecomment-5986983674) names the reviewed production revision and portable workflow. #80 remains open. Evidence/documentation revision `de79402fc684c622fc1cfb453911e094f9a43d50` changes no source or test input; root reviewed that delta and verified links/nonraw diff. This final tracker-link/readback addition is also documentation/evidence only.
 
 Keep [#80](https://github.com/the-Drunken-coder/Ridgeline/issues/80) and [#91](https://github.com/the-Drunken-coder/Ridgeline/issues/91) open. Reviewed production pin is 708988d, source tree 04413b0d. Exact full revisions appear above; the final closeout commit changes only documentation/evidence. No branch has been pushed.
 

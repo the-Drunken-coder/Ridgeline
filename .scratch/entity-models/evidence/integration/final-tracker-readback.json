@@ -1,0 +1,101 @@
+{
+  "dateUtc": "2026-10-05T02:19:03.638911+00:00",
+  "runtimeRevision": "708988d1253863412f73915a650b610518ddb9fc",
+  "evidenceRevision": "de79402fc684c622fc1cfb453911e094f9a43d50",
+  "branch": "t3code/implement-spec-81",
+  "unpushed": true,
+  "sharedRecord": "https://github.com/the-Drunken-coder/Ridgeline/issues/90#issuecomment-5985961888",
+  "hardwareHandoff": "https://github.com/the-Drunken-coder/Ridgeline/issues/80#issuecomment-5986983674",
+  "scoped90Resolution": "https://github.com/the-Drunken-coder/Ridgeline/issues/90#issuecomment-5986983947",
+  "states": {
+    "80": {
+      "number": 80,
+      "state": "open",
+      "stateReason": null,
+      "url": "https://github.com/the-Drunken-coder/Ridgeline/issues/80",
+      "updatedAt": "2026-10-05T02:18:05Z"
+    },
+    "81": {
+      "number": 81,
+      "state": "open",
+      "stateReason": null,
+      "url": "https://github.com/the-Drunken-coder/Ridgeline/issues/81",
+      "updatedAt": "2026-10-04T20:04:05Z"
+    },
+    "82": {
+      "number": 82,
+      "state": "closed",
+      "stateReason": "completed",
+      "url": "https://github.com/the-Drunken-coder/Ridgeline/issues/82",
+      "updatedAt": "2026-10-04T21:31:11Z"
+    },
+    "83": {
+      "number": 83,
+      "state": "closed",
+      "stateReason": "completed",
+      "url": "https://github.com/the-Drunken-coder/Ridgeline/issues/83",
+      "updatedAt": "2026-10-04T21:55:16Z"
+    },
+    "84": {
+      "number": 84,
+      "state": "closed",
+      "stateReason": "completed",
+      "url": "https://github.com/the-Drunken-coder/Ridgeline/issues/84",
+      "updatedAt": "2026-10-04T22:22:48Z"
+    },
+    "85": {
+      "number": 85,
+      "state": "closed",
+      "stateReason": "completed",
+      "url": "https://github.com/the-Drunken-coder/Ridgeline/issues/85",
+      "updatedAt": "2026-10-05T00:17:53Z"
+    },
+    "86": {
+      "number": 86,
+      "state": "closed",
+      "stateReason": "completed",
+      "url": "https://github.com/the-Drunken-coder/Ridgeline/issues/86",
+      "updatedAt": "2026-10-05T00:17:51Z"
+    },
+    "87": {
+      "number": 87,
+      "state": "closed",
+      "stateReason": "completed",
+      "url": "https://github.com/the-Drunken-coder/Ridgeline/issues/87",
+      "updatedAt": "2026-10-05T00:17:56Z"
+    },
+    "88": {
+      "number": 88,
+      "state": "closed",
+      "stateReason": "completed",
+      "url": "https://github.com/the-Drunken-coder/Ridgeline/issues/88",
+      "updatedAt": "2026-10-05T00:17:58Z"
+    },
+    "89": {
+      "number": 89,
+      "state": "closed",
+      "stateReason": "completed",
+      "url": "https://github.com/the-Drunken-coder/Ridgeline/issues/89",
+      "updatedAt": "2026-10-05T00:18:00Z"
+    },
+    "90": {
+      "number": 90,
+      "state": "closed",
+      "stateReason": "completed",
+      "url": "https://github.com/the-Drunken-coder/Ridgeline/issues/90",
+      "updatedAt": "2026-10-05T02:18:08Z"
+    },
+    "91": {
+      "number": 91,
+      "state": "open",
+      "stateReason": null,
+      "url": "https://github.com/the-Drunken-coder/Ridgeline/issues/91",
+      "updatedAt": "2026-10-04T20:25:28Z"
+    }
+  },
+  "parent81Unmodified": true,
+  "pending91Unmodified": true,
+  "hardwarePendingByUserDirection": true,
+  "hosted": "unavailable, no PR",
+  "writtenCommentsReadBackExact": true
+}
