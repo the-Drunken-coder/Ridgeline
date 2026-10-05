@@ -2,11 +2,24 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { delimiter, join, resolve } from 'node:path';
 import { checkValidation, requiredJobs } from './check-validation.mjs';
 import { checkShards } from './check-shards.mjs';
 
 const successfulNeeds = () => Object.fromEntries(requiredJobs.map(name => [name, { result: 'success' }]));
+
+test('measurement verification must succeed for the required gate to pass', () => {
+  for (const result of ['success', 'failure', 'cancelled', 'skipped', undefined]) {
+    const needs = { ...successfulNeeds(), 'model-measurement': { result } };
+    if (result === undefined) delete needs['model-measurement'];
+    const run = spawnSync(process.execPath, ['scripts/check-validation.mjs'], {
+      env: { ...process.env, VALIDATION_NEEDS: JSON.stringify(needs) }, encoding: 'utf8',
+    });
+    assert.equal(run.status, result === 'success' ? 0 : 1, run.stdout + run.stderr);
+    if (result !== 'success') assert.match(run.stderr, /model-measurement=/);
+  }
+});
 
 test('gate only succeeds when all required jobs succeed', () => {
   checkValidation(successfulNeeds());
@@ -22,6 +35,46 @@ test('gate only succeeds when all required jobs succeed', () => {
       assert.match(run.stderr, new RegExp(name));
     }
   }
+});
+
+async function localValidation(t) {
+  const directory = await mkdtemp(join(tmpdir(), 'ridgeline-validation-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(join(directory, 'bin'));
+  await writeFile(join(directory, 'bin/pnpm'), `#!/usr/bin/env node
+const fs = require('node:fs');
+fs.appendFileSync(process.env.VALIDATION_COMMAND_LOG, process.argv.slice(2).join(' ') + '\\n');
+if (process.argv[2] === process.env.VALIDATION_FAILED_COMMAND) process.exit(19);
+`, { mode: 0o755 });
+  const { scripts } = JSON.parse(await readFile('package.json', 'utf8'));
+  const log = join(directory, 'commands');
+  return {
+    run: failedCommand => spawnSync('sh', ['-c', scripts.validate], {
+      env: { ...process.env, PATH: `${join(directory, 'bin')}${delimiter}${process.env.PATH}`,
+        VALIDATION_COMMAND_LOG: log, VALIDATION_FAILED_COMMAND: failedCommand ?? '' },
+      encoding: 'utf8', timeout: 10_000,
+    }),
+    commands: async () => (await readFile(log, 'utf8')).trim().split('\n'),
+  };
+}
+
+test('local full validation executes all ordinary checks and measurement exactly once', async t => {
+  const fixture = await localValidation(t);
+  const result = fixture.run();
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.deepEqual(await fixture.commands(), [
+    'check', 'test', 'test:browser', 'test:playground:browser', 'test:controls:browser',
+    'build:playground', 'build:controls', 'test:measurement',
+  ]);
+});
+
+test('local full validation fails when measurement verification fails', async t => {
+  const fixture = await localValidation(t);
+  const result = fixture.run('test:measurement');
+  assert.ifError(result.error);
+  assert.equal(result.status, 19, result.stdout + result.stderr);
+  assert.equal((await fixture.commands()).filter(command => command === 'test:measurement').length, 1);
 });
 
 test('actual Playwright shard reports cover every case and preserve failures', async t => {

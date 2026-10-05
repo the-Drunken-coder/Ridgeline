@@ -63,6 +63,37 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:playground && pnpm build:controls
 
+  model-measurement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.9
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - name: Record measurement revision and command
+        run: node scripts/test-measurement.mjs --record-context
+      - run: node scripts/browser-resources.mjs measurement --preflight
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Verify packed model measurement consumer
+        run: pnpm test:measurement
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: model-measurement-verification
+          path: |
+            .artifacts/validation/model-measurement/
+            .artifacts/model-measurement/verification.json
+            .artifacts/model-measurement/consumer/public/provenance.json
+            .artifacts/model-measurement/assets/manifest.json
+            .artifacts/model-measurement/run-*/
+          include-hidden-files: true
+          if-no-files-found: warn
+
   packaged-browser:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -78,6 +109,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '24'
+      - run: node scripts/browser-resources.mjs packaged --preflight
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - name: Run installed consumer cases
@@ -116,6 +148,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '24'
+      - run: node scripts/browser-resources.mjs controls --preflight
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:controls:browser --reporter=list,blob
@@ -146,6 +179,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '24'
+      - run: node scripts/browser-resources.mjs playground --preflight
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:playground:browser --reporter=list,blob
@@ -211,7 +245,7 @@ jobs:
     # A skipped required job permits merging. Always evaluate the short gate,
     # including cancelled prerequisites, instead of skipping it on cancellation.
     if: always()
-    needs: [typecheck, module-tests, packaged-browser, control-browser, playground-browser, consumer-builds, browser-reports]
+    needs: [typecheck, module-tests, packaged-browser, control-browser, playground-browser, consumer-builds, browser-reports, model-measurement]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
