@@ -1,0 +1,205 @@
+[WebServer] (node:938138) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] $ pnpm build && vite build --config vite.playground.config.ts
+[WebServer] (node:938153) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] $ vite build && tsc -p tsconfig.build.json
+[WebServer] (node:938166) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:938228) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] [plugin builtin:vite-reporter] 
+[WebServer] (!) Some chunks are larger than 500 kB after minification. Consider:
+[WebServer] - Using dynamic import() to code-split the application
+[WebServer] - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+[WebServer] - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+[WebServer] (node:938283) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:938295) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 3 tests using 1 worker
+
+{"event":"begin","at":"2026-10-05T00:25:27.430Z","globalTimeout":0,"tests":[{"title":"model example uses shared registrations and independent consumer appearances","timeout":60000},{"title":"leaving the model example cancels pending consumer fetches","timeout":60000},{"title":"model example opens from the default terrain scene","timeout":60000}]}
+(node:938320) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+2026-10-05T00:25:27.992Z model example uses shared registrations and independent consumer appearances Launch browser
+2026-10-05T00:25:28.083Z model example uses shared registrations and independent consumer appearances Create context
+2026-10-05T00:25:28.113Z model example uses shared registrations and independent consumer appearances Create page
+2026-10-05T00:25:28.183Z model example uses shared registrations and independent consumer appearances Navigate
+2026-10-05T00:25:29.229Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:25:30.637Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:25:46.735Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:25:46.856Z model example uses shared registrations and independent consumer appearances Screenshot
+2026-10-05T00:26:04.892Z model example uses shared registrations and independent consumer appearances Evaluate
+2026-10-05T00:26:05.104Z model example uses shared registrations and independent consumer appearances A custom model must have visible rendered pixels
+2026-10-05T00:26:05.106Z model example uses shared registrations and independent consumer appearances Hover
+2026-10-05T00:26:05.219Z model example uses shared registrations and independent consumer appearances Expect "toBeVisible"
+2026-10-05T00:26:05.240Z model example uses shared registrations and independent consumer appearances Click
+2026-10-05T00:26:05.381Z model example uses shared registrations and independent consumer appearances Expect "not toHaveText"
+2026-10-05T00:26:05.456Z model example uses shared registrations and independent consumer appearances Mouse move
+2026-10-05T00:26:05.515Z model example uses shared registrations and independent consumer appearances Screenshot
+2026-10-05T00:26:26.938Z model example uses shared registrations and independent consumer appearances Select option
+2026-10-05T00:26:26.974Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:26:27.047Z model example uses shared registrations and independent consumer appearances Select option
+2026-10-05T00:26:27.140Z model example uses shared registrations and independent consumer appearances Select option
+2026-10-05T00:26:27.826Z model example uses shared registrations and independent consumer appearances Expect "toHaveValue"
+2026-10-05T00:26:31.688Z model example uses shared registrations and independent consumer appearances Click
+2026-10-05T00:26:40.158Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:26:51.057Z model example uses shared registrations and independent consumer appearances Click
+2026-10-05T00:26:56.322Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:27:02.447Z model example uses shared registrations and independent consumer appearances Select option
+2026-10-05T00:27:14.625Z model example uses shared registrations and independent consumer appearances Click
+2026-10-05T00:27:16.763Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:27:19.902Z model example uses shared registrations and independent consumer appearances Click
+2026-10-05T00:27:35.255Z model example uses shared registrations and independent consumer appearances Expect "toHaveText"
+2026-10-05T00:27:35.303Z model example uses shared registrations and independent consumer appearances Close context
+  ✘  1 tests/playground/model-example.spec.ts:15:1 › model example uses shared registrations and independent consumer appearances (2.1m)
+{"event":"result","at":"2026-10-05T00:27:55.353Z","title":"model example uses shared registrations and independent consumer appearances","status":"timedOut","duration":127248,"errors":[{"message":"\u001b[31mTest timeout of 120000ms exceeded.\u001b[39m","stack":"\u001b[31mTest timeout of 120000ms exceeded.\u001b[39m"},{"message":"Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('status', { name: 'Model example status' })\nExpected: \u001b[32m\"0 models · 8 icons\"\u001b[39m\nReceived: \u001b[31m\"\"\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" getByRole('status', { name: 'Model example status' }) with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('status', { name: 'Model example status' })\u001b[22m\n\u001b[2m  - Protocol error (Runtime.callFunctionOn): Internal server error, session closed.\u001b[22m\n","stack":"Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('status', { name: 'Model example status' })\nExpected: \u001b[32m\"0 models · 8 icons\"\u001b[39m\nReceived: \u001b[31m\"\"\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" getByRole('status', { name: 'Model example status' }) with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('status', { name: 'Model example status' })\u001b[22m\n\u001b[2m  - Protocol error (Runtime.callFunctionOn): Internal server error, session closed.\u001b[22m\n\n    at /tmp/ridgeline-model-example/tests/playground/model-example.spec.ts:64:76","location":{"file":"/tmp/ridgeline-model-example/tests/playground/model-example.spec.ts","column":76,"line":64},"snippet":"  62 |   await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 20000 });\n  63 |   await page.getByRole('button', { name: 'Icons at distance' }).click();\n> 64 |   await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('0 models · 8 icons');\n     |                                                                            ^\n  65 |   await page.getByRole('button', { name: 'Models up close' }).click();\n  66 |   await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 20000 });\n  67 |   await page.getByRole('button', { name: 'Remove sample' }).click();"}]}
+(node:939588) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+2026-10-05T00:27:56.022Z leaving the model example cancels pending consumer fetches Launch browser
+2026-10-05T00:27:56.141Z leaving the model example cancels pending consumer fetches Create context
+2026-10-05T00:27:56.169Z leaving the model example cancels pending consumer fetches Create page
+2026-10-05T00:27:56.277Z leaving the model example cancels pending consumer fetches Navigate
+2026-10-05T00:27:57.335Z leaving the model example cancels pending consumer fetches Expect "poll toBe"
+2026-10-05T00:27:57.342Z leaving the model example cancels pending consumer fetches Expect "toBe"
+2026-10-05T00:27:57.344Z leaving the model example cancels pending consumer fetches Expect "toHaveText"
+2026-10-05T00:27:58.695Z leaving the model example cancels pending consumer fetches Select option
+2026-10-05T00:27:58.836Z leaving the model example cancels pending consumer fetches Expect "toBeHidden"
+2026-10-05T00:27:58.983Z leaving the model example cancels pending consumer fetches Expect "toHaveText"
+2026-10-05T00:27:59.131Z leaving the model example cancels pending consumer fetches Select option
+2026-10-05T00:28:01.276Z leaving the model example cancels pending consumer fetches Expect "toHaveText"
+2026-10-05T00:28:36.088Z leaving the model example cancels pending consumer fetches Close context
+  ✘  2 tests/playground/model-example.spec.ts:75:1 › leaving the model example cancels pending consumer fetches (40.0s)
+{"event":"result","at":"2026-10-05T00:28:51.515Z","title":"leaving the model example cancels pending consumer fetches","status":"failed","duration":39962,"errors":[{"message":"Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('status', { name: 'Model example status' })\nExpected: \u001b[32m\"\u001b[7m8\u001b[27m models · 0 icons\"\u001b[39m\nReceived: \u001b[31m\"\u001b[7m0\u001b[27m models · 0 icons\"\u001b[39m\nTimeout:  20000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" getByRole('status', { name: 'Model example status' }) with timeout 20000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('status', { name: 'Model example status' })\u001b[22m\n\u001b[2m    - locator resolved to <p role=\"status\" aria-label=\"Model example status\">Loading models…</p>\u001b[22m\n\u001b[2m    - unexpected value \"Loading models…\"\u001b[22m\n\u001b[2m    2 × locator resolved to <p role=\"status\" aria-label=\"Model example status\">0 models · 0 icons</p>\u001b[22m\n\u001b[2m      - unexpected value \"0 models · 0 icons\"\u001b[22m\n","stack":"Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('status', { name: 'Model example status' })\nExpected: \u001b[32m\"\u001b[7m8\u001b[27m models · 0 icons\"\u001b[39m\nReceived: \u001b[31m\"\u001b[7m0\u001b[27m models · 0 icons\"\u001b[39m\nTimeout:  20000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" getByRole('status', { name: 'Model example status' }) with timeout 20000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('status', { name: 'Model example status' })\u001b[22m\n\u001b[2m    - locator resolved to <p role=\"status\" aria-label=\"Model example status\">Loading models…</p>\u001b[22m\n\u001b[2m    - unexpected value \"Loading models…\"\u001b[22m\n\u001b[2m    2 × locator resolved to <p role=\"status\" aria-label=\"Model example status\">0 models · 0 icons</p>\u001b[22m\n\u001b[2m      - unexpected value \"0 models · 0 icons\"\u001b[22m\n\n    at /tmp/ridgeline-model-example/tests/playground/model-example.spec.ts:94:76","location":{"file":"/tmp/ridgeline-model-example/tests/playground/model-example.spec.ts","column":76,"line":94},"snippet":"  92 |   await expect(page.locator('#feature-count')).toHaveText('0 features');\n  93 |   await page.getByLabel('Test scenario').selectOption('models');\n> 94 |   await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 20000 });\n     |                                                                            ^\n  95 |   await expect(page.locator('#feature-count')).toHaveText('8 features');\n  96 |   expect(errors).toEqual([]);\n  97 | });"}]}
+(node:940006) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+2026-10-05T00:28:52.102Z model example opens from the default terrain scene Launch browser
+2026-10-05T00:28:52.192Z model example opens from the default terrain scene Create context
+2026-10-05T00:28:52.219Z model example opens from the default terrain scene Create page
+2026-10-05T00:28:52.288Z model example opens from the default terrain scene Navigate
+2026-10-05T00:28:53.349Z model example opens from the default terrain scene Expect "toHaveText"
+2026-10-05T00:28:54.678Z model example opens from the default terrain scene Select option
+2026-10-05T00:28:55.299Z model example opens from the default terrain scene Expect "toHaveText"
+2026-10-05T00:29:42.948Z model example opens from the default terrain scene Close context
+  ✘  3 tests/playground/model-example.spec.ts:99:1 › model example opens from the default terrain scene (50.8s)
+{"event":"result","at":"2026-10-05T00:29:56.414Z","title":"model example opens from the default terrain scene","status":"failed","duration":50783,"errors":[{"message":"Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('status', { name: 'Model example status' })\nExpected: \u001b[32m\"\u001b[7m8\u001b[27m models · \u001b[7m0\u001b[27m icons\"\u001b[39m\nReceived: \u001b[31m\"\u001b[7m0\u001b[27m models · \u001b[7m6\u001b[27m icons\"\u001b[39m\nTimeout:  30000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" getByRole('status', { name: 'Model example status' }) with timeout 30000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('status', { name: 'Model example status' })\u001b[22m\n\u001b[2m    - locator resolved to <p role=\"status\" aria-label=\"Model example status\">Loading models…</p>\u001b[22m\n\u001b[2m    - unexpected value \"Loading models…\"\u001b[22m\n\u001b[2m    - locator resolved to <p role=\"status\" aria-label=\"Model example status\">0 models · 0 icons</p>\u001b[22m\n\u001b[2m    - unexpected value \"0 models · 0 icons\"\u001b[22m\n\u001b[2m    - locator resolved to <p role=\"status\" aria-label=\"Model example status\">0 models · 6 icons</p>\u001b[22m\n\u001b[2m    - unexpected value \"0 models · 6 icons\"\u001b[22m\n","stack":"Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByRole('status', { name: 'Model example status' })\nExpected: \u001b[32m\"\u001b[7m8\u001b[27m models · \u001b[7m0\u001b[27m icons\"\u001b[39m\nReceived: \u001b[31m\"\u001b[7m0\u001b[27m models · \u001b[7m6\u001b[27m icons\"\u001b[39m\nTimeout:  30000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" getByRole('status', { name: 'Model example status' }) with timeout 30000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('status', { name: 'Model example status' })\u001b[22m\n\u001b[2m    - locator resolved to <p role=\"status\" aria-label=\"Model example status\">Loading models…</p>\u001b[22m\n\u001b[2m    - unexpected value \"Loading models…\"\u001b[22m\n\u001b[2m    - locator resolved to <p role=\"status\" aria-label=\"Model example status\">0 models · 0 icons</p>\u001b[22m\n\u001b[2m    - unexpected value \"0 models · 0 icons\"\u001b[22m\n\u001b[2m    - locator resolved to <p role=\"status\" aria-label=\"Model example status\">0 models · 6 icons</p>\u001b[22m\n\u001b[2m    - unexpected value \"0 models · 6 icons\"\u001b[22m\n\n    at /tmp/ridgeline-model-example/tests/playground/model-example.spec.ts:104:76","location":{"file":"/tmp/ridgeline-model-example/tests/playground/model-example.spec.ts","column":76,"line":104},"snippet":"  102 |   await expect(page.locator('#map-status')).toHaveText('Ready');\n  103 |   await page.getByLabel('Test scenario').selectOption('models');\n> 104 |   await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 30000 });\n      |                                                                            ^\n  105 |   await expect(page.locator('#feature-count')).toHaveText('8 features');\n  106 |   await expect(page.locator('#diagnostics')).toBeHidden();\n  107 | });"}]}
+
+
+  1) tests/playground/model-example.spec.ts:15:1 › model example uses shared registrations and independent consumer appearances 
+
+    Test timeout of 120000ms exceeded.
+
+    Error: expect(locator).toHaveText(expected) failed
+
+    Locator:  getByRole('status', { name: 'Model example status' })
+    Expected: "0 models · 8 icons"
+    Received: ""
+
+    Call log:
+      - Expect "toHaveText" getByRole('status', { name: 'Model example status' }) with timeout 5000ms
+      - waiting for getByRole('status', { name: 'Model example status' })
+      - Protocol error (Runtime.callFunctionOn): Internal server error, session closed.
+
+
+      62 |   await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 20000 });
+      63 |   await page.getByRole('button', { name: 'Icons at distance' }).click();
+    > 64 |   await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('0 models · 8 icons');
+         |                                                                            ^
+      65 |   await page.getByRole('button', { name: 'Models up close' }).click();
+      66 |   await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 20000 });
+      67 |   await page.getByRole('button', { name: 'Remove sample' }).click();
+        at /tmp/ridgeline-model-example/tests/playground/model-example.spec.ts:64:76
+
+    Error Context: .artifacts/playground-tests/model-example-model-exampl-d4a22-endent-consumer-appearances/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    .artifacts/playground-tests/model-example-model-exampl-d4a22-endent-consumer-appearances/trace.zip
+    Usage:
+
+        npx playwright show-trace .artifacts/playground-tests/model-example-model-exampl-d4a22-endent-consumer-appearances/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) tests/playground/model-example.spec.ts:75:1 › leaving the model example cancels pending consumer fetches 
+
+    Error: expect(locator).toHaveText(expected) failed
+
+    Locator:  getByRole('status', { name: 'Model example status' })
+    Expected: "8 models · 0 icons"
+    Received: "0 models · 0 icons"
+    Timeout:  20000ms
+
+    Call log:
+      - Expect "toHaveText" getByRole('status', { name: 'Model example status' }) with timeout 20000ms
+      - waiting for getByRole('status', { name: 'Model example status' })
+        - locator resolved to <p role="status" aria-label="Model example status">Loading models…</p>
+        - unexpected value "Loading models…"
+        2 × locator resolved to <p role="status" aria-label="Model example status">0 models · 0 icons</p>
+          - unexpected value "0 models · 0 icons"
+
+
+      92 |   await expect(page.locator('#feature-count')).toHaveText('0 features');
+      93 |   await page.getByLabel('Test scenario').selectOption('models');
+    > 94 |   await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 20000 });
+         |                                                                            ^
+      95 |   await expect(page.locator('#feature-count')).toHaveText('8 features');
+      96 |   expect(errors).toEqual([]);
+      97 | });
+        at /tmp/ridgeline-model-example/tests/playground/model-example.spec.ts:94:76
+
+    Error Context: .artifacts/playground-tests/model-example-leaving-the--b63a2-ls-pending-consumer-fetches/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .artifacts/playground-tests/model-example-leaving-the--b63a2-ls-pending-consumer-fetches/trace.zip
+    Usage:
+
+        npx playwright show-trace .artifacts/playground-tests/model-example-leaving-the--b63a2-ls-pending-consumer-fetches/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) tests/playground/model-example.spec.ts:99:1 › model example opens from the default terrain scene 
+
+    Error: expect(locator).toHaveText(expected) failed
+
+    Locator:  getByRole('status', { name: 'Model example status' })
+    Expected: "8 models · 0 icons"
+    Received: "0 models · 6 icons"
+    Timeout:  30000ms
+
+    Call log:
+      - Expect "toHaveText" getByRole('status', { name: 'Model example status' }) with timeout 30000ms
+      - waiting for getByRole('status', { name: 'Model example status' })
+        - locator resolved to <p role="status" aria-label="Model example status">Loading models…</p>
+        - unexpected value "Loading models…"
+        - locator resolved to <p role="status" aria-label="Model example status">0 models · 0 icons</p>
+        - unexpected value "0 models · 0 icons"
+        - locator resolved to <p role="status" aria-label="Model example status">0 models · 6 icons</p>
+        - unexpected value "0 models · 6 icons"
+
+
+      102 |   await expect(page.locator('#map-status')).toHaveText('Ready');
+      103 |   await page.getByLabel('Test scenario').selectOption('models');
+    > 104 |   await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 30000 });
+          |                                                                            ^
+      105 |   await expect(page.locator('#feature-count')).toHaveText('8 features');
+      106 |   await expect(page.locator('#diagnostics')).toBeHidden();
+      107 | });
+        at /tmp/ridgeline-model-example/tests/playground/model-example.spec.ts:104:76
+
+    Error Context: .artifacts/playground-tests/model-example-model-exampl-e172f-m-the-default-terrain-scene/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .artifacts/playground-tests/model-example-model-exampl-e172f-m-the-default-terrain-scene/trace.zip
+    Usage:
+
+        npx playwright show-trace .artifacts/playground-tests/model-example-model-exampl-e172f-m-the-default-terrain-scene/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3 failed
+    tests/playground/model-example.spec.ts:15:1 › model example uses shared registrations and independent consumer appearances 
+    tests/playground/model-example.spec.ts:75:1 › leaving the model example cancels pending consumer fetches 
+    tests/playground/model-example.spec.ts:99:1 › model example opens from the default terrain scene 
+{"event":"end","status":"failed","startTime":"2026-10-05T00:25:21.395Z","duration":275055.165}

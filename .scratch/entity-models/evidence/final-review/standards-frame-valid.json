@@ -1,0 +1,40 @@
+{
+  "first": {
+    "acceptedAltitude": 300,
+    "state": {
+      "placement": "airborne",
+      "representation": "model",
+      "altitude": 300,
+      "ground": 0,
+      "coverage": "ready",
+      "footprintTriangles": 0,
+      "computedAt": 1791162175782.4502,
+      "computationMs": 2.5103730000000724,
+      "model": {
+        "id": "asset",
+        "status": "ready",
+        "replacementPending": false
+      }
+    },
+    "instanceAltitude": 300,
+    "pendingFrames": 0
+  },
+  "second": {
+    "state": {
+      "placement": "airborne",
+      "representation": "model",
+      "altitude": 300,
+      "ground": 0,
+      "coverage": "ready",
+      "footprintTriangles": 0,
+      "computedAt": 1791162175782.4502,
+      "computationMs": 2.5103730000000724,
+      "model": {
+        "id": "asset",
+        "status": "ready",
+        "replacementPending": false
+      }
+    },
+    "instanceAltitude": 300
+  }
+}

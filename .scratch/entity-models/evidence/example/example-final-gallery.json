@@ -1,0 +1,37 @@
+{
+  "checkoutHead": "5b337bfee1f4f77202fca2916028e7cc992961bd",
+  "uncommittedFiles": [],
+  "capturedUtc": "2026-10-05T00:43:07.485000+00:00",
+  "source": "Playwright screencast frame during final model example test",
+  "sourceFrame": "page@fc7070bbaee9a255a98403df9815bf85-1791160987485.jpeg",
+  "image": "example-final-ui.jpeg",
+  "viewportCss": [
+    1440,
+    900
+  ],
+  "devicePixelRatio": 1,
+  "projection": "flat",
+  "terrain": true,
+  "hillshade": true,
+  "elevation": "zero-meter512pxTerrarium",
+  "camera": {
+    "center": [
+      6.869,
+      45.925
+    ],
+    "zoom": 17,
+    "pitch": 50,
+    "bearing": -20
+  },
+  "launchArgs": [
+    "--use-angle=swiftshader",
+    "--enable-unsafe-swiftshader"
+  ],
+  "playwrightVersion": "1.63.0",
+  "exactBrowserVersion": "not captured in this test run",
+  "capturePixels": [
+    800,
+    500
+  ],
+  "captureScaled": true
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "name": "drone.glb",
+    "bytes": 259676,
+    "sha256": "bc9f0d765e0fdb838a9baf26b472f955a11bb2509a3337e918054241b134638d",
+    "prototypeBytesUnchanged": true
+  },
+  {
+    "name": "tank.glb",
+    "bytes": 44716,
+    "sha256": "e6050023af3c703a912418adf2f6564b3e0068ba9cfdbc11dba18e047a50e653",
+    "prototypeBytesUnchanged": true
+  },
+  {
+    "name": "plane.glb",
+    "bytes": 77620,
+    "sha256": "4196c1920cec466a5211f8d9a86b3eb08ec1772e7e96e73cda7fede525f6e950",
+    "prototypeBytesUnchanged": true
+  },
+  {
+    "name": "boat.glb",
+    "bytes": 25084,
+    "sha256": "5c4c573f34b9dce89f551eb6501b031dc19f799d6cd9adf97e36857262968740",
+    "prototypeBytesUnchanged": true
+  },
+  {
+    "name": "sources.json",
+    "bytes": 1477,
+    "sha256": "8d484b5e5ab4dad5694a71c4d6c8e576f7f40f4ba6bd504d46bde3a624207ab0",
+    "prototypeBytesUnchanged": true
+  },
+  {
+    "name": "Kenney-License.txt",
+    "bytes": 687,
+    "sha256": "7c9263e8c136e010b78d13b655c73b9661a78201feb3b1a3d0efef8828487242",
+    "prototypeBytesUnchanged": true
+  }
+]
