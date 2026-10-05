@@ -95,3 +95,13 @@ test('leaving the model example cancels pending consumer fetches', async ({ page
   await expect(page.locator('#feature-count')).toHaveText('8 features');
   expect(errors).toEqual([]);
 });
+
+test('model example opens from the default terrain scene', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto('/');
+  await expect(page.locator('#map-status')).toHaveText('Ready');
+  await page.getByLabel('Test scenario').selectOption('models');
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 30000 });
+  await expect(page.locator('#feature-count')).toHaveText('8 features');
+  await expect(page.locator('#diagnostics')).toBeHidden();
+});
