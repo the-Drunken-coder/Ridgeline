@@ -10,6 +10,7 @@ import { groups, movingFeatures, overlapFeatures, registerSampleIcons, terrainFe
 import type { Sample } from './samples';
 import { airborneFeatures, defaultAirborneSettings, mountAirborneInspector } from './airborne';
 import type { AirborneSettings } from './airborne';
+import { mountModelExample } from './model-example';
 
 setWorkerUrl(workerUrl);
 
@@ -20,6 +21,9 @@ function element<T extends HTMLElement>(selector: string, type: new (...args: ne
 }
 const mapContainer = element('#map', HTMLDivElement);
 const scenario = element('#scenario', HTMLSelectElement);
+scenario.add(new Option('Entity models', 'models'));
+const modelContainer = document.createElement('section'); modelContainer.id = 'model-example'; modelContainer.hidden = true;
+element('#selection', HTMLElement).after(modelContainer);
 const terrain = element('#terrain', HTMLInputElement);
 const hillshade = element('#hillshade', HTMLInputElement);
 const projection = element('#projection', HTMLSelectElement);
@@ -54,6 +58,7 @@ let disposed = false;
 let placingSymbol = false;
 const airborneSettings = new Map<string, AirborneSettings>();
 let airborneInspector: ReturnType<typeof mountAirborneInspector> | undefined;
+let modelExample: ReturnType<typeof mountModelExample> | undefined;
 
 function showError(error: RidgelineError) {
   diagnostics.hidden = false;
@@ -67,7 +72,8 @@ function showError(error: RidgelineError) {
 const viewport = createViewport<Sample>({
   container: mapContainer, terrain: true, hillshade: true,
   camera: { center: [6.88, 45.92], zoom: 12.5, pitch: 55, bearing: -20 },
-  style: feature => ({ color: feature.properties.color, icon: feature.properties.icon, label: feature.properties.label, radius: feature.properties.icon ? 7 : 4 }),
+  style: feature => ({ color: feature.properties.color, icon: feature.properties.icon, label: feature.properties.label, radius: feature.properties.icon ? 7 : 4,
+    modelAppearance: modelExample?.appearance(feature.id) }),
   onError: showError,
 });
 registerSampleIcons(viewport);
@@ -147,7 +153,8 @@ function stopBenchmark() { measuring = false; cancelAnimationFrame(benchmarkFram
 function stopMotion() { cancelAnimationFrame(motionFrame); motionFrame = 0; if (motionTimer) clearInterval(motionTimer); motionTimer = undefined; stopBenchmark(); }
 function isAirborneScenario() { return currentScenario === 'airborne' || currentScenario === 'airborne-single'; }
 function resetCamera() {
-  if (currentScenario === 'sidc') viewport.setCamera({ center: [6.87,45.924], zoom: 13.5, pitch: 0, bearing: 0 });
+  if (currentScenario === 'models') modelExample?.resetCamera();
+  else if (currentScenario === 'sidc') viewport.setCamera({ center: [6.87,45.924], zoom: 13.5, pitch: 0, bearing: 0 });
   else if (currentScenario === 'overlap') viewport.setCamera({ center: [6.869,45.925], zoom: 14.3, pitch: 0, bearing: 0 });
   else if (currentScenario === 'moving') viewport.setCamera({ center: [6.869,45.92], zoom: 12.9, pitch: 0, bearing: 0 });
   else if (currentScenario === 'airborne-single') viewport.setCamera({ center: [6.867,45.920], zoom: 14, pitch: 60, bearing: -20 });
@@ -159,15 +166,17 @@ function loadScenario() {
   drawingDemo?.destroy(); drawingDemo=undefined;
   sidcDemo?.destroy(); sidcDemo = undefined;
   airborneInspector?.destroy(); airborneInspector = undefined;
+  modelExample?.destroy(); modelExample = undefined;
   stopMotion(); currentScenario = scenario.value; tick = 0; paused = false;
   document.body.classList.toggle('drawing-scenario', currentScenario === 'drawing');
   element('#drawing-tools',HTMLDivElement).hidden=currentScenario!=='drawing';
   element('#drawing-inspector',HTMLDivElement).hidden=currentScenario!=='drawing';
   document.body.classList.toggle('sidc-scenario', currentScenario === 'sidc');
   document.body.classList.toggle('airborne-scenario', isAirborneScenario());
-  element('#map-settings', HTMLDetailsElement).open = !isAirborneScenario() && currentScenario !== 'drawing';
+  element('#map-settings', HTMLDetailsElement).open = !isAirborneScenario() && currentScenario !== 'drawing' && currentScenario !== 'models';
   element('#sidc-demo', HTMLElement).hidden = currentScenario !== 'sidc';
   element('#airborne-demo', HTMLElement).hidden = !isAirborneScenario();
+  modelContainer.hidden = currentScenario !== 'models';
   element('#selection', HTMLElement).hidden = currentScenario === 'sidc';
   pauseButton.textContent = 'Pause'; measurement.textContent = 'No measurement yet'; diagnostics.hidden = true;
   element('#groups', HTMLDivElement).hidden = currentScenario !== 'overlap';
@@ -187,6 +196,7 @@ function loadScenario() {
     drawingDemo=mountDrawingDemo(viewport,element('#drawing-tools',HTMLDivElement),element('#drawing-inspector',HTMLDivElement));
     viewport.setSelection(['drawing-0']);
   }
+  else if (currentScenario === 'models') modelExample = mountModelExample(viewport, modelContainer);
   else if (currentScenario === 'overlap') viewport.upsert(overlapFeatures());
   else if (currentScenario === 'moving') {
     viewport.upsert([...movingFeatures(), ...terrainFeatures().filter(feature => feature.geometry.type !== 'Point')]);
@@ -279,8 +289,9 @@ listen(measureButton, 'click', () => {
   };
   benchmarkFrame = requestAnimationFrame(sample);
 });
-if(new URLSearchParams(location.search).get('scenario')==='drawing')scenario.value='drawing';
+const initialScenario = new URLSearchParams(location.search).get('scenario');
+if (initialScenario && [...scenario.options].some(option => option.value === initialScenario)) scenario.value = initialScenario;
 void viewport.ready.then(loadScenario).catch(error => { notice.textContent = 'The map could not start. See the diagnostic for details.'; if (error instanceof Error) console.error(error); });
-function dispose() { offSelection(); drawingDemo?.destroy(); disposed = true; ++scenarioRevision; airborneInspector?.destroy(); sidcDemo?.destroy(); interactions?.destroy(); stopMotion(); lifetime.abort(); viewport.destroy(); }
+function dispose() { offSelection(); drawingDemo?.destroy(); disposed = true; ++scenarioRevision; modelExample?.destroy(); airborneInspector?.destroy(); sidcDemo?.destroy(); interactions?.destroy(); stopMotion(); lifetime.abort(); viewport.destroy(); }
 window.addEventListener('pagehide', dispose, { once: true });
 if (import.meta.hot) import.meta.hot.dispose(dispose);
