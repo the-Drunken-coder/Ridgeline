@@ -595,19 +595,20 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     on(event, listener) { assertActive(); listeners[event].add(listener); return () => listeners[event].delete(listener); },
     destroy() {
       if (destroyed) return;
-      interactionRevision++; destroyed = true; prepared = false; emit('destroy', undefined);
+      interactionRevision++; destroyed = true; prepared = false;
+      // Destroy listeners may synchronously mount a new viewport in this same
+      // container. Retire only our DOM before giving them that ownership.
+      cleanupContainer.call(map);
+      map._cleanupContainer = () => {};
+      emit('destroy', undefined);
       publication.destroy();
       if (!readySettled) { readySettled = true; rejectReady(new RidgelineError('DESTROYED', 'Viewport was destroyed before initialization completed.', { operation: 'initialize', recoverable: false })); }
       clearTimeout(timer); resize.disconnect();
       entities.destroy(); models.destroy(); modelLabels.destroy(); measurement.destroy();
       preparedListeners.clear(); sceneListeners.clear(); drawingInternals.delete(map);
       map.getCanvas().removeEventListener('mouseleave', onLeave);
-      if (nativeRenderDepth) {
-        cleanupContainer.call(map);
-        // A new viewport may already be mounted when native removal completes.
-        map._cleanupContainer = () => {};
-        removeAfterRender = true;
-      } else removeMap();
+      if (nativeRenderDepth) removeAfterRender = true;
+      else removeMap();
       icons.clear(); selected.clear(); publishedMarkerKeys.clear(); availableMarkers.clear(); store.remove(store.ids());
       for (const set of Object.values(listeners)) set.clear();
       hoverNotified.clear();

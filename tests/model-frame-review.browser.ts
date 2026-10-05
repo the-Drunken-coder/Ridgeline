@@ -203,4 +203,36 @@ export const modelFrameReviewCases: readonly { name: string; run(context: Contex
       await pause(5000); viewport.map.off('render', rendered); check(idleFrames === 0, `Culling scheduled ${idleFrames} idle frames`);
     } finally { f.destroy(); }
   } },
+  { name: 'Viewport destruction preserves synchronous listener remounts', async run(context) {
+    const failures: string[] = [];
+    for (const activeRender of [false,true]) {
+      const f = create(context, [entity()]), { viewport } = f;
+      let replacement: Viewport | undefined, emptyInListener = false;
+      try {
+        await viewport.ready; await viewport.registerModel('asset', { bytes: solidGlb() }); await frame(viewport);
+        viewport.on('destroy', () => {
+          emptyInListener = !context.container.querySelector('canvas');
+          replacement = createViewport({ container: context.container, logger: () => {},
+            basemap: { version: 8, sources: {}, layers: [{ id: 'replacement', type: 'background', paint: { 'background-color': '#ffffff' } }] } });
+          context.setCurrent(replacement);
+        });
+        if (activeRender) {
+          let armed = true;
+          viewport.map.addLayer({ id: 'destroy-in-prerender', type: 'custom', prerender() {
+            if (armed) { armed = false; viewport.destroy(); }
+          }, render() {} }, 'rl:models');
+          viewport.map.triggerRepaint();
+          await context.until(() => Boolean(replacement), 'active render destroy listener remount');
+        } else viewport.destroy();
+        check(replacement, 'Destroy listener did not create the replacement'); await replacement.ready;
+        const label = activeRender ? 'active native render' : 'ordinary destruction';
+        if (!emptyInListener) failures.push(`${label} notified destroy before removing its owned DOM`);
+        if (!context.container.classList.contains('maplibregl-map') || context.container.querySelectorAll('canvas').length !== 1)
+          failures.push(`${label} removed the replacement DOM or shared map class`);
+        viewport.destroy();
+        check(context.container.querySelectorAll('canvas').length === 1, 'Repeated old destruction removed the replacement');
+      } finally { replacement?.destroy(); f.destroy(); }
+    }
+    check(failures.length === 0, failures.join('; '));
+  } },
 ];
