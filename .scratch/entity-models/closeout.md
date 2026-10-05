@@ -2,6 +2,14 @@
 
 Spec: [Approved requirements](spec.md), imported unchanged from `21805ecb7543098f8c9820c476725654e20b31ec`. Parent [#81](https://github.com/the-Drunken-coder/Ridgeline/issues/81) remains open and unchanged. Root is the integration and verification owner.
 
+## PR #92 playground CI follow-up, 2026-10-05
+
+Hosted [run 37271865676](https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37271865676) on PR head `60dd1b545afda985a95acf27600f82556b34b632`, tested merge checkout `a99eb1065ecbb0178099b33e8141160df00687a4`, passed all 187 packed browser workflows, type checks, module tests, control browser and consumer builds. Four playground Model workflows timed out. Their retained traces show the expected Model state or pixels appearing after the deadlines, including a screenshot that took 66.54 seconds. No unexpected console or network failure appeared, and review of scheduling found no stationary render loop.
+
+Root reviewed and exercised that clean head plus an uncommitted playground trace-configuration change. Its diff SHA-256 is `a80b2b5140be1042fec25467dd16380aa008fb5769048351e1a67b5030d71c9e`, using `git diff --binary HEAD -- playwright.playground.config.mjs | sha256sum`. The first complete workflow passes with tracing off; all five workflows then pass with continuous screencast capture disabled and action/DOM traces retained. Explicit pixel assertions, test screenshots and failure screenshots still run. `pnpm test:playground:browser` also rebuilds the library and production playground. This changes diagnostic capture only; it leaves the tested production source at `60dd1b5`.
+
+Hosted checks must exercise the pushed trace configuration before merge readiness is established. The exact final head, tested checkout and results are recorded on [PR #92](https://github.com/the-Drunken-coder/Ridgeline/pull/92).
+
 ## PR #92 hosted-review follow-up, 2026-10-05
 
 Root owns integrated verification. The additional hosted findings are addressed: implicit zero-filled accessors are bounded by the supplied GLB byte length before allocation; recovery sampling and picking convert between CSS and drawing-buffer coordinates; both affected recovery cases run at map pixel ratio 2; the measurement runner uses Vite's complete preview-server shutdown. The spec's implementation status and README's default-dot fallback are current. Approved feature requirements and the pending hardware gate are unchanged.
