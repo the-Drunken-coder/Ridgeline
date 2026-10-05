@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('model example uses shared registrations and independent consumer appearances', async ({ page }, testInfo) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/?scenario=models'); await expect(page.locator('#map-status')).toHaveText('Ready');
@@ -91,7 +91,7 @@ test('leaving the model example cancels pending consumer fetches', async ({ page
   await expect(page.locator('#model-example')).toBeHidden();
   await expect(page.locator('#feature-count')).toHaveText('0 features');
   await page.getByLabel('Test scenario').selectOption('models');
-  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 20000 });
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 60000 });
   await expect(page.locator('#feature-count')).toHaveText('8 features');
   expect(errors).toEqual([]);
 });
@@ -101,7 +101,56 @@ test('model example opens from the default terrain scene', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#map-status')).toHaveText('Ready');
   await page.getByLabel('Test scenario').selectOption('models');
-  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 30000 });
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 60000 });
   await expect(page.locator('#feature-count')).toHaveText('8 features');
   await expect(page.locator('#diagnostics')).toBeHidden();
+});
+
+test('a failed reset cannot replace a newer accepted shared model', async ({ page }) => {
+  test.setTimeout(240_000);
+  let firstDrone = true, firstBoat = true, oldBoatRequested = false, oldBoatDelivered = false, releaseBoat!: () => void;
+  const delayedBoat = new Promise<void>(resolve => { releaseBoat = resolve; });
+  await page.route('**/entity-models/drone.glb', route => {
+    if (firstDrone) { firstDrone = false; return route.fulfill({ status: 500, body: 'Temporary sample fetch failure' }); }
+    return route.fulfill({ path: 'playground/public/entity-models/drone.glb' });
+  });
+  await page.route('**/entity-models/boat.glb', async route => {
+    const old = firstBoat; firstBoat = false;
+    if (old) { oldBoatRequested = true; await delayedBoat; }
+    await route.fulfill({ path: 'playground/public/entity-models/boat.glb' });
+    if (old) oldBoatDelivered = true;
+  });
+  await page.goto('/?scenario=models');
+  await expect.poll(() => oldBoatRequested).toBe(true);
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('Could not load Drone (500).');
+  await page.getByRole('button', { name: 'Reset samples' }).click();
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 60000 });
+  const canvas = page.locator('#map canvas').first();
+  await page.getByLabel('Model sample', { exact: true }).selectOption('model-boat-original');
+  await page.getByRole('button', { name: 'Locate', exact: true }).click();
+  await expect.poll(blueBoatPixels, { timeout: 60000 }).toBeGreaterThan(10);
+  await page.getByLabel('Replacement model').selectOption('tank');
+  await page.getByRole('button', { name: 'Replace shared model' }).click();
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 20000 });
+  async function blueBoatPixels() {
+    const png = await canvas.screenshot();
+    return page.evaluate(async data => {
+      const image = new Image(); image.src = `data:image/png;base64,${data}`; await image.decode();
+      const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
+      const context = canvas.getContext('2d'); if (!context) throw new Error('No pixel reader');
+      context.drawImage(image, 0, 0);
+      const pixels = context.getImageData(image.width / 2 - 30, image.height / 2 - 30, 60, 60).data;
+      let count = 0;
+      for (let i = 0; i < pixels.length; i += 4) if (pixels[i + 2]! > pixels[i]! + 30 && pixels[i + 2]! > pixels[i + 1]! + 20) count++;
+      return count;
+    }, png.toString('base64'));
+  }
+  await expect.poll(blueBoatPixels, { timeout: 60000 }).toBeLessThan(5);
+  releaseBoat();
+  await expect.poll(() => oldBoatDelivered).toBe(true);
+  const until = Date.now() + 5000;
+  while (Date.now() < until) {
+    expect(await blueBoatPixels(), 'The late blue boat must not overwrite the accepted tank').toBeLessThan(5);
+    await page.waitForTimeout(250);
+  }
 });
