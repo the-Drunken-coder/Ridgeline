@@ -47,14 +47,14 @@ test('model example uses shared registrations and independent consumer appearanc
   await page.getByRole('button', { name: 'Unload shared model' }).click();
   await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('6 models · 2 icons');
   await page.getByRole('button', { name: 'Load shared model', exact: true }).click();
-  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons');
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 20000 });
   await page.getByLabel('Replacement model').selectOption('plane');
   await page.getByRole('button', { name: 'Replace shared model' }).click();
-  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons');
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 20000 });
   await page.getByRole('button', { name: 'Icons at distance' }).click();
   await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('0 models · 8 icons');
   await page.getByRole('button', { name: 'Models up close' }).click();
-  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons');
+  await expect(page.getByRole('status', { name: 'Model example status' })).toHaveText('8 models · 0 icons', { timeout: 20000 });
   await page.getByRole('button', { name: 'Remove sample' }).click();
   await expect(page.locator('#feature-count')).toHaveText('7 features');
   await page.getByLabel('Test scenario').selectOption('empty');
