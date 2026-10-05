@@ -1,21 +1,17 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { chromium, firefox } from 'playwright';
-import { preview } from 'vite';
+import { claimBrowserRun } from './browser-resources.mjs';
 
 const root = resolve(import.meta.dirname, '..'), artifacts = resolve(root, '.artifacts/model-measurement'), consumer = resolve(artifacts, 'consumer');
-const lock = resolve(root, '.artifacts/browser-run.lock'), args = process.argv.slice(2).filter(arg => arg !== '--');
+const args = process.argv.slice(2).filter(arg => arg !== '--');
 const option = name => { const index = args.indexOf(name); return index < 0 ? undefined : args[index + 1]; };
 const verify = args.includes('--verify'), serve = args.includes('--serve'), smoke = args.includes('--smoke');
 const hardware = args.includes('--hardware');
-let ownsLock = false, retainLock = false, server, browser;
+let owner, failed = false, server, browser;
 function run(command, values, cwd = root) {
-  const result = spawnSync(command, values, { cwd, stdio: 'inherit', timeout: 180_000 });
-  if (result.error?.code === 'ETIMEDOUT' || result.signal) retainLock = true;
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`${command} ${values.join(' ')} failed with ${result.status}`);
+  owner.run(command, values, cwd);
 }
 function git(...values) {
   const result = spawnSync('git', values, { cwd: root, encoding: 'utf8' });
@@ -25,14 +21,14 @@ const sha256 = value => createHash('sha256').update(value).digest('hex');
 try {
   if (!verify && !serve && !smoke && !hardware) throw new Error('Use --verify, --smoke, --hardware --metadata machine.json, or --serve (native Safari/manual browser). Optional: --case ID, --matrix, --browser chromium|chrome|edge|firefox, --port 5178.');
   if (smoke && hardware) throw new Error('Choose smoke or hardware, not both.');
+  owner = claimBrowserRun(root, 'measurement');
+  const { chromium, firefox } = await import('playwright');
+  const { preview } = await import('vite');
   const machine = option('--metadata') ? JSON.parse(await readFile(resolve(option('--metadata')), 'utf8')) : undefined;
   if (hardware && !machine) throw new Error('--hardware requires --metadata with device, os, gpu, driver, browser, displayHz.');
-  await mkdir(artifacts, { recursive: true });
-  try { await mkdir(lock); } catch (error) { if (error.code !== 'EEXIST') throw error; throw new Error(`Checkout browser artifacts are locked: ${lock}. Stop interrupted child processes before clearing the lock.`); }
-  ownsLock = true; await writeFile(resolve(lock, 'owner'), `PID: ${process.pid}\nmodel measurement\n`);
   run('pnpm', ['build']); run('pnpm', ['pack', '--pack-destination', artifacts]);
   run('node', ['--import', 'tsx', 'scripts/model-workloads.ts']);
-  await rm(consumer, { recursive: true, force: true }); await mkdir(consumer);
+  owner.replaceConsumer(); await mkdir(consumer);
   await cp(resolve(root, 'tools/model-measurement'), consumer, { recursive: true });
   await mkdir(resolve(consumer, 'public'), { recursive: true });
   await cp(resolve(artifacts, 'assets'), resolve(consumer, 'public/assets'), { recursive: true });
@@ -71,6 +67,7 @@ try {
       const result = await page.evaluate(() => ({ result: window.measurementResult, error: window.measurementError }));
       if (result.error || errors.length) throw new Error([result.error, ...errors].filter(Boolean).join('\n'));
       await writeFile(resolve(artifacts, 'verification.json'), JSON.stringify({ ...result.result, provenance, browser: browser.version() }, null, 2));
+      owner.capture();
     } else {
       await page.waitForFunction(() => Boolean(window.modelMeasurement));
       const cases = await page.evaluate(() => window.modelMeasurement.matrix());
@@ -78,7 +75,7 @@ try {
       const selected = args.includes('--matrix') ? cases : option('--case') ? cases.filter(value => id(value) === option('--case')) :
         cases.filter(value => ['icons-mixed-flat-dpr1', 'original-mixed-flat-dpr1', 'original-assigned-globe-dpr2', 'materials-original-flat-dpr1'].includes(id(value)));
       if (!selected.length) throw new Error(`Unknown case. Available IDs:\n${cases.map(id).join('\n')}`);
-      const runDir = resolve(artifacts, `run-${new Date().toISOString().replaceAll(':', '-')}`); await mkdir(runDir);
+      const runDir = owner.directory;
       const reports = [];
       for (const value of selected) {
         const pair = [];
@@ -109,8 +106,16 @@ try {
       console.log(`Raw reports and screenshots: ${runDir}`);
     }
   }
+} catch (error) {
+  failed = true;
+  throw error;
 } finally {
-  await browser?.close(); await server?.close();
-  if (ownsLock && !retainLock) await rm(lock, { recursive: true, force: true });
-  if (ownsLock && retainLock) console.error(`Lock retained at ${lock}. Stop child processes before clearing it.`);
+  try {
+    await browser?.close(); await server?.close();
+  } catch (error) {
+    owner?.interrupt();
+    throw error;
+  } finally {
+    owner?.finish(failed);
+  }
 }
