@@ -1,0 +1,24 @@
+{
+  "revision": "6b8ae2ebdaad8d3fd144d28b5d813424980e1497",
+  "sourceTree": "b948ba66a835753b8e63c22d161a2e31686a2893",
+  "baselineRevision": "47750f2 (runtime 2733cee9fe9440237a36e90d9efa2fc4239b87c3)",
+  "method": "Vite 8.3.0 ES library with MapLibre external; Node 24.21.0 default gzip level; source maps excluded",
+  "library": {
+    "rawBytes": 281455,
+    "gzipBytes": 79255
+  },
+  "css": {
+    "rawBytes": 6089,
+    "gzipBytes": 1788
+  },
+  "baselineLibrary": {
+    "rawBytes": 205453,
+    "gzipBytes": 58404
+  },
+  "delta": {
+    "rawBytes": 76002,
+    "gzipBytes": 20851
+  },
+  "node": "v24.21.0",
+  "at": "2026-10-05T00:47:21.710Z"
+}
