@@ -9,7 +9,7 @@ Use [Ridgeline's GitHub Issues](https://github.com/the-Drunken-coder/Ridgeline/i
 - Attach each implementation ticket to its source spec by a named link. Include its complete acceptance criteria and context, with GitHub URLs rather than relative filesystem links in issue bodies.
 - Use native GitHub blocking dependencies. A readable "Blocked by" section supplements those relationships; it does not replace them.
 - GitHub issue state, labels, assignees, and comments are authoritative. Local `.scratch` tickets are historical planning artifacts or working drafts, not a second live tracker. Migrated files link to their canonical GitHub issue.
-- Keep research, prototypes, screenshots, and other supporting artifacts versioned in `.scratch/`. Prefer commit-pinned links when preserving the evidence behind a decision.
+- Keep intermediate logs, probes, screenshots, duplicate galleries, and repeated producer reports in ignored `.artifacts/` output. Deliberately selected research and decision artifacts may be versioned in `.scratch/`. At closeout, [promote a curated evidence set](../evidence-promotion.md) with final reviews, revision/check pins, summaries, selected visuals, and byte-exact raw archives. Prefer commit-pinned links for decision evidence.
 
 ## Canonical requirements
 
@@ -49,6 +49,8 @@ Remaining limits: <pending acceptance, unverified behavior, or access limits>
 ```
 
 Mark uncommitted changes explicitly instead of attributing them to `HEAD`. If a tested checkout SHA cannot be established, record it as unknown. Separate historical runs from evidence for the current revision. A clean review is review evidence; successful execution is check evidence. Update the record after post-review changes and inspect current required checks before claiming merge readiness.
+
+Promotion copies and verifies existing evidence; it does not execute checks again or advance their revision pins. Keep the final review reports and compact record readable, retain original producer bytes in a hashed archive, and link reproduction instructions. Curated `.scratch/` evidence is protected from generated-output retention. Keep selected failure runs pinned until promotion verifies successfully and their owner explicitly releases the pin. Preserve existing historical evidence, permanent regressions, runtime inputs, and Git history.
 
 ## When a skill says "publish to the issue tracker"
 

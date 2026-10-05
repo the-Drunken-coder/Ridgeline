@@ -151,7 +151,8 @@ export function claimBrowserRun(root, command) {
     },
     run(executable, args, cwd = root, timeout = 180_000) {
       if (args.includes('playwright')) captureOutputs = true;
-      const result = spawnSync(executable, args, { cwd, stdio: 'inherit', timeout });
+      const result = spawnSync(executable, args, { cwd, stdio: 'inherit', timeout,
+        env: { ...process.env, RIDGELINE_BROWSER_COMMAND: JSON.stringify(record.invocation) } });
       if (result.error?.code === 'ETIMEDOUT' || result.signal) interrupted = true;
       if (result.error) throw result.error;
       if (result.status !== 0) throw new Error(`${executable} ${args.join(' ')} failed with status ${result.status}`);
