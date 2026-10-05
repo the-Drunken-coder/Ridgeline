@@ -2,7 +2,8 @@
 
 ## Before code work
 
-- Before designing, changing, or reviewing code, read [CODE_CONVENTIONS.md](CODE_CONVENTIONS.md). Use it as the project's standards source, including for Matt Pocock's Standards review.
+- Before designing, changing, or reviewing code, read [CODE_CONVENTIONS.md](CODE_CONVENTIONS.md) and the topic files selected by its applicability table. These are the project's standards sources, including for Matt Pocock's Standards review.
+- Before code review, read [docs/agents/review.md](docs/agents/review.md). Pass the applicable standards files to the Standards reviewer and the canonical spec and relevant linked context to the Spec reviewer.
 - Before exploring a feature, read [GLOSSARY.md](GLOSSARY.md) and the relevant decisions in [docs/adr/](docs/adr/). Follow [docs/agents/domain.md](docs/agents/domain.md) for domain documentation. Surface conflicts with an accepted decision before changing that decision.
 - For implementation or Spec review, read the referenced spec or ticket and its linked context. Feature specs live under `.scratch/<feature>/spec.md`. Pass the exact spec or ticket path to delegated workers and reviewers.
 - For public API changes, read the relevant contract in [README.md](README.md) and update it with the implementation.

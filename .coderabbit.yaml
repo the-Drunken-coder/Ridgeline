@@ -8,3 +8,9 @@ knowledge_base:
     enabled: true
     filePatterns:
       - CODE_CONVENTIONS.md
+      - docs/conventions/lifecycle.md
+      - docs/conventions/rendering.md
+      - docs/conventions/interactions.md
+      - docs/conventions/testing.md
+      - docs/agents/review.md
+      - docs/agents/entity-review.md
