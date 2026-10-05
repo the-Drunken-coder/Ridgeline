@@ -108,15 +108,16 @@ test('model example opens from the default terrain scene', async ({ page }) => {
 
 test('a failed reset cannot replace a newer accepted shared model', async ({ page }) => {
   test.setTimeout(240_000);
-  let firstDrone = true, firstBoat = true, oldBoatRequested = false, oldBoatDelivered = false, releaseBoat!: () => void;
+  let firstDrone = true, firstBoat = true, oldBoatRequested = false, oldBoatDelivered = false, releaseBoat!: () => void, boatStarted!: () => void;
   const delayedBoat = new Promise<void>(resolve => { releaseBoat = resolve; });
-  await page.route('**/entity-models/drone.glb', route => {
-    if (firstDrone) { firstDrone = false; return route.fulfill({ status: 500, body: 'Temporary sample fetch failure' }); }
+  const pendingBoat = new Promise<void>(resolve => { boatStarted = resolve; });
+  await page.route('**/entity-models/drone.glb', async route => {
+    if (firstDrone) { firstDrone = false; await pendingBoat; return route.fulfill({ status: 500, body: 'Temporary sample fetch failure' }); }
     return route.fulfill({ path: 'playground/public/entity-models/drone.glb' });
   });
   await page.route('**/entity-models/boat.glb', async route => {
     const old = firstBoat; firstBoat = false;
-    if (old) { oldBoatRequested = true; await delayedBoat; }
+    if (old) { oldBoatRequested = true; boatStarted(); await delayedBoat; }
     await route.fulfill({ path: 'playground/public/entity-models/boat.glb' });
     if (old) oldBoatDelivered = true;
   });
