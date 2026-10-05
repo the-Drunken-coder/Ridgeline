@@ -18,9 +18,15 @@ Approved test boundaries are the packaged public viewport workflow and focused p
 
 ## Verification record
 
-Current review, 2026-10-04: `8c8278c4107fa650b59ca86d7c1798399b850839`...`13bab3f25165b279499dcf74c1a5a97ad18f126f`, integration owner reviewed the combined picking, presentation, native label caching, callback histories, registry/layer recovery and viewport changes. Tree `53450402676a2d3c290d73adea22526fca825fad` exactly matches final worker `a177ef470dd3426e70b5edad6f4f4cd705fa9e0f`. The final delta from reviewed runtime `2ea02ce` was documentation and stronger unrelated-content assertions, also reviewed. No uncommitted runtime/test changes were included.
+Current review, 2026-10-05: the integration owner reviewed `13bab3f25165b279499dcf74c1a5a97ad18f126f`...`ec93de9baa3efede363b3ced60b2d1ef126c1a11`. Runtime `7bfb02484a6dee6a22f1866fff0cbec088f34e4a` restores synchronous hover refresh when removing the hovered feature and avoids marking unchanged ground geometry dirty when camera coverage publishes. The final test-only change waits for native map idle before measuring the existing five-second quiet period. The combined runtime and affected test changes are reviewed; no uncommitted changes were exercised.
 
-Current local verification, 2026-10-04: `pnpm check` and `pnpm test` pass at `13bab3f`, with 324 root tests and 5 control tests. Full `pnpm test:browser` finished with 180 passes and two failures in 15.4 minutes at that exact runtime/test revision. Both failures reproduced twice against the same installed package: removal no longer cleared the hover cursor synchronously, and camera GPU publication resubmitted unchanged ground geometry. Narrow corrections are pending before tracker resolution. [Full run](evidence/interaction-recovery/integrated-interaction-browser.log), [repeated failures](evidence/interaction-recovery/frontier-regressions-repeated.log). Worker coverage passes all 26 model workflows on identical source, with the final changed test re-exercised on `a177ef4`. [Type checks](evidence/interaction-recovery/integrated-interaction-check.log), [unit checks](evidence/interaction-recovery/integrated-interaction-unit.log), [25 model-named workflows](evidence/interaction-recovery/frontier-combined-browser.log), [final changed case and PNG/JPEG workflow](evidence/interaction-recovery/frontier-final-affected-browser.log).
+Current local verification, 2026-10-05: `pnpm check` and `pnpm test` pass at runtime `7bfb024`, with 324 root tests and 5 control tests. At clean `ec93de9`, the packaged consumer builds, installs, typechecks and builds successfully, then all four affected browser cases pass in 28.3 seconds: synchronous removal/cursor reset, unchanged ground publication, consumer-prerender cancellation/removal and stationary hover with five seconds of no renders or hover events. [Type checks](evidence/interaction-recovery/frontier-regression-fix-check.log), [unit checks](evidence/interaction-recovery/frontier-regression-fix-unit.log), [final affected browser checks](evidence/interaction-recovery/frontier-regression-final-browser.log).
+
+An intermediate four-case run passed both original regressions and consumer-prerender recovery, but its hover case saw one settling render after a fixed 500 ms delay. That case passed twice in isolation on the same runtime. Waiting for the actual native idle event removes the arbitrary readiness assumption while preserving all five-second quiet assertions. [Intermediate run](evidence/interaction-recovery/frontier-regression-fix-browser.log), [isolated repeats](evidence/interaction-recovery/frontier-hover-settle-repeat.log). The complete 182-case suite has not yet been repeated on this corrected revision; its historical 180/182 result is preserved below.
+
+Historical review, 2026-10-04: `8c8278c4107fa650b59ca86d7c1798399b850839`...`13bab3f25165b279499dcf74c1a5a97ad18f126f`, integration owner reviewed the combined picking, presentation, native label caching, callback histories, registry/layer recovery and viewport changes. Tree `53450402676a2d3c290d73adea22526fca825fad` exactly matches final worker `a177ef470dd3426e70b5edad6f4f4cd705fa9e0f`. The final delta from reviewed runtime `2ea02ce` was documentation and stronger unrelated-content assertions, also reviewed. No uncommitted runtime/test changes were included.
+
+Historical local verification, 2026-10-04: `pnpm check` and `pnpm test` pass at `13bab3f`, with 324 root tests and 5 control tests. Full `pnpm test:browser` finished with 180 passes and two failures in 15.4 minutes at that exact runtime/test revision. Both failures reproduced twice against the same installed package: removal no longer cleared the hover cursor synchronously, and camera GPU publication resubmitted unchanged ground geometry. The corrections and final affected checks are recorded above. [Full run](evidence/interaction-recovery/integrated-interaction-browser.log), [repeated failures](evidence/interaction-recovery/frontier-regressions-repeated.log). Worker coverage passes all 26 model workflows on identical source, with the final changed test re-exercised on `a177ef4`. [Type checks](evidence/interaction-recovery/integrated-interaction-check.log), [unit checks](evidence/interaction-recovery/integrated-interaction-unit.log), [25 model-named workflows](evidence/interaction-recovery/frontier-combined-browser.log), [final changed case and PNG/JPEG workflow](evidence/interaction-recovery/frontier-final-affected-browser.log).
 
 Historical review: `525ed1d8283014c98d12c3c9f7b8c0a26bf1bcc4`...`647458e6f7d4ff3b86a72d6fb86f474457dbf4be`, placement, terrain ownership, scene coordination, same-frame switching and public workflows reviewed by the integration owner on 2026-10-04. The integration tree equals reviewed worker `882b15c72e67a9cbcab24b433f4b78e93f1e4f82` (tree `263f92a429ad301684cf03ef4898dadd2b76eb11`). The final callback fix at `f14db3d` and subsequent test-only visible-icon baseline change at `882b15c` were reviewed separately. Earlier review evidence is preserved below.
 
@@ -104,7 +110,7 @@ Limits: fixed entity-local directional lighting is intentional. Translucency has
 
 ## #85: rigid placement and terrain preparation
 
-Status: implementation complete. The final physical-attachment and actual partial near-plane gaps are covered by the combined #87/#88 workflows at `13bab3f25165b279499dcf74c1a5a97ad18f126f`. The broader regression found two shared hover/geometry regressions; correction and rechecking are pending before tracker resolution.
+Status: resolved locally. The final physical-attachment and actual partial near-plane gaps are covered by combined #87/#88 workflows at `13bab3f25165b279499dcf74c1a5a97ad18f126f`. Both shared regressions found by the broader suite are corrected and the four affected cases pass at `ec93de9`. The #86 acceptance dependency is implemented and locally verified.
 
 | Acceptance criterion | Evidence or remaining gap |
 | --- | --- |
@@ -122,7 +128,7 @@ The numerical sweep used production geometry at `f5f441c`; later changes affecte
 
 ## #86: same-frame representation switching
 
-Status: implementation complete. The later consumer-prerender history reproduced a blank frame and is fixed in the combined #89 layer. Both switching directions, removal/reintroduction, completed state and picks now pass at `13bab3f25165b279499dcf74c1a5a97ad18f126f`; two shared hover/geometry regressions from the broader suite remain under correction before tracker resolution.
+Status: resolved locally. The later consumer-prerender history reproduced a blank frame and is fixed in the combined #89 layer. Both switching directions, removal/reintroduction, completed state and picks pass at `13bab3f25165b279499dcf74c1a5a97ad18f126f`. Both broader hover/geometry regressions are corrected; all four affected cases pass at `ec93de9`.
 
 | Acceptance criterion | Evidence |
 | --- | --- |
@@ -143,7 +149,7 @@ A historical 20-case run had 19 passes and one blank icon frame immediately afte
 
 ## #87: picking and stationary hover
 
-Status: implementation complete, integrated at `13bab3f25165b279499dcf74c1a5a97ad18f126f`. The 26 model workflows pass; the broader suite found a synchronous cursor-reset regression on removal, now under correction. Tracker resolution remains pending.
+Status: resolved locally. Integrated at `13bab3f25165b279499dcf74c1a5a97ad18f126f`, with all 26 model workflows passing. The broader suite found a synchronous cursor-reset regression on removal. It is corrected and passes with the stationary-hover/callback history at `ec93de9`.
 
 | Acceptance criterion | Evidence |
 | --- | --- |
@@ -159,7 +165,7 @@ Root reviewed the same-ID hover callback, stale feature identity, interaction di
 
 ## #88: labels and static feedback
 
-Status: implementation complete, integrated at `13bab3f25165b279499dcf74c1a5a97ad18f126f`. Placement and actual-hover acceptance dependencies are present in the combined tree; root's full regression found two shared hover/geometry regressions now under correction. Tracker resolution remains pending.
+Status: resolved locally. Integrated at `13bab3f25165b279499dcf74c1a5a97ad18f126f`. Placement and actual-hover acceptance dependencies are implemented and locally verified. Both shared regressions found by the full suite are corrected; the affected checks pass at `ec93de9`.
 
 | Acceptance criterion | Evidence |
 | --- | --- |
@@ -175,7 +181,7 @@ The public API has no separate airborne ground marker. This verification observe
 
 ## #89: basemap and context recovery
 
-Status: implementation complete, integrated at `13bab3f25165b279499dcf74c1a5a97ad18f126f`. Solid/textured acceptance dependencies are present; root's full regression found two shared hover/geometry regressions now under correction. Tracker resolution remains pending.
+Status: resolved locally. Integrated at `13bab3f25165b279499dcf74c1a5a97ad18f126f`. Solid/textured acceptance dependencies are implemented and locally verified. Both shared regressions found by the full suite are corrected; the affected checks, including consumer-prerender recovery, pass at `ec93de9`.
 
 | Acceptance criterion | Evidence |
 | --- | --- |

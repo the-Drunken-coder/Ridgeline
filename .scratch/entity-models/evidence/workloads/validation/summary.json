@@ -1,0 +1,98 @@
+[
+  {
+    "path": "drone.normalized.glb",
+    "exitCode": 0,
+    "noErrors": true,
+    "noWarnings": true
+  },
+  {
+    "path": "drone.4x.glb",
+    "exitCode": 0,
+    "noErrors": true,
+    "noWarnings": true
+  },
+  {
+    "path": "drone.16x.glb",
+    "exitCode": 0,
+    "noErrors": true,
+    "noWarnings": true
+  },
+  {
+    "path": "tank.normalized.glb",
+    "exitCode": 0,
+    "noErrors": true,
+    "noWarnings": true
+  },
+  {
+    "path": "tank.4x.glb",
+    "exitCode": 0,
+    "noErrors": true,
+    "noWarnings": true
+  },
+  {
+    "path": "tank.16x.glb",
+    "exitCode": 0,
+    "noErrors": true,
+    "noWarnings": true
+  },
+  {
+    "path": "plane.normalized.glb",
+    "exitCode": 0,
+    "noErrors": true,
+    "noWarnings": true
+  },
+  {
+    "path": "plane.4x.glb",
+    "exitCode": 0,
+    "noErrors": true,
+    "noWarnings": true
+  },
+  {
+    "path": "plane.16x.glb",
+    "exitCode": 0,
+    "noErrors": true,
+    "noWarnings": true
+  },
+  {
+    "path": "boat.normalized.glb",
+    "exitCode": 0,
+    "noErrors": true,
+    "noWarnings": true
+  },
+  {
+    "path": "boat.4x.glb",
+    "exitCode": 0,
+    "noErrors": true,
+    "noWarnings": true
+  },
+  {
+    "path": "boat.16x.glb",
+    "exitCode": 0,
+    "noErrors": true,
+    "noWarnings": true
+  },
+  {
+    "path": "material-opaque.glb",
+    "exitCode": 0,
+    "noErrors": true,
+    "noWarnings": true
+  },
+  {
+    "path": "material-mask.glb",
+    "exitCode": 0,
+    "noErrors": true,
+    "noWarnings": true
+  },
+  {
+    "path": "material-double-sided.glb",
+    "exitCode": 0,
+    "noErrors": true,
+    "noWarnings": true
+  },
+  {
+    "path": "material-blend.glb",
+    "exitCode": 0,
+    "noErrors": true,
+    "noWarnings": true
+  }
+]
