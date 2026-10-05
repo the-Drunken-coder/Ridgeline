@@ -46,7 +46,7 @@ function completedRunTime(record, command) {
   if (record?.owner !== 'ridgeline-browser' || record.version !== 1 || record.command !== command ||
       !['complete', 'failed'].includes(record.status) || !Number.isSafeInteger(record.pid) || record.pid <= 0 ||
       !Array.isArray(record.invocation) || !record.invocation.length ||
-      !record.invocation.every(argument => typeof argument === 'string' && argument.length > 0) ||
+      !record.invocation.every(argument => typeof argument === 'string') || !record.invocation[0].length ||
       typeof record.startedAt !== 'string' || typeof record.completedAt !== 'string') return;
   const started = Date.parse(record.startedAt), completed = Date.parse(record.completedAt);
   if (!Number.isFinite(started) || !Number.isFinite(completed) || completed < started ||

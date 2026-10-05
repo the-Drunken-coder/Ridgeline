@@ -278,6 +278,33 @@ globalThis.Date = class extends NativeDate {
   assert.deepEqual(dates.sort(), ['+010000-01-01T00:00:00.000Z', '2040-01-01T00:00:00.000Z', '2050-01-01T00:00:00.000Z']);
 });
 
+test('completed wrapper runs with an empty forwarded argument retain only the newest three', async t => {
+  const f = await fixture(t);
+  f.args.push('--', '--grep', '');
+  const history = join(f.root, '.artifacts/browser-runs');
+  let oldest;
+  for (let index = 0; index < 6; index++) {
+    const result = f.run({ FIXTURE_REPORT: `empty argument ${index}` });
+    assert.equal(result.status, 0, result.stderr);
+    if (index === 0) oldest = (await readdir(history))[0];
+  }
+  const retained = await readdir(history);
+  assert.equal(retained.length, 3);
+  await assert.rejects(access(join(history, oldest)));
+  const reports = await Promise.all(retained.map(async name => {
+    const record = JSON.parse(await readFile(join(history, name, '.browser-run.json'), 'utf8'));
+    assert.equal(record.status, 'complete');
+    assert.deepEqual(record.invocation.slice(-2), ['--grep', '']);
+    await assert.rejects(access(join(history, name, '.pin')));
+    return readFile(join(history, name, 'playwright/report'), 'utf8');
+  }));
+  assert.deepEqual(reports.sort(), ['empty argument 3', 'empty argument 4', 'empty argument 5']);
+  const commands = (await readFile(join(f.root, 'commands'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  const browserCommands = commands.filter(args => args.includes('playwright'));
+  assert.equal(browserCommands.length, 6);
+  for (const args of browserCommands) assert.deepEqual(args.slice(-2), ['--grep', '']);
+});
+
 test('a protected failed producer retains its lock until evidence is preserved and protection is resolved', async t => {
   for (const protection of ['symlink', 'tracked']) {
     await t.test(protection, async t => {
