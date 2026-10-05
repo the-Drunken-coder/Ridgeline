@@ -177,6 +177,15 @@ async function run(settings: Settings, machine?: Machine) {
     const idleStart = renders.length; await pause(5000); const idleFrames = renders.length - idleStart;
     observer.drain(); await gpu.destroy(); observer.drain();
     const expectedModels = settings.variant === 'icons' ? 0 : 100;
+    const failures: string[] = [];
+    if (canvas.clientWidth !== 1280 || canvas.clientHeight !== 720 || canvas.width !== 1280 * settings.pixelRatio || canvas.height !== 720 * settings.pixelRatio) failures.push('Canvas dimensions do not match the case.');
+    if (visibility.nativeRenderedIds !== expectedNative) failures.push(`Final native visibility ${visibility.nativeRenderedIds}/${expectedNative}.`);
+    if (visibility.modelPatchPixels.some(value => value === 0)) failures.push('At least one model-capable geographic patch has no foreground pixels.');
+    if (visibility.stateModelCount !== expectedModels) failures.push(`Final model state count ${visibility.stateModelCount}/${expectedModels}.`);
+    if (viewport.getSelection().join(',') !== 'model-0,model-4') failures.push('Selected instances were not retained.');
+    if (idleFrames !== 0) failures.push(`Idle interval contained ${idleFrames} map renders.`);
+    if (diagnostics.length || canvas.dataset.ridgelineMeasureError) failures.push('Runtime or instrumentation diagnostics occurred.');
+    if (settings.instrumentation && expectedModels && !observer.records.some(record => record.name === 'frame' && record.detail.drawnModels === 100 && record.detail.clippedBoxes === 100)) failures.push('No complete drawn model frame with100 clipped boxes was observed.');
     const results = segments.map(segment => {
       const inSegment = (time: number) => time >= segment.start && time < segment.end;
       const phaseRecords = observer.records.filter(record => inSegment(record.startTime));
@@ -191,7 +200,7 @@ async function run(settings: Settings, machine?: Machine) {
       projection: { configured: settings.projection, effective: viewport.map.getProjection(), transitionsObserved: gpu.projections },
       configuration: { camera, modelSettings, terrain: true, terrainSource: 'embedded Terrarium zero meters', exaggeration: 1, updateEveryMs: 100, features: 1100, modelTypes: 4, instancesPerType: 25, nativeLatencyScope: 'all expected native icon IDs at one accepted revision', expectedNative, selection: viewport.getSelection(), previewId: 'model-8', pointer: 'synthetic DOM mousemove once per update, plus stationary hover refresh' },
       manifest, cold: { start, warmReady, registrations }, results, raw: { raf, renders, updates, native, nativeCoverage, nativeProbeCpu, timings: observer.records, gpu: gpu.samples, rejectedGpu: gpu.rejected },
-      gpuStatus: gpu.status, visibility, idleFrames, diagnostics, instrumentationError: canvas.dataset.ridgelineMeasureError,
+      gpuStatus: gpu.status, visibility, idleFrames, diagnostics, validation: { status: failures.length ? 'failed' : 'observed', failures }, instrumentationError: canvas.dataset.ridgelineMeasureError,
       acceptance: settings.mode === 'smoke' ? 'unrated tooling smoke; target hardware acceptance pending' : 'hardware observations only; review full matrix and correctness evidence before acceptance' };
   } catch (cause) {
     observer.drain();
@@ -223,6 +232,13 @@ else {
       const url = URL.createObjectURL(new Blob([JSON.stringify({ provenance, reports }, null, 2)], { type: 'application/json' }));
       const link = document.createElement('a'); link.href = url; link.download = `ridgeline-${caseId(value)}.json`; link.click(); URL.revokeObjectURL(url);
       status.textContent = 'Saved paired off/on observations. Hardware acceptance requires review of the complete matrix.';
-    } catch (error) { status.textContent = String(error); } finally { button.disabled = false; }
+    } catch (error) {
+      status.textContent = String(error);
+      if (window.measurementFailure) {
+        const provenance = await fetch('/provenance.json').then(response => response.json());
+        const url = URL.createObjectURL(new Blob([JSON.stringify({ provenance, failure: window.measurementFailure }, null, 2)], { type: 'application/json' }));
+        const link = document.createElement('a'); link.href = url; link.download = 'ridgeline-measurement-failure.json'; link.click(); URL.revokeObjectURL(url);
+      }
+    } finally { button.disabled = false; }
   };
 }

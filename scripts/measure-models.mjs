@@ -98,7 +98,7 @@ try {
           await writeFile(resolve(runDir, `${name}.png`), Buffer.from(png.split(',')[1], 'base64'));
           await writeFile(resolve(runDir, `${name}.json`), JSON.stringify({ provenance, browserVersion: browser.version(), softwareFlags: software, screenshot: `${name}.png`, ...report }, null, 2));
           pair.push(report); reports.push({ caseId: report.caseId, instrumentation, file: `${name}.json`, diagnostics: report.diagnostics, gpuStatus: report.gpuStatus });
-          if (report.instrumentationError || report.diagnostics.length || errors.length) throw new Error(`Measurement failed: ${[report.instrumentationError, ...report.diagnostics, ...errors].filter(Boolean).join('\n')}`);
+          if (report.validation.failures.length || report.instrumentationError || report.diagnostics.length || errors.length) throw new Error(`Measurement failed: ${[...report.validation.failures, report.instrumentationError, ...report.diagnostics, ...errors].filter(Boolean).join('\n')}`);
         }
         // Paired raw distributions stay separate; this is observed measurement overhead, not a correction to GPU time.
         await writeFile(resolve(runDir, `${id(value)}-overhead.json`), JSON.stringify({ caseId: id(value), order: ['off', 'on'],
