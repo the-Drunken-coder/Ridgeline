@@ -26,13 +26,22 @@ test('model example uses shared registrations and independent consumer appearanc
     const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
     const context = canvas.getContext('2d'); if (!context) throw new Error('No pixel reader');
     context.drawImage(image, 0, 0); const pixels = context.getImageData(0, 0, image.width, image.height).data;
-    for (let i = 0; i < pixels.length; i += 4)
-      if (pixels[i + 1]! > pixels[i]! + 35 && pixels[i + 1]! > pixels[i + 2]! + 7 && pixels[i + 1]! > 80)
-        return { x: i / 4 % image.width, y: Math.floor(i / 4 / image.width) };
-    return null;
+    const teal = (x: number, y: number) => {
+      if (x < 0 || y < 0 || x >= image.width || y >= image.height) return false;
+      const i = (y * image.width + x) * 4;
+      return pixels[i + 1]! > pixels[i]! + 35 && pixels[i + 1]! > pixels[i + 2]! + 7 && pixels[i + 1]! > 80;
+    };
+    let best = { x: 0, y: 0, neighbors: 0 };
+    for (let y = 0; y < image.height; y++) for (let x = 0; x < image.width; x++) {
+      if (!teal(x, y)) continue;
+      let neighbors = 0;
+      for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) if (teal(x + dx, y + dy)) neighbors++;
+      if (neighbors > best.neighbors) best = { x, y, neighbors };
+    }
+    return best;
   }, png.toString('base64'));
-  expect(body, 'A custom model must have visible rendered pixels').not.toBeNull();
-  if (!body) throw new Error('No visible model');
+  // A filled body cluster excludes the thin, similarly colored physical ground lines.
+  expect(body.neighbors, 'A custom model must have visible rendered pixels').toBeGreaterThan(30);
   await canvas.hover({ position: body });
   await expect(page.getByRole('tooltip')).toBeVisible();
   await canvas.click({ position: body });
