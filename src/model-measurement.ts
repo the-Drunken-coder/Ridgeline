@@ -12,6 +12,7 @@ export class ModelMeasurement {
   private frameSequence = 0;
   constructor(private canvas: HTMLCanvasElement) {}
   get enabled() { return !this.stopped && this.canvas.dataset.ridgelineMeasure === 'true'; }
+  get idleEnabled() { return this.enabled && this.canvas.dataset.ridgelineIdle === 'true'; }
   begin() { return this.enabled ? performance.now() : undefined; }
   end(phase: string, start: number, detail?: Detail) { if (this.enabled) this.write(phase, start, performance.now(), detail); }
   attempt(signal: AbortSignal, modelId?: string, kind?: string) {
