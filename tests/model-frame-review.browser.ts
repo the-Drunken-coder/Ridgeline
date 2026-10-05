@@ -3,6 +3,7 @@ import type { MapFeature, Properties, Viewport, ViewportOptions } from '@ridgeli
 import type { CustomLayerInterface } from 'maplibre-gl';
 import { solidGlb } from './model-fixtures';
 import { axisModelGlb } from './model-placement-fixtures';
+import { IdleObservationFailure, observeIdle } from './browser-idle';
 
 type Context = { container: HTMLDivElement; setCurrent(viewport: Viewport): void;
   until(predicate: () => boolean, description: string, timeout?: number): Promise<void> };
@@ -11,7 +12,7 @@ const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const entity = (id = 'model', color = '#ff0000'): MapFeature => ({ type: 'Feature', id,
   properties: { color }, geometry: { type: 'Point', coordinates: [0,0] },
   entity: { heading: 0, altitude: { meters: 30, reference: 'sea-level' }, model: { id: 'asset', minimumSizePixels: 80 } } });
-function create(context: Context, features: MapFeature[], options: Partial<Pick<ViewportOptions<Properties>, 'style' | 'onError'>> = {}) {
+function create(context: Context, features: MapFeature[], options: Partial<Pick<ViewportOptions<Properties>, 'style' | 'onError' | 'elevationSampler'>> = {}) {
   const viewport = createViewport({ container: context.container, features, elevationSampler: { sample: () => 0 },
     basemap: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
     camera: { center: [0,0], zoom: 17, pitch: 35, bearing: 0 },
@@ -308,9 +309,68 @@ export const modelFrameReviewCases: readonly { name: string; run(context: Contex
       const returned = await frame(viewport, () => viewport.setCamera({ center: [edge.lng,edge.lat] }));
       check(returned.blue.length > 100 && viewport.getEntityState('outside')?.representation === 'model', 'Camera re-entry did not recover the current model');
       await new Promise<void>(resolve => { viewport.map.once('idle', () => resolve()); viewport.map.triggerRepaint(); });
-      let idleFrames = 0; const rendered = () => { idleFrames++; }; viewport.map.on('render', rendered);
-      await pause(5000); viewport.map.off('render', rendered); check(idleFrames === 0, `Culling scheduled ${idleFrames} idle frames`);
+      await observeIdle(viewport, 'Culling after camera re-entry').assertQuiet();
     } finally { f.destroy(); }
+  } },
+  { name: 'Model idle observation records delayed publication and stays quiet after stationary recovery', async run(context) {
+    let held = false, preparations = 0;
+    let release = () => {};
+    let pending = Promise.resolve();
+    const feature = entity('delayed');
+    const f = create(context, [feature], { elevationSampler: { sample: () => held ? null : 0,
+      async prepare() { preparations++; await pending; } } }), { viewport } = f;
+    let delayed: ReturnType<typeof observeIdle> | undefined;
+    let releaseTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await viewport.ready; await viewport.registerModel('asset', { bytes: solidGlb() });
+      await context.until(() => viewport.getEntityState(feature.id)?.representation === 'model', 'initial delayed-publication model');
+      check((await frame(viewport)).red.length > 100, 'Baseline model is absent');
+      held = true;
+      pending = new Promise<void>(resolve => { release = resolve; });
+      const before = preparations;
+      viewport.upsert([{ ...feature, properties: { color: '#0000ff' }, geometry: { type: 'Point', coordinates: [.0004, 0] } }]);
+      await context.until(() => preparations > before && viewport.getEntityState(feature.id)?.placement === 'elevation-unavailable', 'held terrain preparation');
+      await new Promise<void>(resolve => { viewport.map.once('idle', () => resolve()); viewport.map.triggerRepaint(); });
+      delayed = observeIdle(viewport, 'Controlled terrain publication during quiet interval');
+      delayed.mark('held-terrain-preparation', { pending: true });
+      releaseTimer = setTimeout(() => { delayed?.mark('release-terrain-preparation'); held = false; release(); }, 350);
+      let failed: IdleObservationFailure | undefined;
+      try { await delayed.assertQuiet(); } catch (error) {
+        check(error instanceof IdleObservationFailure, `Unexpected idle failure: ${String(error)}`); failed = error;
+      }
+      check(failed, 'A delayed publication passed the zero-render assertion');
+      const report = failed.observation;
+      check(report.observedMs >= 5000 && report.renders > 0, 'The negative observation did not preserve the complete interval');
+      check(report.events.some(event => event.event === 'ridgeline:model:schedule' && event.detail.cause === 'elevation-change' && Number(event.detail.pendingEntities) > 0), 'Failure lacks its terrain scheduling cause and pending work');
+      check(report.events.some(event => event.event === 'ridgeline:model:frame') && report.events.some(event => event.event === 'entitychange'), 'Failure lacks completed publication evidence');
+      check(/^[a-f0-9]{40}$/.test(report.source.revision), 'Failure lacks built-checkout provenance');
+      await context.until(() => viewport.getEntityState(feature.id)?.representation === 'model', 'stationary input terrain recovery');
+      const recovered = await frame(viewport);
+      check(recovered.blue.length > 100 && recovered.red.length === 0 && Math.abs(recovered.blueCenter[0] - viewport.map.project([.0004, 0]).x) < 20,
+        'Stationary recovery did not draw the current model appearance and location');
+      await new Promise<void>(resolve => { viewport.map.once('idle', () => resolve()); viewport.map.triggerRepaint(); });
+      const work = f.work(), originalTrigger = viewport.map.triggerRepaint;
+      const observed = observeIdle(viewport, 'Settled stationary recovery with observation enabled');
+      for (let index = 0; index < 200; index++) observed.mark('bounded-evidence-probe', { index });
+      const enabled = await observed.assertQuiet();
+      check(enabled.events.length <= 128 && enabled.droppedEvents > 0, 'Idle evidence exceeds its declared bound');
+      check(viewport.map.triggerRepaint === originalTrigger && f.work() === work, 'Idle observation changed rendering or failed to restore ownership');
+      const disabled = await observeIdle(viewport, 'Settled stationary recovery with observation disabled', { instrumentation: false }).assertQuiet();
+      check(enabled.renders === 0 && disabled.renders === 0 && enabled.observedMs >= 5000 && disabled.observedMs >= 5000 && f.work() === work,
+        'Enabled/disabled observation changed the complete quiet interval');
+      const disposed = observeIdle(viewport, 'Observation disposed by viewport destruction');
+      await pause(5000);
+      f.destroy();
+      const retired = disposed.stop(), retained = retired.events.length;
+      disposed.mark('obsolete-observer');
+      check(retired.result === 'stopped' && retired.events.length === retained && viewport.map.triggerRepaint === originalTrigger,
+        'Destruction retained observation listeners or method ownership');
+      let rejected = false;
+      try { await disposed.assertQuiet(); } catch (error) {
+        check(error instanceof IdleObservationFailure, `Unexpected disposal failure: ${String(error)}`); rejected = true;
+      }
+      check(rejected, 'A stopped observation claimed quiet after its elapsed budget');
+    } finally { if (releaseTimer) clearTimeout(releaseTimer); held = false; release(); delayed?.stop(); f.destroy(); }
   } },
   { name: 'Viewport destruction preserves synchronous listener remounts', async run(context) {
     const failures: string[] = [];

@@ -118,7 +118,7 @@ export class EntityScene<P extends Properties> {
           const id = entityIdForAreaKey(key);
           if (id && this.features.has(id)) this.dirty.add(id);
         }
-        if (this.dirty.size) this.schedule();
+        if (this.dirty.size) this.schedule('elevation-change');
       },
     });
     this.coverage = new SensorCameraCoverage({
@@ -132,7 +132,7 @@ export class EntityScene<P extends Properties> {
       )),
       changed: id => {
         this.dirty.add(id);
-        this.schedule();
+        this.schedule('coverage-change');
         options.changed([id]);
       },
       displayed: id => {
@@ -200,7 +200,7 @@ export class EntityScene<P extends Properties> {
       areas.push({ feature, request: { key: placementAreaKey(feature.id), center, radiusMeters } });
     }
     this.elevation.requestBatch(areas.filter(area => current(area.feature)).map(area => area.request), { deferProbe: true });
-    this.schedule();
+    this.schedule('accepted-entities');
   }
   configure(elevationChanged = false) {
     this.revision++;
@@ -231,7 +231,7 @@ export class EntityScene<P extends Properties> {
     for (const id of new Set([...this.selected, ...next]))
       if (this.selected.has(id) !== next.has(id) && this.features.has(id)) this.dirty.add(id);
     this.selected = next;
-    if (this.dirty.size) this.schedule();
+    if (this.dirty.size) this.schedule('selection');
   }
   getState(id: string) {
     const state = this.states.get(id);
@@ -260,7 +260,7 @@ export class EntityScene<P extends Properties> {
     this.revision++;
     if (this.options.models?.status(modelId).status === 'unavailable') for (const id of ids) { this.choices.delete(id); this.elevation.release(modelAreaKey(id)); }
     for (const id of ids) this.dirty.add(id);
-    if (ids.length) { this.schedule(); (this.options.representationChanged ?? this.options.changed)(ids); }
+    if (ids.length) { this.schedule('model-status'); (this.options.representationChanged ?? this.options.changed)(ids); }
     if (!this.destroyed && !this.lost) this.options.map.triggerRepaint();
   }
   pickAbove(x: number, y: number, tolerance: number) {
@@ -313,12 +313,19 @@ export class EntityScene<P extends Properties> {
   }
   private invalidate() {
     for (const id of this.features.keys()) this.dirty.add(id);
-    this.schedule();
+    this.schedule('invalidation');
   }
-  private schedule() {
+  private trace(phase: 'schedule' | 'preparation-start' | 'preparation-end', cause: string) {
+    const measurement = this.options.measurement;
+    if (measurement?.idleEnabled) measurement.event(phase, { cause, sceneRevision: this.revision,
+      updateRevision: measurement.revision, pendingEntities: this.dirty.size, framePending: this.frame !== 0 });
+  }
+  private schedule(cause: string) {
+    this.trace('schedule', cause);
     if (!this.frame && !this.destroyed) this.frame = requestAnimationFrame(() => this.flush());
   }
   private flush() {
+    this.trace('preparation-start', 'entity-flush');
     cancelAnimationFrame(this.frame);
     this.frame = 0;
     if (this.destroyed) return;
@@ -352,6 +359,7 @@ export class EntityScene<P extends Properties> {
     if (this.destroyed) return;
     this.render();
     if (ids.length && !this.destroyed) this.options.changed(ids.filter(id => this.features.has(id)));
+    this.trace('preparation-end', 'entity-flush');
   }
   private build(feature: MapFeature<P>) {
     const revision = this.revision;
@@ -361,7 +369,7 @@ export class EntityScene<P extends Properties> {
       // Selection, preview or configuration callbacks can invalidate this attempt
       // without replacing the feature. Keep its consumed work queued for recovery.
       this.dirty.add(feature.id);
-      this.schedule();
+      this.schedule('interrupted-preparation');
       return false;
     };
     let style: FeatureStyle;

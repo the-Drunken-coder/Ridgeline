@@ -5,6 +5,8 @@ This is a dedicated consumer of the packed production library. It keeps measurem
 Run from the repository root:
 
 ```sh
+pnpm test:measurement
+pnpm validate
 pnpm measure:models --verify
 pnpm measure:models --smoke --case original-mixed-flat-dpr1
 pnpm measure:models --smoke --matrix
@@ -13,6 +15,10 @@ pnpm measure:models --serve
 ```
 
 The command builds and packs the library, generates real GLBs, installs the tarball in an isolated consumer, typechecks and builds that consumer, then serves it on port 5178. `--port` changes the port. The checkout's existing browser-artifact lock prevents competing builds. An interrupted child process retains the lock until its remaining processes have stopped. Build assets are under `.artifacts/model-measurement/`; they are not library package files.
+
+`pnpm test:measurement` runs the existing report, workload and pixel tests, including the 40 CSS px model-size assertion, followed by one packed-consumer instrumentation/ownership probe. `pnpm validate` includes that command exactly once. CI runs it in the required `model-measurement` job; the aggregate `validate` gate rejects a failed, cancelled, missing or skipped result. This verification uses software Chromium and does not run the hardware matrix.
+
+Each test command retains raw stdout and stderr plus `context.json` under `.artifacts/validation/model-measurement/run-*/`. The context records the command, checkout path, tested Git revision, dirty status/diff hash, Node version and stage exit results. Hosted runs also identify the PR head, workflow revision and Actions run when available. The workflow uploads these files with the produced verification report, package provenance and asset manifest. Context is recorded before dependency/browser installation so setup failures still identify the checkout. A missing revision stays unknown; a PR head and a tested merge checkout are separate facts.
 
 `--verify` executes the opt-in phase/ownership probe in software Chromium. Smoke uses short, explicitly unrated software runs. Neither satisfies hardware acceptance. Without `--matrix` or `--case`, automation samples four cases: icon baseline, mixed original vehicle assets, assigned-color genuine globe at pixel ratio 2, and original material fixtures. The full matrix has 72 cases. Each runs instrumentation off and on, stationary then moving camera, using identical seeded positions. All-original, all-assigned and mixed appearances are separate dimensions. The normalized 1× rewrite is a control for distinguishing repacking from increased triangle count.
 

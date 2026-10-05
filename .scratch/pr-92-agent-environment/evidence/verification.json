@@ -1,0 +1,232 @@
+{
+  "recordedAt": "2026-10-05T18:00:04.559358+00:00",
+  "spec": ".scratch/pr-92-agent-environment/spec.md",
+  "integrationOwner": "root Codex coordinator, GitHub the-Drunken-coder, issue #101",
+  "branch": "t3code/implement-issue-93",
+  "review": {
+    "base": "bf4cfca0ccaa7b781f7e3671d4982000bc9c3c50",
+    "head": "361af95d341c441e6d7598626d7bc5c51a62fcb7",
+    "standardsFindings": 0,
+    "specFindings": 0,
+    "rootCombinedDiffReviewed": true,
+    "uncommittedChanges": false
+  },
+  "local": {
+    "started": "2026-10-05T17:35:08.182Z",
+    "checkout": "/home/ubuntu/.t3/worktrees/Ridgeline/t3code-45512488",
+    "revision": "361af95d341c441e6d7598626d7bc5c51a62fcb7",
+    "status": "",
+    "diffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "command": [
+      "pnpm",
+      "validate"
+    ],
+    "stdout": "final-validation.stdout.log",
+    "stderr": "final-validation.stderr.log",
+    "finished": "2026-10-05T17:54:02.986Z",
+    "exitCode": 0,
+    "signal": null
+  },
+  "localCounts": {
+    "moduleAndProcess": 364,
+    "controlModule": 5,
+    "packedBrowser": 189,
+    "playgroundBrowser": 6,
+    "controlBrowser": 5,
+    "measurementModule": 6,
+    "packedMeasurementProbe": 1
+  },
+  "hosted": {
+    "event": "workflow_dispatch",
+    "prHead": null,
+    "requestedRevision": "361af95d341c441e6d7598626d7bc5c51a62fcb7",
+    "actualCheckout": "361af95d341c441e6d7598626d7bc5c51a62fcb7",
+    "checkoutPath": "/home/runner/work/Ridgeline/Ridgeline",
+    "runUrl": "https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37349531357",
+    "conclusion": "success",
+    "requiredContexts": [
+      "validate"
+    ],
+    "jobs": [
+      {
+        "name": "model-measurement",
+        "databaseId": 111896566838,
+        "status": "completed",
+        "conclusion": "success",
+        "startedAt": "2026-10-05T17:35:15Z",
+        "completedAt": "2026-10-05T17:36:04Z",
+        "url": "https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37349531357/job/111896566838"
+      },
+      {
+        "name": "module-tests",
+        "databaseId": 111896567118,
+        "status": "completed",
+        "conclusion": "success",
+        "startedAt": "2026-10-05T17:35:16Z",
+        "completedAt": "2026-10-05T17:36:13Z",
+        "url": "https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37349531357/job/111896567118"
+      },
+      {
+        "name": "consumer-builds",
+        "databaseId": 111896567175,
+        "status": "completed",
+        "conclusion": "success",
+        "startedAt": "2026-10-05T17:35:16Z",
+        "completedAt": "2026-10-05T17:35:35Z",
+        "url": "https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37349531357/job/111896567175"
+      },
+      {
+        "name": "typecheck",
+        "databaseId": 111896567183,
+        "status": "completed",
+        "conclusion": "success",
+        "startedAt": "2026-10-05T17:35:16Z",
+        "completedAt": "2026-10-05T17:35:32Z",
+        "url": "https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37349531357/job/111896567183"
+      },
+      {
+        "name": "packaged-browser (2)",
+        "databaseId": 111896567201,
+        "status": "completed",
+        "conclusion": "success",
+        "startedAt": "2026-10-05T17:35:16Z",
+        "completedAt": "2026-10-05T17:37:31Z",
+        "url": "https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37349531357/job/111896567201"
+      },
+      {
+        "name": "control-browser",
+        "databaseId": 111896567275,
+        "status": "completed",
+        "conclusion": "success",
+        "startedAt": "2026-10-05T17:35:15Z",
+        "completedAt": "2026-10-05T17:36:05Z",
+        "url": "https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37349531357/job/111896567275"
+      },
+      {
+        "name": "packaged-browser (1)",
+        "databaseId": 111896567310,
+        "status": "completed",
+        "conclusion": "success",
+        "startedAt": "2026-10-05T17:35:16Z",
+        "completedAt": "2026-10-05T17:41:46Z",
+        "url": "https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37349531357/job/111896567310"
+      },
+      {
+        "name": "packaged-browser (3)",
+        "databaseId": 111896567319,
+        "status": "completed",
+        "conclusion": "success",
+        "startedAt": "2026-10-05T17:35:16Z",
+        "completedAt": "2026-10-05T17:39:49Z",
+        "url": "https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37349531357/job/111896567319"
+      },
+      {
+        "name": "playground-browser",
+        "databaseId": 111896567325,
+        "status": "completed",
+        "conclusion": "success",
+        "startedAt": "2026-10-05T17:35:16Z",
+        "completedAt": "2026-10-05T17:56:41Z",
+        "url": "https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37349531357/job/111896567325"
+      },
+      {
+        "name": "packaged-browser (4)",
+        "databaseId": 111896567723,
+        "status": "completed",
+        "conclusion": "success",
+        "startedAt": "2026-10-05T17:35:16Z",
+        "completedAt": "2026-10-05T17:41:11Z",
+        "url": "https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37349531357/job/111896567723"
+      },
+      {
+        "name": "browser-reports",
+        "databaseId": 111905615277,
+        "status": "completed",
+        "conclusion": "success",
+        "startedAt": "2026-10-05T17:56:44Z",
+        "completedAt": "2026-10-05T17:57:09Z",
+        "url": "https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37349531357/job/111905615277"
+      },
+      {
+        "name": "validate",
+        "databaseId": 111905812744,
+        "status": "completed",
+        "conclusion": "success",
+        "startedAt": "2026-10-05T17:57:11Z",
+        "completedAt": "2026-10-05T17:57:16Z",
+        "url": "https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37349531357/job/111905812744"
+      }
+    ],
+    "measurement": {
+      "revision": "361af95d341c441e6d7598626d7bc5c51a62fcb7",
+      "workflowRevision": "361af95d341c441e6d7598626d7bc5c51a62fcb7",
+      "prHead": null,
+      "checkout": "/home/runner/work/Ridgeline/Ridgeline",
+      "status": "",
+      "runUrl": "https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37349531357/attempts/1",
+      "command": [
+        "pnpm",
+        "test:measurement"
+      ],
+      "context": ".artifacts/issue-93/hosted-final-measurement/validation/model-measurement/run-2026-10-05T17-35-48.368Z-2826/context.json",
+      "stages": [
+        {
+          "command": [
+            "/opt/hostedtoolcache/node/24.21.0/x64/bin/node",
+            "--import",
+            "tsx",
+            "--test",
+            "tools/model-measurement/pixels.test.ts",
+            "tools/model-measurement/report.test.ts",
+            "tools/model-measurement/workload.test.ts"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "1.stdout.log",
+          "stderr": "1.stderr.log"
+        },
+        {
+          "command": [
+            "/opt/hostedtoolcache/node/24.21.0/x64/bin/node",
+            "--test",
+            "tools/model-measurement/instrumentation.test.mjs"
+          ],
+          "status": 0,
+          "signal": null,
+          "error": null,
+          "stdout": "2.stdout.log",
+          "stderr": "2.stderr.log"
+        }
+      ],
+      "manifestSha256": "eb35134dddf6c2f43b7847db66cd3ceb5fe2df896ca9235cbf627727b1884daa",
+      "packedArchiveSha256": "1a7f5801a31eefbc1962264c4216ba57ae03a6c31a842acbf5cb933071f948c3",
+      "records": 88,
+      "disabledEntries": 0,
+      "retainedEntries": 0
+    }
+  },
+  "historical": [
+    {
+      "revision": "83abbd8315e9121fce9c2940ad6623e614709f2a",
+      "local": "passed before resource/fixture corrections",
+      "hostedRun": "https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37345459646",
+      "hostedConclusion": "cancelled",
+      "requiredGate": "failure: playground-browser=cancelled",
+      "limit": "Detailed failing action and finalized playground blob unavailable; cause unresolved."
+    },
+    {
+      "revision": "ee49a4b4b6df0526b06a2576b50e39307a8c57ae",
+      "hostedRun": "https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37347499718",
+      "hostedConclusion": "success",
+      "limit": "Predates final playground fixture/workflow changes."
+    }
+  ],
+  "documentationFollowup": "The commit containing promoted evidence and closeout follows the exercised code head. Only .scratch/pr-92-agent-environment/closeout.md and evidence files may differ; link, archive and diff checks cover that follow-up. Runtime results remain pinned to the code head.",
+  "limits": [
+    "Hardware/browser support, target performance and the triangle guideline remain in #80/#91.",
+    "Historical extra culling frame remains unexplained; controlled delayed terrain proves only its executed cause.",
+    "First hosted playground timeout has no retained detailed action; the later old-fixture run succeeded, so the final simplification is not a demonstrated diagnosis.",
+    "No PR was created and no merge to main was performed. Authorized branch checks establish hosted verification, not PR merge readiness."
+  ]
+}

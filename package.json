@@ -22,16 +22,17 @@
     "check:tickets": "node scripts/check-tickets.mjs",
     "test": "node --import tsx --test tests/*.test.ts scripts/*.test.mjs && pnpm test:controls",
     "test:browser": "node scripts/test-browser.mjs",
-    "test:playground:browser": "playwright test -c playwright.playground.config.mjs",
-    "test:controls:browser": "playwright test -c control-lab/playwright.config.ts",
-    "validate": "pnpm check && pnpm test && pnpm test:browser && pnpm test:playground:browser && pnpm test:controls:browser && pnpm build:playground && pnpm build:controls",
+    "test:playground:browser": "node scripts/test-browser-app.mjs playground",
+    "test:controls:browser": "node scripts/test-browser-app.mjs controls",
+    "validate": "pnpm check && pnpm test && pnpm test:browser && pnpm test:playground:browser && pnpm test:controls:browser && pnpm build:playground && pnpm build:controls && pnpm test:measurement",
     "measure": "node scripts/bundle-size.mjs",
     "measure:models": "node scripts/measure-models.mjs",
-    "test:measurement": "node --import tsx --test tools/model-measurement/*.test.ts && node --test tools/model-measurement/instrumentation.test.mjs"
+    "test:measurement": "node scripts/test-measurement.mjs"
   },
   "dependencies": { "maplibre-gl": "6.11.0", "@maplibre/maplibre-gl-style-spec": "26.4.4", "@types/geojson": "7946.0.16" },
   "devDependencies": {
     "@types/node": "^25.0.0",
+    "mdast-util-from-markdown": "2.0.2",
     "sidc-kit": "0.3.2",
     "playwright": "^1.63.0",
     "tsx": "^4.20.6",

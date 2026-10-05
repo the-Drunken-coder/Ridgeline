@@ -16,7 +16,8 @@ export default defineConfig({
     viewport: { width: 1280, height: 720 },
     launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] },
     screenshot: 'only-on-failure',
-    trace: 'retain-on-failure',
+    // Keep explicit pixel observations and failure captures separate from tracing.
+    trace: { mode: 'retain-on-failure', screenshots: false },
   },
   webServer: {
     command: 'pnpm exec vite preview --host 127.0.0.1 --port 5174 --strictPort',

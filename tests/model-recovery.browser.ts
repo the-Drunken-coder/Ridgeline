@@ -4,6 +4,7 @@ import { MercatorCoordinate } from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
 import { solidGlb } from './model-fixtures';
 import { materialGlb } from './model-material-fixtures';
+import { captureMapPixels } from './browser-observation';
 
 type Context = { container: HTMLDivElement; setCurrent(viewport: Viewport): void;
   until(predicate: () => boolean, description: string, timeout?: number): Promise<void> };
@@ -43,21 +44,12 @@ async function restore(viewport: Viewport, test: Context, extension: WEBGL_lose_
 }
 async function capture(viewport: Viewport) {
   await new Promise<void>(resolve => { viewport.map.once('render', () => resolve()); viewport.map.triggerRepaint(); });
-  return new Promise<{ bytes: Uint8Array; width: number }>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Recovery pixel capture timed out')), 8000);
-    viewport.map.once('render', () => {
-      clearTimeout(timeout);
-      const { gl } = context(viewport), canvas = viewport.map.getCanvas();
-      const bytes = new Uint8Array(canvas.width * canvas.height * 4);
-      gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, bytes);
-      resolve({ bytes, width: canvas.width });
-    });
-    viewport.map.triggerRepaint();
-  });
+  return captureMapPixels(viewport);
 }
 function count(image: { bytes: Uint8Array; width: number }, color: 'magenta' | 'blue' | 'red' | 'green' | 'cyan', side?: 'left' | 'right') {
   let found = 0;
   for (let i = 0; i < image.bytes.length; i += 4) {
+    if (image.bytes[i + 3]! <= 16) continue;
     const x = i / 4 % image.width;
     if (side === 'left' && x >= image.width / 2 || side === 'right' && x < image.width / 2) continue;
     const r = image.bytes[i]!, g = image.bytes[i + 1]!, b = image.bytes[i + 2]!;
