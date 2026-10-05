@@ -1,4 +1,0 @@
-$ pnpm check:tickets && tsc --noEmit && pnpm --dir control-lab typecheck
-$ node scripts/check-tickets.mjs
-Checked 6 implementation tickets.
-$ tsc --noEmit

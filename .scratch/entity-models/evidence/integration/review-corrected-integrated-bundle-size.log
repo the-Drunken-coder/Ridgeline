@@ -1,9 +1,0 @@
-$ node scripts/bundle-size.mjs
-File | Raw bytes | Gzip bytes
-dist/ridgeline.js | 281990 | 79426
-dist/ridgeline.css | 6089 | 1788
-playground-dist/assets/index-B5wd1mUX.js | 1276268 | 355508
-playground-dist/assets/index-DvgcVRB4.css | 97784 | 13858
-playground-dist/assets/maplibre-gl-worker-BbFVVOSM.js | 509445 | 145206
-playground-dist/assets/sidc-demo-B7pjMgJG.js | 871547 | 200257
-Library excludes MapLibre; playground includes the renderer and its worker. Maps, tiles, glyphs, and sprites are network assets, excluded here.

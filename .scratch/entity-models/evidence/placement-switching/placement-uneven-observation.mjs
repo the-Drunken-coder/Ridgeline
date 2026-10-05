@@ -1,7 +1,0 @@
-import {createServer} from '/tmp/ridgeline-model-placement/node_modules/vite/dist/node/index.js';
-import {chromium} from '/tmp/ridgeline-model-placement/node_modules/playwright/index.mjs';
-import {writeFile} from 'node:fs/promises';
-const server=await createServer({root:'/tmp/ridgeline-model-context/placement-observation',server:{host:'127.0.0.1',port:5186,strictPort:true,fs:{allow:['/tmp/ridgeline-model-context','/tmp/ridgeline-model-placement']}},logLevel:'error'});await server.listen();
-const browser=await chromium.launch({headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
-try{const page=await browser.newPage({viewport:{width:640,height:360}});page.on('pageerror',e=>console.error(e));await page.goto('http://127.0.0.1:5186');await page.waitForFunction(()=>window.placementReady);await page.screenshot({path:'/tmp/ridgeline-model-context/placement-uneven-plane.png'});const state=await page.evaluate(()=>window.showRidge());await page.screenshot({path:'/tmp/ridgeline-model-context/placement-uneven-ridge.png'});await writeFile('/tmp/ridgeline-model-context/placement-uneven-observation.json',JSON.stringify({browser:browser.version(),state,canvas:await page.evaluate(()=>{const gl=document.querySelector('canvas').getContext('webgl2'),ext=gl.getExtension('WEBGL_debug_renderer_info');return{vendor:gl.getParameter(ext.UNMASKED_VENDOR_WEBGL),renderer:gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)}})},null,2));}
-finally{await browser.close();await server.close();}

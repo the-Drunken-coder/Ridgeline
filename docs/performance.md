@@ -14,9 +14,9 @@ Measured at clean `708988d1253863412f73915a650b610518ddb9fc`, source tree `04413
 | GLB parser isolated entry | 16,355 | 5,256 |
 | Model renderer isolated entry | 25,656 | 8,653 |
 
-The isolated entries use Vite's default ES-library build. The renderer includes its projection and color helpers; reachable helpers can appear in both entry builds. Their gzip sizes are not additive parts of the package delta. Library CSS remains 6,089 raw and 1,788 gzip bytes. [Bundle data](../.scratch/entity-models/evidence/integration/review-corrected-bundle-size.json) and [entry data](../.scratch/entity-models/evidence/integration/review-corrected-module-size.json) retain the method and revision.
+The isolated entries use Vite's default ES-library build. The renderer includes its projection and color helpers; reachable helpers can appear in both entry builds. Their gzip sizes are not additive parts of the package delta. Library CSS remains 6,089 raw and 1,788 gzip bytes. [Bundle data](../.scratch/entity-models/evidence/bundle-size.json) and [entry data](../.scratch/entity-models/evidence/module-size.json) retain the method and revision.
 
-The [packaged measurement workflow](../tools/model-measurement/README.md) prepares the approved moving-model workload and retains separate frame, CPU, update and optional GPU observations. [Software smoke evidence](../.scratch/entity-models/evidence/integration-smoke/README.md) verifies tooling and visible workloads. Apple M1 Pro, desktop discrete-GPU and target-browser measurements remain pending in #80/#91; these bundle and software observations supply no hardware performance guideline.
+The [packaged measurement workflow](../tools/model-measurement/README.md) prepares the approved moving-model workload and retains separate frame, CPU, update and optional GPU observations. [Software smoke evidence](../.scratch/entity-models/evidence/README.md) verifies tooling and visible workloads. Apple M1 Pro, desktop discrete-GPU and target-browser measurements remain pending in #80/#91; these bundle and software observations supply no hardware performance guideline.
 
 ## Reliability workload snapshot, 2026-09-28
 

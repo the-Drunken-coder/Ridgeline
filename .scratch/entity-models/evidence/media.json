@@ -1,0 +1,52 @@
+{
+  "dateUtc": "2026-10-05T04:01:14.343Z",
+  "revision": "c7ee9cb5497a8e6a71fac07ac079b97db211cdff",
+  "sourceTree": "04413b0db510cc12b4794ea53f98cf331003ac53",
+  "browser": "153.0.8010.12",
+  "backend": "ANGLE SwiftShader, Linux",
+  "viewportCss": [
+    1440,
+    900
+  ],
+  "canvas": {
+    "css": [
+      1188,
+      817
+    ],
+    "physical": [
+      1188,
+      817
+    ],
+    "browserDpr": 1
+  },
+  "statuses": [
+    "8 models · 0 icons",
+    "0 models · 8 icons",
+    "8 models · 0 icons"
+  ],
+  "errors": [],
+  "camera": {
+    "nearby": {
+      "center": [
+        6.869,
+        45.925
+      ],
+      "zoom": 17,
+      "pitch": 50,
+      "bearing": -20
+    },
+    "distance": {
+      "center": [
+        6.869,
+        45.925
+      ],
+      "zoom": 13,
+      "pitch": 35,
+      "bearing": -20
+    }
+  },
+  "terrain": "flat zero-meter Terrarium fixture",
+  "projection": "flat",
+  "capture": "Production playground; real clicks on public example controls. Comparison shows model and icon representations, not an older source revision. Video includes initial load and both switching directions.",
+  "hardwareAcceptance": "pending #80/#91"
+}
