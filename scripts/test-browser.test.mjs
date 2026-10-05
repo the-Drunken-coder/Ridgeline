@@ -68,6 +68,75 @@ if (process.env.PAUSE_BUILD && process.cwd() === root && process.argv[2] === 'bu
   };
 }
 
+test('repeated finalization preserves the next run lock and previously retained evidence', async t => {
+  for (const failed of [false, true]) {
+    await t.test(failed ? 'failed run' : 'successful run', async t => {
+      const f = await fixture(t);
+      const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+        import assert from 'node:assert/strict';
+        import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+        import { join } from 'node:path';
+        import { claimBrowserRun } from './scripts/browser-resources.mjs';
+        const root = process.cwd(), failed = ${failed};
+        const output = join(root, '.artifacts/playwright');
+        const lock = join(root, '.artifacts/browser-run.lock');
+        const previous = claimBrowserRun(root, 'packaged');
+        mkdirSync(output);
+        writeFileSync(join(output, 'report'), 'original producer bytes');
+        previous.capture();
+        previous.finish(failed);
+        const record = readFileSync(join(previous.directory, '.browser-run.json'), 'utf8');
+        const current = claimBrowserRun(root, 'packaged');
+        const owner = readFileSync(join(lock, 'owner'), 'utf8');
+        writeFileSync(join(output, 'report'), 'current producer bytes');
+        previous.finish(!failed);
+        assert.equal(readFileSync(join(lock, 'owner'), 'utf8'), owner);
+        assert.equal(readFileSync(join(previous.directory, '.browser-run.json'), 'utf8'), record);
+        assert.equal(readFileSync(join(previous.directory, 'playwright/report'), 'utf8'), 'original producer bytes');
+        assert.equal(existsSync(join(previous.directory, '.pin')), failed);
+        assert.equal(JSON.parse(readFileSync(join(current.directory, '.browser-run.json'), 'utf8')).status, 'running');
+        assert.throws(() => claimBrowserRun(root, 'packaged'), /already locked/);
+        current.finish();
+        assert.equal(existsSync(lock), false);
+      `], { cwd: f.root, encoding: 'utf8', timeout: 10_000,
+        env: { ...f.env, RIDGELINE_BROWSER_MIN_FREE_BYTES: '0' } });
+      assert.ifError(result.error);
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+    });
+  }
+});
+
+test('finalization can retry after protected output retention fails', async t => {
+  const f = await fixture(t);
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import assert from 'node:assert/strict';
+    import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+    import { join } from 'node:path';
+    import { claimBrowserRun } from './scripts/browser-resources.mjs';
+    const root = process.cwd(), owner = claimBrowserRun(root, 'packaged');
+    const output = join(root, '.artifacts/playwright');
+    const lock = join(root, '.artifacts/browser-run.lock');
+    mkdirSync(output);
+    writeFileSync(join(output, 'report'), 'failure producer bytes');
+    writeFileSync(join(root, 'external-evidence'), 'protected external bytes');
+    symlinkSync(join(root, 'external-evidence'), join(output, 'external'));
+    owner.capture();
+    assert.throws(() => owner.finish(true), /Refusing to retain protected browser output/);
+    assert.equal(existsSync(lock), true);
+    assert.throws(() => claimBrowserRun(root, 'packaged'), /already locked/);
+    rmSync(join(output, 'external'));
+    owner.finish(true);
+    assert.equal(existsSync(lock), false);
+    assert.equal(readFileSync(join(owner.directory, 'playwright/report'), 'utf8'), 'failure producer bytes');
+    assert.equal(readFileSync(join(root, 'external-evidence'), 'utf8'), 'protected external bytes');
+    assert.equal(JSON.parse(readFileSync(join(owner.directory, '.browser-run.json'), 'utf8')).status, 'failed');
+    assert.equal(existsSync(join(owner.directory, '.pin')), true);
+  `], { cwd: f.root, encoding: 'utf8', timeout: 10_000,
+    env: { ...f.env, RIDGELINE_BROWSER_MIN_FREE_BYTES: '0' } });
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
 test('low disk space refuses setup and a restored filesystem permits a retry', async t => {
   const f = await fixture(t);
   const failed = f.run({ FIXTURE_CAPACITY: '48', NODE_OPTIONS: `--import=${join(f.root, 'capacity.mjs')}` });

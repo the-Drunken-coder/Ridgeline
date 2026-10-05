@@ -15,6 +15,16 @@ Hosted verification: authorized manual branch run [Validation](https://github.co
 
 The commit containing this record and promoted evidence follows that exercised code revision. Only this closeout and its evidence directory differ. Archive, Markdown-link and diff checks cover the documentation follow-up; runtime/build/test/workflow inputs remain byte-identical. No PR was opened and no merge to main was performed. This is locally and hosted verified implementation, not a PR merge-readiness claim.
 
+## Review follow-up, 2026-10-05
+
+The PR #102 Standards review reproduced repeated `finish()` calls removing a newer run's lock. The run owner now remembers successful cleanup and ignores later finalization. Failed evidence capture retains ownership and remains retryable. Regression histories cover successful and failed prior runs, unchanged retained bytes and pins, refusal of a third overlapping run, and capture failure followed by repair and retry.
+
+Reviewed and locally exercised: `dfe0e5266f2b8285679b71605605a9147f43425c` plus uncommitted changes to `scripts/browser-resources.mjs` and `scripts/test-browser.test.mjs`, in `/home/ubuntu/.t3/worktrees/Ridgeline/t3code-826d14f7`. Root reviewed the correction and its tests. The SHA-256 of `git diff -- scripts/browser-resources.mjs scripts/test-browser.test.mjs` is `1249ef4a67deebfd27133b7a0659c90e2e9bddc6163760ecb5449500c29ec4c9`.
+
+Local verification: `node --test scripts/test-browser.test.mjs scripts/promote-evidence.test.mjs scripts/test-measurement.test.mjs` passed all 36 tests; `pnpm check` and `git diff --check` passed. Before the implementation fix, the new successful-run and failed-run regressions both reproduced the missing lock. The documentation follow-up does not change the exercised code or tests.
+
+Hosted verification: the earlier hosted results cover their recorded revisions. No hosted check covers this uncommitted correction, and the full browser suites were not rerun for this tooling lifecycle change. The correction is implemented and locally verified; merge readiness remains unverified.
+
 ## Acceptance evidence
 
 Raw filenames below are members of [the verified archive](evidence/raw-reports.tar.gz). [The manifest](evidence/manifest.json) records original producer paths, member SHA-256 values and the archive hash. Current logs are pinned to `361af95d341c441e6d7598626d7bc5c51a62fcb7` unless a historical revision is named explicitly.

@@ -147,6 +147,7 @@ export function claimBrowserRun(root, command) {
   }
   let interrupted = false;
   let captureOutputs = false;
+  let finished = false;
   return {
     directory,
     capture() { captureOutputs = true; },
@@ -170,6 +171,8 @@ export function claimBrowserRun(root, command) {
       if (result.status !== 0) throw new Error(`${executable} ${args.join(' ')} failed with status ${result.status}`);
     },
     finish(failed = false) {
+      // A later run may already own the shared lock after this owner finishes.
+      if (finished) return;
       if (interrupted) {
         writeFileSync(resolve(directory, '.browser-run.json'), JSON.stringify({ ...record, status: 'interrupted' }, null, 2));
         console.error(`Browser lock retained at ${lock}. Stop remaining child processes before removing this directory.`);
@@ -191,8 +194,10 @@ export function claimBrowserRun(root, command) {
         pruneRuns(root, pool, command);
         finalized = true;
       } finally {
-        if (finalized) rmSync(lock, { recursive: true, force: true });
-        else console.error(`Browser lock retained at ${lock}: output retention did not complete. Preserve the latest output before clearing this directory.`);
+        if (finalized) {
+          rmSync(lock, { recursive: true, force: true });
+          finished = true;
+        } else console.error(`Browser lock retained at ${lock}: output retention did not complete. Preserve the latest output before clearing this directory.`);
       }
     },
   };
