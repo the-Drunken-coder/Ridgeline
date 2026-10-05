@@ -1,0 +1,15 @@
+[WebServer] (node:915055) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:915074) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 2 tests using 1 worker
+
+(node:915095) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/packaged/browser.spec.ts:6:3 › Model hover follows a stationary pointer and cancels stale callbacks (11.8s)
+(node:915464) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  2 tests/packaged/browser.spec.ts:6:3 › Model hover follows a stationary pointer and cancels stale callbacks (10.6s)
+
+  2 passed (27.2s)
