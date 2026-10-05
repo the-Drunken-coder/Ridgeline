@@ -1,3 +1,4 @@
+import type { ModelMeasurement } from './model-measurement';
 import { RidgelineError } from './errors';
 import { parseGlb } from './model-glb';
 import type { ParsedModel } from './model-glb';
@@ -26,7 +27,7 @@ export class ModelRegistry<R extends ModelResources = ModelResources> {
   private failed?: RidgelineError;
   private destroyed = false;
   private scheduled = false;
-  constructor(private options: { changed(id: string): void; diagnostic(error: RidgelineError): void }) {}
+  constructor(private options: { measurement?: ModelMeasurement; changed(id: string): void; diagnostic(error: RidgelineError): void }) {}
   status(id: string): EntityModelState {
     const entry = this.entries.get(id);
     return { id, status: entry?.accepted ? 'ready' : entry?.pending ? 'loading' : entry?.failed ? 'failed' : 'unavailable',
@@ -151,11 +152,18 @@ export class ModelRegistry<R extends ModelResources = ModelResources> {
   private async load(id: string, entry: Registration<R>, pending: Pending, attempt: AbortController, uploader?: ModelUploader<R>) {
     const current = () => !this.destroyed && this.entries.get(id) === entry && entry.pending === pending &&
       pending.attempt === attempt && this.uploader === uploader && !attempt.signal.aborted;
+    const measuredAttempt = this.options.measurement?.attempt(attempt.signal, id, 'register');
     let resources: R | undefined;
     try {
       if (this.failed) throw this.failed;
       if (!uploader || !current()) return;
-      const model = pending.model ??= parseGlb(pending.definition.bytes);
+      if (!pending.model) {
+        const start = this.options.measurement?.begin();
+        let status = 'failure';
+        try { pending.model = parseGlb(pending.definition.bytes); status = 'success'; }
+        finally { if (start !== undefined) this.options.measurement!.end('parse', start, { ...measuredAttempt, status }); }
+      }
+      const model = pending.model;
       resources = await uploader.upload(model, current, attempt.signal);
       if (!current()) { resources.dispose(); return; }
       const previous = entry.ready;
@@ -181,6 +189,7 @@ export class ModelRegistry<R extends ModelResources = ModelResources> {
     }
   }
   private async restore(id: string, entry: Registration<R>, accepted: Accepted, attempt: AbortController, uploader: ModelUploader<R>) {
+    this.options.measurement?.attempt(attempt.signal, id, 'restore');
     const current = () => !this.destroyed && this.entries.get(id) === entry && entry.accepted === accepted &&
       entry.restore === attempt && this.uploader === uploader && !attempt.signal.aborted;
     let resources: R | undefined;

@@ -1,3 +1,4 @@
+import type { ModelMeasurement } from './model-measurement';
 import { MercatorCoordinate, Point } from 'maplibre-gl';
 import { ModelFeedbackLayer } from './model-feedback-layer';
 import { modelFeedback } from './model-presentation';
@@ -43,6 +44,7 @@ const combineCoverage = (a: EntityState['coverage'], b: EntityState['coverage'])
 const verticalScale = (configuration: MapConfiguration) =>
   configuration.terrain ? configuration.exaggeration : 1;
 type SceneOptions<P extends Properties> = {
+  measurement?: ModelMeasurement;
   map: GLMap;
   configuration: () => MapConfiguration;
   style: (feature: MapFeature<P>) => FeatureStyle;
@@ -91,7 +93,7 @@ export class EntityScene<P extends Properties> {
     this.feedbackLayer = new ModelFeedbackLayer(cause => options.diagnostic(new RidgelineError('MODEL_RENDERER_FAILED',
       'Model feedback could not render.', { operation: 'models', recoverable: true }, cause)));
     if (options.models) this.modelLayer = new ModelLayer(options.models, {
-      prepare: (projection, available) => this.prepareModelFrame(projection, available), diagnostic: options.diagnostic,
+      measurement: options.measurement, prepare: (projection, available) => this.prepareModelFrame(projection, available), diagnostic: options.diagnostic,
       contextLost: () => this.contextLost(),
       contextRestored: () => { this.lost = false; options.contextRestored?.(); this.invalidate(); },
     });
@@ -135,7 +137,6 @@ export class EntityScene<P extends Properties> {
       displayed: id => {
         const state = this.states.get(id);
         if (state) state.coverage = combineCoverage(this.nonCameraCoverage.get(id) ?? 'ready', this.coverage.status(id));
-        this.geometryDirty = true;
         this.renderLayers(false);
         options.changed([id]);
       },
@@ -262,11 +263,13 @@ export class EntityScene<P extends Properties> {
   }
   pickAbove(x: number, y: number, tolerance: number) {
     if (this.lost || this.destroyed) return [];
+    const pickStart = this.options.measurement?.begin();
     const models: { entityId: string; attachmentId?: string; depth: number }[] = this.modelHits.flatMap(({ feature, polygons }) => {
       if (this.features.get(feature.id) !== feature) return [];
       const point = pickModelBox(polygons, x, y, tolerance, this.terrainDepth);
       return point ? [{ entityId: feature.id, depth: point.depth }] : [];
     });
+    if (pickStart !== undefined) this.options.measurement!.end('picking', pickStart, { boxes: this.modelHits.length });
     return [...[...models, ...this.layer.pick(x, y, tolerance)].sort((a, b) => a.depth - b.depth), ...this.coverage.pick(x, y)];
   }
   contextLost() {
@@ -410,6 +413,10 @@ export class EntityScene<P extends Properties> {
     if (this.destroyed || this.lost) return;
     if (this.dirty.size || this.geometryDirty) this.flush();
     if (this.destroyed) return;
+    const measured = this.options.measurement?.enabled;
+    const updateRevision = measured ? this.options.measurement!.revision : 0;
+    const frame = measured ? this.options.measurement!.frame() : 0;
+    let placementMs = 0, projectionScalingMs = 0;
     const revision = this.revision, registry = this.options.models, configuration = this.options.configuration();
     const current = () => !this.destroyed && !this.lost && this.revision === revision && this.options.configuration() === configuration;
     this.options.beginNativeFrame?.();
@@ -444,13 +451,19 @@ export class EntityScene<P extends Properties> {
           placement: state.placement, altitude: state.altitude, heading: entity.heading, pitch: entity.pitch, roll: entity.roll,
           metersPerUnit: asset.definition.metersPerUnit, headingOffset: asset.definition.headingOffset,
           followSlope: reference?.followSlope, terrain: configuration.terrain, exaggeration: configuration.exaggeration };
+        let phaseStart = measured ? performance.now() : 0;
         const physical = modelPlacement(input, this.elevation.sampling());
+        if (measured) placementMs += performance.now() - phaseStart;
         if (!current()) return;
         let placement = physical;
         for (let refinement = 0; refinement < 4 && placement.status === 'ready'; refinement++) {
+          if (measured) phaseStart = performance.now();
           const factor = modelFloorScale(projection, placement, origin, settings.minimumSizePixels);
+          if (measured) projectionScalingMs += performance.now() - phaseStart;
           if (factor <= 1) break;
+          if (measured) phaseStart = performance.now();
           placement = modelPlacement({ ...input, displayScale: placement.displayScale * factor }, this.elevation.sampling());
+          if (measured) placementMs += performance.now() - phaseStart;
           if (!current()) return;
         }
         if (!current()) return;
@@ -468,7 +481,9 @@ export class EntityScene<P extends Properties> {
             appearance: style.modelAppearance && { ...style.modelAppearance } });
           grouped.set(asset, draw);
           representation = 'model';
+          if (measured) phaseStart = performance.now();
           const box = modelScreenBox(projection, placement, origin);
+          if (measured) projectionScalingMs += performance.now() - phaseStart;
           if (box) {
             hits.push({ feature, polygons: box.polygons });
             const anchor = projection.project(placement.position, origin);
@@ -482,6 +497,7 @@ export class EntityScene<P extends Properties> {
       representations.set(id, representation);
     }
     if (!current()) return;
+    if (measured) this.options.measurement!.event('scene-cpu', { frame, updateRevision, placementMs, projectionScalingMs });
     const drawnTransform = transform.clone(), terrain = this.options.map.terrain;
     const terrainDepth = (point: { x: number; y: number }) => {
       if (!terrain) return undefined;
@@ -502,6 +518,11 @@ export class EntityScene<P extends Properties> {
       publish: modelsDrawn => {
         if (!current()) return;
         this.modelHits = modelsDrawn ? hits : [];
+        if (measured) this.options.measurement!.event('frame', { frame, sceneRevision: revision, updateRevision,
+          drawnModels: modelsDrawn ? [...grouped.values()].reduce((sum, draw) => sum + draw.instances.length, 0) : 0,
+          clippedBoxes: modelsDrawn ? hits.length : 0,
+          batches: modelsDrawn ? [...grouped.values()].reduce((sum, draw) => sum + draw.asset.model.batches.length, 0) : 0,
+          triangles: modelsDrawn ? [...grouped.values()].reduce((sum, draw) => sum + draw.instances.length * draw.asset.model.batches.reduce((n, batch) => n + batch.indices.length / 3, 0), 0) : 0 });
         this.terrainDepth = modelsDrawn ? terrainDepth : undefined;
         this.choices = choices;
         const changed = [...representations].filter(([id, representation]) => this.published.get(id) !== representation).map(([id]) => id);
