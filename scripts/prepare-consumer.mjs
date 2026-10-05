@@ -1,11 +1,23 @@
-import { mkdir, copyFile, writeFile, readFile } from 'node:fs/promises';
+import { mkdir, copyFile, writeFile, readFile, cp } from 'node:fs/promises';
 
 // This separate Vite application deliberately has no alias to Ridgeline's source.
 const directory = '.artifacts/consumer';
 await mkdir(directory, { recursive: true });
+await cp('tests/fixtures/noto-sans', `${directory}/fixtures/noto-sans`, { recursive: true });
 await copyFile('tests/browser.html', `${directory}/index.html`);
 await copyFile('tests/browser.ts', `${directory}/main.ts`);
 await copyFile('tests/browser-cases.ts', `${directory}/browser-cases.ts`);
+await copyFile('tests/model-frame-review.browser.ts', `${directory}/model-frame-review.browser.ts`);
+await copyFile('tests/model-recovery.browser.ts', `${directory}/model-recovery.browser.ts`);
+await copyFile('tests/model-picking.browser.ts', `${directory}/model-picking.browser.ts`);
+await copyFile('tests/model-presentation.browser.ts', `${directory}/model-presentation.browser.ts`);
+await copyFile('tests/model-registration.browser.ts', `${directory}/model-registration.browser.ts`);
+await copyFile('tests/model-placement.browser.ts', `${directory}/model-placement.browser.ts`);
+await copyFile('tests/model-placement-fixtures.ts', `${directory}/model-placement-fixtures.ts`);
+await copyFile('tests/model-switching.browser.ts', `${directory}/model-switching.browser.ts`);
+await copyFile('tests/model-materials.browser.ts', `${directory}/model-materials.browser.ts`);
+await copyFile('tests/model-material-fixtures.ts', `${directory}/model-material-fixtures.ts`);
+await copyFile('tests/model-fixtures.ts', `${directory}/model-fixtures.ts`);
 // The focused GPU test compiles the production GLSL function directly.
 await copyFile('src/gpu-camera-shaders.ts', `${directory}/gpu-camera-shaders.ts`);
 await writeFile(`${directory}/gpu-vote.ts`, (await readFile('tests/gpu-vote.ts', 'utf8')).replace('../src/gpu-camera-shaders', './gpu-camera-shaders'));

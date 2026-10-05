@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Elevation } from '../src/elevation';
+import { Elevation, modelAreaKey, entityIdForAreaKey } from '../src/elevation';
 import type { ElevationSampler } from '../src/types';
 import type { RidgelineError } from '../src/errors';
 
@@ -385,5 +385,130 @@ test('preparation and sampling use identical normalized center coordinates', asy
     elevation.request('placement', [.01, 0], 0);
     await flush();
     assert.equal(elevation.height(.01, 0), 42);
+  } finally { elevation.destroy(); }
+});
+
+test('exact terrain probes are snapshotted and included in consumer preparation', async () => {
+  const source = controlled(), { elevation } = fixture(source.sampler);
+  const requiredPositions: [number, number][] = [[180.0001, 20.0001]];
+  try {
+    elevation.requestBatch([{ key: 'model:one', center: [179.9999, 20], radiusMeters: 100, requiredPositions }]);
+    requiredPositions[0]![1] = 40;
+    await flush();
+    assert.equal(source.calls.length, 1);
+    const call = source.calls[0]!;
+    assert.ok(call.positions.some(([lng, lat]) => Math.abs(lng + 179.9999) < 1e-10 && lat === 20.0001));
+    for (const point of call.positions) source.heights.set(point.join(','), 42);
+    call.completion.resolve();
+    await flush();
+    assert.equal(elevation.height(180.0001, 20.0001), 42);
+  } finally { elevation.destroy(); }
+});
+
+test('changing exact probes replaces pending area work even at the same center and radius', async () => {
+  const source = controlled(), { elevation, changes } = fixture(source.sampler);
+  const center: [number, number] = [0, 0], first: [number, number] = [.0001, 0], second: [number, number] = [0, .0001];
+  try {
+    elevation.requestBatch([{ key: 'model:one', center, radiusMeters: 100, requiredPositions: [first] }]);
+    await flush();
+    elevation.requestBatch([{ key: 'model:one', center, radiusMeters: 100, requiredPositions: [second] }]);
+    assert.equal(source.calls[0]!.signal.aborted, true);
+    await flush();
+    assert.equal(source.calls.length, 2);
+    assert.ok(source.calls[1]!.positions.some(point => point[0] === second[0] && point[1] === second[1]));
+    source.calls[0]!.completion.resolve(); await flush();
+    assert.deepEqual(changes, []);
+    elevation.requestBatch([{ key: 'model:one', center, radiusMeters: 100, requiredPositions: [second, second] }]);
+    await flush(); assert.equal(source.calls.length, 2);
+    elevation.release('model:one');
+    assert.equal(source.calls[1]!.signal.aborted, true);
+    source.calls[1]!.completion.resolve(); await flush();
+    assert.deepEqual(changes, []);
+  } finally { elevation.destroy(); }
+});
+
+test('pending shared preparations only cover exact probes already sent to the sampler', async () => {
+  for (const pending of [false, true]) {
+    const source = controlled(), { elevation } = fixture(source.sampler);
+    try {
+      elevation.requestBatch([{ key: 'outer', center: [0, 0], radiusMeters: 1000, requiredPositions: [[.0001, 0]] }]);
+      if (pending) await flush();
+      elevation.requestBatch([{ key: 'inner', center: [0, 0], radiusMeters: 100, requiredPositions: [[0, .0001]] }]);
+      await flush();
+      assert.equal(source.calls.length, pending ? 2 : 1);
+      assert.ok(source.calls.at(-1)!.positions.some(([lng, lat]) => lng === 0 && lat === .0001));
+      elevation.release('outer');
+      assert.equal(source.calls.at(-1)!.signal.aborted, false);
+      elevation.release('inner');
+      assert.ok(source.calls.every(call => call.signal.aborted));
+    } finally { elevation.destroy(); }
+  }
+});
+
+test('model area notifications preserve entity identity and provider reset retains exact probes', async () => {
+  const source = controlled(), { elevation, changes } = fixture(source.sampler);
+  const key = modelAreaKey('vehicle:one'), requiredPositions: [number, number][] = [[.0001, .0002]];
+  try {
+    elevation.requestBatch([{ key, center: [0, 0], radiusMeters: 100, requiredPositions }]);
+    await flush();
+    elevation.reset({ tiles: ['replacement'] });
+    assert.equal(source.calls[0]!.signal.aborted, true);
+    await flush();
+    assert.equal(source.calls.length, 2);
+    assert.ok(source.calls[1]!.positions.some(([lng, lat]) => Math.abs(lng - .0001) < 1e-12 && lat === .0002));
+    assert.deepEqual(changes.map(keys => keys.map(entityIdForAreaKey)), [['vehicle:one']]);
+  } finally { elevation.destroy(); }
+});
+
+test('a sampler changing provider cannot publish the obsolete preparation result', async () => {
+  let elevation: Elevation, first = true, prepares = 0;
+  const changes: string[][] = [];
+  elevation = new Elevation({ provider: { tiles: ['first'] }, sampler: {
+    sample() {
+      if (first) { first = false; elevation.reset({ tiles: ['second'] }); return 42; }
+      return null;
+    },
+    prepare: async () => { prepares++; await new Promise(() => {}); },
+  }, changed: keys => changes.push([...keys]), diagnostic: () => {} });
+  try {
+    elevation.request(modelAreaKey('current'), [0, 0], 0);
+    await flush();
+    assert.deepEqual(changes, [[modelAreaKey('current')]], 'Only the provider reset should publish until current preparation settles');
+    assert.equal(prepares, 1);
+    assert.equal(elevation.readiness(modelAreaKey('current')), 'loading');
+  } finally { elevation.destroy(); }
+});
+
+test('abort callbacks keep newer terrain ownership and discard a partially accepted batch', async () => {
+  for (const action of ['release', 'replace', 'destroy'] as const) {
+    const source = controlled(), { elevation } = fixture(source.sampler), key = modelAreaKey('current');
+    try {
+      elevation.request(key, [0, 0], 1); await flush();
+      source.calls[0]!.signal.addEventListener('abort', () => {
+        if (action === 'release') elevation.release(key);
+        else if (action === 'replace') elevation.request(key, [3, 3], 1);
+        else elevation.destroy();
+      });
+      elevation.requestBatch([{ key: 'partial', center: [0, 0], radiusMeters: 1 },
+        { key, center: [1, 1], radiusMeters: 1 }], { deferProbe: true });
+      await flush();
+      assert.equal(elevation.revision('partial'), 0, `${action} retained part of the obsolete batch`);
+      assert.equal(elevation.revision(key) > 0, action === 'replace');
+      elevation.reset({ tiles: ['replacement'] }); await flush();
+      assert.deepEqual(source.calls.slice(1).map(call => call.positions[0]), action === 'replace' ? [[3, 3], [3, 3]] : []);
+    } finally { elevation.destroy(); }
+  }
+});
+
+test('provider reset retires only old work when an abort callback replaces one requester', async () => {
+  const source = controlled(), { elevation } = fixture(source.sampler);
+  try {
+    elevation.request('changed', [0, 0], 1); elevation.request('retained', [10, 10], 1); await flush();
+    source.calls[0]!.signal.addEventListener('abort', () => elevation.request('changed', [3, 3], 1));
+    elevation.reset({ tiles: ['replacement'] }); await flush();
+    assert.deepEqual(source.calls.slice(2).map(call => call.positions[0]), [[3, 3], [10, 10]]);
+    assert.equal(source.calls[2]!.signal.aborted, false);
+    assert.equal(source.calls[3]!.signal.aborted, false);
+    assert.ok(elevation.revision('changed') > 0 && elevation.revision('retained') > 0);
   } finally { elevation.destroy(); }
 });

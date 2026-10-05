@@ -59,6 +59,18 @@ A selectable playground example with sample features and interactions intended t
 **Entity**:
 A located object that may move, have an altitude, and carry attached geometry.
 
+**Icon**:
+A two-dimensional symbol used to represent an entity or point feature.
+
+**Model**:
+A three-dimensional visual asset that can represent an entity.
+
+**Representation**:
+The visual form used to show an entity, such as its icon or model, without changing its identity.
+
+**Heading**:
+An entity's facing direction clockwise from geographic north, independent of its travel direction and sensor bearing. North is 0 degrees and east is 90 degrees.
+
 **Altitude reference**:
 The surface from which an entity's vertical position is measured, either the ground beneath it or sea level.
 

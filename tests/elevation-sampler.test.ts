@@ -1,3 +1,4 @@
+import { DEFAULT_ENTITY_MODELS } from '../src/model-settings';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Elevation } from '../src/elevation';
@@ -270,7 +271,7 @@ test('elevation notifications preserve partial progress for concurrent camera ow
       cameras: [{ id: 'camera', type: 'camera', bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 50_000, terrainVisibility: true }],
       configuration: { basemap: { version: 8, sources: {}, layers: [] }, projection: 'flat', terrain: false,
         hillshade: false, hillshadeOptions: {}, exaggeration: 1, elevation: provider,
-        entityVisibility: { footprints: true, zones: true, groundLines: true } },
+        entityModels: DEFAULT_ENTITY_MODELS, entityVisibility: { footprints: true, zones: true, groundLines: true } },
     }));
     try {
       for (let attempt = 0; attempt < 20 && submitted.length < 2; attempt++) {
@@ -409,7 +410,7 @@ test('a failed fine tile does not clear retained camera output awaiting coarser 
         range: 50_000, terrainVisibility: true, volumeOpacity: .3 }],
       configuration: { basemap: { version: 8, sources: {}, layers: [] }, projection: 'flat', terrain: false,
         hillshade: false, hillshadeOptions: {}, exaggeration: 1, elevation: provider,
-        entityVisibility: { footprints: true, zones: true, groundLines: true } },
+        entityModels: DEFAULT_ENTITY_MODELS, entityVisibility: { footprints: true, zones: true, groundLines: true } },
     };
     try {
       for (let attempt = 0; attempt < 20 && !submitted.length; attempt++) {

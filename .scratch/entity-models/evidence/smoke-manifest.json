@@ -1,0 +1,93 @@
+{
+  "dateUtc": "2026-10-05",
+  "runtimeRevision": "708988d1253863412f73915a650b610518ddb9fc",
+  "sourceTree": "04413b0db510cc12b4794ea53f98cf331003ac53",
+  "historicalFullEvidenceRevision": "c7ee9cb5497a8e6a71fac07ac079b97db211cdff",
+  "archive": "software-smoke.tar.gz",
+  "sha256": "0a80f107fb552db231bf6aa512419e961b70ab1d2af90c0129298a311f82f6cc",
+  "contents": [
+    {
+      "path": "run-2026-10-05T01-56-33.291Z/icons-mixed-flat-dpr1-off.json",
+      "bytes": 64634,
+      "sha256": "b550bd917576f3acc60122b19a32e6479edf9070143d88cee6185e3f8ba21b52"
+    },
+    {
+      "path": "run-2026-10-05T01-56-33.291Z/icons-mixed-flat-dpr1-on.json",
+      "bytes": 136027,
+      "sha256": "1910c47b5adcf6af9dca733e84ac948548e866507d2ce52e6a94e51255b77b3d"
+    },
+    {
+      "path": "run-2026-10-05T01-56-33.291Z/icons-mixed-flat-dpr1-overhead.json",
+      "bytes": 13527,
+      "sha256": "bec3ed3420c79c023586a27db41d33c689b4d76bea2ae606a16974c682834f17"
+    },
+    {
+      "path": "run-2026-10-05T01-56-33.291Z/index.json",
+      "bytes": 1066,
+      "sha256": "f9fd26ca8a47617d2bb60f3e436fd40fedb047492ccbe172483daca45d412b36"
+    },
+    {
+      "path": "run-2026-10-05T01-58-07.204Z/index.json",
+      "bytes": 1078,
+      "sha256": "b8ed3616a1b6314d94df8e3e7c26580430c54495069a19f1ab118141934f645f"
+    },
+    {
+      "path": "run-2026-10-05T01-58-07.204Z/original-mixed-flat-dpr1-off.json",
+      "bytes": 64618,
+      "sha256": "b347b9c5ace63aebe6d49db1975b86a7a741c5cea2a2a2c8d87d60f8deba2642"
+    },
+    {
+      "path": "run-2026-10-05T01-58-07.204Z/original-mixed-flat-dpr1-on.json",
+      "bytes": 145731,
+      "sha256": "5c99ca095e3ab0e0c74a15575bbaacf33a86a783cdb0c583ba8ea201637ef0b6"
+    },
+    {
+      "path": "run-2026-10-05T01-58-07.204Z/original-mixed-flat-dpr1-overhead.json",
+      "bytes": 13607,
+      "sha256": "c2f0b1a1bf0690846f9e8c84b029150caaea883ad6ab859bd80bfec03cf00264"
+    },
+    {
+      "path": "run-2026-10-05T01-59-50.697Z/index.json",
+      "bytes": 1094,
+      "sha256": "33c3c3f82d8222dfea20323565bfeac15706244ad36643cd1d63fe2e4ed05477"
+    },
+    {
+      "path": "run-2026-10-05T01-59-50.697Z/original-assigned-globe-dpr2-off.json",
+      "bytes": 63679,
+      "sha256": "351f164d2db8b5244976469a4b9f57ece1103dbec126197819079898133cabcc"
+    },
+    {
+      "path": "run-2026-10-05T01-59-50.697Z/original-assigned-globe-dpr2-on.json",
+      "bytes": 126344,
+      "sha256": "bec01a88acc4cf3436578370ed8d873657220ffb5b05ee7f5d2a4866cedf0d50"
+    },
+    {
+      "path": "run-2026-10-05T01-59-50.697Z/original-assigned-globe-dpr2-overhead.json",
+      "bytes": 12218,
+      "sha256": "019d6f9979e3e9cd01a05828d37540b86cb1283fba2d9b550ae328702dbbefea"
+    },
+    {
+      "path": "run-2026-10-05T02-02-23.064Z/index.json",
+      "bytes": 1094,
+      "sha256": "c58071ed4d30c2c839a542a5b597c731d57c083e75580f0db00ca9488abebffb"
+    },
+    {
+      "path": "run-2026-10-05T02-02-23.064Z/materials-original-flat-dpr1-off.json",
+      "bytes": 66844,
+      "sha256": "41acce73334076a494b79c240a98ad742d2fd57e74b57340ad33bd7ab1ce06d4"
+    },
+    {
+      "path": "run-2026-10-05T02-02-23.064Z/materials-original-flat-dpr1-on.json",
+      "bytes": 138966,
+      "sha256": "f5c7befc706aeabf932361248df51e8292dded2929c98401b2f9ca8f95a3b349"
+    },
+    {
+      "path": "run-2026-10-05T02-02-23.064Z/materials-original-flat-dpr1-overhead.json",
+      "bytes": 13813,
+      "sha256": "562e7ebd658fcfebfb889052068280201740c9db5e6bcd7c39b38bfe8a323558"
+    }
+  ],
+  "completedReports": 8,
+  "completeMatrix": false,
+  "performanceAcceptance": "pending #80/#91 target hardware"
+}

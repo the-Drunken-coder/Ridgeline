@@ -1,0 +1,24 @@
+$ node --import tsx --test tools/model-measurement/*.test.ts && node --test tools/model-measurement/instrumentation.test.mjs
+✔ transparent globe background is empty while opaque and translucent model pixels count (1.206101ms)
+✔ measurement reports unavailable and insufficient samples without invented percentiles (1.926841ms)
+✔ latency belongs to the accepted revision, with overwritten updates retained as superseded (0.658962ms)
+✔ icon baseline has no model latency, invalid samples fail, and nested accepted updates stay ambiguous (0.629812ms)
+✔ the matrix isolates appearance, geometry, projection and pixel ratio while keeping the icon baseline workload (15.969813ms)
+✔ short or unidentified runs cannot claim hardware sampling (0.933024ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 303.319231
+✔ the built package emits owned disjoint phases only after explicit measurement opt-in (11913.768499ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11993.688816

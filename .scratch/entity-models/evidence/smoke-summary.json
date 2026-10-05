@@ -1,0 +1,708 @@
+[
+  {
+    "directory": "run-2026-10-05T01-56-33.291Z",
+    "file": "icons-mixed-flat-dpr1-off.json",
+    "caseId": "icons-mixed-flat-dpr1",
+    "instrumentation": false,
+    "nativeVisibleIds": 1100,
+    "modelStateCount": 0,
+    "entityForegroundRegions": 100,
+    "minimumForegroundPixels": 64,
+    "idleFrames": 0,
+    "gpuAdapterStatus": "disabled",
+    "segments": [
+      {
+        "camera": "stationary",
+        "frameIntervalMs": {
+          "samples": 14,
+          "status": "available",
+          "p50": 83.40000000000055,
+          "p95": 783.3000000000002,
+          "p99": 783.3000000000002
+        },
+        "gpuMs": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "latencyOutcomes": {
+          "model": [
+            "not-applicable",
+            "not-applicable",
+            "not-applicable",
+            "not-applicable",
+            "not-applicable",
+            "not-applicable",
+            "not-applicable",
+            "not-applicable"
+          ],
+          "native": [
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable"
+          ]
+        }
+      },
+      {
+        "camera": "moving",
+        "frameIntervalMs": {
+          "samples": 3,
+          "status": "available",
+          "p50": 816.5999999999995,
+          "p95": 1849.8999999999996,
+          "p99": 1849.8999999999996
+        },
+        "gpuMs": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "latencyOutcomes": {
+          "model": [
+            "not-applicable",
+            "not-applicable",
+            "not-applicable"
+          ],
+          "native": [
+            "unavailable",
+            "unavailable",
+            "unavailable"
+          ]
+        }
+      }
+    ],
+    "canvas": {
+      "cssWidth": 1280,
+      "cssHeight": 720,
+      "width": 1280,
+      "height": 720,
+      "devicePixelRatio": 1,
+      "mapPixelRatio": 1
+    },
+    "projection": {
+      "configured": "flat",
+      "effective": {
+        "type": "mercator"
+      },
+      "transitionsObserved": []
+    }
+  },
+  {
+    "directory": "run-2026-10-05T01-56-33.291Z",
+    "file": "icons-mixed-flat-dpr1-on.json",
+    "caseId": "icons-mixed-flat-dpr1",
+    "instrumentation": true,
+    "nativeVisibleIds": 1100,
+    "modelStateCount": 0,
+    "entityForegroundRegions": 100,
+    "minimumForegroundPixels": 64,
+    "idleFrames": 0,
+    "gpuAdapterStatus": "available",
+    "segments": [
+      {
+        "camera": "stationary",
+        "frameIntervalMs": {
+          "samples": 11,
+          "status": "available",
+          "p50": 116.69999999999709,
+          "p95": 650,
+          "p99": 650
+        },
+        "gpuMs": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "latencyOutcomes": {
+          "model": [
+            "not-applicable",
+            "not-applicable",
+            "not-applicable",
+            "not-applicable",
+            "not-applicable"
+          ],
+          "native": [
+            "superseded",
+            "superseded",
+            "superseded",
+            "superseded",
+            "superseded"
+          ]
+        }
+      },
+      {
+        "camera": "moving",
+        "frameIntervalMs": {
+          "samples": 4,
+          "status": "available",
+          "p50": 483.3000000000029,
+          "p95": 600,
+          "p99": 600
+        },
+        "gpuMs": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "latencyOutcomes": {
+          "model": [
+            "not-applicable",
+            "not-applicable",
+            "not-applicable",
+            "not-applicable"
+          ],
+          "native": [
+            3023.0999999940395,
+            "superseded",
+            "superseded",
+            2189.5999999940395
+          ]
+        }
+      }
+    ],
+    "canvas": {
+      "cssWidth": 1280,
+      "cssHeight": 720,
+      "width": 1280,
+      "height": 720,
+      "devicePixelRatio": 1,
+      "mapPixelRatio": 1
+    },
+    "projection": {
+      "configured": "flat",
+      "effective": {
+        "type": "mercator"
+      },
+      "transitionsObserved": [
+        0
+      ]
+    }
+  },
+  {
+    "directory": "run-2026-10-05T01-58-07.204Z",
+    "file": "original-mixed-flat-dpr1-off.json",
+    "caseId": "original-mixed-flat-dpr1",
+    "instrumentation": false,
+    "nativeVisibleIds": 1000,
+    "modelStateCount": 100,
+    "entityForegroundRegions": 100,
+    "minimumForegroundPixels": 81,
+    "idleFrames": 0,
+    "gpuAdapterStatus": "disabled",
+    "segments": [
+      {
+        "camera": "stationary",
+        "frameIntervalMs": {
+          "samples": 14,
+          "status": "available",
+          "p50": 100,
+          "p95": 700,
+          "p99": 700
+        },
+        "gpuMs": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "latencyOutcomes": {
+          "model": [
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable"
+          ],
+          "native": [
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable"
+          ]
+        }
+      },
+      {
+        "camera": "moving",
+        "frameIntervalMs": {
+          "samples": 4,
+          "status": "available",
+          "p50": 533.3000000000011,
+          "p95": 566.6999999999989,
+          "p99": 566.6999999999989
+        },
+        "gpuMs": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "latencyOutcomes": {
+          "model": [
+            "unavailable",
+            "unavailable",
+            "unavailable"
+          ],
+          "native": [
+            "unavailable",
+            "unavailable",
+            "unavailable"
+          ]
+        }
+      }
+    ],
+    "canvas": {
+      "cssWidth": 1280,
+      "cssHeight": 720,
+      "width": 1280,
+      "height": 720,
+      "devicePixelRatio": 1,
+      "mapPixelRatio": 1
+    },
+    "projection": {
+      "configured": "flat",
+      "effective": {
+        "type": "mercator"
+      },
+      "transitionsObserved": []
+    }
+  },
+  {
+    "directory": "run-2026-10-05T01-58-07.204Z",
+    "file": "original-mixed-flat-dpr1-on.json",
+    "caseId": "original-mixed-flat-dpr1",
+    "instrumentation": true,
+    "nativeVisibleIds": 1000,
+    "modelStateCount": 100,
+    "entityForegroundRegions": 100,
+    "minimumForegroundPixels": 80,
+    "idleFrames": 0,
+    "gpuAdapterStatus": "available",
+    "segments": [
+      {
+        "camera": "stationary",
+        "frameIntervalMs": {
+          "samples": 6,
+          "status": "available",
+          "p50": 216.59999999999854,
+          "p95": 1083.300000000003,
+          "p99": 1083.300000000003
+        },
+        "gpuMs": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "latencyOutcomes": {
+          "model": [
+            94,
+            190.80000001192093,
+            1052.5999999940395,
+            740.1999999880791
+          ],
+          "native": [
+            "superseded",
+            "superseded",
+            "superseded",
+            "superseded"
+          ]
+        }
+      },
+      {
+        "camera": "moving",
+        "frameIntervalMs": {
+          "samples": 4,
+          "status": "available",
+          "p50": 599.9000000000015,
+          "p95": 700,
+          "p99": 700
+        },
+        "gpuMs": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "latencyOutcomes": {
+          "model": [
+            125.09999999403954,
+            646.5999999940395,
+            724.6999999880791
+          ],
+          "native": [
+            "superseded",
+            3223.800000011921,
+            19040.29999998212
+          ]
+        }
+      }
+    ],
+    "canvas": {
+      "cssWidth": 1280,
+      "cssHeight": 720,
+      "width": 1280,
+      "height": 720,
+      "devicePixelRatio": 1,
+      "mapPixelRatio": 1
+    },
+    "projection": {
+      "configured": "flat",
+      "effective": {
+        "type": "mercator"
+      },
+      "transitionsObserved": [
+        0
+      ]
+    }
+  },
+  {
+    "directory": "run-2026-10-05T01-59-50.697Z",
+    "file": "original-assigned-globe-dpr2-off.json",
+    "caseId": "original-assigned-globe-dpr2",
+    "instrumentation": false,
+    "nativeVisibleIds": 1000,
+    "modelStateCount": 100,
+    "entityForegroundRegions": 100,
+    "minimumForegroundPixels": 83,
+    "idleFrames": 0,
+    "gpuAdapterStatus": "disabled",
+    "segments": [
+      {
+        "camera": "stationary",
+        "frameIntervalMs": {
+          "samples": 14,
+          "status": "available",
+          "p50": 149.89999999999964,
+          "p95": 233.3000000000011,
+          "p99": 233.3000000000011
+        },
+        "gpuMs": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "latencyOutcomes": {
+          "model": [
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable"
+          ],
+          "native": [
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable"
+          ]
+        }
+      },
+      {
+        "camera": "moving",
+        "frameIntervalMs": {
+          "samples": 2,
+          "status": "available",
+          "p50": 850.0000000000018,
+          "p95": 2866.5999999999985,
+          "p99": 2866.5999999999985
+        },
+        "gpuMs": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "latencyOutcomes": {
+          "model": [
+            "unavailable",
+            "unavailable"
+          ],
+          "native": [
+            "unavailable",
+            "unavailable"
+          ]
+        }
+      }
+    ],
+    "canvas": {
+      "cssWidth": 1280,
+      "cssHeight": 720,
+      "width": 2560,
+      "height": 1440,
+      "devicePixelRatio": 1,
+      "mapPixelRatio": 2
+    },
+    "projection": {
+      "configured": "globe",
+      "effective": {
+        "type": "vertical-perspective"
+      },
+      "transitionsObserved": []
+    }
+  },
+  {
+    "directory": "run-2026-10-05T01-59-50.697Z",
+    "file": "original-assigned-globe-dpr2-on.json",
+    "caseId": "original-assigned-globe-dpr2",
+    "instrumentation": true,
+    "nativeVisibleIds": 1000,
+    "modelStateCount": 100,
+    "entityForegroundRegions": 100,
+    "minimumForegroundPixels": 74,
+    "idleFrames": 0,
+    "gpuAdapterStatus": "available",
+    "segments": [
+      {
+        "camera": "stationary",
+        "frameIntervalMs": {
+          "samples": 6,
+          "status": "available",
+          "p50": 383.3000000000029,
+          "p95": 1416.5999999999913,
+          "p99": 1416.5999999999913
+        },
+        "gpuMs": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "latencyOutcomes": {
+          "model": [
+            351.10000002384186,
+            187.5,
+            1358.0999999940395,
+            1505.4000000059605
+          ],
+          "native": [
+            "superseded",
+            "superseded",
+            11175.5,
+            11631.300000011921
+          ]
+        }
+      },
+      {
+        "camera": "moving",
+        "frameIntervalMs": {
+          "samples": 2,
+          "status": "available",
+          "p50": 1583.300000000003,
+          "p95": 2649.899999999994,
+          "p99": 2649.899999999994
+        },
+        "gpuMs": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "latencyOutcomes": {
+          "model": [
+            1422.800000011921
+          ],
+          "native": [
+            39855.5
+          ]
+        }
+      }
+    ],
+    "canvas": {
+      "cssWidth": 1280,
+      "cssHeight": 720,
+      "width": 2560,
+      "height": 1440,
+      "devicePixelRatio": 1,
+      "mapPixelRatio": 2
+    },
+    "projection": {
+      "configured": "globe",
+      "effective": {
+        "type": "vertical-perspective"
+      },
+      "transitionsObserved": [
+        1
+      ]
+    }
+  },
+  {
+    "directory": "run-2026-10-05T02-02-23.064Z",
+    "file": "materials-original-flat-dpr1-off.json",
+    "caseId": "materials-original-flat-dpr1",
+    "instrumentation": false,
+    "nativeVisibleIds": 1000,
+    "modelStateCount": 100,
+    "entityForegroundRegions": 100,
+    "minimumForegroundPixels": 41,
+    "idleFrames": 0,
+    "gpuAdapterStatus": "disabled",
+    "segments": [
+      {
+        "camera": "stationary",
+        "frameIntervalMs": {
+          "samples": 19,
+          "status": "available",
+          "p50": 99.99999999999909,
+          "p95": 533.3000000000011,
+          "p99": 533.3000000000011
+        },
+        "gpuMs": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "latencyOutcomes": {
+          "model": [
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable"
+          ],
+          "native": [
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable",
+            "unavailable"
+          ]
+        }
+      },
+      {
+        "camera": "moving",
+        "frameIntervalMs": {
+          "samples": 4,
+          "status": "available",
+          "p50": 583.1999999999989,
+          "p95": 650,
+          "p99": 650
+        },
+        "gpuMs": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "latencyOutcomes": {
+          "model": [
+            "unavailable",
+            "unavailable",
+            "unavailable"
+          ],
+          "native": [
+            "unavailable",
+            "unavailable",
+            "unavailable"
+          ]
+        }
+      }
+    ],
+    "canvas": {
+      "cssWidth": 1280,
+      "cssHeight": 720,
+      "width": 1280,
+      "height": 720,
+      "devicePixelRatio": 1,
+      "mapPixelRatio": 1
+    },
+    "projection": {
+      "configured": "flat",
+      "effective": {
+        "type": "mercator"
+      },
+      "transitionsObserved": []
+    }
+  },
+  {
+    "directory": "run-2026-10-05T02-02-23.064Z",
+    "file": "materials-original-flat-dpr1-on.json",
+    "caseId": "materials-original-flat-dpr1",
+    "instrumentation": true,
+    "nativeVisibleIds": 1000,
+    "modelStateCount": 100,
+    "entityForegroundRegions": 100,
+    "minimumForegroundPixels": 37,
+    "idleFrames": 0,
+    "gpuAdapterStatus": "available",
+    "segments": [
+      {
+        "camera": "stationary",
+        "frameIntervalMs": {
+          "samples": 6,
+          "status": "available",
+          "p50": 200,
+          "p95": 650,
+          "p99": 650
+        },
+        "gpuMs": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "latencyOutcomes": {
+          "model": [
+            134.40000000596046,
+            421.09999999403954,
+            656.7000000178814
+          ],
+          "native": [
+            "superseded",
+            "superseded",
+            3602.600000023842
+          ]
+        }
+      },
+      {
+        "camera": "moving",
+        "frameIntervalMs": {
+          "samples": 3,
+          "status": "available",
+          "p50": 583.3000000000029,
+          "p95": 699.8999999999942,
+          "p99": 699.8999999999942
+        },
+        "gpuMs": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "latencyOutcomes": {
+          "model": [
+            559.2000000178814,
+            564.2000000178814
+          ],
+          "native": [
+            2759.4000000059605,
+            2040.5
+          ]
+        }
+      }
+    ],
+    "canvas": {
+      "cssWidth": 1280,
+      "cssHeight": 720,
+      "width": 1280,
+      "height": 720,
+      "devicePixelRatio": 1,
+      "mapPixelRatio": 1
+    },
+    "projection": {
+      "configured": "flat",
+      "effective": {
+        "type": "mercator"
+      },
+      "transitionsObserved": [
+        0
+      ]
+    }
+  }
+]

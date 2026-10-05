@@ -14,7 +14,9 @@ export default defineConfig({
     viewport: { width: 1440, height: 900 },
     launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] },
     screenshot: 'only-on-failure',
-    trace: 'retain-on-failure',
+    // Continuous screencast readbacks can stall terrain rendering in software WebGL.
+    // Keep action/DOM traces and the explicit test/failure screenshots.
+    trace: { mode: 'retain-on-failure', screenshots: false },
   },
   webServer: {
     command: 'pnpm build:playground && pnpm exec vite preview --config vite.playground.config.ts --host 127.0.0.1 --port 5175 --strictPort',

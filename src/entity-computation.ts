@@ -116,6 +116,7 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
   }
   return { primitives, position: [lng, lat], diagnostic, state: {
     placement,
+    representation: placement === 'withheld' ? 'withheld' : 'icon',
     altitude,
     ground: ground ?? undefined,
     coverage: missing ? (failed ? 'unavailable' : 'loading') : 'ready',

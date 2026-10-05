@@ -1,0 +1,66 @@
+{
+  "dateUtc": "2026-10-05",
+  "base": "2733cee9fe9440237a36e90d9efa2fc4239b87c3",
+  "reviewedDelivery": "cf09290e615dfc4809b09519fdfb0825c4642ba9",
+  "integratedCheckedHead": "708988d1253863412f73915a650b610518ddb9fc",
+  "fullTree": "70a7b68e0c0ac2899ba39213265050b64baac637",
+  "sourceTree": "04413b0db510cc12b4794ea53f98cf331003ac53",
+  "testsTree": "d7fddd93adccfae4cdb4aa07a5b4dbacf31e7981",
+  "uncommittedAtRuntimeCheckStart": [],
+  "checks": {
+    "pnpm check": "pass",
+    "pnpm test": {
+      "rootPassed": 329,
+      "controlPassed": 5
+    },
+    "pnpm test:browser": {
+      "passed": 185,
+      "durationMinutes": 11.5,
+      "buildPackInstallTypecheckConsumerBuild": "pass"
+    },
+    "pnpm test:playground:browser": {
+      "passed": 5,
+      "durationMinutes": 6.6,
+      "productionBuild": "pass"
+    },
+    "pnpm test:measurement": {
+      "pureTestsPassed": 6,
+      "packagedOwnershipProbePassed": 1
+    },
+    "pnpm test:controls:browser": {
+      "passed": 5,
+      "durationSeconds": 7.5,
+      "productionBuild": "pass"
+    },
+    "node scripts/measure-models.mjs --smoke --case <four default cases>": {
+      "pairedReports": 8,
+      "validations": "pass",
+      "fiveSecondIdleFrames": 0,
+      "performanceAcceptance": "pending target hardware"
+    },
+    "pnpm measure": {
+      "libraryAndPlaygroundBuild": "pass",
+      "libraryGzipBytes": 79426,
+      "netGzipBytes": 21022
+    },
+    "isolated parser/renderer build": {
+      "pass": true,
+      "parserGzipBytes": 5256,
+      "rendererGzipBytes": 8653
+    }
+  },
+  "hardware": "pending #80/#91 by user direction",
+  "hosted": "unavailable, no PR authorized or created",
+  "reviewResults": {
+    "Standards": {
+      "remainingConfirmed": 0,
+      "focusedPassed": 95
+    },
+    "Spec": {
+      "remainingConfirmed": 0,
+      "focusedPassed": 86
+    }
+  },
+  "postReviewChanges": "Public lifecycle README clarification, current performance measurements, dated logs/raw JSON/PNGs and closeout only. No runtime/test changes.",
+  "interruptedSmoke": "Initial pnpm measure:models --smoke exited143 after baseline-off. All four complete pairs rerun directly through the same Node runner; interrupted evidence retained."
+}
