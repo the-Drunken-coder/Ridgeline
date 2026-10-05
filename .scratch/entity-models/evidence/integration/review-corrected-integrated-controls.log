@@ -1,0 +1,23 @@
+$ playwright test -c control-lab/playwright.config.ts
+[WebServer] (node:997133) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] $ tsc --noEmit && vite build
+[WebServer] (node:997166) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:997194) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] $ vite preview --host 127.0.0.1 --port 4173 --strictPort
+[WebServer] (node:997207) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 5 tests using 1 worker
+
+(node:997232) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 control-lab/tests/controls.spec.ts:27:1 › a selected unit moves to the clicked destination and leaves a trail (639ms)
+  ✓  2 control-lab/tests/controls.spec.ts:48:1 › Shift-click adds and removes units, and Escape cancels targeting (802ms)
+  ✓  3 control-lab/tests/controls.spec.ts:84:1 › dragging an armed map pans without placing an order (766ms)
+  ✓  4 control-lab/tests/controls.spec.ts:110:1 › wheel zoom stays at the pointer, while Frame, Fit, and Reset restore navigation (817ms)
+  ✓  5 control-lab/tests/controls.spec.ts:152:1 › wheel over units keeps the pointer anchor and leaves application controls alone (790ms)
+
+  5 passed (7.5s)

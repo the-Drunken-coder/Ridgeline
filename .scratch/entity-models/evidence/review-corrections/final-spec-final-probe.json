@@ -1,0 +1,39 @@
+{
+  "revision": "cf09290e615dfc4809b09519fdfb0825c4642ba9",
+  "sourceTree": "04413b0db510cc12b4794ea53f98cf331003ac53",
+  "scope": "real scene/model-layer CPU preparation/publication; GPU upload/draw and controlled map/sampler stubbed; no native-browser pixel/remount claim",
+  "histories": [
+    {
+      "history": "callback replacement vs directly accepted control",
+      "outcome": "same current placement/orientation/appearance",
+      "preparedInstances": 1
+    },
+    {
+      "history": "callback replacement below terrain",
+      "outcome": "zero model submission in first completed frame"
+    },
+    {
+      "history": "callback removal",
+      "outcome": "zero model submission; no entity state"
+    },
+    {
+      "history": "callback destruction then stale layer render",
+      "outcome": "no additional upload/draw/repaint; entity buffer disposed",
+      "work": {
+        "drawCalls": 1,
+        "repaints": 3,
+        "scheduled": 0,
+        "deletes": 1
+      }
+    },
+    {
+      "history": "off-screen culling, empty view, and dead-zone re-entry",
+      "outcome": "submissions1→0→1; representation remainsmodel"
+    },
+    {
+      "history": "enlarged edge whose physical anchor is off-screen",
+      "outcome": "partly visible body is submitted"
+    }
+  ],
+  "remainingScheduledFrames": 0
+}

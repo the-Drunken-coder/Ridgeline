@@ -4,19 +4,19 @@
 
 ## Entity model bundle snapshot, 2026-10-05
 
-Measured at `6b8ae2ebdaad8d3fd144d28b5d813424980e1497`, source tree `b948ba66a835753b8e63c22d161a2e31686a2893`, with Node 24.21.0, Vite 8.3.0 and Node's default gzip settings. The production library excludes MapLibre and source maps. The comparison baseline is runtime `2733cee9fe9440237a36e90d9efa2fc4239b87c3`, built at documentation revision `47750f2` with the same Node gzip command.
+Measured at clean `708988d1253863412f73915a650b610518ddb9fc`, source tree `04413b0db510cc12b4794ea53f98cf331003ac53`, with Node 24.21.0, Vite 8.3.0 and Node's default gzip settings. The production library excludes MapLibre and source maps. The comparison baseline is runtime `2733cee9fe9440237a36e90d9efa2fc4239b87c3`, built at documentation revision `47750f2` with the same Node gzip command.
 
 | Artifact | Raw bytes | Gzip bytes |
 | --- | ---: | ---: |
 | Baseline Ridgeline ESM | 205,453 | 58,404 |
-| Entity-model Ridgeline ESM | 281,455 | 79,255 |
-| Net ESM increase | 76,002 | 20,851 |
+| Entity-model Ridgeline ESM | 281,990 | 79,426 |
+| Net ESM increase | 76,537 | 21,022 |
 | GLB parser isolated entry | 16,355 | 5,256 |
 | Model renderer isolated entry | 25,656 | 8,653 |
 
-The isolated entries use Vite's default ES-library build. The renderer includes its projection and color helpers; reachable helpers can appear in both entry builds. Their gzip sizes are not additive parts of the package delta. Library CSS remains 6,089 raw and 1,788 gzip bytes. [Bundle data](../.scratch/entity-models/evidence/integration/production-model-bundle-size.json) and [entry data](../.scratch/entity-models/evidence/integration/production-model-module-size.json) retain the method and revision.
+The isolated entries use Vite's default ES-library build. The renderer includes its projection and color helpers; reachable helpers can appear in both entry builds. Their gzip sizes are not additive parts of the package delta. Library CSS remains 6,089 raw and 1,788 gzip bytes. [Bundle data](../.scratch/entity-models/evidence/integration/review-corrected-bundle-size.json) and [entry data](../.scratch/entity-models/evidence/integration/review-corrected-module-size.json) retain the method and revision.
 
-The [packaged measurement workflow](../tools/model-measurement/README.md) prepares the approved moving-model workload and retains separate frame, CPU, update and optional GPU observations. [Software smoke evidence](../.scratch/entity-models/evidence/measurement/README.md) verifies tooling and visible workloads. Apple M1 Pro, desktop discrete-GPU and target-browser measurements remain pending in #80/#91; these bundle and software observations supply no hardware performance guideline.
+The [packaged measurement workflow](../tools/model-measurement/README.md) prepares the approved moving-model workload and retains separate frame, CPU, update and optional GPU observations. [Software smoke evidence](../.scratch/entity-models/evidence/integration-smoke/README.md) verifies tooling and visible workloads. Apple M1 Pro, desktop discrete-GPU and target-browser measurements remain pending in #80/#91; these bundle and software observations supply no hardware performance guideline.
 
 ## Reliability workload snapshot, 2026-09-28
 

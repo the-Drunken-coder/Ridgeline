@@ -1,4 +1,6 @@
-# Measurement workflow evidence, 2026-10-05
+# Historical measurement workflow evidence, 2026-10-05
+
+This evidence predates the final callback/culling/disposal corrections. [Current integrated708988d smoke evidence](../integration-smoke/README.md) supersedes its current-revision claims; retain these reports as dated workflow-development evidence.
 
 These are software Chromium observations of the installed production package. They verify the measurement workflow and visible workload, not hardware performance or browser support. Root owns integration verification and the shared #90 closeout. Hardware #80/#91 remains pending.
 

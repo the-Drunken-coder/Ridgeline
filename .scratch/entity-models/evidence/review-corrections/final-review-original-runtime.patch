@@ -1,0 +1,100 @@
+diff --git a/src/entities.ts b/src/entities.ts
+index 11f31a6..bea4b51 100644
+--- a/src/entities.ts
++++ b/src/entities.ts
+@@ -300,7 +300,6 @@ export class EntityScene<P extends Properties> {
+     this.modelHits = []; this.terrainDepth = undefined;
+     cancelAnimationFrame(this.frame);
+     this.elevation.destroy();
+-    this.layer.onRemove();
+     this.modelLayer?.destroy(); this.feedbackLayer.destroy();
+     this.modelStyles.clear(); this.modelDiagnostics.clear(); this.choices.clear(); this.published.clear();
+     this.features.clear();
+@@ -412,16 +411,14 @@ export class EntityScene<P extends Properties> {
+ 
+   private prepareModelFrame(projection: EntityProjection, rendererAvailable: boolean): ModelFrame | undefined {
+     if (this.destroyed || this.lost) return;
+-    const revision = this.revision, registry = this.options.models, configuration = this.options.configuration();
+-    const current = () => !this.destroyed && !this.lost && this.revision === revision && this.options.configuration() === configuration;
+     if (this.dirty.size || this.geometryDirty) this.flush();
+-    // Computation publishes consumer callbacks. A replacement must be computed
+-    // by the layer's next bounded attempt before any cached placement is used.
+-    if (!current()) return;
++    if (this.destroyed) return;
+     const measured = this.options.measurement?.enabled;
+     const updateRevision = measured ? this.options.measurement!.revision : 0;
+     const frame = measured ? this.options.measurement!.frame() : 0;
+     let placementMs = 0, projectionScalingMs = 0;
++    const revision = this.revision, registry = this.options.models, configuration = this.options.configuration();
++    const current = () => !this.destroyed && !this.lost && this.revision === revision && this.options.configuration() === configuration;
+     this.options.beginNativeFrame?.();
+     const choices = new Map<string, ModelChoice>(), representations = new Map<string, EntityState['representation']>();
+     const grouped = new Map<RegisteredModel<ModelGpu>, ModelDraw>();
+@@ -479,15 +476,15 @@ export class EntityScene<P extends Properties> {
+         }
+         if (!current()) return;
+         if (placement.status === 'ready') {
++          const draw = grouped.get(asset) ?? { asset, origin, instances: [] };
++          draw.instances.push({ feedback: modelFeedback(this.selected.has(id), this.previewed === id), basis: placement.basis, anchor: entityVertex(placement.position, origin),
++            appearance: style.modelAppearance && { ...style.modelAppearance } });
++          grouped.set(asset, draw);
+           representation = 'model';
+           if (measured) phaseStart = performance.now();
+           const box = modelScreenBox(projection, placement, origin);
+           if (measured) projectionScalingMs += performance.now() - phaseStart;
+-          if (box && projection.intersectsViewport(box)) {
+-            const draw = grouped.get(asset) ?? { asset, origin, instances: [] };
+-            draw.instances.push({ feedback: modelFeedback(this.selected.has(id), this.previewed === id), basis: placement.basis, anchor: entityVertex(placement.position, origin),
+-              appearance: style.modelAppearance && { ...style.modelAppearance } });
+-            grouped.set(asset, draw);
++          if (box) {
+             hits.push({ feature, polygons: box.polygons });
+             const anchor = projection.project(placement.position, origin);
+             const labelHeight = state.placement === 'airborne' ? (state.altitude ?? 0) * verticalScale(configuration)
+diff --git a/src/viewport.ts b/src/viewport.ts
+index 70701f3..66c6645 100644
+--- a/src/viewport.ts
++++ b/src/viewport.ts
+@@ -122,24 +122,6 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
+     diagnostic(error);
+     throw error;
+   }
+-  // MapLibre keeps using its style and tiles after a custom layer callback.
+-  // Retire those resources at the end of that native call, while logical
+-  // disposal and removal of this viewport's DOM remain synchronous.
+-  let nativeRenderDepth = 0, removeAfterRender = false;
+-  const nativeRender = map._render, cleanupContainer = map._cleanupContainer;
+-  map._render = function (time) {
+-    nativeRenderDepth++;
+-    try { return nativeRender.call(this, time); }
+-    finally {
+-      nativeRenderDepth--;
+-      if (!nativeRenderDepth && removeAfterRender) { removeAfterRender = false; removeMap(); }
+-    }
+-  };
+-  function removeMap() {
+-    arrowheads.remove();
+-    try { map.remove(); }
+-    finally { map._render = nativeRender; map._cleanupContainer = cleanupContainer; }
+-  }
+   const modelVisibility = new ModelVisibility(map);
+   const modelLabels = new ModelLabels(map, ids => publication.update(ids.flatMap(id => { const feature = store.get(id); return feature ? [feature] : []; })));
+   const preparedMarkerKeys = new WeakMap<MapFeature<P>, string>();
+@@ -600,15 +582,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
+       if (!readySettled) { readySettled = true; rejectReady(new RidgelineError('DESTROYED', 'Viewport was destroyed before initialization completed.', { operation: 'initialize', recoverable: false })); }
+       clearTimeout(timer); resize.disconnect();
+       entities.destroy(); models.destroy(); modelLabels.destroy(); measurement.destroy();
+-      preparedListeners.clear(); sceneListeners.clear(); drawingInternals.delete(map);
++      arrowheads.remove(); preparedListeners.clear(); sceneListeners.clear(); drawingInternals.delete(map);
+       map.getCanvas().removeEventListener('mouseleave', onLeave);
+-      if (nativeRenderDepth) {
+-        cleanupContainer.call(map);
+-        // A new viewport may already be mounted when native removal completes.
+-        map._cleanupContainer = () => {};
+-        removeAfterRender = true;
+-      } else removeMap();
+-      icons.clear(); selected.clear(); publishedMarkerKeys.clear(); availableMarkers.clear(); store.remove(store.ids());
++      map.remove(); icons.clear(); selected.clear(); publishedMarkerKeys.clear(); availableMarkers.clear(); store.remove(store.ids());
+       for (const set of Object.values(listeners)) set.clear();
+       hoverNotified.clear();
+     },

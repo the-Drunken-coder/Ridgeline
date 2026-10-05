@@ -1,0 +1,34 @@
+✔ a projection frame keeps a coherent attachment on its entity world copy (1.759813ms)
+✔ depth clipping retains the visible face and segment across the near plane (1.269027ms)
+✔ picking retains the drawn camera matrices until a new projection frame is published (0.322164ms)
+✔ globe blending preserves local up and the back-of-globe clipping boundary (0.5836ms)
+✔ local meter offsets use the exact renderer coordinates and one world copy (0.382652ms)
+✔ synchronous and rejected preparation errors are reported without aborting accepted entity updates (15.166539ms)
+✔ a preparation callback can remove its entity without reviving geometry (3.045892ms)
+✔ style can remove an entity without restoring its camera output (3.6152ms)
+✔ style can replace an entity without restoring its camera output (1.167158ms)
+✔ sample can remove an entity without restoring its camera output (1.340713ms)
+✔ sample can replace an entity without restoring its camera output (0.862046ms)
+✔ a failed entity style retains the last complete placement (2.856342ms)
+✔ a required sampling failure removes completed camera coverage while retaining placement and unrelated ground areas (12.155866ms)
+✔ selection rebuilds only entities whose highlight changes (3.996992ms)
+✔ unchanged unusable cameras do not restart released terrain preparation (80.606186ms)
+✔ viewport culling follows the enlarged depth-clipped box without changing its size (6.713452ms)
+✔ an oriented box accepts its faces while rejecting empty corners of its screen envelope (2.067176ms)
+✔ nearby clicks use the closest oriented edge and its interpolated depth (0.282305ms)
+✔ sampled terrain rejects a hidden nearby face at the tested edge instead of at the pointer (0.214806ms)
+✔ near-plane clipping retains only the visible portion before box tolerance is applied (0.689565ms)
+✔ authored axes turn without reflection and pitch follows the corrected nose (3.39097ms)
+✔ ground contact follows the displayed plane without stretching the rigid model (1.412291ms)
+✔ size prediction keeps airborne origins fixed and ground bases on their fitted plane (0.740091ms)
+✔ unknown required terrain withholds geometry until the exact probes become known (0.804155ms)
+✔ explicit ground orientation overrides slope only when following is disabled (0.309057ms)
+✔ size prediction retains the support height above an uneven fitted plane (0.456807ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1084.090321

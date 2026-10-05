@@ -1,0 +1,557 @@
+{
+  "caseId": "original-mixed-flat-dpr1",
+  "order": [
+    "off",
+    "on"
+  ],
+  "off": [
+    {
+      "camera": "stationary",
+      "repeat": 0,
+      "start": 6194.9000000059605,
+      "end": 9349.199999988079,
+      "frameIntervalMs": {
+        "samples": 14,
+        "status": "available",
+        "p50": 100,
+        "p95": 700,
+        "p99": 700
+      },
+      "upsertCpuMs": {
+        "samples": 9,
+        "status": "available",
+        "p50": 19.100000023841858,
+        "p95": 37.599999994039536,
+        "p99": 37.599999994039536
+      },
+      "modelVisibleLatencyMs": {
+        "samples": 0,
+        "status": "unavailable"
+      },
+      "nativeProbeVisibleLatencyMs": {
+        "samples": 0,
+        "status": "unavailable"
+      },
+      "latencyOutcomes": {
+        "model": [
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable"
+        ],
+        "native": [
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable",
+          "unavailable"
+        ]
+      },
+      "phases": {
+        "parse": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "decode-wall": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "texture-upload": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "geometry-upload": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "shader-compile": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "instance-preparation": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "submit": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "picking": {
+          "samples": 0,
+          "status": "unavailable"
+        }
+      },
+      "placementCpuMs": {
+        "samples": 0,
+        "status": "unavailable"
+      },
+      "projectionScalingCpuMs": {
+        "samples": 0,
+        "status": "unavailable"
+      },
+      "latency": [
+        {
+          "sequence": 5,
+          "start": 6195.199999988079,
+          "end": 6221,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 6,
+          "start": 6337.5,
+          "end": 6375.0999999940395,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 7,
+          "start": 6497,
+          "end": 6516.9000000059605,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 8,
+          "start": 6740.799999982119,
+          "end": 6759.9000000059605,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 9,
+          "start": 6941.0999999940395,
+          "end": 6956.5,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 10,
+          "start": 7131.199999988079,
+          "end": 7151,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 11,
+          "start": 7330.4000000059605,
+          "end": 7344.0999999940395,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 12,
+          "start": 7950.5999999940395,
+          "end": 7963.799999982119,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 13,
+          "start": 9334.40000000596,
+          "end": 9348.299999982119,
+          "model": "unavailable",
+          "native": "unavailable"
+        }
+      ],
+      "gpuMs": {
+        "samples": 0,
+        "status": "unavailable"
+      }
+    },
+    {
+      "camera": "moving",
+      "repeat": 0,
+      "start": 9349.299999982119,
+      "end": 11727.799999982119,
+      "frameIntervalMs": {
+        "samples": 4,
+        "status": "available",
+        "p50": 533.3000000000011,
+        "p95": 566.6999999999989,
+        "p99": 566.6999999999989
+      },
+      "upsertCpuMs": {
+        "samples": 3,
+        "status": "available",
+        "p50": 26.5,
+        "p95": 32.20000001788139,
+        "p99": 32.20000001788139
+      },
+      "modelVisibleLatencyMs": {
+        "samples": 0,
+        "status": "unavailable"
+      },
+      "nativeProbeVisibleLatencyMs": {
+        "samples": 0,
+        "status": "unavailable"
+      },
+      "latencyOutcomes": {
+        "model": [
+          "unavailable",
+          "unavailable",
+          "unavailable"
+        ],
+        "native": [
+          "unavailable",
+          "unavailable",
+          "unavailable"
+        ]
+      },
+      "phases": {
+        "parse": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "decode-wall": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "texture-upload": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "geometry-upload": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "shader-compile": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "instance-preparation": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "submit": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "picking": {
+          "samples": 0,
+          "status": "unavailable"
+        }
+      },
+      "placementCpuMs": {
+        "samples": 0,
+        "status": "unavailable"
+      },
+      "projectionScalingCpuMs": {
+        "samples": 0,
+        "status": "unavailable"
+      },
+      "latency": [
+        {
+          "sequence": 14,
+          "start": 10004.199999988079,
+          "end": 10030.699999988079,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 15,
+          "start": 11088.5,
+          "end": 11114.09999999404,
+          "model": "unavailable",
+          "native": "unavailable"
+        },
+        {
+          "sequence": 16,
+          "start": 11692.799999982119,
+          "end": 11725,
+          "model": "unavailable",
+          "native": "unavailable"
+        }
+      ],
+      "gpuMs": {
+        "samples": 0,
+        "status": "unavailable"
+      }
+    }
+  ],
+  "on": [
+    {
+      "camera": "stationary",
+      "repeat": 0,
+      "start": 38231.59999999404,
+      "end": 41684.59999999404,
+      "frameIntervalMs": {
+        "samples": 6,
+        "status": "available",
+        "p50": 216.59999999999854,
+        "p95": 1083.300000000003,
+        "p99": 1083.300000000003
+      },
+      "upsertCpuMs": {
+        "samples": 4,
+        "status": "available",
+        "p50": 22.200000017881393,
+        "p95": 51.69999998807907,
+        "p99": 51.69999998807907
+      },
+      "modelVisibleLatencyMs": {
+        "samples": 4,
+        "status": "available",
+        "p50": 190.80000001192093,
+        "p95": 1052.5999999940395,
+        "p99": 1052.5999999940395
+      },
+      "nativeProbeVisibleLatencyMs": {
+        "samples": 0,
+        "status": "unavailable"
+      },
+      "latencyOutcomes": {
+        "model": [
+          94,
+          190.80000001192093,
+          1052.5999999940395,
+          740.1999999880791
+        ],
+        "native": [
+          "superseded",
+          "superseded",
+          "superseded",
+          "superseded"
+        ]
+      },
+      "phases": {
+        "parse": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "decode-wall": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "texture-upload": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "geometry-upload": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "shader-compile": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "instance-preparation": {
+          "samples": 6,
+          "status": "available",
+          "p50": 77.10000002384186,
+          "p95": 882.5999999940395,
+          "p99": 882.5999999940395
+        },
+        "submit": {
+          "samples": 6,
+          "status": "available",
+          "p50": 0.29999998211860657,
+          "p95": 3.800000011920929,
+          "p99": 3.800000011920929
+        },
+        "picking": {
+          "samples": 10,
+          "status": "available",
+          "p50": 0.19999998807907104,
+          "p95": 0.4000000059604645,
+          "p99": 0.4000000059604645
+        }
+      },
+      "placementCpuMs": {
+        "samples": 6,
+        "status": "available",
+        "p50": 3.0000000596046448,
+        "p95": 6.799999922513962,
+        "p99": 6.799999922513962
+      },
+      "projectionScalingCpuMs": {
+        "samples": 6,
+        "status": "available",
+        "p50": 20.40000006556511,
+        "p95": 31.799999982118607,
+        "p99": 31.799999982118607
+      },
+      "latency": [
+        {
+          "sequence": 6,
+          "start": 38234.19999998808,
+          "end": 38251.09999999404,
+          "revision": 7,
+          "model": 94,
+          "native": "superseded"
+        },
+        {
+          "sequence": 7,
+          "start": 38490.69999998808,
+          "end": 38512.90000000596,
+          "revision": 8,
+          "model": 190.80000001192093,
+          "native": "superseded"
+        },
+        {
+          "sequence": 8,
+          "start": 39786.90000000596,
+          "end": 39838.59999999404,
+          "revision": 9,
+          "model": 1052.5999999940395,
+          "native": "superseded"
+        },
+        {
+          "sequence": 9,
+          "start": 40895.5,
+          "end": 40922.79999998212,
+          "revision": 10,
+          "model": 740.1999999880791,
+          "native": "superseded"
+        }
+      ],
+      "gpuMs": {
+        "samples": 0,
+        "status": "unavailable"
+      }
+    },
+    {
+      "camera": "moving",
+      "repeat": 0,
+      "start": 41684.59999999404,
+      "end": 44562,
+      "frameIntervalMs": {
+        "samples": 4,
+        "status": "available",
+        "p50": 599.9000000000015,
+        "p95": 700,
+        "p99": 700
+      },
+      "upsertCpuMs": {
+        "samples": 3,
+        "status": "available",
+        "p50": 14.299999982118607,
+        "p95": 21,
+        "p99": 21
+      },
+      "modelVisibleLatencyMs": {
+        "samples": 3,
+        "status": "available",
+        "p50": 646.5999999940395,
+        "p95": 724.6999999880791,
+        "p99": 724.6999999880791
+      },
+      "nativeProbeVisibleLatencyMs": {
+        "samples": 2,
+        "status": "available",
+        "p50": 3223.800000011921,
+        "p95": 19040.29999998212,
+        "p99": 19040.29999998212
+      },
+      "latencyOutcomes": {
+        "model": [
+          125.09999999403954,
+          646.5999999940395,
+          724.6999999880791
+        ],
+        "native": [
+          "superseded",
+          3223.800000011921,
+          19040.29999998212
+        ]
+      },
+      "phases": {
+        "parse": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "decode-wall": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "texture-upload": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "geometry-upload": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "shader-compile": {
+          "samples": 0,
+          "status": "unavailable"
+        },
+        "instance-preparation": {
+          "samples": 5,
+          "status": "available",
+          "p50": 535.2999999821186,
+          "p95": 624.5999999940395,
+          "p99": 624.5999999940395
+        },
+        "submit": {
+          "samples": 5,
+          "status": "available",
+          "p50": 0.29999998211860657,
+          "p95": 1.4000000059604645,
+          "p99": 1.4000000059604645
+        },
+        "picking": {
+          "samples": 13,
+          "status": "available",
+          "p50": 0.29999998211860657,
+          "p95": 0.5999999940395355,
+          "p99": 0.5999999940395355
+        }
+      },
+      "placementCpuMs": {
+        "samples": 5,
+        "status": "available",
+        "p50": 4.199999988079071,
+        "p95": 7.199999988079071,
+        "p99": 7.199999988079071
+      },
+      "projectionScalingCpuMs": {
+        "samples": 5,
+        "status": "available",
+        "p50": 18.19999995827675,
+        "p95": 19.90000006556511,
+        "p99": 19.90000006556511
+      },
+      "latency": [
+        {
+          "sequence": 10,
+          "start": 42293.90000000596,
+          "end": 42308.19999998808,
+          "revision": 11,
+          "model": 125.09999999403954,
+          "native": "superseded"
+        },
+        {
+          "sequence": 11,
+          "start": 43128.69999998808,
+          "end": 43149.69999998808,
+          "revision": 12,
+          "model": 646.5999999940395,
+          "native": 3223.800000011921
+        },
+        {
+          "sequence": 12,
+          "start": 43822.90000000596,
+          "end": 43836.5,
+          "revision": 13,
+          "model": 724.6999999880791,
+          "native": 19040.29999998212
+        }
+      ],
+      "gpuMs": {
+        "samples": 0,
+        "status": "unavailable"
+      }
+    }
+  ],
+  "note": "Do not subtract GPU from CPU or combine overlapping phases. Repeat/reverse order to study thermal or order effects."
+}

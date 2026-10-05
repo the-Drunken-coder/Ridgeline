@@ -1,0 +1,68 @@
+{
+  "revision": "cf09290e615dfc4809b09519fdfb0825c4642ba9",
+  "sourceTree": "04413b0db510cc12b4794ea53f98cf331003ac53",
+  "scope": "real public viewport and registry with constructor/render/remove doubles and exact installed MapLibre6.11 DOM cleanup; no native GPU/browser or pixels claim",
+  "results": [
+    {
+      "history": "ordinary-event-remount",
+      "emptyInListener": true,
+      "destroyEvents": 1,
+      "replacementClassRetained": true,
+      "oldCleanupCount": 1,
+      "oldNativeRemovalCount": 1,
+      "registration": "MODEL_LOAD_CANCELLED",
+      "ready": "DESTROYED"
+    },
+    {
+      "history": "render-event-remount",
+      "emptyInListener": true,
+      "destroyEvents": 1,
+      "replacementClassRetained": true,
+      "oldCleanupCount": 1,
+      "oldNativeRemovalCount": 1,
+      "registration": "MODEL_LOAD_CANCELLED",
+      "ready": "DESTROYED"
+    },
+    {
+      "history": "nested-render-event-remount",
+      "emptyInListener": true,
+      "destroyEvents": 1,
+      "replacementClassRetained": true,
+      "oldCleanupCount": 1,
+      "oldNativeRemovalCount": 1,
+      "registration": "MODEL_LOAD_CANCELLED",
+      "ready": "DESTROYED"
+    },
+    {
+      "history": "render-after-return-remount",
+      "emptyInListener": true,
+      "destroyEvents": 1,
+      "replacementClassRetained": true,
+      "oldCleanupCount": 1,
+      "oldNativeRemovalCount": 1,
+      "registration": "MODEL_LOAD_CANCELLED",
+      "ready": "DESTROYED"
+    },
+    {
+      "history": "nested-render-after-return-remount",
+      "emptyInListener": true,
+      "destroyEvents": 1,
+      "replacementClassRetained": true,
+      "oldCleanupCount": 1,
+      "oldNativeRemovalCount": 1,
+      "registration": "MODEL_LOAD_CANCELLED",
+      "ready": "DESTROYED"
+    },
+    {
+      "history": "ordinary-throwing-event-remount",
+      "emptyInListener": true,
+      "destroyEvents": 1,
+      "replacementClassRetained": true,
+      "oldCleanupCount": 1,
+      "oldNativeRemovalCount": 1,
+      "registration": "MODEL_LOAD_CANCELLED",
+      "ready": "DESTROYED"
+    }
+  ],
+  "remainingScheduledFrames": 0
+}

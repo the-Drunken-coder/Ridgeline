@@ -1,0 +1,1436 @@
+{
+  "disabledEntries": 0,
+  "retainedEntries": 0,
+  "nativeBefore": "[[0,0.0005],true,true,0,\"probe\",\"#216e5b\",0]",
+  "nativeHeld": "[[0,0.0005],true,true,0,\"probe\",\"#216e5b\",0]",
+  "nativeHeldVisible": false,
+  "nativeAfter": "[[0.00025,0.0005],true,true,0,\"probe\",\"#216e5b\",0]",
+  "reentrantStart": 2157.300000011921,
+  "records": [
+    {
+      "name": "parse",
+      "startTime": 1694.0999999940395,
+      "duration": 17.700000017881393,
+      "detail": {
+        "viewport": 1,
+        "sequence": 1,
+        "attempt": 1,
+        "modelId": "drone",
+        "kind": "register",
+        "status": "success"
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 1719.5,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 2,
+        "frame": 1,
+        "updateRevision": 0,
+        "placementMs": 0.19999998807907104,
+        "projectionScalingMs": 3.2000000178813934
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 1719.7000000178814,
+      "duration": 2.199999988079071,
+      "detail": {
+        "viewport": 1,
+        "sequence": 3
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 1723,
+      "duration": 0.09999999403953552,
+      "detail": {
+        "viewport": 1,
+        "sequence": 4
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 1723.5,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 5,
+        "frame": 1,
+        "sceneRevision": 4,
+        "updateRevision": 0,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "decode-wall",
+      "startTime": 1712.0999999940395,
+      "duration": 16.30000001192093,
+      "detail": {
+        "viewport": 1,
+        "sequence": 6,
+        "attempt": 1,
+        "modelId": "drone",
+        "kind": "register",
+        "image": 0,
+        "cancelled": false
+      }
+    },
+    {
+      "name": "texture-upload",
+      "startTime": 1728.5,
+      "duration": 2.7000000178813934,
+      "detail": {
+        "viewport": 1,
+        "sequence": 7,
+        "attempt": 1,
+        "modelId": "drone",
+        "kind": "register",
+        "image": 0
+      }
+    },
+    {
+      "name": "geometry-upload",
+      "startTime": 1731.2000000178814,
+      "duration": 2.7999999821186066,
+      "detail": {
+        "viewport": 1,
+        "sequence": 8,
+        "attempt": 1,
+        "modelId": "drone",
+        "kind": "register"
+      }
+    },
+    {
+      "name": "accepted-update",
+      "startTime": 1734.4000000059605,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 9,
+        "revision": 1,
+        "features": 2
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 1749.7000000178814,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 10,
+        "frame": 2,
+        "updateRevision": 1,
+        "placementMs": 2.199999988079071,
+        "projectionScalingMs": 4.9000000059604645
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 1749.9000000059605,
+      "duration": 3.0999999940395355,
+      "detail": {
+        "viewport": 1,
+        "sequence": 11
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 1753.9000000059605,
+      "duration": 0.09999999403953552,
+      "detail": {
+        "viewport": 1,
+        "sequence": 12
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 1754.2000000178814,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 13,
+        "frame": 2,
+        "sceneRevision": 6,
+        "updateRevision": 1,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 1759.5999999940395,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 14,
+        "frame": 3,
+        "updateRevision": 1,
+        "placementMs": 0,
+        "projectionScalingMs": 0.699999988079071
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 1759.7000000178814,
+      "duration": 3.2999999821186066,
+      "detail": {
+        "viewport": 1,
+        "sequence": 15
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 1763.800000011921,
+      "duration": 0.09999999403953552,
+      "detail": {
+        "viewport": 1,
+        "sequence": 16
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 1764.300000011921,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 17,
+        "frame": 3,
+        "sceneRevision": 6,
+        "updateRevision": 1,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "accepted-update",
+      "startTime": 1781.7000000178814,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 18,
+        "revision": 2,
+        "features": 1
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 1800.0999999940395,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 19,
+        "frame": 4,
+        "updateRevision": 2,
+        "placementMs": 0.29999998211860657,
+        "projectionScalingMs": 0.40000003576278687
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 1800.2000000178814,
+      "duration": 0.3999999761581421,
+      "detail": {
+        "viewport": 1,
+        "sequence": 20
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 1802.7000000178814,
+      "duration": 0.19999998807907104,
+      "detail": {
+        "viewport": 1,
+        "sequence": 21
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 1803.2000000178814,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 22,
+        "frame": 4,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 1810,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 23,
+        "frame": 5,
+        "updateRevision": 2,
+        "placementMs": 0.09999999403953552,
+        "projectionScalingMs": 1.300000011920929
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 1810.0999999940395,
+      "duration": 0.7000000178813934,
+      "detail": {
+        "viewport": 1,
+        "sequence": 24
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 1811.5,
+      "duration": 0.20000001788139343,
+      "detail": {
+        "viewport": 1,
+        "sequence": 25
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 1812.2000000178814,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 26,
+        "frame": 5,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 1827.2000000178814,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 27,
+        "frame": 6,
+        "updateRevision": 2,
+        "placementMs": 0,
+        "projectionScalingMs": 3.5
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 1828.2000000178814,
+      "duration": 0.29999998211860657,
+      "detail": {
+        "viewport": 1,
+        "sequence": 28
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 1830,
+      "duration": 0.09999999403953552,
+      "detail": {
+        "viewport": 1,
+        "sequence": 29
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 1831,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 30,
+        "frame": 6,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 1843.4000000059605,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 31,
+        "frame": 7,
+        "updateRevision": 2,
+        "placementMs": 0.09999999403953552,
+        "projectionScalingMs": 0.5
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 1843.5,
+      "duration": 1.800000011920929,
+      "detail": {
+        "viewport": 1,
+        "sequence": 32
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 1847.300000011921,
+      "duration": 0.09999999403953552,
+      "detail": {
+        "viewport": 1,
+        "sequence": 33
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 1847.5999999940395,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 34,
+        "frame": 7,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 1857.7000000178814,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 35,
+        "frame": 8,
+        "updateRevision": 2,
+        "placementMs": 0,
+        "projectionScalingMs": 0.7000000178813934
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 1857.800000011921,
+      "duration": 2.199999988079071,
+      "detail": {
+        "viewport": 1,
+        "sequence": 36
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 1863.0999999940395,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 37
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 1863.5,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 38,
+        "frame": 8,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 1874.4000000059605,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 39,
+        "frame": 9,
+        "updateRevision": 2,
+        "placementMs": 0,
+        "projectionScalingMs": 0.5999999940395355
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 1874.5999999940395,
+      "duration": 0.6000000238418579,
+      "detail": {
+        "viewport": 1,
+        "sequence": 40
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 1875.800000011921,
+      "duration": 0.19999998807907104,
+      "detail": {
+        "viewport": 1,
+        "sequence": 41
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 1876.2000000178814,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 42,
+        "frame": 9,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 1888.5,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 43,
+        "frame": 10,
+        "updateRevision": 2,
+        "placementMs": 0,
+        "projectionScalingMs": 0.699999988079071
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 1888.5999999940395,
+      "duration": 3.5,
+      "detail": {
+        "viewport": 1,
+        "sequence": 44
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 1892.9000000059605,
+      "duration": 0.09999999403953552,
+      "detail": {
+        "viewport": 1,
+        "sequence": 45
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 1893.300000011921,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 46,
+        "frame": 10,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 1904.9000000059605,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 47,
+        "frame": 11,
+        "updateRevision": 2,
+        "placementMs": 0.09999999403953552,
+        "projectionScalingMs": 0.5
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 1905,
+      "duration": 2,
+      "detail": {
+        "viewport": 1,
+        "sequence": 48
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 1909.0999999940395,
+      "duration": 0.10000002384185791,
+      "detail": {
+        "viewport": 1,
+        "sequence": 49
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 1909.5,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 50,
+        "frame": 11,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 1924.9000000059605,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 51,
+        "frame": 12,
+        "updateRevision": 2,
+        "placementMs": 0.19999998807907104,
+        "projectionScalingMs": 0.5
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 1925,
+      "duration": 0.4000000059604645,
+      "detail": {
+        "viewport": 1,
+        "sequence": 52
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 1926,
+      "duration": 0.09999999403953552,
+      "detail": {
+        "viewport": 1,
+        "sequence": 53
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 1926.4000000059605,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 54,
+        "frame": 12,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 1938.9000000059605,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 55,
+        "frame": 13,
+        "updateRevision": 2,
+        "placementMs": 0.09999999403953552,
+        "projectionScalingMs": 0.5
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 1939.0999999940395,
+      "duration": 3.9000000059604645,
+      "detail": {
+        "viewport": 1,
+        "sequence": 56
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 1943.5999999940395,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 57
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 1943.9000000059605,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 58,
+        "frame": 13,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 1954.800000011921,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 59,
+        "frame": 14,
+        "updateRevision": 2,
+        "placementMs": 0.10000002384185791,
+        "projectionScalingMs": 0.5999999940395355
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 1955,
+      "duration": 0.9000000059604645,
+      "detail": {
+        "viewport": 1,
+        "sequence": 60
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 1958.5999999940395,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 61
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 1958.9000000059605,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 62,
+        "frame": 14,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 1974.9000000059605,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 63,
+        "frame": 15,
+        "updateRevision": 2,
+        "placementMs": 0.09999999403953552,
+        "projectionScalingMs": 0.5
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 1975.0999999940395,
+      "duration": 0.4000000059604645,
+      "detail": {
+        "viewport": 1,
+        "sequence": 64
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 1976.0999999940395,
+      "duration": 0.10000002384185791,
+      "detail": {
+        "viewport": 1,
+        "sequence": 65
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 1976.4000000059605,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 66,
+        "frame": 15,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 1988.300000011921,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 67,
+        "frame": 16,
+        "updateRevision": 2,
+        "placementMs": 0.09999999403953552,
+        "projectionScalingMs": 0.4000000059604645
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 1988.5,
+      "duration": 1.5,
+      "detail": {
+        "viewport": 1,
+        "sequence": 68
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 1991.300000011921,
+      "duration": 0.09999999403953552,
+      "detail": {
+        "viewport": 1,
+        "sequence": 69
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 1991.7000000178814,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 70,
+        "frame": 16,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 2006,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 71,
+        "frame": 17,
+        "updateRevision": 2,
+        "placementMs": 0.09999999403953552,
+        "projectionScalingMs": 0.5
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 2006.2000000178814,
+      "duration": 0.8999999761581421,
+      "detail": {
+        "viewport": 1,
+        "sequence": 72
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 2008.2000000178814,
+      "duration": 0.09999999403953552,
+      "detail": {
+        "viewport": 1,
+        "sequence": 73
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 2008.7000000178814,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 74,
+        "frame": 17,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 2025.0999999940395,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 75,
+        "frame": 18,
+        "updateRevision": 2,
+        "placementMs": 0.19999998807907104,
+        "projectionScalingMs": 0.4000000059604645
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 2025.0999999940395,
+      "duration": 0.30000001192092896,
+      "detail": {
+        "viewport": 1,
+        "sequence": 76
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 2025.9000000059605,
+      "duration": 0.19999998807907104,
+      "detail": {
+        "viewport": 1,
+        "sequence": 77
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 2026.300000011921,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 78,
+        "frame": 18,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 2039,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 79,
+        "frame": 19,
+        "updateRevision": 2,
+        "placementMs": 0.09999999403953552,
+        "projectionScalingMs": 0.5
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 2039.2000000178814,
+      "duration": 1.7999999821186066,
+      "detail": {
+        "viewport": 1,
+        "sequence": 80
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 2041.7000000178814,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 81
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 2042,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 82,
+        "frame": 19,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 2054.800000011921,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 83,
+        "frame": 20,
+        "updateRevision": 2,
+        "placementMs": 0.20000001788139343,
+        "projectionScalingMs": 0.5
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 2054.9000000059605,
+      "duration": 1.0999999940395355,
+      "detail": {
+        "viewport": 1,
+        "sequence": 84
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 2056.5999999940395,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 85
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 2059.0999999940395,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 86,
+        "frame": 20,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 2072.7000000178814,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 87,
+        "frame": 21,
+        "updateRevision": 2,
+        "placementMs": 0,
+        "projectionScalingMs": 0.5999999940395355
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 2072.800000011921,
+      "duration": 0.7999999821186066,
+      "detail": {
+        "viewport": 1,
+        "sequence": 88
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 2074.300000011921,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 89
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 2074.7000000178814,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 90,
+        "frame": 21,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 2090.0999999940395,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 91,
+        "frame": 22,
+        "updateRevision": 2,
+        "placementMs": 0,
+        "projectionScalingMs": 0.5
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 2090.2000000178814,
+      "duration": 2.0999999940395355,
+      "detail": {
+        "viewport": 1,
+        "sequence": 92
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 2093,
+      "duration": 0.20000001788139343,
+      "detail": {
+        "viewport": 1,
+        "sequence": 93
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 2093.300000011921,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 94,
+        "frame": 22,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 2104.9000000059605,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 95,
+        "frame": 23,
+        "updateRevision": 2,
+        "placementMs": 0.09999999403953552,
+        "projectionScalingMs": 0.5
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 2105.2000000178814,
+      "duration": 0.7999999821186066,
+      "detail": {
+        "viewport": 1,
+        "sequence": 96
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 2107.2000000178814,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 97
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 2108,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 98,
+        "frame": 23,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 2122,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 99,
+        "frame": 24,
+        "updateRevision": 2,
+        "placementMs": 0.09999999403953552,
+        "projectionScalingMs": 0.5
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 2122.0999999940395,
+      "duration": 0.6000000238418579,
+      "detail": {
+        "viewport": 1,
+        "sequence": 100
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 2123.4000000059605,
+      "duration": 0.09999999403953552,
+      "detail": {
+        "viewport": 1,
+        "sequence": 101
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 2123.7000000178814,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 102,
+        "frame": 24,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 2138.300000011921,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 103,
+        "frame": 25,
+        "updateRevision": 2,
+        "placementMs": 0,
+        "projectionScalingMs": 0.5999999940395355
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 2138.5,
+      "duration": 0.7000000178813934,
+      "detail": {
+        "viewport": 1,
+        "sequence": 104
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 2139.9000000059605,
+      "duration": 0.09999999403953552,
+      "detail": {
+        "viewport": 1,
+        "sequence": 105
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 2140.300000011921,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 106,
+        "frame": 25,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 2154.9000000059605,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 107,
+        "frame": 26,
+        "updateRevision": 2,
+        "placementMs": 0,
+        "projectionScalingMs": 0.5
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 2155,
+      "duration": 0.5,
+      "detail": {
+        "viewport": 1,
+        "sequence": 108
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 2156.2000000178814,
+      "duration": 0.09999999403953552,
+      "detail": {
+        "viewport": 1,
+        "sequence": 109
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 2156.5,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 110,
+        "frame": 26,
+        "sceneRevision": 7,
+        "updateRevision": 2,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "accepted-update",
+      "startTime": 2157.4000000059605,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 111,
+        "revision": 3,
+        "features": 2
+      }
+    },
+    {
+      "name": "accepted-update",
+      "startTime": 2157.7000000178814,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 112,
+        "revision": 4,
+        "features": 1
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 2172,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 113,
+        "frame": 27,
+        "updateRevision": 4,
+        "placementMs": 0.20000001788139343,
+        "projectionScalingMs": 0.4999999701976776
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 2172.0999999940395,
+      "duration": 0.7000000178813934,
+      "detail": {
+        "viewport": 1,
+        "sequence": 114
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 2173.5,
+      "duration": 0.09999999403953552,
+      "detail": {
+        "viewport": 1,
+        "sequence": 115
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 2173.800000011921,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 116,
+        "frame": 27,
+        "sceneRevision": 9,
+        "updateRevision": 4,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    },
+    {
+      "name": "scene-cpu",
+      "startTime": 2189.9000000059605,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 117,
+        "frame": 28,
+        "updateRevision": 4,
+        "placementMs": 0.29999998211860657,
+        "projectionScalingMs": 0.4000000059604645
+      }
+    },
+    {
+      "name": "instance-preparation",
+      "startTime": 2190.5999999940395,
+      "duration": 0.800000011920929,
+      "detail": {
+        "viewport": 1,
+        "sequence": 118
+      }
+    },
+    {
+      "name": "submit",
+      "startTime": 2192.0999999940395,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 119
+      }
+    },
+    {
+      "name": "frame",
+      "startTime": 2192.5,
+      "duration": 0,
+      "detail": {
+        "viewport": 1,
+        "sequence": 120,
+        "frame": 28,
+        "sceneRevision": 9,
+        "updateRevision": 4,
+        "drawnModels": 2,
+        "clippedBoxes": 2,
+        "batches": 1,
+        "triangles": 9128
+      }
+    }
+  ],
+  "provenance": {
+    "date": "2026-10-05T01:51:25.510Z",
+    "revision": "708988d1253863412f73915a650b610518ddb9fc",
+    "status": "",
+    "diffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "package": "@ridgeline/map",
+    "version": "0.1.0",
+    "archiveSha256": "92eaf37f0fbe8baa9b33277c2d144bb38f6375443febc3f177bd4038cd42e812",
+    "manifestSha256": "eb35134dddf6c2f43b7847db66cd3ceb5fe2df896ca9235cbf627727b1884daa",
+    "maplibre": "6.11.0",
+    "node": "v24.21.0"
+  },
+  "browser": "153.0.8010.12"
+}

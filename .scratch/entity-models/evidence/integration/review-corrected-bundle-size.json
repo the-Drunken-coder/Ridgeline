@@ -1,0 +1,35 @@
+{
+  "at": "2026-10-05T01:31:40.203Z",
+  "revision": "708988d1253863412f73915a650b610518ddb9fc",
+  "sourceTree": "04413b0db510cc12b4794ea53f98cf331003ac53",
+  "node": "v24.21.0",
+  "method": "Current emitted Vite production library, MapLibre external and source maps excluded; Node gzipSync default. Baseline built with the same Node gzip command.",
+  "baseline": {
+    "revision": "2733cee9fe9440237a36e90d9efa2fc4239b87c3",
+    "buildRevision": "47750f2",
+    "libraryJs": {
+      "rawBytes": 205453,
+      "gzipBytes": 58404
+    },
+    "libraryCss": {
+      "rawBytes": 6089,
+      "gzipBytes": 1788
+    }
+  },
+  "current": {
+    "libraryJs": {
+      "path": "dist/ridgeline.js",
+      "rawBytes": 281990,
+      "gzipBytes": 79426
+    },
+    "libraryCss": {
+      "path": "dist/ridgeline.css",
+      "rawBytes": 6089,
+      "gzipBytes": 1788
+    }
+  },
+  "netLibraryJs": {
+    "rawBytes": 76537,
+    "gzipBytes": 21022
+  }
+}

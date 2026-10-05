@@ -54,4 +54,3 @@ Includes root `8c8278c`, scene/viewport/picking `6a1d116`, final hasLabel bridge
 - `recovery-browser-environment.json`: Chromium 153.0.8010.12, Linux x64, ANGLE Vulkan SwiftShader, real context-loss extension available. Generated 2026-10-04T23:29:14Z.
 
 No remaining known #89 implementation gap. Actual unsupported hardware/browser cases and target performance remain unverified as described above. Root remains the owner of combined review, exact integrated checks and ticket closeout. Parent requested this worker to act as merger only after explicit approval of the final combined pin; no root merge performed in this implementation phase.
-

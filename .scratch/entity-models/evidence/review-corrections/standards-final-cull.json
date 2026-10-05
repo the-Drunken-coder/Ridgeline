@@ -1,0 +1,22 @@
+{
+  "revision": "cf09290e615dfc4809b09519fdfb0825c4642ba9",
+  "scope": "real scene/model-layer CPU preparation, upload and GPU draw stubbed; no browser/pixel claim",
+  "screen": [
+    {
+      "x": 500,
+      "y": 500,
+      "depth": 0
+    },
+    {
+      "x": 1888.8888888868678,
+      "y": 500,
+      "depth": 0
+    }
+  ],
+  "cameraDistanceMeters": [
+    100,
+    1117.6725710600579
+  ],
+  "submittedInstances": 1,
+  "expectedWithOffscreenCulling": 1
+}

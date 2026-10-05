@@ -1,0 +1,30 @@
+{
+  "revision": "31221198ab629d6030d8c0ba2aab93aac2811acc",
+  "scope": "real public viewport with native Map constructor/render/remove doubles, exact installed MapLibre6.11 _cleanupContainer; no GPU/browser claim",
+  "results": [
+    {
+      "history": "ordinary-destroy-event-remount",
+      "retainedClass": false,
+      "replacementCanvases": 1,
+      "oldNativeRemovals": 1
+    },
+    {
+      "history": "render-destroy-event-remount",
+      "retainedClass": false,
+      "replacementCanvases": 1,
+      "oldNativeRemovals": 1
+    },
+    {
+      "history": "render-remount-after-return",
+      "retainedClass": true,
+      "replacementCanvases": 1,
+      "oldNativeRemovals": 1
+    },
+    {
+      "history": "nested-render-remount-after-return",
+      "retainedClass": true,
+      "replacementCanvases": 1,
+      "oldNativeRemovals": 1
+    }
+  ]
+}

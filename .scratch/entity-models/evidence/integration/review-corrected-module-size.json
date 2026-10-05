@@ -1,0 +1,33 @@
+{
+  "at": "2026-10-05T01:30:59.493Z",
+  "node": "v24.21.0",
+  "method": "Vite isolated ES-library entry builds, default production settings, MapLibre external. Each includes its reachable helpers. Shared helpers may repeat between these entries; do not sum gzip sizes or call this the net package delta.",
+  "modules": [
+    {
+      "entry": "src/model-glb.ts",
+      "file": "parser.js",
+      "rawBytes": 16355,
+      "gzipBytes": 5256,
+      "includedModules": [
+        "src/model-glb.ts"
+      ]
+    },
+    {
+      "entry": "src/model-renderer.ts",
+      "file": "renderer.js",
+      "rawBytes": 25656,
+      "gzipBytes": 8653,
+      "includedModules": [
+        "node_modules/.pnpm/@maplibre+maplibre-gl-style-spec@26.4.4/node_modules/@maplibre/maplibre-gl-style-spec/dist/expression/types/color_spaces.mjs",
+        "node_modules/.pnpm/@maplibre+maplibre-gl-style-spec@26.4.4/node_modules/@maplibre/maplibre-gl-style-spec/dist/util/get_own.mjs",
+        "node_modules/.pnpm/@maplibre+maplibre-gl-style-spec@26.4.4/node_modules/@maplibre/maplibre-gl-style-spec/dist/expression/types/parse_css_color.mjs",
+        "node_modules/.pnpm/@maplibre+maplibre-gl-style-spec@26.4.4/node_modules/@maplibre/maplibre-gl-style-spec/dist/util/interpolate-primitives.mjs",
+        "node_modules/.pnpm/@maplibre+maplibre-gl-style-spec@26.4.4/node_modules/@maplibre/maplibre-gl-style-spec/dist/expression/types/color.mjs",
+        "src/entity-projection.ts",
+        "src/model-renderer.ts"
+      ]
+    }
+  ],
+  "revision": "708988d1253863412f73915a650b610518ddb9fc",
+  "sourceTree": "04413b0db510cc12b4794ea53f98cf331003ac53"
+}

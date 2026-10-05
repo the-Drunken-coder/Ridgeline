@@ -298,6 +298,8 @@ The default map assets need internet access, but no API key, account, or applica
 
 `ready` means the style and Ridgeline layers can accept data, not that every tile has loaded. Queue data before readiness. A failed initial style or the default 20-second timeout rejects readiness; destroy and recreate after fixing the cause. `initializationTimeoutMs` is configurable. Construction can throw when the container or WebGL context cannot be initialized.
 
+`destroy()` immediately rejects new mutations and removes its canvas before notifying destroy listeners. A listener can mount a replacement in the same container. If destruction happens during a native render call, the old map finishes releasing its rendering resources when that call returns.
+
 `RidgelineError` exposes `code`, `message`, `context` (operation, recoverability, optional source/feature/model ID), and `cause`. Codes cover invalid features/configuration, initialization failure/timeout, style failure, unavailable elevation, unavailable assets, update failure, icon failure, model registration/rendering failure, use after destruction, and consumer callback failure. `onError` and the diagnostic event notify consumers. `logger` defaults to `console.error`; repeated code/operation/resource combinations are logged at most once per ten seconds. Supply `logger: () => {}` to disable logging.
 
 Recoverable tile failures leave the rest of the map usable. The elevation-unavailable scenario deliberately requests invalid local tiles and lets you retry the default provider. A basemap that fails to load can leave an empty base; the feature model and selection remain retained for a subsequent successful style change.
