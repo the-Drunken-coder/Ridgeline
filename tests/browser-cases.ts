@@ -10,6 +10,7 @@ export const browserCases = [
   'model recovery cancels stale native image completions',
   'model recovery reports allocation failure and retries explicitly',
   'model frames recover from consumer prerender mutations',
+  'Model pixel observation aligns visible picking across canvas ratios and rejects absent models',
   'Model picking uses drawn boxes and returns original entity and attachment hits',
   'Model picking clips terrain near-plane and displayed world copies',
   'Model overlap picker preserves choices focus and consumer selection',
