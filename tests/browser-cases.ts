@@ -4,6 +4,7 @@ export const browserCases = [
   'Model diagnostics preserve entity computation through selection and preview callbacks',
   'Model frame callbacks publish only current placement and appearance',
   'Models cull off-screen bodies after enlargement and recover on camera motion',
+  'Model idle observation records delayed publication and stays quiet after stationary recovery',
   'Viewport destruction preserves synchronous listener remounts',
   'models retain resources through basemap replacement',
   'models rebuild current presentation after real context loss',
