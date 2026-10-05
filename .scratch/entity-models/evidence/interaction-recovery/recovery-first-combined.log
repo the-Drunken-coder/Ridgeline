@@ -1,0 +1,117 @@
+$ node scripts/test-browser.mjs --config .artifacts/recovery.playwright.config.mjs --grep 'models retain resources|models rebuild current presentation|model recovery |model frames recover'
+$ vite build && tsc -p tsconfig.build.json
+vite v8.3.0 building client environment for production...
+transforming...
+✓ 165 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/ridgeline.css    6.08 kB │ gzip:  1.80 kB
+dist/ridgeline.js   276.65 kB │ gzip: 78.71 kB │ map: 733.13 kB
+
+✓ built in 355ms
+package: @ridgeline/map@0.1.0
+Tarball Contents
+dist/arrowheads.d.ts
+dist/camera-volume.d.ts
+dist/color.d.ts
+dist/drawing-controls.d.ts
+dist/drawing-geometry.d.ts
+dist/drawing-session.d.ts
+dist/drawing-shapes.d.ts
+dist/drawing-types.d.ts
+dist/drawing.d.ts
+dist/elevation-bounds.d.ts
+dist/elevation-sampler.d.ts
+dist/elevation.d.ts
+dist/entities.d.ts
+dist/entity-computation.d.ts
+dist/entity-geometry.d.ts
+dist/entity-ground.d.ts
+dist/entity-layer.d.ts
+dist/entity-projection.d.ts
+dist/errors.d.ts
+dist/feature-content.d.ts
+dist/feature-publication.d.ts
+dist/features.d.ts
+dist/gpu-camera-shaders.d.ts
+dist/gpu-camera-terrain.d.ts
+dist/gpu-cameras.d.ts
+dist/ground-feedback.d.ts
+dist/ground-target.d.ts
+dist/hillshade.d.ts
+dist/index.d.ts
+dist/interactions.d.ts
+dist/longitude.d.ts
+dist/maplibre-feature-publication.d.ts
+dist/model-feedback-layer.d.ts
+dist/model-frame.d.ts
+dist/model-glb.d.ts
+dist/model-labels.d.ts
+dist/model-layer.d.ts
+dist/model-picking.d.ts
+dist/model-placement.d.ts
+dist/model-presentation.d.ts
+dist/model-renderer.d.ts
+dist/model-settings.d.ts
+dist/model-switching.d.ts
+dist/model-visibility.d.ts
+dist/models.d.ts
+dist/ridgeline.css
+dist/ridgeline.js
+dist/ridgeline.js.map
+dist/sensor-camera-coverage.d.ts
+dist/types.d.ts
+dist/viewport.d.ts
+docs/performance.md
+package.json
+README.md
+Tarball Details
+/tmp/ridgeline-model-recovery/.artifacts/ridgeline-map-0.1.0.tgz
+Prepared .artifacts/consumer. Install dependencies, build, then open its dev server to run the checks.
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +43
++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 87, reused 42, downloaded 1, added 43, done
+
+dependencies:
++ @ridgeline/map 0.1.0
++ maplibre-gl 6.11.0 (6.11.2 is available)
+
+devDependencies:
++ typescript 7.0.2
++ vite 8.3.0 (8.3.1 is available)
+
+Done in 1.4s using pnpm v11.0.9
+$ tsc --noEmit && vite build
+vite v8.3.0 building client environment for production...
+transforming...
+✓ 23 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                 0.52 kB │ gzip:   0.37 kB
+dist/assets/maplibre-gl-worker-BbFVVOSM.js    509.38 kB
+dist/assets/index-CweBEn9B.css                 89.03 kB │ gzip:  12.27 kB
+dist/assets/index-DeA1Gxet.js               1,597.37 kB │ gzip: 435.92 kB
+
+✓ built in 962ms
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+[WebServer] (node:866167) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:866180) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 5 tests using 1 worker
+
+(node:866201) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/packaged/browser.spec.ts:6:3 › models retain resources through basemap replacement (3.0s)
+  ✓  2 tests/packaged/browser.spec.ts:6:3 › models rebuild current presentation after real context loss (7.8s)
+  ✓  3 tests/packaged/browser.spec.ts:6:3 › model recovery cancels stale native image completions (2.0s)
+  ✓  4 tests/packaged/browser.spec.ts:6:3 › model recovery reports allocation failure and retries explicitly (1.8s)
+  ✓  5 tests/packaged/browser.spec.ts:6:3 › model frames recover from consumer prerender mutations (1.0s)
+
+  5 passed (19.0s)

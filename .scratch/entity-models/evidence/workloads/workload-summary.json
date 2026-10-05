@@ -1,0 +1,173 @@
+{
+  "date": "2026-10-04",
+  "reviewedRevision": "a6f00cc1d7cbce1b29e2458018cd4de4d84d946f",
+  "exercisedRevision": "a6f00cc1d7cbce1b29e2458018cd4de4d84d946f",
+  "baseRevision": "13bab3f25165b279499dcf74c1a5a97ad18f126f",
+  "manifestSha256": "eb35134dddf6c2f43b7847db66cd3ceb5fe2df896ca9235cbf627727b1884daa",
+  "assets": [
+    {
+      "id": "drone",
+      "variants": [
+        {
+          "variant": "original",
+          "triangles": 4564,
+          "vertices": 6956,
+          "bytes": 259676,
+          "maxBoundError": 0,
+          "sha256": "bc9f0d765e0fdb838a9baf26b472f955a11bb2509a3337e918054241b134638d"
+        },
+        {
+          "variant": "normalized",
+          "triangles": 4564,
+          "vertices": 6956,
+          "bytes": 393188,
+          "maxBoundError": 0,
+          "sha256": "138a52f10df8c17fd6baa7f5df63fe2686e9bf91c1a0f736717ce93dd31cf575"
+        },
+        {
+          "variant": "4x",
+          "triangles": 18256,
+          "vertices": 17248,
+          "bytes": 1051520,
+          "maxBoundError": 0,
+          "sha256": "0ff65647a5ae8962856ad167c356d10c022a37c415b346d6c557753d0f767889"
+        },
+        {
+          "variant": "16x",
+          "triangles": 73024,
+          "vertices": 51524,
+          "bytes": 3353988,
+          "maxBoundError": 0,
+          "sha256": "37ee1623a4da3a87b696f4cd1c987ad437676957e5602fae2a7b4c431e6fd0ab"
+        }
+      ]
+    },
+    {
+      "id": "tank",
+      "variants": [
+        {
+          "variant": "original",
+          "triangles": 760,
+          "vertices": 1426,
+          "bytes": 44716,
+          "maxBoundError": 0,
+          "sha256": "e6050023af3c703a912418adf2f6564b3e0068ba9cfdbc11dba18e047a50e653"
+        },
+        {
+          "variant": "normalized",
+          "triangles": 760,
+          "vertices": 1426,
+          "bytes": 83048,
+          "maxBoundError": 1.1183993997576636e-7,
+          "sha256": "1f32c6af85c858d3c3574d932988df6113fb816745692eccbfd92545cedc1de7"
+        },
+        {
+          "variant": "4x",
+          "triangles": 3040,
+          "vertices": 3279,
+          "bytes": 199396,
+          "maxBoundError": 1.1183993997576636e-7,
+          "sha256": "e2c6358522604088fd714d789b08578f7b34e72ce3cd31ce06348d2e2492890f"
+        },
+        {
+          "variant": "16x",
+          "triangles": 12160,
+          "vertices": 9265,
+          "bytes": 596196,
+          "maxBoundError": 1.1183993997576636e-7,
+          "sha256": "57baadebf898e45b5c538ee9c309aceda233dbf01a7e8ca740145476112ee05d"
+        }
+      ]
+    },
+    {
+      "id": "plane",
+      "variants": [
+        {
+          "variant": "original",
+          "triangles": 1434,
+          "vertices": 2706,
+          "bytes": 77620,
+          "maxBoundError": 0,
+          "sha256": "4196c1920cec466a5211f8d9a86b3eb08ec1772e7e96e73cda7fede525f6e950"
+        },
+        {
+          "variant": "normalized",
+          "triangles": 1434,
+          "vertices": 2706,
+          "bytes": 151392,
+          "maxBoundError": 0,
+          "sha256": "15c3cfa55fdcc1fdfc11c1cde979331b4f777e6d653ea5f4ea0b352f7da7079a"
+        },
+        {
+          "variant": "4x",
+          "triangles": 5736,
+          "vertices": 6209,
+          "bytes": 371176,
+          "maxBoundError": 0,
+          "sha256": "604a4118af99f9dc7afb34581d3e2a38dfa0a0aaa48c6dff3517697dd2b1a811"
+        },
+        {
+          "variant": "16x",
+          "triangles": 22944,
+          "vertices": 17517,
+          "bytes": 1120488,
+          "maxBoundError": 0,
+          "sha256": "5d25a5669f7bc35fa9e8dfe8a64af6c4f2e34a3dfb25b0fbc72074b05107fe1d"
+        }
+      ]
+    },
+    {
+      "id": "boat",
+      "variants": [
+        {
+          "variant": "original",
+          "triangles": 156,
+          "vertices": 288,
+          "bytes": 25084,
+          "maxBoundError": 0,
+          "sha256": "5c4c573f34b9dce89f551eb6501b031dc19f799d6cd9adf97e36857262968740"
+        },
+        {
+          "variant": "normalized",
+          "triangles": 156,
+          "vertices": 288,
+          "bytes": 26108,
+          "maxBoundError": 0,
+          "sha256": "4bf705b069b606a2ac901ead74313c92e575c0ec306c4d4d30933a2debb04734"
+        },
+        {
+          "variant": "4x",
+          "triangles": 624,
+          "vertices": 666,
+          "bytes": 49872,
+          "maxBoundError": 0,
+          "sha256": "776798e9a865eb1d9622df379c3969f668d06d8fbbf58940011470da6028e9ce"
+        },
+        {
+          "variant": "16x",
+          "triangles": 2496,
+          "vertices": 1890,
+          "bytes": 131096,
+          "maxBoundError": 0,
+          "sha256": "00584cd6b720ca883b197ede5c8f38035e53b0aee14c0f5367b2f02557f11b35"
+        }
+      ]
+    }
+  ],
+  "tests": {
+    "focused": 4,
+    "tsc": "passed",
+    "gltfValidation": {
+      "derivedVehicles": 12,
+      "materials": 4,
+      "errors": 0,
+      "warnings": 0
+    }
+  },
+  "limits": [
+    "CPU offline generation and validation only; packaged registration/browser measurements belong to the measurement consumer owner.",
+    "Float32 rounding affects baked bounds by at most the recorded error.",
+    "Interpolated midpoint normals are normalized; smooth shading is not bit-identical.",
+    "Hardware/browser performance acceptance remains #80/#91."
+  ]
+}

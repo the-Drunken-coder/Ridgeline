@@ -171,24 +171,51 @@ Camera appearance supports `volumeOpacity`, `wireframe`, and `wireframeWidth`. T
 
 ### Shared models
 
-Register application-supplied GLB bytes once per viewport, then reference that model from multiple entities:
+Register application-supplied GLB bytes once per viewport, then reference that model from multiple entities. Fetching and palettes belong to the application:
 
 ```ts
-await viewport.registerModel('vehicle', {
-  bytes: vehicleBytes, metersPerUnit: 1, headingOffset: 0,
-  appearance: { mode: 'color', color: '#db7428' },
+import type { ModelAppearance } from '@ridgeline/map';
+
+const appearances = new Map<string, ModelAppearance>([
+  ['vehicle-1', { mode: 'color', color: '#db7428' }],
+  ['vehicle-2', { mode: 'original' }],
+]);
+const viewport = createViewport({
+  container,
+  camera: { center: [6.8705, 45.92], zoom: 17, pitch: 45 },
+  style: feature => ({
+    label: feature.id,
+    modelAppearance: appearances.get(feature.id),
+  }),
 });
-viewport.upsert([{
-  type: 'Feature', id: 'vehicle-1', properties: {},
-  geometry: { type: 'Point', coordinates: [6.87, 45.92] },
-  entity: {
-    model: { id: 'vehicle' }, heading: 90,
-    altitude: { meters: 30, reference: 'ground' },
-  },
-}]);
+const response = await fetch('/models/vehicle.glb');
+if (!response.ok) throw new Error(`Model request failed: ${response.status}`);
+await viewport.registerModel('vehicle', {
+  bytes: await response.arrayBuffer(), metersPerUnit: 1, headingOffset: 0,
+});
+viewport.upsert(['vehicle-1', 'vehicle-2'].map((id, index) => ({
+  type: 'Feature', id, properties: {},
+  geometry: { type: 'Point', coordinates: [6.87 + index * .001, 45.92] },
+  entity: { model: { id: 'vehicle' }, heading: 90 },
+})));
+appearances.set('vehicle-1', { mode: 'color', color: '#2478c4' });
+const vehicle = viewport.getFeature('vehicle-1');
+if (vehicle) viewport.upsert([vehicle]); // Refreshes this instance without reloading.
+
+// Replacement uses the same ID and is atomic; failure retains the working asset.
+// await viewport.registerModel('vehicle', { bytes: replacementBytes });
+// viewport.unregisterModel('vehicle'); // Keeps both features and their selection.
 ```
 
 Models use a static GLB v2 subset: one embedded binary buffer, node transforms, core accessors, `KHR_mesh_quantization`, normals, optional first texture coordinates and vertex colors. Materials support embedded PNG/JPEG base-color images, base-color factors, `KHR_texture_transform`, opaque/cutout/translucent alpha modes, alpha cutoff, double-sided faces, emissive factors and `KHR_materials_unlit`. Animations, cameras, lights and unsupported texture channels are ignored. Unsupported required extensions, external buffers/images, skins, morph targets, sparse accessors and non-triangle modes reject with a named cause without fetching application resources. `metersPerUnit` defaults to 1 and must be positive; `headingOffset` defaults to zero. Authored +Y is up and +Z is forward. Entity heading is clockwise from north; pitch is positive nose-up and roll positive right-side-down, all in degrees. Heading is required for model display; missing heading reports `MODEL_HEADING_MISSING` and retains the icon.
+
+For a `.gltf` with external buffers or PNG/JPEG files, keep those files at its URI-relative paths and repackage them in your asset pipeline. This [glTF Transform CLI](https://gltf-transform.dev/cli) command was checked with version 4.5.0:
+
+```sh
+npx --yes @gltf-transform/cli@4.5.0 copy input.gltf output.glb
+```
+
+Supply the resulting embedded GLB bytes to `registerModel`. Repackaging does not add support for skins, morph targets, compressed geometry or unsupported required extensions. Avoid optimization presets that introduce unsupported formats such as Draco or WebP.
 
 Registration copies bytes and settings before asynchronous work and resolves after parsing, image decoding, GPU upload and atomic installation. Native image decoding may finish after cancellation; its late bitmap is closed without installation. It may start before `viewport.ready`, waiting for the model renderer. Viewport readiness remains independent of model loading. A failed replacement retains the previous asset; a newer registration, `unregisterModel(id)` or destruction cancels pending work with `MODEL_LOAD_CANCELLED`. Cancellation does not emit an asset-failure diagnostic. Removing an entity retains its shared registration. Unregistering returns referencing entities to icons and preserves their data and selection; unknown IDs are harmless.
 
@@ -198,13 +225,21 @@ Entity-state snapshots include `representation` (`icon`, `model` or `withheld`) 
 
 Assigned color replaces source texture, base, vertex and emissive RGB while preserving source alpha, cutout shape and simple lighting. CSS color alpha does not replace imported alpha. Original mode restores supported source appearance; neither mode changes the supplied GLB. The renderer uses fixed entity-local directional lighting, or unlit materials, rather than physically based rendering. Opaque and cutout surfaces write depth before translucent surfaces. Translucent geometry has no depth writes and is unsorted, so overlapping translucent surfaces can composite in draw order.
 
-Viewport `entityModels` settings and per-entity overrides validate atomically. `switchDistanceMeters` must be positive and finite; `deadZoneMeters` must be nonnegative and smaller than twice that distance; `minimumSizePixels` must be finite and nonnegative. `DEFAULT_ENTITY_MODELS` contains 2,000 meters, 200 meters and 40 CSS pixels respectively. The floor uses the projected box's largest dimension; real size takes over up close. Set `minimumSizePixels: 0` for physical size alone. Terrain exaggeration changes placement height and slope, never model dimensions.
+Model IDs must be nonempty strings. Scale and angles must be finite; scale must be positive. Omitted airborne pitch and roll default to zero. Appearance colors use the existing supported CSS color syntax. Invalid registration reports `MODEL_INVALID`; malformed, unsupported or failed decode/upload reports `MODEL_LOAD_FAILED` or `MODEL_UNSUPPORTED` with model ID, operation and cause.
+
+Viewport `entityModels` settings and per-entity overrides validate atomically. `switchDistanceMeters` must be positive and finite; `deadZoneMeters` must be nonnegative and smaller than twice that distance; `minimumSizePixels` must be finite and nonnegative. `DEFAULT_ENTITY_MODELS` contains 2,000 meters, 200 meters and 40 CSS pixels respectively. Omitted or `undefined` per-entity settings inherit viewport defaults. The floor uses the projected box's largest dimension; real size takes over up close. Set `minimumSizePixels: 0` for physical size alone. Terrain exaggeration changes placement height and slope, never model dimensions.
 
 Switching uses camera-to-entity distance. The defaults enter model below 1,900 meters and return to icon above 2,100 meters. Inside the band and at either boundary, the previous choice remains. A newly available model inside the band stays an icon until it crosses the entrance boundary. Removing or changing its reference, unregistering it or losing heading resets the choice. Temporary terrain or renderer unavailability retains the choice while showing an eligible fallback. Native icon opacity and model drawing switch in the same frame.
 
 Ground models follow the sampled local slope as rigid bodies. Set `entity.model.followSlope: false` to use explicit pitch and roll instead. `headingOffset` corrects the authored forward direction before body pitch/roll and geographic heading. Contact uses sampled support locations for the displayed footprint, including enlargement. It is approximate on uneven terrain: intersection or floating between samples is possible. Unknown required heights withhold the model until preparation completes; eligible icons and ground markers remain available. Model enlargement leaves physical attachment origins and dimensions unchanged.
 
-Model picking, readable labels/selection feedback and context restoration remain in the subsequent [entity-model implementation slices](https://github.com/the-Drunken-coder/Ridgeline/blob/21805ecb7543098f8c9820c476725654e20b31ec/.scratch/entity-models/spec.md). Target-browser and hardware acceptance is pending.
+Model picking uses the oriented bounding box from the last drawn placement, including enlargement, projection and displayed world copy. Empty space between thin parts and transparent cutouts can be clickable. Picking clips the near plane and rejects box areas behind sampled known terrain; it is not mesh- or pixel-accurate. Events return the original entity and actual attachment hits. Overlapping entities keep their icons and display names in the radial picker. Hover refreshes when the scene changes under a stationary pointer, then stops scheduling work when the scene settles.
+
+Collision-placed labels draw above models and clear their projected bounds. Normal font requirements and collision suppression still apply. Hover adds a thin ring and gentle brightening; selection adds a thicker ring and stronger brightening and takes precedence. Rings follow the model's altitude. These static effects preserve assigned appearance, source materials and physical attachment dimensions.
+
+Basemap changes retain registrations and usable resources. Context loss withholds drawing while retaining accepted assets and hysteresis choices. Restoration rebuilds current models, colors, selection and attachments; a basemap configured during loss applies after restoration. Registration during loss waits for a usable renderer, while already completed promises remain completed. Failed model restoration reports a diagnostic and leaves eligible icon fallback and unrelated geometry usable. `retryUpdates()` explicitly retries failed model resources. Destruction cancels pending work and releases owned resources, including late decoded images.
+
+Target-browser and hardware acceptance remains pending under [the approved entity-model requirements](https://github.com/the-Drunken-coder/Ridgeline/blob/21805ecb7543098f8c9820c476725654e20b31ec/.scratch/entity-models/spec.md). No measured triangle/material guideline or too-heavy advisory is available yet. Local software WebGL checks do not establish Apple M1 Pro, desktop discrete-GPU or Safari support and performance.
 
 Pointer events include `attachments: { entityId, attachmentId }[]`. Visible camera faces, wireframes, and footprints can select their owning attachment. The optional interaction helper carries attachment hits into `selectionrequest`; the consumer owns selection policy.
 
