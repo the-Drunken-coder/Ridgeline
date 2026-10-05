@@ -14,6 +14,9 @@ function fixture() {
   writeFileSync(resolve(root, '.gitignore'), '.artifacts/\n');
   mkdirSync(resolve(root, '.scratch/fixture'), { recursive: true });
   writeFileSync(resolve(root, '.scratch/fixture/spec.md'), '# Fixture spec\n');
+  assert.equal(run('git', ['add', '.gitignore', '.scratch/fixture/spec.md']).status, 0);
+  assert.equal(run('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.com', 'commit', '-qm', 'fixture']).status, 0);
+  const revision = run('git', ['rev-parse', 'HEAD']).stdout.trim();
   mkdirSync(resolve(root, '.artifacts/browser-runs/packaged-fixture'), { recursive: true });
   const producer = '.artifacts/browser-runs/packaged-fixture';
   writeFileSync(resolve(root, producer, '.pin'), 'selected failure\n');
@@ -22,8 +25,10 @@ function fixture() {
   writeFileSync(resolve(root, producer, 'capture.png'), Buffer.from([0, 255, 13, 10, 8]));
   writeFileSync(resolve(root, producer, 'intermediate.log'), 'keep transient\n');
   const plan = { destination: '.scratch/fixture/evidence/final',
-    provenance: { spec: '.scratch/fixture/spec.md', reviewed: 'base...head',
-      localVerification: 'historical fixture producer, no runtime correctness claim', remainingLimits: ['fixture only'] },
+    provenance: { spec: '.scratch/fixture/spec.md', integrationOwner: 'fixture',
+      reviewed: { base: revision, head: revision, result: 'fixture review only' },
+      localVerification: [{ revision, command: 'fixture producer', result: 'historical fixture, no runtime correctness claim' }],
+      hostedVerification: 'unavailable for fixture', historical: [], remainingLimits: ['fixture only'] },
     reproduction: ['node scripts/promote-evidence.mjs .artifacts/plan.json --dry-run'],
     files: [{ source: `${producer}/summary.md`, name: 'summary.md' }, { source: `${producer}/capture.png`, name: 'capture.png' }],
     rawReports: [{ source: `${producer}/raw.json`, name: 'raw.json' }],
@@ -61,6 +66,116 @@ test('promotion verifies raw producer bytes in dry-run and publish while preserv
     assert.match(again.stderr, /already exists/);
     assert.equal(readFileSync(resolve(destination, 'summary.md'), 'utf8'), '# Final summary\n[Spec](../../spec.md)\n');
   } finally { f.cleanup(); }
+});
+
+test('promotion requires review and verification pins and outcomes before staging evidence', async t => {
+  const cases = [
+    ['empty record', () => ({})],
+    ['missing review', record => ({ ...record, reviewed: undefined })],
+    ['unstructured review', record => ({ ...record, reviewed: 'base...head' })],
+    ['missing reviewed head', record => ({ ...record, reviewed: { ...record.reviewed, head: undefined } })],
+    ['invalid reviewed base', record => ({ ...record, reviewed: { ...record.reviewed, base: 'unknown' } })],
+    ['blank review outcome', record => ({ ...record, reviewed: { ...record.reviewed, result: ' ' } })],
+    ['empty checks', record => ({ ...record, localVerification: [] })],
+    ['unstructured checks', record => ({ ...record, localVerification: 'passed' })],
+    ['null check', record => ({ ...record, localVerification: [null] })],
+    ['missing exercised revision', record => ({ ...record, localVerification: [{ command: 'check', result: 'passed' }] })],
+    ['unresolved exercised revision', record => ({ ...record, localVerification: [{ revision: 'HEAD', command: 'check', result: 'passed' }] })],
+    ['missing check command', record => ({ ...record, localVerification: [{ ...record.localVerification[0], command: undefined }] })],
+    ['blank check outcome', record => ({ ...record, localVerification: [{ ...record.localVerification[0], result: ' ' }] })],
+    ['missing hosted record', record => ({ ...record, hostedVerification: undefined })],
+    ['missing integration owner', record => ({ ...record, integrationOwner: undefined })],
+    ['missing spec', record => ({ ...record, spec: undefined })],
+    ['missing limits', record => ({ ...record, remainingLimits: undefined })],
+  ];
+  for (const [name, invalidate] of cases) await t.test(name, () => {
+    const f = fixture();
+    try {
+      f.plan.provenance = invalidate(f.plan.provenance);
+      const result = f.promote('--dry-run');
+      assert.notEqual(result.status, 0, result.stdout);
+      assert.match(result.stderr, /provenance/i);
+      assert.equal(existsSync(resolve(f.root, f.plan.destination)), false);
+      assert.ok(!readdirSync(resolve(f.root, '.artifacts')).some(name => name.startsWith('promotion-')));
+      assert.equal(readFileSync(resolve(f.root, f.producer, '.pin'), 'utf8'), 'selected failure\n');
+    } finally { f.cleanup(); }
+  });
+});
+
+test('provenance permits failed checks, unavailable hosted verification and explicitly pinned dirty inputs', () => {
+  const f = fixture();
+  try {
+    f.plan.provenance.localVerification[0].revision += ' plus uncommitted inputs, patch SHA-256 recorded separately';
+    f.plan.provenance.localVerification[0].result = 'failed: selected failure evidence';
+    assert.equal(f.promote('--dry-run').status, 0);
+  } finally { f.cleanup(); }
+});
+
+test('inline evidence links must point to tracked repository files or retained files', () => {
+  const f = fixture();
+  try {
+    writeFileSync(resolve(f.root, '.scratch/fixture/disposable.md'), '# Temporary note\n');
+    writeFileSync(resolve(f.root, f.producer, 'summary.md'), '[Note](../../disposable.md#temporary-note)\n');
+    const rejected = f.promote();
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, /untracked/i);
+    assert.equal(existsSync(resolve(f.root, f.plan.destination)), false);
+    assert.equal(readFileSync(resolve(f.root, f.producer, '.pin'), 'utf8'), 'selected failure\n');
+    assert.equal(f.run('git', ['add', '.scratch/fixture/disposable.md']).status, 0);
+    const accepted = f.promote('--dry-run');
+    assert.equal(accepted.status, 0, accepted.stderr);
+  } finally { f.cleanup(); }
+});
+
+test('reference links verify tracked and retained files with headings in every reference form', () => {
+  const f = fixture();
+  try {
+    writeFileSync(resolve(f.root, f.producer, 'summary.md'), `# Summary
+[Spec][SPEC ref]
+[Spec ref][]
+[Spec ref]
+![Capture][image]
+[Archive][archive]
+[Self][self]
+
+[spec REF]: ../../spec.md#fixture-spec "Tracked spec"
+[image]: capture.png
+[archive]: raw-reports.tar.gz
+[self]: #summary
+
+\`[Ignored example](missing-inline.md)\`
+
+\`\`\`md
+[Ignored example][example]
+[example]: missing-reference.md
+\`\`\`
+`);
+    const result = f.promote('--dry-run');
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).verifiedLinks, 10);
+  } finally { f.cleanup(); }
+});
+
+test('reference links reject missing, ignored, untracked and broken-heading targets before publication', async t => {
+  const cases = [
+    ['missing file', '../../missing.md', /Missing evidence link/],
+    ['ignored producer', '../../../../.artifacts/browser-runs/packaged-fixture/raw.json', /transient/],
+    ['untracked document', '../../disposable.md', /untracked/i],
+    ['missing heading', '../../spec.md#missing-heading', /Missing evidence heading/],
+  ];
+  for (const [name, link, message] of cases) await t.test(name, () => {
+    const f = fixture();
+    try {
+      writeFileSync(resolve(f.root, '.scratch/fixture/disposable.md'), '# Temporary note\n');
+      writeFileSync(resolve(f.root, f.producer, 'summary.md'), `[Evidence][record]\n\n[record]: ${link}\n`);
+      const result = f.promote();
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, message);
+      assert.equal(existsSync(resolve(f.root, f.plan.destination)), false);
+      assert.ok(!readdirSync(resolve(f.root, '.artifacts')).some(name => name.startsWith('promotion-')));
+      assert.equal(readFileSync(resolve(f.root, f.producer, '.pin'), 'utf8'), 'selected failure\n');
+    } finally { f.cleanup(); }
+  });
 });
 
 test('promotion rejects a symlinked producer without publishing or altering its target', () => {

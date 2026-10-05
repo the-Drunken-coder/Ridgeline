@@ -2,9 +2,44 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
+import { fromMarkdown } from 'mdast-util-from-markdown';
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const command = (name, args, cwd, options = {}) => execFileSync(name, args, { cwd, ...options });
+
+function validateProvenance(record) {
+  const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const text = value => typeof value === 'string' && value.trim().length > 0;
+  const revision = value => typeof value === 'string' && /^[a-f0-9]{40}$/i.test(value);
+  if (!object(record) || !text(record.spec) || !text(record.integrationOwner) || !text(record.hostedVerification)
+    || !Array.isArray(record.remainingLimits) || !record.remainingLimits.every(text)) {
+    throw new Error('Provenance requires a spec, integration owner, hosted verification (or unavailable), and remaining limits.');
+  }
+  if (!object(record.reviewed) || !revision(record.reviewed.base) || !revision(record.reviewed.head) || !text(record.reviewed.result)) {
+    throw new Error('Provenance requires reviewed base/head commit SHAs and a review outcome.');
+  }
+  if (!Array.isArray(record.localVerification) || !record.localVerification.length || !record.localVerification.every(check =>
+    object(check) && text(check.revision) && /^[a-f0-9]{40}(?:$|\s)/i.test(check.revision) && text(check.command) && text(check.result))) {
+    throw new Error('Provenance requires local verification records with an exercised commit SHA, command, and outcome.');
+  }
+}
+
+function markdownLinks(markdown) {
+  const nodes = [], pending = [fromMarkdown(markdown)];
+  while (pending.length) {
+    const node = pending.pop();
+    nodes.push(node);
+    // Preserve document order: Markdown uses the first definition for a label.
+    if (node.children) pending.push(...node.children.toReversed());
+  }
+  const definitions = new Map();
+  for (const node of nodes) if (node.type === 'definition' && !definitions.has(node.identifier)) definitions.set(node.identifier, node.url);
+  return nodes.flatMap(node => {
+    if (node.type === 'link' || node.type === 'image') return [node.url];
+    if (node.type === 'linkReference' || node.type === 'imageReference') return [definitions.get(node.identifier)];
+    return [];
+  });
+}
 
 function rejectSymlinks(root, path) {
   let current = root;
@@ -21,7 +56,7 @@ function promote(plan, root, dryRun) {
   const destination = resolve(root, plan.destination);
   rejectSymlinks(root, destination);
   if (existsSync(destination)) throw new Error(`Destination already exists: ${plan.destination}`);
-  if (!plan.provenance || typeof plan.provenance !== 'object' || Array.isArray(plan.provenance)) throw new Error('Provide a provenance record.');
+  validateProvenance(plan.provenance);
   if (!Array.isArray(plan.reproduction) || !plan.reproduction.length || plan.reproduction.some(value => typeof value !== 'string' || !value.trim())) throw new Error('Provide reproduction commands.');
   if (!Array.isArray(plan.files) || !plan.files.length || !Array.isArray(plan.rawReports) || !plan.rawReports.length) throw new Error('Select curated files and raw reports explicitly.');
   const artifacts = resolve(root, '.artifacts');
@@ -65,8 +100,7 @@ function promote(plan, root, dryRun) {
     writeFileSync(join(output, 'README.md'), `# Curated evidence\n\n[Revision/check record and hashes](manifest.json)\n\n${files.map(file => `- [${file.path}](${file.path})`).join('\n')}\n- [Byte-exact raw producer reports](raw-reports.tar.gz)\n\n## Reproduction\n\n${plan.reproduction.map(value => `\`\`\`sh\n${value}\n\`\`\``).join('\n\n')}\n\nExtract the raw archive into a separate directory with \`tar -xzf raw-reports.tar.gz -C <directory>\`. Promotion verifies retained bytes; it does not rerun the recorded checks.\n`);
     let links = 0;
     for (const file of ['README.md', ...files.filter(file => file.path.endsWith('.md')).map(file => file.path)]) {
-      for (const match of readFileSync(join(output, file), 'utf8').matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
-        const link = match[1];
+      for (const link of markdownLinks(readFileSync(join(output, file), 'utf8'))) {
         if (link.includes('://') || link.startsWith('mailto:')) continue;
         const [path, fragment] = link.split('#');
         const finalTarget = resolve(destination, path || file);
@@ -82,6 +116,9 @@ function promote(plan, root, dryRun) {
         }
         const target = retained ? join(output, local) : finalTarget;
         if (!existsSync(target)) throw new Error(`Missing evidence link in ${file}: ${link}`);
+        if (!retained && !command('git', ['ls-files', '--cached', '--', `:(literal)${relative(root, finalTarget)}`], root, { encoding: 'utf8' }).trim()) {
+          throw new Error(`Evidence link depends on an untracked repository file: ${link}`);
+        }
         if (fragment) {
           const headings = [...readFileSync(target, 'utf8').matchAll(/^#+\s+(.+)$/gm)].map(match => match[1].toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-'));
           if (!headings.includes(fragment)) throw new Error(`Missing evidence heading in ${file}: ${link}`);

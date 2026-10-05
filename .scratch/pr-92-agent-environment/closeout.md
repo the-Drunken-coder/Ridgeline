@@ -25,6 +25,18 @@ Local verification: `node --test scripts/test-browser.test.mjs scripts/promote-e
 
 Hosted verification: the earlier hosted results cover their recorded revisions. No hosted check covers this uncommitted correction, and the full browser suites were not rerun for this tooling lifecycle change. The correction is implemented and locally verified; merge readiness remains unverified.
 
+## Review-tool follow-up, 2026-10-05
+
+All four confirmed CodeRabbit findings on PR #102 are corrected. Measurement cleanup attempts both browser and server shutdown, reports cleanup failures, and preserves the original measurement error. Cleanup-only failures exit nonzero and retain interrupted ownership. Promotion requires structured review/check provenance before staging, parses inline and reference-style Markdown links and images, and refuses repository targets that are untracked. The promotion guide documents the stricter plan format; historical evidence bytes are unchanged.
+
+Integration owner: root. The measurement worker owned `scripts/measure-models.mjs` and `scripts/measure-models.test.mjs`; root owned the promotion script/tests, package dependency and lockfile, documentation, and combined verification. Root reviewed the combined seven-file change. An independent Standards reviewer found no remaining issues and passed all 49 measurement-cleanup/promotion tests.
+
+Reviewed and locally exercised: `bd31ff51852dd84f77b14f950ed6d68082e6dc65` plus uncommitted changes to `docs/evidence-promotion.md`, `package.json`, `pnpm-lock.yaml`, `scripts/measure-models.mjs`, `scripts/measure-models.test.mjs`, `scripts/promote-evidence.mjs`, and `scripts/promote-evidence.test.mjs`. The SHA-256 of `git diff HEAD --` those seven paths is `d2c9a233a4db68edccdcb53fbb202f31bd9d1032cb6e594f143c34566811e1aa`. The new test file was included with intent-to-add before checks, so the recorded diff covers every exercised input.
+
+Local verification: the focused process command passed 76 tests; `pnpm test` passed 408 module/process tests and 5 control tests; `pnpm check` passed. `pnpm test:measurement` passed 6 measurement module tests and the real packed-consumer instrumentation probe, including package build, consumer installation, typecheck/build, browser execution and normal shutdown. Its context records the same revision and patch hash, both stages exiting 0, and the interval 2026-10-05T22:48:47.329Z to 2026-10-05T22:48:58.857Z. Before the fixes, regressions reproduced incomplete provenance, accepted disposable/missing reference targets, and skipped server shutdown with a masked measurement failure. Documentation-link and diff checks passed. This closeout addition does not alter the exercised inputs.
+
+Hosted verification: PR #102 still points to `dfe0e5266f2b8285679b71605605a9147f43425c`; its required `validate` result was inspected and is successful. That result does not cover these local corrections. No push or full browser-suite rerun was performed for this follow-up. The four corrections are implemented and locally verified; current-revision hosted verification and merge readiness remain pending.
+
 ## Acceptance evidence
 
 Raw filenames below are members of [the verified archive](evidence/raw-reports.tar.gz). [The manifest](evidence/manifest.json) records original producer paths, member SHA-256 values and the archive hash. Current logs are pinned to `361af95d341c441e6d7598626d7bc5c51a62fcb7` unless a historical revision is named explicitly.

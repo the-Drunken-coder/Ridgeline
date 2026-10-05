@@ -110,12 +110,25 @@ try {
   failed = true;
   throw error;
 } finally {
+  const cleanupErrors = [];
+  for (const resource of [browser, server]) {
+    try {
+      await resource?.close();
+    } catch (error) {
+      owner?.interrupt();
+      cleanupErrors.push(error);
+    }
+  }
   try {
-    await browser?.close(); await server?.close();
+    owner?.finish(failed || cleanupErrors.length > 0);
   } catch (error) {
-    owner?.interrupt();
-    throw error;
-  } finally {
-    owner?.finish(failed);
+    cleanupErrors.push(error);
+  }
+  if (cleanupErrors.length) {
+    const error = new AggregateError(cleanupErrors, 'Measurement cleanup failed');
+    // Keep the measurement failure as the uncaught error while still reporting
+    // every teardown failure. Cleanup-only failures must also fail the command.
+    if (failed) console.error(error);
+    else throw error;
   }
 }
