@@ -2,6 +2,14 @@
 
 Spec: [Approved requirements](spec.md), imported unchanged from `21805ecb7543098f8c9820c476725654e20b31ec`. Parent [#81](https://github.com/the-Drunken-coder/Ridgeline/issues/81) remains open and unchanged. Root is the integration and verification owner.
 
+## PR #92 browser setup and pixel waits, 2026-10-05
+
+[Run 37276142175](https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37276142175) exercised PR head `25f60332aef851da794581f55ca3c1430464b28a` at merge checkout `f46eb56ec84311ae541a0af356a1061eb36ba99f`. All 187 packed workflows and four playground workflows pass. The remaining playground test times out while creating its browser context, before any navigation or test-body timeout setting. The model suite now sets its existing 240-second budget before fixtures run. Its two longer workflows retain their 600-second body budgets.
+
+The initial visible-model pixel assertion now polls its unchanged filled-cluster threshold within the existing 120-second rendering budget, retaining the successful coordinates for actual hover and click. Model-state publication follows draw submission and does not establish that screenshot capture has completed. An intermediate local run failed with blank pixels and browser/context errors while disk space was nearly exhausted; it does not establish recovery or a causal link to disk pressure.
+
+After clearing disposable build output and unused package caches, `pnpm check` and all five `pnpm test:playground:browser` workflows pass, including production builds. Root and the independent reviewer inspected HEAD `25f60332aef851da794581f55ca3c1430464b28a` plus this uncommitted test delta, SHA-256 `acc6edd35ab9af33d8f18ac58050ecb2c53d502611a720433848bb875007201e`, using `git diff --binary HEAD -- tests/playground/model-example.spec.ts | sha256sum`. These are the exercised runtime inputs; this documentation edit is outside that fingerprint. Standards and Spec reviews report no findings. Final hosted evidence is recorded on [PR #92](https://github.com/the-Drunken-coder/Ridgeline/pull/92) at the exact pushed revision.
+
 ## PR #92 software-rendering test budgets, 2026-10-05
 
 The capture change alone did not resolve hosted timing. [Run 37274134406](https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37274134406) exercised PR head `5abf78cf4413998b814727f705e52dceb21c6954` at merge checkout `2a6d1cab90e879b76fb259a25e453da731e372a6`. All 187 packed workflows and non-playground checks pass; three playground workflows time out. The retained traces show successful reentry after 63.1 seconds and a successful boat-pixel assertion after a 91.4-second screenshot. Every rendering/interaction assertion in the main workflow passes, but its 240-second overall deadline expires before removal runs.
