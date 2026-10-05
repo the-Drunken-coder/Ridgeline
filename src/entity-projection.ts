@@ -164,6 +164,10 @@ export class EntityProjection {
       y: (1 - clip[1]! / clip[3]!) / 2 * this.height, depth: clip[2]! / clip[3]! };
   }
 
+  intersectsViewport(box: { minX: number; minY: number; maxX: number; maxY: number }) {
+    return box.maxX >= 0 && box.maxY >= 0 && box.minX <= this.width && box.minY <= this.height;
+  }
+
   project(p: GeoPoint, origin?: ProjectionOrigin): ScreenPoint | null {
     const clip = this.clip(p, origin);
     return !clip || clip[3]! <= 0 || Math.abs(clip[2]! / clip[3]!) > 1 ? null : this.screen(clip);
