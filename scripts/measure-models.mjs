@@ -110,7 +110,7 @@ try {
     }
   }
 } finally {
-  await browser?.close(); await new Promise(resolve => server ? server.httpServer.close(resolve) : resolve());
+  await browser?.close(); await server?.close();
   if (ownsLock && !retainLock) await rm(lock, { recursive: true, force: true });
   if (ownsLock && retainLock) console.error(`Lock retained at ${lock}. Stop child processes before clearing it.`);
 }

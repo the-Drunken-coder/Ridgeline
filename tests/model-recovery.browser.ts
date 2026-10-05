@@ -238,13 +238,16 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
       check(count(image, 'cyan', 'left') > 30, 'Failed restore hid the eligible airborne icon');
       check(count(image, 'green') > 100, 'Failed restore hid its unrelated ground attachment');
       const point = viewport.map.project([.00035, 0]), height = image.bytes.length / 4 / image.width;
-      const offset = ((height - 1 - Math.round(point.y)) * image.width + Math.round(point.x)) * 4;
+      const canvas = viewport.map.getCanvas();
+      const x = Math.round(point.x * image.width / canvas.clientWidth), y = Math.round(point.y * height / canvas.clientHeight);
+      const offset = ((height - 1 - y) * image.width + x) * 4;
       check(image.bytes[offset]! < 60 && image.bytes[offset + 1]! > 180 && image.bytes[offset + 2]! > 180,
         'Failed restore hid the unrelated native point');
     };
     const nativeDecode = globalThis.createImageBitmap;
     try {
       await viewport.ready;
+      viewport.map.setPixelRatio(2);
       await viewport.registerModel('material', { bytes: materialGlb([{ image: 'png' }]), metersPerUnit: 10 });
       await capture(viewport);
       const { gl } = context(viewport), createBuffer = gl.createBuffer, deleteBuffer = gl.deleteBuffer;
@@ -356,6 +359,7 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
     const viewport = create(test);
     try {
       await viewport.ready;
+      viewport.map.setPixelRatio(2);
       await viewport.registerModel('material', { bytes: materialGlb([{ unlit: true }]), metersPerUnit: 10 });
       await test.until(() => viewport.getEntityState('instance')?.representation === 'model', 'initial representation before consumer mutation');
       await capture(viewport);
@@ -387,8 +391,8 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
                 minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
               }
             }
-            const point = { x: maxX >= 0 ? (minX + maxX) / 2 : canvas.width / 2,
-              y: maxY >= 0 ? canvas.height - (minY + maxY) / 2 : canvas.height / 2 };
+            const point = { x: (maxX >= 0 ? (minX + maxX + 1) / 2 : canvas.width / 2) * canvas.clientWidth / canvas.width,
+              y: (maxY >= 0 ? canvas.height - (minY + maxY + 1) / 2 : canvas.height / 2) * canvas.clientHeight / canvas.height };
             // Inspect picking in this exact completed frame; separate picking cases exercise real pointer gestures.
             viewport.map.fire('click', { point, lngLat: viewport.map.unproject([point.x, point.y]), originalEvent: new MouseEvent('click') });
             check(transition.representation ? clicked.includes('instance') : clicked.length === 0, 'Mutation frame retained stale pick geometry');

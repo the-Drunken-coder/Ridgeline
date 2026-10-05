@@ -9,7 +9,7 @@ export type WorkloadProperties = { index: number; sequence: number; model: boole
 export const names = ['drone', 'tank', 'plane', 'boat'] as const;
 export const materialNames = ['opaque', 'mask', 'double-sided', 'blend'] as const;
 export const camera = { center: [6.87, 46] as [number, number], zoom: 15.2, pitch: 25, bearing: 0 };
-export const modelSettings = { switchDistanceMeters: 1e8, deadZoneMeters: 0, minimumSizePixels: 20 };
+export const modelSettings = { switchDistanceMeters: 1e8, deadZoneMeters: 0, minimumSizePixels: 40 };
 const palette = ['#cf442a', '#2351c0', '#16865c', '#b07813'];
 
 export function caseId(value: Case) { return `${value.variant}-${value.appearance}-${value.projection}-dpr${value.pixelRatio}`; }

@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { features, matrix, style, validateSettings } from './workload';
+import { features, matrix, modelSettings, style, validateSettings } from './workload';
 
 test('the matrix isolates appearance, geometry, projection and pixel ratio while keeping the icon baseline workload', () => {
+  assert.equal(modelSettings.minimumSizePixels, 40, 'measure the approved 40 CSS px model treatment');
   assert.equal(matrix().length, 72);
   const models = features(5, 'original'), icons = features(5, 'icons');
   assert.equal(models.length, 1100); assert.equal(models.filter(feature => feature.entity?.model).length, 100);

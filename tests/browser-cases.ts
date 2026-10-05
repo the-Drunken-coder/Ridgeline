@@ -1,5 +1,7 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Model style failures retain the last complete pose until successful recovery',
+  'Model diagnostics preserve entity computation through selection and preview callbacks',
   'Model frame callbacks publish only current placement and appearance',
   'Models cull off-screen bodies after enlargement and recover on camera motion',
   'Viewport destruction preserves synchronous listener remounts',

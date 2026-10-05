@@ -209,7 +209,11 @@ if (vehicle) viewport.upsert([vehicle]); // Refreshes this instance without relo
 // viewport.unregisterModel('vehicle'); // Keeps both features and their selection.
 ```
 
+This example uses the default dot while distant or unavailable. To use an image icon instead, register it through the icon API and return its ID as `style.icon`.
+
 Models use a static GLB v2 subset: one embedded binary buffer, node transforms, core accessors, `KHR_mesh_quantization`, normals, optional first texture coordinates and vertex colors. Materials support embedded PNG/JPEG base-color images, base-color factors, `KHR_texture_transform`, opaque/cutout/translucent alpha modes, alpha cutoff, double-sided faces, emissive factors and `KHR_materials_unlit`. Animations, cameras, lights and unsupported texture channels are ignored. Unsupported required extensions, external buffers/images, skins, morph targets, sparse accessors and non-triangle modes reject with a named cause without fetching application resources. `metersPerUnit` defaults to 1 and must be positive; `headingOffset` defaults to zero. Authored +Y is up and +Z is forward. Entity heading is clockwise from north; pitch is positive nose-up and roll positive right-side-down, all in degrees. Heading is required for model display; missing heading reports `MODEL_HEADING_MISSING` and retains the icon.
+
+To bound decoding memory, an implicit zero-filled accessor cannot declare more scalar values than the GLB's byte length. Excessive counts reject with `GLB_INVALID_ACCESSOR_COUNT`.
 
 For a `.gltf` with external buffers or PNG/JPEG files, keep those files at its URI-relative paths and repackage them in your asset pipeline. This [glTF Transform CLI](https://gltf-transform.dev/cli) command was checked with version 4.5.0:
 

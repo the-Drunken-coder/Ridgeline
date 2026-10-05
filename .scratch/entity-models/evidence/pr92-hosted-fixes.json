@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-05",
+  "integrationOwner": "root",
+  "baseHead": "d32e359e7fe4c7305d8793469e77151873eb8c49",
+  "input": "HEAD plus uncommitted source/test/tool changes; documentation and evidence excluded from runtime fingerprint",
+  "runtimeDiffSha256": "f971bcd60f71f97e7a41dad4806eb6a2df21bd51a312b259cabb6574978e4e3e",
+  "fingerprintCommand": "git diff --binary HEAD -- src tests scripts/measure-models.mjs tools/model-measurement | sha256sum",
+  "checks": {
+    "pnpm check": "passed",
+    "pnpm test": "332 root and 5 control tests passed",
+    "focused packaged browser": "7 passed, including both recovery cases at map pixel ratio 2; build/pack/separate consumer build included",
+    "pnpm test:measurement": "6 module and 1 packed browser ownership probe passed; build/pack/consumer build included",
+    "Vite lifecycle probe": "real preview close hook runs once, repeated close harmless",
+    "implicit accessor before fix": "272-byte GLB requested 3 billion scalar array entries; safe Proxy intercepted before allocation; moderate public parse regression failed before fix",
+    "implicit accessor after fix": "all 21 parser tests passed"
+  },
+  "archive": {
+    "path": "pr92-hosted-fixes-evidence.tar.gz",
+    "sha256": "ee13d6e7238667c39fcc3d2313c6b4f2ec510b230a97af1e8c4837d0e2ee7375",
+    "bytes": 23964,
+    "members": {
+      "ridgeline-pr92-hosted-fixes-runtime.patch": "f971bcd60f71f97e7a41dad4806eb6a2df21bd51a312b259cabb6574978e4e3e",
+      "ridgeline-pr92-hosted-fixes-check.log": "abd6b847b90a04c89ed0eefc5452eb314d77342815c044bf308da9b9129073c6",
+      "ridgeline-pr92-hosted-fixes-unit.log": "7c35d0d471c1d7b90f25e7daa82e31a1aaaeb0e832e29840e099cfb2a0d7d450",
+      "ridgeline-pr92-hosted-fixes-browser.log": "6fee70deb7e1bbef6e8def3f599d7240de4bc7e64b4c49e31c8cf2317c080672",
+      "ridgeline-pr92-hosted-fixes-measurement.log": "6cacae8aa14005c2100ba9abcb0f61c6ba313deb3e8f25ce995ddbac0356f352",
+      "ridgeline-pr92-implicit-accessor-red.log": "a702b07f31fa75ac4b995c2978847110eb30e68ba2a875ac63ec4c416ba02a5e",
+      "ridgeline-pr92-implicit-accessor-behavior-red.log": "a867b6e9b29732854d58fa3b97b1018ef2250b38d84adebbc316fcf29c551aa7",
+      "ridgeline-pr92-implicit-accessor-green.log": "a8c77ab298c7d4a0e18c22c35d14dd0e8b0b71abb3acbc1a3f3df4324ed5a545"
+    }
+  },
+  "hosted": "Not yet exercised at the time of this pre-push record. Current hosted verification belongs to the exact pushed commit and is recorded on PR #92.",
+  "remainingLimits": [
+    "Hardware/browser acceptance and measured triangle guideline remain pending in #80/#91.",
+    "Earlier 40 CSS px software smoke reports are dated evidence, not hardware acceptance."
+  ],
+  "reviews": {
+    "Standards": "No actionable findings at runtimeDiffSha256; reviewed parser, registration error propagation, coordinate scaling, prepared-model histories and Vite lifecycle.",
+    "Spec": "No confirmed actionable findings at runtimeDiffSha256; approved requirements preserved, hardware gate remains pending."
+  }
+}

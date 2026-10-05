@@ -99,6 +99,56 @@ test('model bounds exclude unused vertices and zero-filled colors remain valid',
   assert.deepEqual(Array.from(model.batches[0]?.colors ?? []), [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]);
 });
 
+test('implicit zero geometry cannot expand beyond the supplied GLB payload', () => {
+  const { json } = triangleFixture();
+  const bytes = encodeGlb({ ...json,
+    buffers: [{ byteLength: 4 }], bufferViews: [],
+    accessors: [{ componentType: 5126, count: 3000, type: 'VEC3' }],
+  }, new Uint8Array(4));
+  assert.throws(() => parseGlb(bytes), { message: 'GLB_INVALID_ACCESSOR_COUNT' });
+});
+
+test('huge implicit attributes and indices fail by name before allocating values', () => {
+  const { json, binary } = triangleFixture();
+  for (const [semantic, type, componentType] of [
+    ['POSITION', 'VEC3', 5126], ['NORMAL', 'VEC3', 5126], ['TEXCOORD_0', 'VEC2', 5126],
+    ['COLOR_0', 'VEC4', 5126], ['indices', 'SCALAR', 5125],
+  ] as const) {
+    const primitive = semantic === 'indices' ? { attributes: { POSITION: 0 }, indices: 1 }
+      : { attributes: { POSITION: 0, [semantic]: 1 } };
+    assert.throws(() => parseGlb(encodeGlb({ ...json,
+      accessors: [json.accessors[0], { componentType, count: 1_000_000_000, type }],
+      meshes: [{ primitives: [primitive] }],
+    }, binary)), { message: 'GLB_INVALID_ACCESSOR_COUNT' });
+  }
+});
+
+test('implicit zeros remain valid for small geometry and attributes backed by stored positions', () => {
+  const { json, binary } = triangleFixture();
+  const small = parseGlb(encodeGlb({ ...json,
+    buffers: [{ byteLength: 4 }], bufferViews: [],
+    accessors: [{ componentType: 5126, count: 3, type: 'VEC3' }],
+  }, new Uint8Array(4)));
+  assert.equal(small.triangles, 1);
+  assert.deepEqual(small.bounds, { min: [0, 0, 0], max: [0, 0, 0] });
+
+  const positions = new Float32Array(3000 * 3), triangle = new Float32Array(binary.buffer);
+  for (let i = 0; i < positions.length; i += triangle.length) positions.set(triangle, i);
+  const model = parseGlb(encodeGlb({ ...json,
+    buffers: [{ byteLength: positions.byteLength }], bufferViews: [{ buffer: 0, byteLength: positions.byteLength }],
+    accessors: [{ ...json.accessors[0], count: 3000 },
+      { componentType: 5126, count: 3000, type: 'VEC4' }, { componentType: 5126, count: 3000, type: 'VEC2' }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0, COLOR_0: 1, TEXCOORD_0: 2 } }] }],
+  }, new Uint8Array(positions.buffer)));
+  assert.equal(model.triangles, 1000);
+  const batch = model.batches[0];
+  assert.ok(batch);
+  assert.equal(batch.colors.length, 3000 * 4);
+  assert.ok(batch.colors.every(value => value === 0));
+  assert.equal(batch.uvs.length, 3000 * 2);
+  assert.ok(batch.uvs.every(value => value === 0));
+});
+
 test('malformed GLB container metadata fails by name before accepting geometry', () => {
   const { json, binary } = triangleFixture();
   const badDocuments = [

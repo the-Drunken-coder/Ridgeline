@@ -1,6 +1,6 @@
 # Entity models and representation switching
 
-Status: Approved for implementation on 2026-10-04. Not implemented or production-ready. Hardware measurements and the triangle guideline remain pending.
+Status: Approved for implementation on 2026-10-04. Implemented and locally verified as recorded in [closeout](closeout.md). Production acceptance, target-hardware measurements and the triangle guideline remain pending.
 
 Source: [Entity models and representation switching](https://github.com/the-Drunken-coder/Ridgeline/issues/71). The user approved all seven final recommendations in the live discussion on 2026-10-04. Earlier architecture and appearance decisions are indexed by that map. This file is the canonical implementation requirement source.
 
@@ -51,7 +51,7 @@ type EntityModel = Partial<EntityModelSettings> & {
 
 Two entities can reference the same Model ID with different `modelAppearance` values. Geometry and textures are shared; their appearance and selection are independent. Updating a style or changing a palette-driven entity through `upsert` does not reload its registered Model. Application palette changes use the existing update flow.
 
-Contract sketch for the future public API, with application-supplied `container` and `tankBytes`:
+Contract sketch for the public API, with application-supplied `container` and `tankBytes`:
 
 ```ts
 const appearances = new Map<string, ModelAppearance>([
@@ -87,7 +87,7 @@ await viewport.registerModel('tank', { bytes: replacementBytes });
 viewport.unregisterModel('tank');
 ```
 
-The application registers `tank-icon` through the existing icon API. Replacement rejects on failure while retaining the working Model. Removing the Model leaves both entities and their selection intact. This sketch specifies the contract; these model methods are not available in the current package.
+The application registers `tank-icon` through the existing icon API. Replacement rejects on failure while retaining the working Model. Removing the Model leaves both entities and their selection intact. The implemented package exposes these model methods; see [README](../../README.md) for consumer examples.
 
 ### Registration and lifecycle
 

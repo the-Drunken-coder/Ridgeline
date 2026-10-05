@@ -1,0 +1,541 @@
+{
+  "schema": 1,
+  "date": "2026-10-05T05:55:44.471617+00:00",
+  "spec": ".scratch/entity-models/spec.md",
+  "integrationOwner": "root",
+  "checkout": "/home/ubuntu/.t3/worktrees/Ridgeline/t3code-fe1ad0fb",
+  "head": "d32e359e7fe4c7305d8793469e77151873eb8c49",
+  "uncommitted": true,
+  "runtimeDiffScope": "git diff --binary HEAD -- src tests tools/model-measurement",
+  "runtimeDiffSha256": "f1625bb9bc7614fc3f40b242f10d64695abb53e33624d28a7ecb56159992992f",
+  "sourceDiffSha256": "8fab150b15ef1c8e341adbd3e21d18fdfd711f3dbc05a92a0b8b8a132603428e",
+  "review": {
+    "root": "combined diff reviewed",
+    "standards": {
+      "result": "no remaining actionable findings",
+      "runtimeDiffSha256": "b940db69a894b0bbde5c4193acefc3c668825a3e1ef895dbfbb273df2c1b5afa",
+      "subsequentChange": "Only new translucent attachment fixture color changed to pure blue; source unchanged."
+    },
+    "spec": {
+      "result": "no remaining actionable findings",
+      "runtimeDiffSha256": "f1625bb9bc7614fc3f40b242f10d64695abb53e33624d28a7ecb56159992992f"
+    }
+  },
+  "checks": [
+    {
+      "command": "pnpm check",
+      "result": "pass"
+    },
+    {
+      "command": "pnpm test",
+      "result": "329 root and 5 control pass",
+      "sourceDiffSha256": "8fab150b15ef1c8e341adbd3e21d18fdfd711f3dbc05a92a0b8b8a132603428e"
+    },
+    {
+      "command": "pnpm test:browser",
+      "runtimeDiffSha256": "b940db69a894b0bbde5c4193acefc3c668825a3e1ef895dbfbb273df2c1b5afa",
+      "sourceDiffSha256": "8fab150b15ef1c8e341adbd3e21d18fdfd711f3dbc05a92a0b8b8a132603428e",
+      "result": "186 pass; new style-regression fixture color failed its added baseline visibility assertion."
+    },
+    {
+      "command": "pnpm test:browser -- --grep 'Model style failures|Model diagnostics'",
+      "runtimeDiffSha256": "f1625bb9bc7614fc3f40b242f10d64695abb53e33624d28a7ecb56159992992f",
+      "result": "2 pass after fixture correction; other 186 inputs and production source unchanged; full command not repeated."
+    },
+    {
+      "command": "pnpm test:playground:browser",
+      "result": "5 pass"
+    },
+    {
+      "command": "pnpm test:measurement",
+      "result": "6 module checks and 1 packed browser ownership probe pass"
+    },
+    {
+      "command": "pnpm test:controls:browser",
+      "result": "5 pass"
+    },
+    {
+      "command": "node scripts/measure-models.mjs --smoke --case <case-id>",
+      "result": "5 cases, 10 off/on reports pass; flat/globe at map pixel ratios 1/2 and icon baseline"
+    }
+  ],
+  "redEvidence": [
+    "Failed styling moved model while placement was retained.",
+    "Unchanged selection diagnostic stranded placement.",
+    "Discarded missing-heading preparation reset restored dead-zone choice.",
+    "Valid accepted settings combined with retained overrides failed the shared renderer."
+  ],
+  "smoke": [
+    {
+      "case": "original-mixed-flat-dpr1",
+      "instrumentation": false,
+      "report": "smoke/run-2026-10-05T05-43-23.742Z/original-mixed-flat-dpr1-off.json",
+      "sha256": "94da79d43a2f2262d002a4913488a87eba5275b7139508c70d3500483ec6e1e3",
+      "date": "2026-10-05T05:44:00.414Z",
+      "browser": "153.0.8010.12",
+      "backend": {
+        "vendor": "Google Inc. (Google)",
+        "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+        "shadingLanguage": "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)"
+      },
+      "canvas": {
+        "cssWidth": 1280,
+        "cssHeight": 720,
+        "width": 1280,
+        "height": 720,
+        "devicePixelRatio": 1,
+        "mapPixelRatio": 1
+      },
+      "projection": {
+        "configured": "flat",
+        "effective": {
+          "type": "mercator"
+        },
+        "transitionsObserved": []
+      },
+      "modelSizeFloorCssPx": 40,
+      "stateModels": 100,
+      "nativeIds": 1000,
+      "foregroundRegions": 100,
+      "submittedModels": null,
+      "idleFrames": 0,
+      "diagnostics": [],
+      "validationFailures": [],
+      "gpuStatus": "disabled",
+      "archiveSha256": "bc62c9ad3d084ac1151561651f1a0366f44b108e853de7f7927367d9018c563b"
+    },
+    {
+      "case": "original-mixed-flat-dpr1",
+      "instrumentation": true,
+      "report": "smoke/run-2026-10-05T05-43-23.742Z/original-mixed-flat-dpr1-on.json",
+      "sha256": "6a633d3c5d8a600aa87398a7d3ec4ae0fe2dc41fea1736f4295aef7eabfd2d05",
+      "date": "2026-10-05T05:44:31.143Z",
+      "browser": "153.0.8010.12",
+      "backend": {
+        "vendor": "Google Inc. (Google)",
+        "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+        "shadingLanguage": "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)"
+      },
+      "canvas": {
+        "cssWidth": 1280,
+        "cssHeight": 720,
+        "width": 1280,
+        "height": 720,
+        "devicePixelRatio": 1,
+        "mapPixelRatio": 1
+      },
+      "projection": {
+        "configured": "flat",
+        "effective": {
+          "type": "mercator"
+        },
+        "transitionsObserved": [
+          0
+        ]
+      },
+      "modelSizeFloorCssPx": 40,
+      "stateModels": 100,
+      "nativeIds": 1000,
+      "foregroundRegions": 100,
+      "submittedModels": 100,
+      "idleFrames": 0,
+      "diagnostics": [],
+      "validationFailures": [],
+      "gpuStatus": "available",
+      "archiveSha256": "bc62c9ad3d084ac1151561651f1a0366f44b108e853de7f7927367d9018c563b"
+    },
+    {
+      "case": "original-mixed-flat-dpr2",
+      "instrumentation": false,
+      "report": "smoke/run-2026-10-05T05-45-00.273Z/original-mixed-flat-dpr2-off.json",
+      "sha256": "c85df19e48693308732627a138e59baed2c6e8564209a8ca7bbc01ede03e7119",
+      "date": "2026-10-05T05:45:59.489Z",
+      "browser": "153.0.8010.12",
+      "backend": {
+        "vendor": "Google Inc. (Google)",
+        "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+        "shadingLanguage": "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)"
+      },
+      "canvas": {
+        "cssWidth": 1280,
+        "cssHeight": 720,
+        "width": 2560,
+        "height": 1440,
+        "devicePixelRatio": 1,
+        "mapPixelRatio": 2
+      },
+      "projection": {
+        "configured": "flat",
+        "effective": {
+          "type": "mercator"
+        },
+        "transitionsObserved": []
+      },
+      "modelSizeFloorCssPx": 40,
+      "stateModels": 100,
+      "nativeIds": 1000,
+      "foregroundRegions": 100,
+      "submittedModels": null,
+      "idleFrames": 0,
+      "diagnostics": [],
+      "validationFailures": [],
+      "gpuStatus": "disabled",
+      "archiveSha256": "bc62c9ad3d084ac1151561651f1a0366f44b108e853de7f7927367d9018c563b"
+    },
+    {
+      "case": "original-mixed-flat-dpr2",
+      "instrumentation": true,
+      "report": "smoke/run-2026-10-05T05-45-00.273Z/original-mixed-flat-dpr2-on.json",
+      "sha256": "5d217334c876ea8c58619a4eaef4ca67647f570ab2d85d3351fbb83b7534c9b6",
+      "date": "2026-10-05T05:46:46.188Z",
+      "browser": "153.0.8010.12",
+      "backend": {
+        "vendor": "Google Inc. (Google)",
+        "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+        "shadingLanguage": "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)"
+      },
+      "canvas": {
+        "cssWidth": 1280,
+        "cssHeight": 720,
+        "width": 2560,
+        "height": 1440,
+        "devicePixelRatio": 1,
+        "mapPixelRatio": 2
+      },
+      "projection": {
+        "configured": "flat",
+        "effective": {
+          "type": "mercator"
+        },
+        "transitionsObserved": [
+          0
+        ]
+      },
+      "modelSizeFloorCssPx": 40,
+      "stateModels": 100,
+      "nativeIds": 1000,
+      "foregroundRegions": 100,
+      "submittedModels": 100,
+      "idleFrames": 0,
+      "diagnostics": [],
+      "validationFailures": [],
+      "gpuStatus": "available",
+      "archiveSha256": "bc62c9ad3d084ac1151561651f1a0366f44b108e853de7f7927367d9018c563b"
+    },
+    {
+      "case": "original-mixed-globe-dpr1",
+      "instrumentation": false,
+      "report": "smoke/run-2026-10-05T05-47-27.048Z/original-mixed-globe-dpr1-off.json",
+      "sha256": "89ee0cd1323d0da6ba439eabea083ea6e714e37d8f8fffb753643908bab8d3b2",
+      "date": "2026-10-05T05:48:13.424Z",
+      "browser": "153.0.8010.12",
+      "backend": {
+        "vendor": "Google Inc. (Google)",
+        "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+        "shadingLanguage": "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)"
+      },
+      "canvas": {
+        "cssWidth": 1280,
+        "cssHeight": 720,
+        "width": 1280,
+        "height": 720,
+        "devicePixelRatio": 1,
+        "mapPixelRatio": 1
+      },
+      "projection": {
+        "configured": "globe",
+        "effective": {
+          "type": "vertical-perspective"
+        },
+        "transitionsObserved": []
+      },
+      "modelSizeFloorCssPx": 40,
+      "stateModels": 100,
+      "nativeIds": 1000,
+      "foregroundRegions": 100,
+      "submittedModels": null,
+      "idleFrames": 0,
+      "diagnostics": [],
+      "validationFailures": [],
+      "gpuStatus": "disabled",
+      "archiveSha256": "bc62c9ad3d084ac1151561651f1a0366f44b108e853de7f7927367d9018c563b"
+    },
+    {
+      "case": "original-mixed-globe-dpr1",
+      "instrumentation": true,
+      "report": "smoke/run-2026-10-05T05-47-27.048Z/original-mixed-globe-dpr1-on.json",
+      "sha256": "d26db478865b0db1693a1d6611d5705d85f59d7b06aa67d156e42043c49ddbbf",
+      "date": "2026-10-05T05:48:53.146Z",
+      "browser": "153.0.8010.12",
+      "backend": {
+        "vendor": "Google Inc. (Google)",
+        "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+        "shadingLanguage": "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)"
+      },
+      "canvas": {
+        "cssWidth": 1280,
+        "cssHeight": 720,
+        "width": 1280,
+        "height": 720,
+        "devicePixelRatio": 1,
+        "mapPixelRatio": 1
+      },
+      "projection": {
+        "configured": "globe",
+        "effective": {
+          "type": "vertical-perspective"
+        },
+        "transitionsObserved": [
+          1
+        ]
+      },
+      "modelSizeFloorCssPx": 40,
+      "stateModels": 100,
+      "nativeIds": 1000,
+      "foregroundRegions": 100,
+      "submittedModels": 100,
+      "idleFrames": 0,
+      "diagnostics": [],
+      "validationFailures": [],
+      "gpuStatus": "available",
+      "archiveSha256": "bc62c9ad3d084ac1151561651f1a0366f44b108e853de7f7927367d9018c563b"
+    },
+    {
+      "case": "original-mixed-globe-dpr2",
+      "instrumentation": false,
+      "report": "smoke/run-2026-10-05T05-49-34.690Z/original-mixed-globe-dpr2-off.json",
+      "sha256": "1397d6344217a25539e897dc6a41e83e452b69ef19c3cf747115ac5dab8dc076",
+      "date": "2026-10-05T05:50:42.687Z",
+      "browser": "153.0.8010.12",
+      "backend": {
+        "vendor": "Google Inc. (Google)",
+        "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+        "shadingLanguage": "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)"
+      },
+      "canvas": {
+        "cssWidth": 1280,
+        "cssHeight": 720,
+        "width": 2560,
+        "height": 1440,
+        "devicePixelRatio": 1,
+        "mapPixelRatio": 2
+      },
+      "projection": {
+        "configured": "globe",
+        "effective": {
+          "type": "vertical-perspective"
+        },
+        "transitionsObserved": []
+      },
+      "modelSizeFloorCssPx": 40,
+      "stateModels": 100,
+      "nativeIds": 1000,
+      "foregroundRegions": 100,
+      "submittedModels": null,
+      "idleFrames": 0,
+      "diagnostics": [],
+      "validationFailures": [],
+      "gpuStatus": "disabled",
+      "archiveSha256": "bc62c9ad3d084ac1151561651f1a0366f44b108e853de7f7927367d9018c563b"
+    },
+    {
+      "case": "original-mixed-globe-dpr2",
+      "instrumentation": true,
+      "report": "smoke/run-2026-10-05T05-49-34.690Z/original-mixed-globe-dpr2-on.json",
+      "sha256": "acbc50716d67c5cb4540a764c441cfad870cec00ed9d9360c5fe3797d70e79dc",
+      "date": "2026-10-05T05:51:40.332Z",
+      "browser": "153.0.8010.12",
+      "backend": {
+        "vendor": "Google Inc. (Google)",
+        "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+        "shadingLanguage": "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)"
+      },
+      "canvas": {
+        "cssWidth": 1280,
+        "cssHeight": 720,
+        "width": 2560,
+        "height": 1440,
+        "devicePixelRatio": 1,
+        "mapPixelRatio": 2
+      },
+      "projection": {
+        "configured": "globe",
+        "effective": {
+          "type": "vertical-perspective"
+        },
+        "transitionsObserved": [
+          1
+        ]
+      },
+      "modelSizeFloorCssPx": 40,
+      "stateModels": 100,
+      "nativeIds": 1000,
+      "foregroundRegions": 100,
+      "submittedModels": 100,
+      "idleFrames": 0,
+      "diagnostics": [],
+      "validationFailures": [],
+      "gpuStatus": "available",
+      "archiveSha256": "bc62c9ad3d084ac1151561651f1a0366f44b108e853de7f7927367d9018c563b"
+    },
+    {
+      "case": "icons-mixed-flat-dpr1",
+      "instrumentation": false,
+      "report": "smoke/run-2026-10-05T05-52-10.023Z/icons-mixed-flat-dpr1-off.json",
+      "sha256": "5d76883dd893a6798721d56cea576907a03a1a23f0fc79a234cfa58b2f1a25c8",
+      "date": "2026-10-05T05:52:43.782Z",
+      "browser": "153.0.8010.12",
+      "backend": {
+        "vendor": "Google Inc. (Google)",
+        "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+        "shadingLanguage": "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)"
+      },
+      "canvas": {
+        "cssWidth": 1280,
+        "cssHeight": 720,
+        "width": 1280,
+        "height": 720,
+        "devicePixelRatio": 1,
+        "mapPixelRatio": 1
+      },
+      "projection": {
+        "configured": "flat",
+        "effective": {
+          "type": "mercator"
+        },
+        "transitionsObserved": []
+      },
+      "modelSizeFloorCssPx": 40,
+      "stateModels": 0,
+      "nativeIds": 1100,
+      "foregroundRegions": 100,
+      "submittedModels": null,
+      "idleFrames": 0,
+      "diagnostics": [],
+      "validationFailures": [],
+      "gpuStatus": "disabled",
+      "archiveSha256": "bc62c9ad3d084ac1151561651f1a0366f44b108e853de7f7927367d9018c563b"
+    },
+    {
+      "case": "icons-mixed-flat-dpr1",
+      "instrumentation": true,
+      "report": "smoke/run-2026-10-05T05-52-10.023Z/icons-mixed-flat-dpr1-on.json",
+      "sha256": "7acb090701a7d6c42d1ff4694cdd69a542f1590b178ed2e52bda9cce6c32acee",
+      "date": "2026-10-05T05:53:15.252Z",
+      "browser": "153.0.8010.12",
+      "backend": {
+        "vendor": "Google Inc. (Google)",
+        "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+        "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+        "shadingLanguage": "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)"
+      },
+      "canvas": {
+        "cssWidth": 1280,
+        "cssHeight": 720,
+        "width": 1280,
+        "height": 720,
+        "devicePixelRatio": 1,
+        "mapPixelRatio": 1
+      },
+      "projection": {
+        "configured": "flat",
+        "effective": {
+          "type": "mercator"
+        },
+        "transitionsObserved": [
+          0
+        ]
+      },
+      "modelSizeFloorCssPx": 40,
+      "stateModels": 0,
+      "nativeIds": 1100,
+      "foregroundRegions": 100,
+      "submittedModels": 0,
+      "idleFrames": 0,
+      "diagnostics": [],
+      "validationFailures": [],
+      "gpuStatus": "available",
+      "archiveSha256": "bc62c9ad3d084ac1151561651f1a0366f44b108e853de7f7927367d9018c563b"
+    }
+  ],
+  "evidenceArchive": {
+    "path": "pr92-fixes-evidence.tar.gz",
+    "bytes": 3412861,
+    "sha256": "9b1e4b23875e2fb2bd7fbafe4040eacb92c63ba5057b5a64fdd3e7d06f2e4be3",
+    "members": {
+      "logs/ridgeline-pr92-callback-choice-red.log": "ace3b1d83073dff268ff111b82d9f8e3066f1d0b0cf73da55a8843312717be57",
+      "logs/ridgeline-pr92-fix-check-current.log": "abd6b847b90a04c89ed0eefc5452eb314d77342815c044bf308da9b9129073c6",
+      "logs/ridgeline-pr92-fix-controls.log": "d581e76dc71118ff2bf3ae534359e3d76e3163bd3415cee986a141a526e44ba5",
+      "logs/ridgeline-pr92-fix-measurement.log": "38f2020a8a4ec337a3c67b9e5d4bfe2ed353ed18194b35a21db972c8c5a841aa",
+      "logs/ridgeline-pr92-fix-packaged-final.log": "a35893df4943ab765aac93a25a8814dff4b76adb57970b54a527f0f2fa3dd292",
+      "logs/ridgeline-pr92-fix-playground.log": "dddf921a635ab38b026ce54c7447464771e2400ca491d8e180eccf94499e4c44",
+      "logs/ridgeline-pr92-fix-smoke-baseline.log": "58e4fe378a47ae98c54cf3695578a10556f8aa013910f273bdbe7700b2f2e4a4",
+      "logs/ridgeline-pr92-fix-smoke-flat1.log": "ec4f25004acb651f55139cc846d2971b88b12c83d3a22b5426f734acd5432b5c",
+      "logs/ridgeline-pr92-fix-smoke-flat2.log": "a8aa48ff7db4e2db27980c914f74d03f72a21bc99313afe3b8bd930c4fcdeba1",
+      "logs/ridgeline-pr92-fix-smoke-globe1.log": "b37ee2b768ed38710fba1c3d3ea631e2d9b4c9a115ce8f1517dc3a554d772363",
+      "logs/ridgeline-pr92-fix-smoke-globe2.log": "a6b573cffeefa59c14ab32ecc2100a076e0effe61ff555af8a58311be39050f9",
+      "logs/ridgeline-pr92-fix-unit-final.log": "55806bdba4ce26919bbdbe8417c5543e86c4296b9848730f8c29ad3fab314e2a",
+      "logs/ridgeline-pr92-regressions-red.log": "c9def19cb38cc89eda08723a9a033cb8faaf87ea391a07cd9d611bd2ac263778",
+      "logs/ridgeline-pr92-regressions-visible-attachment.log": "a03e36c064cb911bdd0f712ddc4b626ec63ad6f6ca5b608d43b00dfdbbf2600b",
+      "logs/ridgeline-pr92-retained-settings-red.log": "eafa00423f8128ff220c995da4996e8c3b1d4c4c0ee4e9e988c072cd92595bb6",
+      "runtime.patch": "f1625bb9bc7614fc3f40b242f10d64695abb53e33624d28a7ecb56159992992f",
+      "smoke/run-2026-10-05T05-43-23.742Z/index.json": "3bfaf470489e856c2c9ad3cad2c023bfd9e04d03ece57c8745bcb517f6e34603",
+      "smoke/run-2026-10-05T05-43-23.742Z/original-mixed-flat-dpr1-off.json": "94da79d43a2f2262d002a4913488a87eba5275b7139508c70d3500483ec6e1e3",
+      "smoke/run-2026-10-05T05-43-23.742Z/original-mixed-flat-dpr1-off.png": "2770543106f2b7435d6c05a0a709cb2f14831f7888be937bbd51376e89716518",
+      "smoke/run-2026-10-05T05-43-23.742Z/original-mixed-flat-dpr1-on.json": "6a633d3c5d8a600aa87398a7d3ec4ae0fe2dc41fea1736f4295aef7eabfd2d05",
+      "smoke/run-2026-10-05T05-43-23.742Z/original-mixed-flat-dpr1-on.png": "5e815c24d29563d53f8700880e5c2a97920d3654bd153ba120604ac723f1aafd",
+      "smoke/run-2026-10-05T05-43-23.742Z/original-mixed-flat-dpr1-overhead.json": "912bb2dab57e7c38831b9584d09f9643d3606420a6c42304f8a3352843091dda",
+      "smoke/run-2026-10-05T05-45-00.273Z/index.json": "c9e2249b88f530740bc4d3e9705fa79b838fa00dc92e921c2963b332313c4fcb",
+      "smoke/run-2026-10-05T05-45-00.273Z/original-mixed-flat-dpr2-off.json": "c85df19e48693308732627a138e59baed2c6e8564209a8ca7bbc01ede03e7119",
+      "smoke/run-2026-10-05T05-45-00.273Z/original-mixed-flat-dpr2-off.png": "10854b5fbbca470584d036e7d7b0018eb4cb32f0ad8e04def67bb82ba5236b37",
+      "smoke/run-2026-10-05T05-45-00.273Z/original-mixed-flat-dpr2-on.json": "5d217334c876ea8c58619a4eaef4ca67647f570ab2d85d3351fbb83b7534c9b6",
+      "smoke/run-2026-10-05T05-45-00.273Z/original-mixed-flat-dpr2-on.png": "471574209cb08b70628e844d870f42120f69cfeba3044638a8a95fcc1bb5c8fe",
+      "smoke/run-2026-10-05T05-45-00.273Z/original-mixed-flat-dpr2-overhead.json": "fe6678d09c8a6da9a644c04583785149d50eb517fbfbf81b69d40515fd16e1a6",
+      "smoke/run-2026-10-05T05-47-27.048Z/index.json": "7b64a46abbcb2d617b6ee556a4bc9a9f379e900f68d374eb2f56d89ee8419f3b",
+      "smoke/run-2026-10-05T05-47-27.048Z/original-mixed-globe-dpr1-off.json": "89ee0cd1323d0da6ba439eabea083ea6e714e37d8f8fffb753643908bab8d3b2",
+      "smoke/run-2026-10-05T05-47-27.048Z/original-mixed-globe-dpr1-off.png": "3b7a7e3bfe4e07fa747d250118d4c7ebfa37931b1730d5e9ee6a39944fb256c0",
+      "smoke/run-2026-10-05T05-47-27.048Z/original-mixed-globe-dpr1-on.json": "d26db478865b0db1693a1d6611d5705d85f59d7b06aa67d156e42043c49ddbbf",
+      "smoke/run-2026-10-05T05-47-27.048Z/original-mixed-globe-dpr1-on.png": "5aa0c9678e5cd33acb94adf21663c8fe0923fcbfdf3ca29d08e49fd0513f5c4e",
+      "smoke/run-2026-10-05T05-47-27.048Z/original-mixed-globe-dpr1-overhead.json": "e162440e18faa9c6b51406c0352d791d96f0c293eb1e187e7a2d36720eb30ee0",
+      "smoke/run-2026-10-05T05-49-34.690Z/index.json": "21dadae36fc266462350d4816bf970bb8dd30d9e7be896c711623799d2b6615e",
+      "smoke/run-2026-10-05T05-49-34.690Z/original-mixed-globe-dpr2-off.json": "1397d6344217a25539e897dc6a41e83e452b69ef19c3cf747115ac5dab8dc076",
+      "smoke/run-2026-10-05T05-49-34.690Z/original-mixed-globe-dpr2-off.png": "ff1c737e6e248e9741e5844d9fd2611362a67a91145be384849b30c0ab55c8c8",
+      "smoke/run-2026-10-05T05-49-34.690Z/original-mixed-globe-dpr2-on.json": "acbc50716d67c5cb4540a764c441cfad870cec00ed9d9360c5fe3797d70e79dc",
+      "smoke/run-2026-10-05T05-49-34.690Z/original-mixed-globe-dpr2-on.png": "dee86398d2a64e2ef69f8883db5955eeaaea8fa8060746e63e2cb5b848daa20d",
+      "smoke/run-2026-10-05T05-49-34.690Z/original-mixed-globe-dpr2-overhead.json": "8599f27266b5c6f4635cb8188558c32a7c96ca6d3161e3fee0bc6aad035aa638",
+      "smoke/run-2026-10-05T05-52-10.023Z/icons-mixed-flat-dpr1-off.json": "5d76883dd893a6798721d56cea576907a03a1a23f0fc79a234cfa58b2f1a25c8",
+      "smoke/run-2026-10-05T05-52-10.023Z/icons-mixed-flat-dpr1-off.png": "3bee0765d6159d0244fab5ee1f3561aa5a5fcf1ea15ab8531615d522c3ccaace",
+      "smoke/run-2026-10-05T05-52-10.023Z/icons-mixed-flat-dpr1-on.json": "7acb090701a7d6c42d1ff4694cdd69a542f1590b178ed2e52bda9cce6c32acee",
+      "smoke/run-2026-10-05T05-52-10.023Z/icons-mixed-flat-dpr1-on.png": "caa51a7061f4c8677ae1432bda4d47e7b77fc048e218f9505dab45c87e725176",
+      "smoke/run-2026-10-05T05-52-10.023Z/icons-mixed-flat-dpr1-overhead.json": "3a1b2160d4d902595517daf2aeb0d267ab6ecd45ac47408f0add9fca6dce1116",
+      "smoke/run-2026-10-05T05-52-10.023Z/index.json": "82cc3082d099b217d786d7393c2d1fe62cbc25ebba757d934fdc80fae6ab6746"
+    }
+  },
+  "hosted": {
+    "pr": "https://github.com/the-Drunken-coder/Ridgeline/pull/92",
+    "head": "d32e359e7fe4c7305d8793469e77151873eb8c49",
+    "testedCheckoutSha": "unknown",
+    "run": "https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37262097754",
+    "failedChecks": [
+      "playground-browser",
+      "validate"
+    ],
+    "localFixesPushed": false,
+    "localFixesExercisedByHostedChecks": false
+  },
+  "remainingLimits": [
+    "Target hardware/browser acceptance remains pending in #80/#91.",
+    "No measured triangle/material guideline or production-performance claim.",
+    "Full packaged command not repeated after test-only fixture color correction.",
+    "Hosted checks have not exercised the local changes."
+  ]
+}

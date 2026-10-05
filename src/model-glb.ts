@@ -219,6 +219,8 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
     if (!size) throw new Error(`GLB_COMPONENT_TYPE_UNSUPPORTED:${component}`);
     if (accessor.bufferView === undefined) {
       if (accessor.byteOffset !== undefined) throw new Error('GLB_INVALID_ACCESSOR_OFFSET');
+      // Implicit zeros have no buffer-view bound. Keep their expansion proportional to the supplied asset.
+      if (count * width > buffer.byteLength) throw new Error('GLB_INVALID_ACCESSOR_COUNT');
       return { count, width, component, values: new Array<number>(count * width).fill(0) };
     }
     const viewIndex = integer(accessor.bufferView), view = views[viewIndex];

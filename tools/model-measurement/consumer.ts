@@ -182,7 +182,7 @@ async function run(settings: Settings, machine?: Machine) {
     if (viewport.getSelection().join(',') !== 'model-0,model-4') failures.push('Selected instances were not retained.');
     if (idleFrames !== 0) failures.push(`Idle interval contained ${idleFrames} map renders.`);
     if (diagnostics.length || canvas.dataset.ridgelineMeasureError) failures.push('Runtime or instrumentation diagnostics occurred.');
-    if (settings.instrumentation && expectedModels && !observer.records.some(record => record.name === 'frame' && record.detail.drawnModels === 100 && record.detail.clippedBoxes === 100)) failures.push('No complete drawn model frame with100 clipped boxes was observed.');
+    if (settings.instrumentation && expectedModels && !observer.records.some(record => record.name === 'frame' && record.detail.drawnModels === 100 && record.detail.clippedBoxes === 100)) failures.push('No complete drawn model frame with 100 clipped boxes was observed.');
     const results = segments.map(segment => {
       const inSegment = (time: number) => time >= segment.start && time < segment.end;
       const phaseRecords = observer.records.filter(record => inSegment(record.startTime));

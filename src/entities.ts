@@ -27,6 +27,7 @@ import { RidgelineError } from './errors';
 import type {
   ElevationSampler,
   CameraAttachment,
+  EntityModelSettings,
   EntityState,
   FeatureStyle,
   MapConfiguration,
@@ -66,7 +67,7 @@ export class EntityScene<P extends Properties> {
   readonly modelLayer?: ModelLayer;
   private feedbackLayer: ModelFeedbackLayer;
   private previewed: string | null = null;
-  private modelStyles = new Map<string, FeatureStyle>();
+  private preparedModels = new Map<string, { feature: MapFeature<P>; style: FeatureStyle; settings: EntityModelSettings }>();
   private choices = new Map<string, ModelChoice>();
   private published = new Map<string, EntityState['representation']>();
   private revision = 0;
@@ -153,7 +154,7 @@ export class EntityScene<P extends Properties> {
     for (const id of retired) {
       this.features.delete(id);
       this.states.delete(id);
-      this.modelStyles.delete(id); this.modelDiagnostics.delete(id); this.choices.delete(id); this.published.delete(id);
+      this.preparedModels.delete(id); this.modelDiagnostics.delete(id); this.choices.delete(id); this.published.delete(id);
       this.nonCameraCoverage.delete(id);
       this.positions.delete(id);
       this.geometryDirty = this.geometry.delete(id) || this.geometryDirty;
@@ -163,7 +164,6 @@ export class EntityScene<P extends Properties> {
     for (const feature of features) if (feature.entity) {
       this.features.set(feature.id, feature);
       this.dirty.add(feature.id);
-      if (referencesChanged.has(feature.id)) this.choices.delete(feature.id);
     }
     const current = (feature: MapFeature<P>) => !this.destroyed && this.features.get(feature.id) === feature;
     for (const id of retired) {
@@ -224,8 +224,10 @@ export class EntityScene<P extends Properties> {
     if (!this.lost) this.options.map.triggerRepaint();
   }
   selection(ids: readonly string[]) {
-    this.revision++;
+    if (this.destroyed) return;
     const next = new Set(ids);
+    if (next.size === this.selected.size && [...next].every(id => this.selected.has(id))) return;
+    this.revision++;
     for (const id of new Set([...this.selected, ...next]))
       if (this.selected.has(id) !== next.has(id) && this.features.has(id)) this.dirty.add(id);
     this.selected = next;
@@ -302,7 +304,7 @@ export class EntityScene<P extends Properties> {
     this.elevation.destroy();
     this.layer.onRemove();
     this.modelLayer?.destroy(); this.feedbackLayer.destroy();
-    this.modelStyles.clear(); this.modelDiagnostics.clear(); this.choices.clear(); this.published.clear();
+    this.preparedModels.clear(); this.modelDiagnostics.clear(); this.choices.clear(); this.published.clear();
     this.features.clear();
     this.geometry.clear();
     this.states.clear();
@@ -353,6 +355,15 @@ export class EntityScene<P extends Properties> {
   }
   private build(feature: MapFeature<P>) {
     const revision = this.revision;
+    const current = () => {
+      if (this.destroyed || this.features.get(feature.id) !== feature) return false;
+      if (this.revision === revision) return true;
+      // Selection, preview or configuration callbacks can invalidate this attempt
+      // without replacing the feature. Keep its consumed work queued for recovery.
+      this.dirty.add(feature.id);
+      this.schedule();
+      return false;
+    };
     let style: FeatureStyle;
     try { style = this.options.style(feature); }
     catch (cause) {
@@ -360,13 +371,13 @@ export class EntityScene<P extends Properties> {
         { operation: 'style', recoverable: true, featureId: feature.id }, cause));
       return;
     }
-    if (this.destroyed || this.revision !== revision || this.features.get(feature.id) !== feature) return;
+    if (!current()) return;
     const input = { feature, configuration: this.options.configuration(), style, selected: this.selected.has(feature.id) };
     const placementKey = placementAreaKey(feature.id);
     const result = computeEntity(input, this.elevation.sampling(),
       (lng, lat) => this.elevation.failedAt(placementKey, lng, lat));
     // A consumer sampler can remove or replace the entity during computation.
-    if (this.destroyed || this.revision !== revision || this.features.get(feature.id) !== feature) return;
+    if (!current()) return;
     if (result.state.coverage !== 'ready') {
       // A ground area can contain unknown samples between its preparation grid points.
       this.elevation.requirePreparation(placementKey);
@@ -382,25 +393,31 @@ export class EntityScene<P extends Properties> {
       cameras: feature.entity?.attachments?.filter((attachment): attachment is CameraAttachment => attachment.type === 'camera') ?? [],
       configuration: input.configuration,
     });
-    if (this.destroyed || this.revision !== revision || this.features.get(feature.id) !== feature) return;
+    if (!current()) return;
     const placementCoverage = result.state.coverage;
-    this.nonCameraCoverage.set(feature.id, placementCoverage);
     result.state.coverage = combineCoverage(placementCoverage, camera.coverage);
     result.state.footprintTriangles = camera.footprintTriangles;
-    this.prepareModel(feature, style, result);
-    if (this.destroyed || this.revision !== revision || this.features.get(feature.id) !== feature) return;
+    const preparedStyle = { ...style, modelAppearance: modelAppearance(style.modelAppearance) };
+    const settings = modelSettings(input.configuration.entityModels ?? DEFAULT_ENTITY_MODELS, feature.entity?.model);
+    this.prepareModel(feature, result);
+    if (!current()) return;
+    if (this.preparedModels.get(feature.id)?.feature.entity?.model?.id !== feature.entity?.model?.id ||
+      feature.entity?.heading === undefined || result.state.model?.status === 'unavailable')
+      this.choices.delete(feature.id);
+    // Pose and appearance belong to the same successful preparation as placement
+    // and attachments. Failed updates must not mix accepted data with old geometry.
+    this.preparedModels.set(feature.id, { feature, style: preparedStyle, settings });
+    this.nonCameraCoverage.set(feature.id, placementCoverage);
     this.apply(feature.id, result);
   }
 
-  private prepareModel(feature: MapFeature<P>, style: FeatureStyle, result: EntityComputationResult) {
-    this.modelStyles.set(feature.id, { ...style, modelAppearance: modelAppearance(style.modelAppearance) });
+  private prepareModel(feature: MapFeature<P>, result: EntityComputationResult) {
     const entity = feature.entity, reference = entity?.model, registry = this.options.models;
-    if (!reference || !registry) { this.modelDiagnostics.delete(feature.id); this.choices.delete(feature.id); return; }
+    if (!reference || !registry) { this.modelDiagnostics.delete(feature.id); return; }
     const status = registry.status(reference.id);
     result.state.model = status;
     const problem = entity.heading === undefined ? 'MODEL_HEADING_MISSING' : status.status === 'unavailable' ? 'MODEL_UNAVAILABLE' : undefined;
     if (problem) {
-      this.choices.delete(feature.id);
       const key = `${problem}:${reference.id}`;
       if (this.modelDiagnostics.get(feature.id) !== key) {
         this.modelDiagnostics.set(feature.id, key);
@@ -432,8 +449,11 @@ export class EntityScene<P extends Properties> {
     const transform = this.options.map._camera.transform;
     const camera = MercatorCoordinate.fromLngLat(transform.getCameraLngLat());
     const cameraHeight = transform.getCameraAltitude();
-    for (const [id, feature] of this.features) {
-      const entity = feature.entity, state = this.states.get(id), style = this.modelStyles.get(id) ?? {};
+    for (const [id, accepted] of this.features) {
+      const prepared = this.preparedModels.get(id);
+      if (!prepared) continue;
+      const { feature, style, settings } = prepared;
+      const entity = feature.entity, state = this.states.get(id);
       if (!entity || !state || feature.geometry.type !== 'Point') continue;
       const reference = entity.model, asset = reference && registry?.get(reference.id);
       const status = reference ? registry?.status(reference.id).status ?? 'unavailable' : 'unavailable';
@@ -441,7 +461,6 @@ export class EntityScene<P extends Properties> {
         Math.max(-85.05112878, Math.min(85.05112878, feature.geometry.coordinates[1]!))]);
       const height = (state.altitude ?? 0) * verticalScale(configuration), unit = point.meterInMercatorCoordinateUnits(), dx = point.x - camera.x;
       const distance = Math.hypot((dx - Math.round(dx)) / unit, (point.y - camera.y) / unit, height - cameraHeight);
-      const settings = modelSettings(configuration.entityModels ?? DEFAULT_ENTITY_MODELS, reference);
       const eligible = Boolean(rendererAvailable && asset && state.ground !== undefined && (state.placement === 'ground' || state.placement === 'airborne'));
       const choice = modelChoice(this.choices.get(id), { modelId: reference?.id, heading: entity.heading, status, eligible, distance, settings });
       if (choice) choices.set(id, choice);
@@ -488,7 +507,7 @@ export class EntityScene<P extends Properties> {
             draw.instances.push({ feedback: modelFeedback(this.selected.has(id), this.previewed === id), basis: placement.basis, anchor: entityVertex(placement.position, origin),
               appearance: style.modelAppearance && { ...style.modelAppearance } });
             grouped.set(asset, draw);
-            hits.push({ feature, polygons: box.polygons });
+            hits.push({ feature: accepted, polygons: box.polygons });
             const anchor = projection.project(placement.position, origin);
             const labelHeight = state.placement === 'airborne' ? (state.altitude ?? 0) * verticalScale(configuration)
               : configuration.terrain ? (state.ground ?? 0) * configuration.exaggeration : 0;

@@ -1,5 +1,5 @@
 import { createViewport, RidgelineError } from '@ridgeline/map';
-import type { MapFeature, Viewport } from '@ridgeline/map';
+import type { MapFeature, Properties, Viewport, ViewportOptions } from '@ridgeline/map';
 import type { CustomLayerInterface } from 'maplibre-gl';
 import { solidGlb } from './model-fixtures';
 import { axisModelGlb } from './model-placement-fixtures';
@@ -11,12 +11,13 @@ const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const entity = (id = 'model', color = '#ff0000'): MapFeature => ({ type: 'Feature', id,
   properties: { color }, geometry: { type: 'Point', coordinates: [0,0] },
   entity: { heading: 0, altitude: { meters: 30, reference: 'sea-level' }, model: { id: 'asset', minimumSizePixels: 80 } } });
-function create(context: Context, features: MapFeature[]) {
+function create(context: Context, features: MapFeature[], options: Partial<Pick<ViewportOptions<Properties>, 'style' | 'onError'>> = {}) {
   const viewport = createViewport({ container: context.container, features, elevationSampler: { sample: () => 0 },
     basemap: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
     camera: { center: [0,0], zoom: 17, pitch: 35, bearing: 0 },
     entityModels: { switchDistanceMeters: 1e7, deadZoneMeters: 0, minimumSizePixels: 80 },
-    style: feature => ({ radius: 0, modelAppearance: { mode: 'color', color: String(feature.properties.color) } }), logger: () => {} });
+    style: feature => ({ radius: 0, modelAppearance: { mode: 'color', color: String(feature.properties.color) } }),
+    ...options, logger: () => {} });
   context.setCurrent(viewport);
   const canvas = viewport.map.getCanvas(); canvas.dataset.ridgelineMeasure = 'true';
   const measures: PerformanceEntry[] = [];
@@ -91,6 +92,114 @@ function frame(viewport: Viewport, change: () => void = () => viewport.map.trigg
 }
 async function click(x: number, y: number) { check(window.drawingPointer, 'Actual pointer bridge unavailable'); await window.drawingPointer('click', x, y); }
 export const modelFrameReviewCases: readonly { name: string; run(context: Context): Promise<void> }[] = [
+  { name: 'Model style failures retain the last complete pose until successful recovery', async run(context) {
+    const original = entity(), other = entity('other', '#00ff00');
+    original.entity!.model!.switchDistanceMeters = 1000;
+    original.entity!.attachments = [{ id: 'physical', type: 'sphere', radius: 8, color: '#0000ff' }];
+    other.geometry = { type: 'Point', coordinates: [-.0009, 0] };
+    const latest: MapFeature = { ...original, properties: { color: '#0000ff' },
+      geometry: { type: 'Point', coordinates: [.0006, .0002] },
+      entity: { ...original.entity, model: { ...original.entity!.model!, switchDistanceMeters: 5000 },
+        heading: 73, pitch: 24, roll: -16, altitude: { meters: 100, reference: 'sea-level' } } };
+    let broken = false;
+    const diagnostics: string[] = [];
+    const f = create(context, [original, other], {
+      style: feature => {
+        if (broken && feature.id === original.id) throw new Error('Deliberate model style failure');
+        return { radius: 0, modelAppearance: { mode: 'color', color: String(feature.properties.color) } };
+      },
+      onError: error => diagnostics.push(error.code),
+    });
+    const { viewport } = f;
+    try {
+      await viewport.ready; await viewport.registerModel('asset', { bytes: axisModelGlb() });
+      await context.until(() => viewport.getEntityState(original.id)?.representation === 'model', 'prepared model pose');
+      await frame(viewport); const baseline = await frame(viewport);
+      check(baseline.red.length > 50 && baseline.green.length > 50 && baseline.blue.length > 10,
+        'Both baseline models and the physical attachment must draw');
+      const initialState = viewport.getEntityState(original.id);
+      broken = true; viewport.upsert([latest]);
+      await context.until(() => diagnostics.includes('UPDATE_FAILED'), 'failed source styling');
+      const failed = await frame(viewport);
+      check(failed.red.join(',') === baseline.red.join(',') && failed.blue.join(',') === baseline.blue.join(','),
+        'Failed styling moved the model or its physical attachment');
+      check(failed.green.length > 50, 'Failed styling hid the unrelated model');
+      check(viewport.getEntityState(original.id)?.altitude === 30 && viewport.getEntityState(original.id)?.computedAt === initialState?.computedAt,
+        'Failed styling changed prepared placement');
+      const accepted = viewport.getFeature(original.id);
+      check(accepted?.geometry.type === 'Point' && accepted.geometry.coordinates[0] === .0006,
+        'The failed display update must still retain accepted consumer data');
+      viewport.retryUpdates();
+      await context.until(() => diagnostics.filter(code => code === 'UPDATE_FAILED').length >= 2, 'failed explicit retry');
+      const failedRetry = await frame(viewport);
+      check(failedRetry.red.join(',') === baseline.red.join(','), 'A failed retry replaced the last successful pose');
+      const reconfigured = await frame(viewport, () => viewport.configure({ entityModels: {
+        switchDistanceMeters: 1e7, deadZoneMeters: 3000, minimumSizePixels: 80,
+      } }));
+      check(!diagnostics.includes('MODEL_RENDERER_FAILED') && reconfigured.red.join(',') === baseline.red.join(',') && reconfigured.green.length > 50,
+        'A valid configuration combined with retained overrides failed the shared renderer');
+      const hits: string[][] = [];
+      viewport.on('click', event => hits.push(event.features.map(feature => feature.id)));
+      const canvas = viewport.map.getCanvas(), anchor = viewport.map.project([0, 0]);
+      const red = baseline.red[Math.floor(baseline.red.length / 2)]!;
+      await click((red % canvas.width + .5) * canvas.clientWidth / canvas.width,
+        (canvas.height - .5 - Math.floor(red / canvas.width)) * canvas.clientHeight / canvas.height);
+      check(hits.at(-1)?.includes(original.id), 'Retained model pose lost its pick box');
+      broken = false; viewport.retryUpdates();
+      await context.until(() => viewport.getEntityState(original.id)?.altitude === 100, 'successful prepared recovery');
+      const recovered = await frame(viewport);
+      check(recovered.red.length === 0 && recovered.blue.length > 50 && recovered.green.length > 50,
+        'Successful retry did not recover current model appearance and retain its neighbor');
+      await click(anchor.x, anchor.y);
+      check(!hits.at(-1)?.includes(original.id), 'Recovered model retained an obsolete pick box');
+    } finally { f.destroy(); }
+  } },
+  { name: 'Model diagnostics preserve entity computation through selection and preview callbacks', async run(context) {
+    for (const action of ['unchanged-selection', 'preview', 'other-selection'] as const) {
+      const feature = entity(), other = entity('other', '#00ff00');
+      feature.entity!.model!.id = 'missing';
+      feature.entity!.attachments = [{ id: 'physical', type: 'sphere', radius: 10, color: '#0000ff' }];
+      other.geometry = { type: 'Point', coordinates: [-.0009, 0] };
+      const f = create(context, [feature, other], { onError: error => {
+        if (error.code !== 'MODEL_UNAVAILABLE' || error.context.featureId !== feature.id) return;
+        if (action === 'unchanged-selection') f.viewport.setSelection([]);
+        else if (action === 'preview') f.viewport.preview(feature.id);
+        else f.viewport.setSelection([other.id]);
+      } });
+      const { viewport } = f;
+      try {
+        await viewport.ready; await viewport.registerModel('asset', { bytes: solidGlb() });
+        await context.until(() => viewport.getEntityState(feature.id)?.placement === 'airborne', `${action} preserved placement`);
+        await context.until(() => viewport.getEntityState(feature.id)?.representation === 'icon', `${action} eligible fallback`);
+        const visible = await frame(viewport);
+        check(viewport.getEntityState(feature.id)?.altitude === 30 && visible.blue.length > 50,
+          `${action} dropped physical altitude or attachment geometry`);
+        check(viewport.getFeature(feature.id), `${action} removed accepted data`);
+      } finally { f.destroy(); }
+    }
+    const original = entity();
+    let restored = false;
+    const f = create(context, [original], { onError: error => {
+      if (error.code !== 'MODEL_HEADING_MISSING') return;
+      restored = true; f.viewport.upsert([original]);
+    } });
+    const { viewport } = f;
+    try {
+      await viewport.ready; await viewport.registerModel('asset', { bytes: solidGlb() });
+      await frame(viewport, () => viewport.setCamera({ pitch: 0 }));
+      await context.until(() => viewport.getEntityState(original.id)?.representation === 'model', 'initial model choice');
+      const distance = viewport.map._camera.transform.getCameraAltitude() - 30;
+      await frame(viewport, () => viewport.configure({ entityModels: {
+        switchDistanceMeters: distance, deadZoneMeters: distance, minimumSizePixels: 80,
+      } }));
+      check(viewport.getEntityState(original.id)?.representation === 'model', 'The dead zone lost its established model');
+      viewport.upsert([{ ...original, entity: { ...original.entity, heading: undefined } }]);
+      await context.until(() => restored, 'diagnostic restored the original feature');
+      const retained = await frame(viewport);
+      check(retained.red.length > 50 && viewport.getEntityState(original.id)?.representation === 'model',
+        'A discarded preparation reset the restored model choice inside the dead zone');
+    } finally { f.destroy(); }
+  } },
   { name: 'Model frame callbacks publish only current placement and appearance', async run(context) {
     const old = entity(), other = entity('other', '#00ff00'); other.geometry = { type: 'Point', coordinates: [-.0009,0] };
     other.entity!.model!.minimumSizePixels = 35;
