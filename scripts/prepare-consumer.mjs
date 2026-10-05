@@ -7,6 +7,7 @@ await cp('tests/fixtures/noto-sans', `${directory}/fixtures/noto-sans`, { recurs
 await copyFile('tests/browser.html', `${directory}/index.html`);
 await copyFile('tests/browser.ts', `${directory}/main.ts`);
 await copyFile('tests/browser-cases.ts', `${directory}/browser-cases.ts`);
+await copyFile('tests/browser-observation.ts', `${directory}/browser-observation.ts`);
 await copyFile('tests/model-frame-review.browser.ts', `${directory}/model-frame-review.browser.ts`);
 await copyFile('tests/model-recovery.browser.ts', `${directory}/model-recovery.browser.ts`);
 await copyFile('tests/model-picking.browser.ts', `${directory}/model-picking.browser.ts`);

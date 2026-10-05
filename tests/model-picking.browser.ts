@@ -3,6 +3,7 @@ import type { Interaction, MapFeature, Viewport } from '@ridgeline/map';
 import { MercatorCoordinate } from 'maplibre-gl';
 import { solidGlb } from './model-fixtures';
 import { axisModelGlb, planarTerrain } from './model-placement-fixtures';
+import { captureMapPixels, pixelToCss, waitForVisible } from './browser-observation';
 
 type Context = { container: HTMLDivElement; setCurrent(viewport: Viewport): void;
   until(predicate: () => boolean, description: string, timeout?: number): Promise<void> };
@@ -38,26 +39,51 @@ async function frame(viewport: Viewport) {
   await new Promise<void>(resolve => { viewport.map.once('render', () => resolve()); viewport.map.triggerRepaint(); });
   await Promise.resolve();
 }
-async function colors(viewport: Viewport) {
-  return new Promise<{colored:number;center:number[];magenta:{count:number;x:number;y:number}}>(resolve => {
-    viewport.map.once('render', () => {
-      const canvas=viewport.map.getCanvas(), gl=canvas.getContext('webgl2'); check(gl,'WebGL2 unavailable');
-      const pixels=new Uint8Array(canvas.width*canvas.height*4); gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
-      let colored=0; const magenta={count:0,x:0,y:0}, ratio=canvas.width/canvas.clientWidth;
-      for(let i=0;i<pixels.length;i+=4) {
-        if(Math.max(pixels[i]!,pixels[i+1]!,pixels[i+2]!)-Math.min(pixels[i]!,pixels[i+1]!,pixels[i+2]!)>100)colored++;
-        if(pixels[i]!>pixels[i+1]!+80 && pixels[i+2]!>pixels[i+1]!+80) {
-          magenta.count++; magenta.x+=(i/4%canvas.width+.5)/ratio; magenta.y+=(canvas.height-Math.floor(i/4/canvas.width)-.5)/ratio;
-        }
-      }
-      if(magenta.count) {magenta.x/=magenta.count;magenta.y/=magenta.count;}
-      const index=(Math.floor(canvas.height/2)*canvas.width+Math.floor(canvas.width/2))*4;
-      resolve({colored,center:[...pixels.slice(index,index+3)],magenta});
-    }); viewport.map.triggerRepaint();
-  });
+async function colors(viewport: Viewport, timeout = 8000) {
+  const image = await captureMapPixels(viewport, timeout), pixels = image.bytes;
+  let colored = 0; const magenta = { count: 0, x: 0, y: 0 };
+  for (let i = 0; i < pixels.length; i += 4) {
+    if (pixels[i + 3]! <= 16) continue;
+    if (Math.max(pixels[i]!, pixels[i + 1]!, pixels[i + 2]!) - Math.min(pixels[i]!, pixels[i + 1]!, pixels[i + 2]!) > 100) colored++;
+    if (pixels[i]! > pixels[i + 1]! + 80 && pixels[i + 2]! > pixels[i + 1]! + 80) {
+      const point = pixelToCss(image, { x: i / 4 % image.width, y: Math.floor(i / 4 / image.width) });
+      magenta.count++; magenta.x += point.x; magenta.y += point.y;
+    }
+  }
+  if (magenta.count) { magenta.x /= magenta.count; magenta.y /= magenta.count; }
+  const index = (Math.floor(image.height / 2) * image.width + Math.floor(image.width / 2)) * 4;
+  return { colored, center: [...pixels.slice(index, index + 3)], magenta };
 }
 async function key(value: string) { check(window.browserKey, 'Real keyboard bridge unavailable'); await window.browserKey(value); }
 export const modelPickingCases: readonly { name: string; run(context: Context): Promise<void> }[] = [
+  { name: 'Model pixel observation aligns visible picking across canvas ratios and rejects absent models', async run(context) {
+    check(devicePixelRatio === 2, 'This fixture must exercise browser DPR 2 independently of the map ratio');
+    const located = entity(); located.geometry = { type: 'Point', coordinates: [.0002, .00015] };
+    located.entity!.attachments = [{ id: 'zone', type: 'polygon', vertices: [[-50,-50],[50,-50],[50,50],[-50,50]] }];
+    const viewport = create(context, [located]), clicks: Interaction<Record<string, unknown>>[] = [];
+    viewport.on('click', value => { clicks.push(value); });
+    try {
+      await viewport.ready;
+      for (const ratio of [1, 2]) {
+        viewport.map.setPixelRatio(ratio);
+        await viewport.registerModel('asset', { bytes: axisModelGlb() });
+        await context.until(() => viewport.getEntityState('model')?.representation === 'model', 'published model');
+        const visible = await waitForVisible(remaining => colors(viewport, remaining), result => result.magenta.count > 100,
+          { timeout: 8000, description: `model body at map ratio ${ratio}` });
+        const canvas = viewport.map.getCanvas();
+        check(Math.abs(canvas.width / canvas.clientWidth - ratio) < .01 && Math.abs(canvas.height / canvas.clientHeight - ratio) < .01,
+          'Map drawing-buffer ratio did not match its configured value');
+        await pointer('click', visible.magenta.x, visible.magenta.y);
+        check(clicks.at(-1)?.features[0]?.id === 'model', `Visible pixels did not pick the model at ratio ${ratio}`);
+        viewport.unregisterModel('asset');
+        viewport.map.setPaintProperty('background', 'background-color', '#ff00ff');
+        viewport.map.setPaintProperty('background', 'background-opacity', 0);
+        const absent = await colors(viewport);
+        check(absent.colored > 100, 'The unrelated blue attachment must remain visible in the negative fixture');
+        check(absent.magenta.count === 0, 'Transparent background or unrelated attachment pixels counted as a model');
+      }
+    } finally { viewport.destroy(); }
+  } },
   { name: 'Model picking uses drawn boxes and returns original entity and attachment hits', async run(context) {
     const viewport = create(context), clicks: Interaction<Record<string, unknown>>[] = [];
     viewport.on('click', value => { clicks.push(value); });

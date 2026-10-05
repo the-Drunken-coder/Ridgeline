@@ -1,9 +1,28 @@
 import { test, expect } from 'playwright/test';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
 
 import { browserCases } from '../browser-cases';
 
-for (const name of browserCases) {
+function git(...args: string[]) {
+  const result = spawnSync('git', args, { encoding: 'utf8' });
+  if (result.error || result.status !== 0) throw result.error ?? new Error(result.stderr);
+  return result.stdout;
+}
+function command() {
+  if (!process.env.RIDGELINE_BROWSER_COMMAND) return [process.execPath, ...process.argv.slice(1)];
+  const value: unknown = JSON.parse(process.env.RIDGELINE_BROWSER_COMMAND);
+  if (!Array.isArray(value) || !value.every((item: unknown) => typeof item === 'string'))
+    throw new Error('Invalid browser command evidence');
+  return value;
+}
+const source = { revision: git('rev-parse', 'HEAD').trim(), status: git('status', '--short'),
+  diffSha256: createHash('sha256').update(git('diff', 'HEAD')).digest('hex'), command: command() };
+
+function registerCase(name: string) {
   test(name, async ({ page }, testInfo) => {
+    await page.addInitScript(context => { Reflect.set(window, 'browserEvidenceContext', context); }, { ...source, testCase: name });
     if (name === 'Reliability drawing restores rejected handle edits on a third visible world copy' ||
       name === 'Reliability drawing preserves rejected handle edits after camera turns and reversal')
       await page.setViewportSize({ width: 2000, height: 720 });
@@ -54,6 +73,19 @@ for (const name of browserCases) {
       }
     } finally {
       try {
+        const evidence = await page.evaluate(() => {
+          const value: unknown = Reflect.get(window, 'browserIdleObservations');
+          return Array.isArray(value) && value.length ? value : null;
+        });
+        if (evidence) {
+          const path = testInfo.outputPath('idle-observations.json');
+          await writeFile(path, JSON.stringify(evidence, null, 2));
+          await testInfo.attach('Browser idle observations', { path, contentType: 'application/json' });
+        }
+      } catch (error) {
+        failure = failure ? new AggregateError([failure, error], 'Browser case and evidence capture failed') : error;
+      }
+      try {
         await page.evaluate(() => {
           if (!window.cleanupBrowserCase) throw new Error('Browser case cleanup hook is unavailable.');
           window.cleanupBrowserCase();
@@ -64,4 +96,14 @@ for (const name of browserCases) {
     }
     if (failure) throw failure;
   });
+}
+
+for (const name of browserCases) {
+  if (name === 'Model pixel observation aligns visible picking across canvas ratios and rejects absent models') {
+    test.describe('Model observation at browser DPR 2', () => {
+      test.use({ deviceScaleFactor: 2 });
+      test.describe.configure({ timeout: 90_000 });
+      registerCase(name);
+    });
+  } else registerCase(name);
 }
