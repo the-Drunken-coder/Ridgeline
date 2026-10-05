@@ -122,6 +122,24 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     diagnostic(error);
     throw error;
   }
+  // MapLibre keeps using its style and tiles after a custom layer callback.
+  // Retire those resources at the end of that native call, while logical
+  // disposal and removal of this viewport's DOM remain synchronous.
+  let nativeRenderDepth = 0, removeAfterRender = false;
+  const nativeRender = map._render, cleanupContainer = map._cleanupContainer;
+  map._render = function (time) {
+    nativeRenderDepth++;
+    try { return nativeRender.call(this, time); }
+    finally {
+      nativeRenderDepth--;
+      if (!nativeRenderDepth && removeAfterRender) { removeAfterRender = false; removeMap(); }
+    }
+  };
+  function removeMap() {
+    arrowheads.remove();
+    try { map.remove(); }
+    finally { map._render = nativeRender; map._cleanupContainer = cleanupContainer; }
+  }
   const modelVisibility = new ModelVisibility(map);
   const modelLabels = new ModelLabels(map, ids => publication.update(ids.flatMap(id => { const feature = store.get(id); return feature ? [feature] : []; })));
   const preparedMarkerKeys = new WeakMap<MapFeature<P>, string>();
@@ -577,14 +595,21 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     on(event, listener) { assertActive(); listeners[event].add(listener); return () => listeners[event].delete(listener); },
     destroy() {
       if (destroyed) return;
-      interactionRevision++; destroyed = true; prepared = false; emit('destroy', undefined);
+      interactionRevision++; destroyed = true; prepared = false;
+      // Destroy listeners may synchronously mount a new viewport in this same
+      // container. Retire only our DOM before giving them that ownership.
+      cleanupContainer.call(map);
+      map._cleanupContainer = () => {};
+      emit('destroy', undefined);
       publication.destroy();
       if (!readySettled) { readySettled = true; rejectReady(new RidgelineError('DESTROYED', 'Viewport was destroyed before initialization completed.', { operation: 'initialize', recoverable: false })); }
       clearTimeout(timer); resize.disconnect();
       entities.destroy(); models.destroy(); modelLabels.destroy(); measurement.destroy();
-      arrowheads.remove(); preparedListeners.clear(); sceneListeners.clear(); drawingInternals.delete(map);
+      preparedListeners.clear(); sceneListeners.clear(); drawingInternals.delete(map);
       map.getCanvas().removeEventListener('mouseleave', onLeave);
-      map.remove(); icons.clear(); selected.clear(); publishedMarkerKeys.clear(); availableMarkers.clear(); store.remove(store.ids());
+      if (nativeRenderDepth) removeAfterRender = true;
+      else removeMap();
+      icons.clear(); selected.clear(); publishedMarkerKeys.clear(); availableMarkers.clear(); store.remove(store.ids());
       for (const set of Object.values(listeners)) set.clear();
       hoverNotified.clear();
     },

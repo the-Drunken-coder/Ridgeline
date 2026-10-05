@@ -300,6 +300,7 @@ export class EntityScene<P extends Properties> {
     this.modelHits = []; this.terrainDepth = undefined;
     cancelAnimationFrame(this.frame);
     this.elevation.destroy();
+    this.layer.onRemove();
     this.modelLayer?.destroy(); this.feedbackLayer.destroy();
     this.modelStyles.clear(); this.modelDiagnostics.clear(); this.choices.clear(); this.published.clear();
     this.features.clear();
@@ -411,14 +412,16 @@ export class EntityScene<P extends Properties> {
 
   private prepareModelFrame(projection: EntityProjection, rendererAvailable: boolean): ModelFrame | undefined {
     if (this.destroyed || this.lost) return;
+    const revision = this.revision, registry = this.options.models, configuration = this.options.configuration();
+    const current = () => !this.destroyed && !this.lost && this.revision === revision && this.options.configuration() === configuration;
     if (this.dirty.size || this.geometryDirty) this.flush();
-    if (this.destroyed) return;
+    // Computation publishes consumer callbacks. A replacement must be computed
+    // by the layer's next bounded attempt before any cached placement is used.
+    if (!current()) return;
     const measured = this.options.measurement?.enabled;
     const updateRevision = measured ? this.options.measurement!.revision : 0;
     const frame = measured ? this.options.measurement!.frame() : 0;
     let placementMs = 0, projectionScalingMs = 0;
-    const revision = this.revision, registry = this.options.models, configuration = this.options.configuration();
-    const current = () => !this.destroyed && !this.lost && this.revision === revision && this.options.configuration() === configuration;
     this.options.beginNativeFrame?.();
     const choices = new Map<string, ModelChoice>(), representations = new Map<string, EntityState['representation']>();
     const grouped = new Map<RegisteredModel<ModelGpu>, ModelDraw>();
@@ -476,15 +479,15 @@ export class EntityScene<P extends Properties> {
         }
         if (!current()) return;
         if (placement.status === 'ready') {
-          const draw = grouped.get(asset) ?? { asset, origin, instances: [] };
-          draw.instances.push({ feedback: modelFeedback(this.selected.has(id), this.previewed === id), basis: placement.basis, anchor: entityVertex(placement.position, origin),
-            appearance: style.modelAppearance && { ...style.modelAppearance } });
-          grouped.set(asset, draw);
           representation = 'model';
           if (measured) phaseStart = performance.now();
           const box = modelScreenBox(projection, placement, origin);
           if (measured) projectionScalingMs += performance.now() - phaseStart;
-          if (box) {
+          if (box && projection.intersectsViewport(box)) {
+            const draw = grouped.get(asset) ?? { asset, origin, instances: [] };
+            draw.instances.push({ feedback: modelFeedback(this.selected.has(id), this.previewed === id), basis: placement.basis, anchor: entityVertex(placement.position, origin),
+              appearance: style.modelAppearance && { ...style.modelAppearance } });
+            grouped.set(asset, draw);
             hits.push({ feature, polygons: box.polygons });
             const anchor = projection.project(placement.position, origin);
             const labelHeight = state.placement === 'airborne' ? (state.altitude ?? 0) * verticalScale(configuration)
