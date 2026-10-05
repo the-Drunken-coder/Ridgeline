@@ -170,7 +170,8 @@ jobs:
 
   playground-browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Reserve five minutes for setup and uploads beyond the runner's 30-minute limit.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -193,7 +194,7 @@ jobs:
           path: blob-report/
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: ${{ always() && hashFiles('.artifacts/playground-tests/**') != '' }}
         with:
           name: failures-playground
           path: .artifacts/playground-tests/

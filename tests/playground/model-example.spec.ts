@@ -115,13 +115,8 @@ test.describe('Model screenshot observation', () => {
     expect(observations).toBeGreaterThan(1);
     await canvas.click({ position: body });
     await expect(page.locator('#selected-name')).not.toHaveText('No feature selected');
-    const samples = page.getByLabel('Model sample', { exact: true });
-    const ids = await samples.locator('option').evaluateAll(options => options.flatMap(option =>
-      option instanceof HTMLOptionElement && option.value ? [option.value] : []));
-    for (const id of ids) {
-      await samples.selectOption(id);
-      await page.getByRole('button', { name: 'Remove sample' }).click();
-    }
+    await page.getByLabel('Test scenario').selectOption('empty');
+    await expect(page.locator('#model-example')).toBeHidden();
     await expect(page.locator('#feature-count')).toHaveText('0 features');
     await waitForVisible(remaining => observeBody(page, canvas, remaining), result => result.neighbors <= 30,
       { timeout: renderTimeout, description: 'removed models leave no filled body in the screenshot' });
