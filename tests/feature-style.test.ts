@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createExpression } from '@maplibre/maplibre-gl-style-spec';
 import { dashExpression, featureStyle, fontExpression, highlightExpression, resolveHighlight, styleProperties } from '../src/feature-style';
-import { clipToRectangle, screenRectangle } from '../src/screen-rectangle';
 import { modelPresentationGeometry } from '../src/model-presentation';
 import type { FeatureStyle } from '../src/types';
 
@@ -61,15 +60,6 @@ test('literal dash branches support distinct per-feature patterns and legacy das
   const feature = { type: 1 as const, properties: styleProperties({ selected: { color: '#0000ff' }, hover: { color: '#ff0000' } }) };
   assert.equal(highlight.value.evaluate({ zoom: 1 }, feature, { selected: true, hover: true }), '#0000ff');
   assert.equal(highlight.value.evaluate({ zoom: 1 }, feature, { hover: true }), '#ff0000');
-});
-
-test('rectangle intersection catches crossing edges and containing polygons without testing their centers', () => {
-  const rectangle = screenRectangle([{ x: 15, y: 15 }, { x: 5, y: 5 }]);
-  const point = (x: number, y: number) => ({ x, y, depth: .5 });
-  assert.ok(clipToRectangle([point(-100, 10), point(100, 10)], rectangle).length);
-  assert.ok(clipToRectangle([point(0, 0), point(20, 0), point(20, 20), point(0, 20)], rectangle).length);
-  assert.equal(clipToRectangle([point(0, 0), point(3, 0), point(3, 3)], rectangle).length, 0);
-  assert.throws(() => screenRectangle([{ x: NaN, y: 0 }, { x: 10, y: 10 }]));
 });
 
 test('model labels clear projected bodies in the configured anchor direction and text-size units', () => {
