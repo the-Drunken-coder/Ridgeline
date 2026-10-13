@@ -2,6 +2,7 @@ import { defineConfig } from 'playwright/test';
 
 export default defineConfig({
   testDir: './tests/packaged',
+  testMatch: 'browser.spec.ts',
   timeout: 90_000,
   expect: { timeout: 10_000 },
   workers: 1,

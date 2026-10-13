@@ -273,6 +273,32 @@ Override `--rl-surface`, `--rl-text`, `--rl-border`, `--rl-active`, and `--rl-mu
 
 `viewport.map` exposes MapLibre for advanced integrations. The `rl:` source/layer/image namespace is reserved. Ridgeline encodes feature IDs inside its MapLibre sources; treat rendered source IDs as internal and use `_rl_feature_id` or viewport events for the original consumer ID. Use `configure` for basemap changes so Ridgeline can restore its features and selection. Consumers own the restoration of their own MapLibre additions after a style change.
 
+## Map controls and coordinates
+
+`attachMapControls(viewport, options)` installs native MapLibre navigation, scale and fullscreen controls by default. Each can be disabled or receive its native options. Geolocation, map-center coordinates and a consumer-supplied basemap selector are opt-in. Location is requested only when the user activates the geolocation control. `positions` selects each control's corner; `destroy()` removes only this attachment's controls.
+
+`formatCoordinate` and `parseCoordinate` handle longitude-first decimal degrees, degrees/minutes and degrees/minutes/seconds. `geographicDistance`, `geographicBearing` and `geographicDestination` use horizontal spherical meters and clockwise-from-north degrees. They do not transform coordinate reference systems or include terrain slope.
+
+MapLibre 6.11.0 has no public cancellation for a one-shot geolocation request or its ten-second fallback timer. Destroying the attachment clears its active watch; it cannot cancel that one-shot request.
+
+`configurationchange` reports accepted configuration independently of asynchronous basemap loading. Undefined bearings for coincident or antipodal positions and ambiguous polar directions throw `INVALID_CONFIGURATION`.
+
+## Consumer-owned live updates
+
+Applications choose which state to display and submit it through `upsert`, using `remove` or `clear` when displayed features are no longer needed. Ridgeline validates and snapshots the current feature state for rendering. Applications own their source data, transport, history, clocks, interpolation, replay and retention policy.
+
+```ts
+// Called when your application has chosen a new display position and pose.
+viewport.upsert([{
+  type: 'Feature', id: 'rescue-1',
+  geometry: { type: 'Point', coordinates: [6.88, 45.93] },
+  properties: { name: 'Rescue 1' },
+  entity: { heading: 10 },
+}]);
+```
+
+`upsert` replaces the whole feature for that ID. Supply the complete current properties, entity and attachments you want retained. Feature updates preserve selection by ID and do not move the map camera. Applications can send their chosen camera through `setCamera`, and render a path as an ordinary LineString feature.
+
 ## Maps, terrain, and network access
 
 Library defaults: OpenFreeMap Liberty, flat projection, terrain off, hillshade off, exaggeration 1. The playground explicitly enables terrain and hillshade. Both use the configured Mapterhorn Terrarium dataset through separate MapLibre DEM sources, as required by the rendering setup. The attribution control remains visible.
@@ -310,7 +336,7 @@ Recoverable tile failures leave the rest of the map usable. The elevation-unavai
 
 ## Verification
 
-Focused Node tests cover replacement semantics, atomic invalid batches, snapshot ownership, geometry validation, diagnostics, and hillshade option validation. Install Chromium once, then run the browser suites:
+Focused Node tests cover replacement semantics, atomic invalid batches, snapshot ownership, geometry validation, diagnostics, hillshade options, coordinates. Install the browsers once, then run the suites:
 
 ```sh
 pnpm exec playwright install chromium
