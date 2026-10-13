@@ -119,6 +119,7 @@ Give the container an explicit height and `position: relative`. This is a browse
 | `upsert(features)` | Validate and copy the entire batch, then replace geometry, properties, and entity data for each ID. Last duplicate in a batch wins. |
 | `remove(ids)` / `clear()` | Remove features and their selection highlights. Unknown IDs are harmless. |
 | `retryUpdates()` | Retry failed incremental changes once using the latest stored data, including pending removals. |
+| `refreshStyles(ids?)` | Re-evaluate appearance from current stored features, for all IDs or a supplied subset, without replacing data or emitting `datachange`. Unknown IDs are ignored. |
 | `getFeature(id)` / `getFeatures()` | Return snapshots, not mutable internal objects. |
 | `setSelection(ids)` | Show the application's chosen IDs. Unknown IDs are ignored. |
 | `setCamera(camera, { duration })` | Move immediately unless an animation duration is explicitly supplied. |
@@ -136,7 +137,7 @@ The `name` accessor defaults to `properties.name`, then the ID. The `style` acce
 
 ## Airborne entities and attachments
 
-The **Single flying asset** scenario shows one moving aircraft with a four-sided camera overlay draped on terrain. **Airborne entities** provides a larger workload. The inspector controls altitude, direction, FOV, range, color, fill opacity, and outline. Movement remains application-owned through `upsert`.
+The **Single flying asset** scenario shows one moving aircraft with a four-sided camera overlay draped on terrain. **Airborne entities** provides a larger workload. The inspector controls altitude, direction, FOV, range, color, fill opacity, and outline. Consumers update the current position and pose through `upsert`; their application owns movement timing and interpolation.
 
 ```ts
 viewport.upsert([{
@@ -241,7 +242,9 @@ Ground models follow the sampled local slope as rigid bodies. Set `entity.model.
 
 Model picking uses the oriented bounding box from the last drawn placement, including enlargement, projection and displayed world copy. Empty space between thin parts and transparent cutouts can be clickable. Picking clips the near plane and rejects box areas behind sampled known terrain; it is not mesh- or pixel-accurate. Events return the original entity and actual attachment hits. Overlapping entities keep their icons and display names in the radial picker. Hover refreshes when the scene changes under a stationary pointer, then stops scheduling work when the scene settles.
 
-Collision-placed labels draw above models and clear their projected bounds. Normal font requirements and collision suppression still apply. Hover adds a thin ring and gentle brightening; selection adds a thicker ring and stronger brightening and takes precedence. Rings follow the model's altitude. These static effects preserve assigned appearance, source materials and physical attachment dimensions.
+Collision-placed labels draw above models and clear their projected bounds. Normal font requirements and collision suppression still apply. Hover defaults to a thin ring and gentle brightening; selection defaults to a thicker ring and stronger brightening and takes precedence. Per-feature `hover` and `selected` appearance can disable feedback or set `modelBrightness`; rings use their color and line width and follow the model's altitude. These static effects preserve assigned appearance, source materials and physical attachment dimensions.
+
+Selected labels take placement priority over unselected labels, while collision suppression remains enabled. Some selected labels can remain hidden when they collide with each other. Selection updates this priority without replacing consumer features, including after basemap reload.
 
 Basemap changes retain registrations and usable resources. Context loss withholds drawing while retaining accepted assets and hysteresis choices. Restoration rebuilds current models, colors, selection and attachments; a basemap configured during loss applies after restoration. Registration during loss waits for a usable renderer, while already completed promises remain completed. Failed model restoration reports a diagnostic and leaves eligible icon fallback and unrelated geometry usable. `retryUpdates()` explicitly retries failed model resources. Destruction cancels pending work and releases owned resources, including late decoded images.
 

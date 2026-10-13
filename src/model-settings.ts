@@ -22,6 +22,7 @@ export function validateModelReference(model: EntityModel, fail: (message: strin
 }
 export function modelAppearance(appearance?: ModelAppearance): ModelAppearance | undefined {
   if (appearance === undefined) return undefined;
+  appearance = appearance && { ...appearance };
   if (appearance?.mode === 'original') return { mode: 'original' };
   if (appearance?.mode !== 'color' || typeof appearance.color !== 'string' || !Color.parse(appearance.color)) throw new Error('A model appearance needs a supported CSS color or original mode.');
   return { mode: 'color', color: appearance.color };

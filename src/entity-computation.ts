@@ -53,6 +53,7 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
     attachmentId?: string,
     surface = false,
     size?: number,
+    marker?: Primitive['marker'],
   ) => {
     if (vertices.length)
       primitives.push({
@@ -63,6 +64,7 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
         color: rgba,
         size,
         surface,
+        marker,
       });
   };
   if (placement === 'airborne' && altitude !== undefined) {
@@ -75,8 +77,9 @@ export function computeEntity(input: EntityComputationInput, height: HeightAt, u
       undefined,
       false,
       radius * 2 + 5,
+      'stroke',
     );
-    add([origin], 'points', entityColor, undefined, false, radius * 2);
+    add([origin], 'points', entityColor, undefined, false, radius * 2, 'fill');
     if (visibility.groundLines && ground !== null)
       add([origin, [lng, lat, config.terrain ? ground : 0]], 'lines', [
         ...entityColor.slice(0, 3),

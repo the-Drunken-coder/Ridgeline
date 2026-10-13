@@ -42,6 +42,7 @@ function addArrowImage(map: GLMap) {
 }
 export function arrowFeatures(
   features: readonly MapFeature[],
+  color?: (feature: MapFeature) => string,
 ): FeatureCollection<Point> {
   const result: Feature<Point>[] = [];
   for (const feature of features) {
@@ -54,7 +55,7 @@ export function arrowFeatures(
       id: sourceFeatureId(feature.id),
       geometry: { type: "Point", coordinates: last },
       properties: {
-        color: feature.drawing!.style.color,
+        color: color?.(feature) ?? feature.drawing!.style.color,
         bearing: segmentBearing(previous, last),
         _rl_id: sourceFeatureId(feature.id),
         _rl_feature_id: feature.id,
@@ -69,11 +70,11 @@ export function createArrowheads(map: GLMap, sourceId: string, layerId: string) 
   imageUsers.set(map, (imageUsers.get(map) ?? 0) + 1);
   let removed = false;
   return {
-    show(features: readonly MapFeature[]) {
+    show(features: readonly MapFeature[], color?: (feature: MapFeature) => string) {
       if (removed) return;
       addArrowImage(map);
       if (removed) return;
-      const data = arrowFeatures(features);
+      const data = arrowFeatures(features, color);
       const source = map.getSource(sourceId);
       if (source instanceof GeoJSONSource) source.setData(data);
       else map.addSource(sourceId, { type: "geojson", promoteId: "_rl_id", data });

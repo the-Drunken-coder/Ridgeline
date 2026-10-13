@@ -3655,14 +3655,18 @@ async function suite() {
     let accepts = 0;
     const editor = attachDrawing(draw, { createFeature: () => ({ id: 'inspector-finish', properties: {} }), submit: () => { accepts++; return { accepted: true }; } });
     const tools = document.createElement('div'), inspector = document.createElement('div');
-    inspector.id = 'case25-inspector'; container.append(tools, inspector);
+    inspector.id = 'case25-inspector';
+    // Consumer controls sit outside the clipped MapLibre viewport.
+    document.body.append(tools, inspector);
     const controls = attachDrawingControls(draw, editor, { tools, inspector });
     try {
       editor.start('line'); editor.addPoint([0, 0]); editor.addPoint([.01, 0]);
       if (!window.browserFill || !window.browserKey || !window.browserClick) throw new Error('Playwright input bridge required');
       await window.browserFill('#case25-inspector [data-field="Label"]', 'First label');
-      await window.browserKey('Tab');
-      check(document.activeElement?.getAttribute('data-field') === 'Stroke', 'Tab skipped the next inspector field');
+      for (const field of ['Segment', 'Distance (m)', 'Bearing (°)', 'Stroke']) {
+        await window.browserKey('Tab');
+        check(document.activeElement?.getAttribute('data-field') === field, `Tab skipped the ${field} inspector field`);
+      }
       await window.browserFill('#case25-inspector [data-field="Label"]', 'Final label');
       await window.browserClick('#case25-inspector [data-field="action:Finish"]');
       await until(() => Boolean(draw.getFeature('inspector-finish')), 'first Finish click accepted');
