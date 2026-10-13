@@ -14,5 +14,5 @@
     "types": ["node", "vite/client"],
     "paths": { "@ridgeline/map": ["./src/index.ts"] }
   },
-  "include": ["src", "playground", "tests", "vite*.ts"]
+  "include": ["src", "playground", "tests", "examples/starter/*.ts", "vite*.ts"]
 }

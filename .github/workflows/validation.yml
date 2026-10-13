@@ -137,6 +137,33 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
 
+  browser-support:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.9
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - run: node scripts/browser-resources.mjs packaged --preflight
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - run: pnpm test:support --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: .artifacts/support/report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-support
+          path: |
+            .artifacts/support/
+            .artifacts/playwright/
+          include-hidden-files: true
+          if-no-files-found: warn
+
   control-browser:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -246,7 +273,7 @@ jobs:
     # A skipped required job permits merging. Always evaluate the short gate,
     # including cancelled prerequisites, instead of skipping it on cancellation.
     if: always()
-    needs: [typecheck, module-tests, packaged-browser, control-browser, playground-browser, consumer-builds, browser-reports, model-measurement]
+    needs: [typecheck, module-tests, packaged-browser, browser-support, control-browser, playground-browser, consumer-builds, browser-reports, model-measurement]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

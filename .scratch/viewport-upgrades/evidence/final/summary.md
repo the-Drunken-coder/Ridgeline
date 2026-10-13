@@ -1,0 +1,13 @@
+# Local viewport upgrade verification
+
+Recorded 2026-10-11. Baseline and current HEAD are cbef055b14fe218aa24611031c4ba1a9aa0ed540. The implementation is uncommitted. Final runtime/test/config input digest is 8ccbe6759d8f309c98902d8c115fceed111215cb16150d00004a2a2621c39b66 across 192 tracked and untracked files.
+
+Implemented optional multi-selection/presentation, standard controls/coordinate helpers, precision drawing/holes/edge snapping/touch, motion/trails/follow/replay, and packed TypeScript starter recipes. Consumer storage/network/history ownership is preserved. There is no new library dependency. Library and CSS add 17,717 gzip bytes over an isolated clean baseline production build.
+
+The broad initial Chromium run passed 198 of 199 cases and stopped at an outdated inspector Tab assertion. The corrected inspector workflow passed in all three engines. After sparse motion validation was fixed, repeated checks passed 440 Node tests and five control-lab state tests. The integrated input set passed all 42 support cases, six production playground cases, five control-lab browser cases, both consumer builds and measurement tooling. Final replay label layout/narrow-journey changes passed typechecking, all nine affected cases across the three engines, and a fresh playground production build. These input sets are distinct and retained in the archive; the original pnpm validate invocation is not recorded as a success.
+
+The selected desktop and 390 px replay screenshots were visually inspected. The native keyboard journey verifies Play/Pause focus, natural endpoint focus, seek/restart/follow, narrow overflow and removal on scenario switch. Controls retain the project's dense visual language and pass the finish gate for the implemented starter. The drawings retain their approved rail/fixed inspector direction.
+
+Remaining work is the user-required static replay layout choice for playground placement, A sidebar or B timeline below the map. The library/controller and starter are usable. Physical devices, installed browsers, target GPU performance and manual screen-reader acceptance remain pending. Linux WebKit's reported Apple GPU string is not evidence of Apple hardware. The host has no /dev/dri device. No hosted checks, publication, push, commit, deployment or PR occurred.
+
+The root-owned closeout is .scratch/viewport-upgrades/closeout.md. Runtime manifests include new untracked modules. Review and execution evidence remain separate. Archive promotion verifies retained bytes and links without repeating runtime checks. Failed attempts and selected completed producers remain pinned.

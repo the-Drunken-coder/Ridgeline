@@ -2,6 +2,42 @@
 
 > The baseline measurements later in this document were recorded on 2026-09-23 for an earlier build. They do not describe current bundle sizes, throughput, or test counts. Camera terrain visibility limits are documented in the README.
 
+## Current viewport tools follow-up, 2026-10-11
+
+The final uncommitted runtime/test/config digest is `d1d09ba1353f0b2ac5d31b10f5e0f1a88cf442519cbd258a415a1048105279a3`. After the review corrections, the library and playground production builds passed. The current checkout and the clean baseline below use the same installed dependencies, Node 24.21.0, Vite 8.3.0 and Node default gzip settings. The baseline was built in an isolated Git archive. Production library measurements exclude MapLibre and source maps.
+
+| Artifact | Baseline raw bytes | Current raw bytes | Baseline gzip bytes | Current gzip bytes |
+| --- | ---: | ---: | ---: | ---: |
+| Ridgeline ESM | 282,921 | 326,567 | 79,717 | 91,834 |
+| Ridgeline CSS | 6,089 | 7,011 | 1,788 | 1,975 |
+| Net increase | | 44,568 | | 12,304 |
+
+No library dependency was added. Source data, history, clocks, interpolation, replay and retention stay in consumer applications. The checkout-only `.scratch/viewport-upgrades/closeout.md` retains file hashes and check pins. These payload measurements do not establish hardware performance or device budgets. The playground retains Vite's large-chunk warning.
+
+## Historical viewport tools snapshot after scope correction, 2026-10-11
+
+This snapshot predates the review follow-up changes. Its uncommitted input digest is `50853a463fee75ff3edc4a75d7332ba42388a588c263b0893256a7253977d46e`. It includes selection, drawing, controls and adoption upgrades; the new motion/replay controller has been removed. Compared with clean baseline `cbef055b14fe218aa24611031c4ba1a9aa0ed540`, using the same isolated baseline build, installed dependencies, Node 24.21.0, Vite 8.3.0 and Node default gzip settings:
+
+| Artifact | Baseline raw bytes | Snapshot raw bytes | Baseline gzip bytes | Snapshot gzip bytes |
+| --- | ---: | ---: | ---: | ---: |
+| Ridgeline ESM | 282,921 | 322,650 | 79,717 | 90,748 |
+| Ridgeline CSS | 6,089 | 7,011 | 1,788 | 1,975 |
+| Net increase | | 40,651 | | 11,218 |
+
+Removing motion/replay reduced the earlier upgrade build by 23,939 raw bytes and 6,499 gzip bytes. No library dependency was added. The checkout-only record at `.scratch/viewport-upgrades/closeout.md` retains bundle hashes and check pins. It is not shipped in the package. These are payload measurements; target hardware performance remains unverified.
+
+## Historical viewport tools snapshot before scope correction, 2026-10-11
+
+This historical build includes the motion/replay scope that the user subsequently withdrew. Compared the clean baseline `cbef055b14fe218aa24611031c4ba1a9aa0ed540` with that earlier uncommitted implementation. Runtime/test/config inputs have SHA-256 `8ccbe6759d8f309c98902d8c115fceed111215cb16150d00004a2a2621c39b66`. The baseline used an isolated Git archive and the same installed dependencies; both use Node 24.21.0, Vite 8.3.0 and Node's default gzip settings. Production files exclude MapLibre and source maps.
+
+| Artifact | Baseline raw bytes | Earlier raw bytes | Baseline gzip bytes | Earlier gzip bytes |
+| --- | ---: | ---: | ---: | ---: |
+| Ridgeline ESM | 282,921 | 345,319 | 79,717 | 97,027 |
+| Ridgeline CSS | 6,089 | 8,281 | 1,788 | 2,195 |
+| Net increase | | 64,590 | | 17,717 |
+
+That library entry and CSS added 17,717 gzip bytes with no new library dependency. The checkout-only record at `.scratch/viewport-upgrades/closeout.md` retains file hashes, the baseline method, production bundle data and commands. It is not shipped in the package. These payload measurements do not establish frame-rate, update-latency or device budgets. The existing large playground chunk warning remains. Physical GPU and installed-browser performance acceptance is still pending.
+
 ## Entity model bundle snapshot, 2026-10-05
 
 Measured at clean `708988d1253863412f73915a650b610518ddb9fc`, source tree `04413b0db510cc12b4794ea53f98cf331003ac53`, with Node 24.21.0, Vite 8.3.0 and Node's default gzip settings. The production library excludes MapLibre and source maps. The comparison baseline is runtime `2733cee9fe9440237a36e90d9efa2fc4239b87c3`, built at documentation revision `47750f2` with the same Node gzip command.
@@ -14,9 +50,9 @@ Measured at clean `708988d1253863412f73915a650b610518ddb9fc`, source tree `04413
 | GLB parser isolated entry | 16,355 | 5,256 |
 | Model renderer isolated entry | 25,656 | 8,653 |
 
-The isolated entries use Vite's default ES-library build. The renderer includes its projection and color helpers; reachable helpers can appear in both entry builds. Their gzip sizes are not additive parts of the package delta. Library CSS remains 6,089 raw and 1,788 gzip bytes. [Bundle data](../.scratch/entity-models/evidence/bundle-size.json) and [entry data](../.scratch/entity-models/evidence/module-size.json) retain the method and revision.
+The isolated entries use Vite's default ES-library build. The renderer includes its projection and color helpers; reachable helpers can appear in both entry builds. Their gzip sizes are not additive parts of the package delta. Library CSS remains 6,089 raw and 1,788 gzip bytes. [Bundle data](https://github.com/the-Drunken-coder/Ridgeline/blob/cbef055b14fe218aa24611031c4ba1a9aa0ed540/.scratch/entity-models/evidence/bundle-size.json) and [entry data](https://github.com/the-Drunken-coder/Ridgeline/blob/cbef055b14fe218aa24611031c4ba1a9aa0ed540/.scratch/entity-models/evidence/module-size.json) retain the method and revision.
 
-The [packaged measurement workflow](../tools/model-measurement/README.md) prepares the approved moving-model workload and retains separate frame, CPU, update and optional GPU observations. [Software smoke evidence](../.scratch/entity-models/evidence/README.md) verifies tooling and visible workloads. Apple M1 Pro, desktop discrete-GPU and target-browser measurements remain pending in #80/#91; these bundle and software observations supply no hardware performance guideline.
+The [packaged measurement workflow](https://github.com/the-Drunken-coder/Ridgeline/blob/cbef055b14fe218aa24611031c4ba1a9aa0ed540/tools/model-measurement/README.md) prepares the approved moving-model workload and retains separate frame, CPU, update and optional GPU observations. [Software smoke evidence](https://github.com/the-Drunken-coder/Ridgeline/blob/cbef055b14fe218aa24611031c4ba1a9aa0ed540/.scratch/entity-models/evidence/README.md) verifies tooling and visible workloads. Apple M1 Pro, desktop discrete-GPU and target-browser measurements remain pending in #80/#91; these bundle and software observations supply no hardware performance guideline.
 
 ## Reliability workload snapshot, 2026-09-28
 

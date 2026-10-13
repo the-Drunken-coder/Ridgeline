@@ -1,5 +1,5 @@
 import { mountDrawingDemo, drawingFeatures } from './drawing';
-import { attachInteractions, createViewport, DEFAULT_ELEVATION } from '@ridgeline/map';
+import { attachInteractions, attachMapControls, createViewport, DEFAULT_ELEVATION } from '@ridgeline/map';
 import type { MapFeature, RidgelineError } from '@ridgeline/map';
 import { setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
@@ -38,6 +38,7 @@ const measureButton = element('#measure', HTMLButtonElement);
 const pauseButton = element('#pause', HTMLButtonElement);
 const locateButton = element('#locate', HTMLButtonElement);
 const clearButton = element('#clear-selection', HTMLButtonElement);
+const groupSelection = element('#group-selection', HTMLInputElement);
 const lifetime = new AbortController();
 let drawingDemo:ReturnType<typeof mountDrawingDemo>|undefined;
 let currentScenario = 'terrain';
@@ -73,9 +74,12 @@ const viewport = createViewport<Sample>({
   container: mapContainer, terrain: true, hillshade: true,
   camera: { center: [6.88, 45.92], zoom: 12.5, pitch: 55, bearing: -20 },
   style: feature => ({ color: feature.properties.color, icon: feature.properties.icon, label: feature.properties.label, radius: feature.properties.icon ? 7 : 4,
+    selected: { color: '#b15624', radius: 9, lineWidth: 4 },
+    hover: { color: '#24664c', radius: 7 },
     modelAppearance: modelExample?.appearance(feature.id) }),
   onError: showError,
 });
+const mapControls = attachMapControls(viewport, { coordinates: { format: 'ddm' } });
 registerSampleIcons(viewport);
 viewport.map.on('render', () => { if (measuring) renderedFrames++; });
 viewport.on('entitychange', ({ ids }) => {
@@ -85,16 +89,27 @@ viewport.on('entitychange', ({ ids }) => {
 function renderSelection() {
   sidcDemo?.renderSelection();
   airborneInspector?.render();
-  const id = viewport.getSelection()[0];
+  const ids = viewport.getSelection();
+  const id = ids[0];
   const feature = id ? viewport.getFeature(id) : undefined;
   selectionName.replaceChildren();
-  if (feature) {
+  if (ids.length > 1) {
+    selectionName.textContent = `${ids.length} selected`;
+    const names = document.createElement('ul');
+    names.className = 'selected-list';
+    for (const selectedId of ids) {
+      const item = viewport.getFeature(selectedId);
+      if (!item) continue;
+      const row = document.createElement('li'); row.textContent = viewport.getName(item); names.append(row);
+    }
+    selectionName.append(names);
+  } else if (feature) {
     const icon = feature.properties.icon ? viewport.getIcon(feature.properties.icon) : undefined;
     if (icon?.url) { const image = document.createElement('img'); image.src = icon.url; image.alt = ''; selectionName.append(image); }
     selectionName.append(document.createTextNode(viewport.getName(feature)));
   } else selectionName.textContent = 'No feature selected';
-  element('#selected-id', HTMLElement).textContent = feature?.id ?? 'None';
-  element('#selected-type', HTMLElement).textContent = feature?.properties.kind ?? 'None';
+  element('#selected-id', HTMLElement).textContent = ids.length > 1 ? ids.join(', ') : feature?.id ?? 'None';
+  element('#selected-type', HTMLElement).textContent = ids.length > 1 ? 'Group' : feature?.properties.kind ?? 'None';
   locateButton.disabled = !feature; clearButton.disabled = !feature;
 }
 const offSelection = viewport.on('selectionchange', renderSelection);
@@ -108,7 +123,25 @@ function locate(feature: MapFeature<Sample>) {
     viewport.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]]);
   }
 }
+function locateSelection() {
+  const features = viewport.getSelection().flatMap(id => { const feature = viewport.getFeature(id); return feature ? [feature] : []; });
+  if (features.length === 1) { locate(features[0]!); return; }
+  let west = Infinity, east = -Infinity, south = Infinity, north = -Infinity;
+  const center = viewport.map.getCenter().lng;
+  for (const feature of features) {
+    const positions = feature.geometry.type === 'Point' ? [feature.geometry.coordinates]
+      : feature.geometry.type === 'LineString' ? feature.geometry.coordinates : feature.geometry.coordinates.flat();
+    for (const position of positions) {
+      const longitude = position[0]! + Math.round((center - position[0]!) / 360) * 360;
+      west = Math.min(west, longitude); east = Math.max(east, longitude);
+      south = Math.min(south, position[1]!); north = Math.max(north, position[1]!);
+    }
+  }
+  if (Number.isFinite(west)) viewport.fitBounds([[west, south], [east, north]]);
+}
 function createInteractions() { return attachInteractions(viewport, {
+  additiveSelection: groupSelection.checked,
+  boxSelection: groupSelection.checked,
   contextMenu: (event, close) => {
     const feature = event.features[0];
     if (!feature) return null;
@@ -133,7 +166,7 @@ function setSymbolPlacement(active: boolean) {
   // Reattach after the placement click finishes dispatching so it cannot also select.
   else queueMicrotask(() => { if (!disposed && !placingSymbol && !interactions) interactions = createInteractions(); });
 }
-viewport.on('selectionrequest', ({ ids }) => { viewport.setSelection(ids); renderSelection(); lastEvent.textContent = ids[0] ? `Selected ${viewport.getName(viewport.getFeature(ids[0])!)}` : 'Selection cleared'; });
+viewport.on('selectionrequest', ({ ids }) => { viewport.setSelection(ids); renderSelection(); lastEvent.textContent = ids.length > 1 ? `${ids.length} features selected` : ids[0] ? `Selected ${viewport.getName(viewport.getFeature(ids[0])!)}` : 'Selection cleared'; });
 viewport.on('click', event => {
   const attachment = event.attachments[0];
   if (attachment) lastEvent.textContent = `${attachment.entityId} · ${attachment.attachmentId}`;
@@ -244,12 +277,22 @@ function loadScenario() {
     });
   } else if (currentScenario !== 'empty') viewport.upsert(terrainFeatures());
   notice.hidden = currentScenario !== 'empty'; notice.textContent = 'No features. Choose a test scenario to add sample data.';
-  element('#interaction-hint', HTMLSpanElement).textContent = currentScenario === 'drawing'
-    ? 'Draw near Snap anchor · hold Alt to bypass · drag a handle to edit ground' : 'Click to select · hover for a name · right-click for actions';
+  renderHint();
   resetCamera(); lastEvent.textContent = scenario.selectedOptions[0]?.textContent ?? 'Scenario changed';
   mapStatus.textContent = 'Ready';
 }
 function listen(element: HTMLElement, type: string, action: () => void) { element.addEventListener(type, action, { signal: lifetime.signal }); }
+function renderHint() {
+  element('#interaction-hint', HTMLSpanElement).textContent = currentScenario === 'drawing'
+    ? 'Snap to vertices or edges · Alt bypasses snapping · Finish completes touch drawing'
+    : groupSelection.checked ? 'Shift-click toggles selection · Alt-drag selects a group · Alt-Shift-drag adds'
+    : 'Click to select · hover for a name · right-click for actions';
+}
+listen(groupSelection, 'change', () => {
+  interactions?.destroy(); interactions = undefined;
+  if (!placingSymbol) interactions = createInteractions();
+  renderHint();
+});
 listen(scenario, 'change', loadScenario);
 listen(terrain, 'change', () => viewport.configure({ terrain: terrain.checked }));
 listen(hillshade, 'change', () => viewport.configure({ hillshade: hillshade.checked }));
@@ -259,7 +302,7 @@ listen(pitch, 'input', () => viewport.setCamera({ pitch: Number(pitch.value) }))
 listen(element('#reset-camera', HTMLButtonElement), 'click', resetCamera);
 listen(element('#show-all', HTMLButtonElement), 'click', resetCamera);
 listen(clearButton, 'click', () => { viewport.setSelection([]); renderSelection(); });
-listen(locateButton, 'click', () => { const id = viewport.getSelection()[0]; const feature = id && viewport.getFeature(id); if (feature) locate(feature); });
+listen(locateButton, 'click', locateSelection);
 listen(element('#dismiss-error', HTMLButtonElement), 'click', () => { diagnostics.hidden = true; });
 listen(element('#retry-elevation', HTMLButtonElement), 'click', () => { viewport.configure({ elevation: DEFAULT_ELEVATION }); failingElevation = false; diagnostics.hidden = true; mapStatus.textContent = 'Retrying elevation'; });
 listen(pauseButton, 'click', () => { paused = !paused; pauseButton.textContent = paused ? 'Resume' : 'Pause'; });
@@ -292,6 +335,6 @@ listen(measureButton, 'click', () => {
 const initialScenario = new URLSearchParams(location.search).get('scenario');
 if (initialScenario && [...scenario.options].some(option => option.value === initialScenario)) scenario.value = initialScenario;
 void viewport.ready.then(loadScenario).catch(error => { notice.textContent = 'The map could not start. See the diagnostic for details.'; if (error instanceof Error) console.error(error); });
-function dispose() { offSelection(); drawingDemo?.destroy(); disposed = true; ++scenarioRevision; modelExample?.destroy(); airborneInspector?.destroy(); sidcDemo?.destroy(); interactions?.destroy(); stopMotion(); lifetime.abort(); viewport.destroy(); }
+function dispose() { if (disposed) return; disposed = true; offSelection(); drawingDemo?.destroy(); ++scenarioRevision; modelExample?.destroy(); airborneInspector?.destroy(); sidcDemo?.destroy(); interactions?.destroy(); mapControls.destroy(); stopMotion(); lifetime.abort(); viewport.destroy(); }
 window.addEventListener('pagehide', dispose, { once: true });
 if (import.meta.hot) import.meta.hot.dispose(dispose);

@@ -1,17 +1,18 @@
 # Ridgeline
 
-A framework-neutral TypeScript map viewport with an optional radial feature picker. Consumers supply data and own their application workflows. MapLibre GL JS renders the map; Mapterhorn supplies the default elevation data.
+A framework-neutral TypeScript map viewport with optional selection, drawing and map controls. Consumers supply the current display state and own their data and application workflows. MapLibre GL JS renders the map; Mapterhorn supplies the default elevation data.
 
 ## Standout features
 
 - [Radial feature picker](#interaction-and-application-ui) for overlapping features, with hover previews, keyboard navigation, and paging. Choices keep their positions while features move.
 - [Airborne entities](#airborne-entities-and-attachments) with ground-relative or sea-level altitude. Attached ground zones, airborne volumes, and sensor cameras follow the entity as it moves.
 - [Sensor camera terrain visibility](#airborne-entities-and-attachments) with camera footprints and 3D viewing volumes. Optional GPU visibility estimates which ground regions are visible or blocked by hills.
-- [Drawing and editing](#drawing-and-editing) for lines, polygons, circles, rectangles, and arrows, with vertex snapping, draft undo/redo, and live measurements. Saved shape definitions keep circles, rectangles, and arrows editable after reload.
+- [Drawing and editing](#drawing-and-editing) for lines, polygons with holes, circles, rectangles, and arrows, with touch input, vertex/edge snapping, exact segment edits, draft undo/redo, and live measurements. Saved shape definitions preserve editing after reload.
 
 ## Other map features
 
-- [GeoJSON points, lines, and polygons](#features-and-updates) with custom icons, labels, styling, and selection highlights.
+- [GeoJSON points, lines, and polygons](#features-and-updates) with configurable icons, labels, dash patterns, and selection/hover appearance.
+- [Optional multi-selection](#interaction-and-application-ui) through Shift-click and Alt-drag, plus [standard controls and coordinate helpers](#map-controls-and-coordinates).
 - [Live feature updates](#features-and-updates) batched per animation frame, with incremental additions, changes, and removals.
 - [Flat and globe projections, 3D terrain, and configurable hillshade](#maps-terrain-and-network-access). Swap basemaps or elevation providers while retaining features and selection.
 - [Custom hover content and context menus](#interaction-and-application-ui), themeable interaction UI, and direct MapLibre access for application-specific extensions.
@@ -31,7 +32,7 @@ Review each core change against this question: can another application use it wi
 
 The playground combines the approved Field desk sidebar with Map bench's in-map wheel. It starts over Chamonix with terrain and hillshade enabled. Choose overlapping features to try groups of 2, 3, 8, 10, and 20, or moving features for the 1,000-point workload.
 
-Choose **Entity models**, or open `/?scenario=models`, for pairs of drones, tanks, jets and boats sharing four licensed assets. Select or hover a sample, change its appearance, switch camera distance, replace or unload a shared model, and remove or reset samples. The [example consumer](playground/model-example.ts) owns fetching and palettes; its credits link identifies the assets and licenses.
+Choose **Entity models**, or open `/?scenario=models`, for pairs of drones, tanks, jets and boats sharing four licensed assets. Select or hover a sample, change its appearance, switch camera distance, replace or unload a shared model, and remove or reset samples. The [example consumer](https://github.com/the-Drunken-coder/Ridgeline/blob/cbef055b14fe218aa24611031c4ba1a9aa0ed540/playground/model-example.ts) owns fetching and palettes; its credits link identifies the assets and licenses.
 
 The **SIDC Kit integration** scenario demonstrates [SIDC Kit](https://github.com/the-Drunken-coder/sidc-kit) in the playground. Search its curated symbols, preview one, choose **Place on map**, and click once to add it. Escape or **Cancel** exits placement. Select a symbol to inspect its SIDC and interpreted fields; remove it or reset to the three samples. Leaving the scenario or reloading discards changes.
 
@@ -47,6 +48,7 @@ pnpm dev
 pnpm check
 pnpm test
 pnpm test:browser
+pnpm test:support
 pnpm test:playground:browser
 pnpm test:controls:browser
 pnpm validate
@@ -54,7 +56,7 @@ pnpm build:playground
 pnpm measure
 ```
 
-`pnpm test` runs the fast module and control-lab state tests. `pnpm validate` runs type checking, those tests, all three browser suites, the playground and control-lab builds, and model measurement verification. CI runs these checks in independent jobs on every pull request and push to `main`, and supports manual runs.
+`pnpm test` runs the fast module and control-lab state tests. `pnpm validate` runs type checking, those tests, the packaged consumer, support, playground and control-lab browser suites, both application builds, and model measurement verification. See [verification](#verification) for browser installation and the scope of each check.
 
 `pnpm build` produces the importable ESM library and declarations in `dist`. `pnpm build:playground` also builds the playground against those exports, without development source aliases. This package is private and has not been published to npm. Install a local tarball in another application:
 
@@ -65,9 +67,11 @@ pnpm pack --pack-destination .artifacts
 pnpm add /absolute/path/to/Ridgeline/.artifacts/ridgeline-map-0.1.0.tgz maplibre-gl@6.11.0
 ```
 
+The shipped [starter application](examples/starter/README.md) builds against that packed package. It contains plain TypeScript/Vite recipes for selection and styling, and drawing acceptance with application-owned browser storage. It restores complete drawing metadata after reload and demonstrates rejection with a retained draft and retry. See the [viewport tools guide](docs/viewport-tools.md) for the public contracts and the [support matrix](docs/support.md) for recorded browser and device evidence.
+
 ## Everyday map control lab
 
-Run `pnpm dev:controls` for the separate [control lab](control-lab/README.md). It demonstrates the everyday map controls: pan, zoom, select simulated units, and move them to a clicked destination. `pnpm test:controls` checks its state transitions; `pnpm test:controls:browser` exercises its controls with real browser input. `pnpm build:controls` checks the application build.
+Run `pnpm dev:controls` for the separate [control lab](https://github.com/the-Drunken-coder/Ridgeline/blob/cbef055b14fe218aa24611031c4ba1a9aa0ed540/control-lab/README.md). It demonstrates the everyday map controls: pan, zoom, select simulated units, and move them to a clicked destination. `pnpm test:controls` checks its state transitions; `pnpm test:controls:browser` exercises its controls with real browser input. `pnpm build:controls` checks the application build.
 
 The control lab uses simulated units and a fixed SVG street sample. It is an interaction experiment, not an integration with the Ridgeline viewport. Its React dependencies remain in its own private workspace package; the map library and existing playground are unchanged.
 
@@ -253,7 +257,7 @@ Basemap changes retain registrations and usable resources. Context loss withhold
 
 Target-browser and hardware acceptance remains pending under [the approved entity-model requirements](https://github.com/the-Drunken-coder/Ridgeline/blob/21805ecb7543098f8c9820c476725654e20b31ec/.scratch/entity-models/spec.md). No measured triangle/material guideline or too-heavy advisory is available yet. Local software WebGL checks do not establish Apple M1 Pro, desktop discrete-GPU or Safari support and performance.
 
-The [measurement workflow](tools/model-measurement/README.md) builds a separate consumer of the packed library, with 100 models and 1,000 moving icons, an icon baseline, geometry/material sweeps and paired instrumentation off/on runs. Run `pnpm test:measurement` for its report and packaged timing checks, or `pnpm measure:models --smoke` for a short software-rendered sweep. Hardware collection requires recorded machine/browser metadata; native Safari uses `pnpm measure:models --serve`. Raw frame, update, CPU and optional GPU samples remain separate. These commands prepare evidence for the pending hardware gate.
+The [measurement workflow](https://github.com/the-Drunken-coder/Ridgeline/blob/cbef055b14fe218aa24611031c4ba1a9aa0ed540/tools/model-measurement/README.md) builds a separate consumer of the packed library, with 100 models and 1,000 moving icons, an icon baseline, geometry/material sweeps and paired instrumentation off/on runs. Run `pnpm test:measurement` for its report and packaged timing checks, or `pnpm measure:models --smoke` for a short software-rendered sweep. Hardware collection requires recorded machine/browser metadata; native Safari uses `pnpm measure:models --serve`. Raw frame, update, CPU and optional GPU samples remain separate. These commands prepare evidence for the pending hardware gate.
 
 Pointer events include `attachments: { entityId, attachmentId }[]`. Visible camera faces, wireframes, and footprints can select their owning attachment. The optional interaction helper carries attachment hits into `selectionrequest`; the consumer owns selection policy.
 
@@ -345,23 +349,28 @@ Recoverable tile failures leave the rest of the map usable. The elevation-unavai
 Focused Node tests cover replacement semantics, atomic invalid batches, snapshot ownership, geometry validation, diagnostics, hillshade options, coordinates, polygon holes and numeric segments. Install the browsers once, then run the suites:
 
 ```sh
-pnpm exec playwright install chromium
+pnpm exec playwright install chromium firefox webkit
 pnpm test:browser
+pnpm test:support
 pnpm test:playground:browser
 pnpm test:controls:browser
 ```
 
 `pnpm test:browser` builds and packs the library, installs it in a fresh separate consumer, checks its declarations, builds that consumer, then runs independent Playwright cases in headless Chromium with software WebGL. The consumer imports package exports and styles without a source alias and uses local map resources. Each case starts with a fresh page, and failures keep a screenshot and trace in `.artifacts/playwright/`. Package setup and failing cases return a nonzero exit status. Use `pnpm test:browser -- --grep 'Picker'` to run matching cases after the same package preparation.
 
+`pnpm test:support` runs targeted packed-package workflows in Chromium, Firefox and WebKit, including the starter recipes and input/accessibility checks. The [support matrix](docs/support.md) records actual results, commands and remaining device checks. The command's existence does not certify an engine or physical hardware.
+
+Both packaged browser commands require the generated consumer build, a separate fresh install and production build of the starter with its own unchanged configuration, and final package file-inventory and Markdown file/heading-link validation. Failure of any stage fails the command before browser execution.
+
 `pnpm test:controls:browser` builds and previews the separate control lab and uses real mouse, keyboard, and wheel input. Its failure artifacts are in `control-lab/test-results/`. Run one case with `pnpm exec playwright test -c control-lab/playwright.config.ts -g 'dragging an armed map'`.
 
 `pnpm test:playground:browser` builds and previews the real playground against package exports. It verifies applied drawing selection, accepted drawings, clearing, and scenario changes with real input and deterministic map resources. Its failure screenshots and traces are in `.artifacts/playground-tests/`.
 
-`pnpm validate` runs all three browser suites with type checking, module tests, affected consumer builds, and `pnpm test:measurement` once. CI distributes the packaged browser suite across four runners, each installing and building its own packed consumer, with one browser worker per runner. See [CI and nightly validation](docs/ci-validation.md) for required jobs, disk preflight, generated-output retention, reports, stress runs, and enforcement. Dependency and browser installation require network access on a fresh machine. Playwright is a development dependency only. Desktop Chromium with software WebGL does not establish Firefox, WebKit, touch behavior, complete accessibility, hardware GPU coverage, or long-session memory guarantees.
+`pnpm validate` runs these browser suites with type checking, module tests, affected consumer builds, and `pnpm test:measurement` once. CI distributes the packaged browser suite across four runners, each installing and building its own packed consumer, with one browser worker per runner. See [CI and nightly validation](https://github.com/the-Drunken-coder/Ridgeline/blob/cbef055b14fe218aa24611031c4ba1a9aa0ed540/docs/ci-validation.md) for required jobs, disk preflight, generated-output retention, reports, stress runs, and enforcement. Dependency and browser installation require network access on a fresh machine. Playwright is a development dependency only. Software-rendered and synthetic-touch checks do not establish physical touch-device behavior, native Safari, complete accessibility, hardware GPU coverage, or long-session memory guarantees.
 
 Add `--headed` to the targeted browser command to watch the case run. See [measured results](docs/performance.md) for bundle size, workload observations, and validation limits.
 
-The [consumer journey audit](docs/consumer-testing-audit.md) records the testing gaps reviewed for parallel CI. The [reliability regression inventory](docs/reliability-validation.md) maps the consumer audit to tests retained across the terrain and drawing integrations.
+The [consumer journey audit](https://github.com/the-Drunken-coder/Ridgeline/blob/cbef055b14fe218aa24611031c4ba1a9aa0ed540/docs/consumer-testing-audit.md) records the testing gaps reviewed for parallel CI. The [reliability regression inventory](https://github.com/the-Drunken-coder/Ridgeline/blob/cbef055b14fe218aa24611031c4ba1a9aa0ed540/docs/reliability-validation.md) maps the consumer audit to tests retained across the terrain and drawing integrations.
 
 ## Drawing and editing
 
@@ -426,3 +435,6 @@ Distances and areas use a spherical Earth radius of 6,371,008.8 m, independent o
 `createDrawingSession` supports the same preview without a map. Call `setCursor(position)` to preview the next placement, `getPreview()` to read its shape, or `setCursor(undefined)` to clear it. Both session and attached editor expose `getMeasurements()` and `onPreview()`: live measurements include the pointer preview, while `getState().measurements` excludes it. `onPreview()` fires for cursor movement and draft changes; `onChange()` reports draft state, history, and submission status.
 
 `viewport.acquireInteraction(owner)` reserves feature clicks, hover, context menus, and selection requests while leaving camera navigation available. It returns an idempotent release function. `interactionchange` lets other tools close their UI; `selectionchange` reports consumer-applied selection. Only one drawing adapter may attach to a viewport. Forwarding wrappers around a Ridgeline viewport are supported when they expose the same MapLibre map; they share that attachment limit. Integrations that listen directly to MapLibre events must honor `getInteractionOwner()`; the separate control lab does not run in the playground.
+
+
+During drawing, unrelated live data updates and programmatic camera frames invalidate pending screen targeting while preserving the active mouse or touch gesture. Pointer cancellation, capture loss, blur, multiple contacts, scene/style/context loss, or lost permission retires that gesture. Applied movement remains one draft undo action.

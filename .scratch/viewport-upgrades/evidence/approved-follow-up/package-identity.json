@@ -1,0 +1,26 @@
+{
+  "finalArchiveSha256": "92b28abe835e82e546707f84e9edc728af241ade1826b246854ce464383c4f21",
+  "runtimeDeclarationEquality": "Final documentation archive equals current build and installed exercised consumer for all retained checks",
+  "files": [
+    {
+      "path": "dist/ridgeline.js",
+      "sha256": "684a6847304698390a8db67f9fd331d307411ba632bc6d0bb6f2ed000a828cd9",
+      "bytes": 328544
+    },
+    {
+      "path": "dist/ridgeline.css",
+      "sha256": "479277d7f8d630287c9a95f0b824f149afcb0a6f756c9309fceeb307c5beddcd",
+      "bytes": 7011
+    },
+    {
+      "path": "dist/types.d.ts",
+      "sha256": "d2c1680d67e7c27351f2e7897e565dab90a16723f641e236dec11d82e36a4131",
+      "bytes": 10425
+    },
+    {
+      "path": "dist/index.d.ts",
+      "sha256": "da82ee58e95d838155fcc6e09084989b2a35e66060db19580fa0f416b194db9b",
+      "bytes": 1330
+    }
+  ]
+}
