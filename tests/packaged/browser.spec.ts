@@ -64,6 +64,11 @@ function registerCase(name: string) {
       else if (action === 'up') await page.mouse.up();
       else if (action === 'click') await page.mouse.click(x, y);
     });
+    await page.exposeFunction('browserReleaseMouseElsewhere', async () => {
+      const other = await page.context().newPage();
+      try { await other.goto('about:blank'); await other.mouse.up(); }
+      finally { await other.close(); await page.bringToFront(); }
+    });
     await page.exposeFunction('browserDrag', async (fromX: number, fromY: number, toX: number, toY: number, button: 'left' | 'right' = 'left') => {
       await page.mouse.move(fromX, fromY);
       await page.mouse.down({ button });

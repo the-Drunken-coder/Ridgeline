@@ -29,6 +29,7 @@ declare global {
     browserClick?: (selector: string) => Promise<void>;
     cleanupBrowserCase?: () => void;
     browserMouse?: (action: 'down' | 'move' | 'up' | 'click', x: number, y: number) => Promise<void>;
+    browserReleaseMouseElsewhere?: () => Promise<void>;
     browserFill?: (selector: string, value: string) => Promise<void>;
     drawingDirectionObservation?: { image: string; wings: number[]; handle: string | null };
     browserCaptureMap?: () => Promise<string>;
