@@ -1,6 +1,8 @@
 import type { FeatureCollection, MultiLineString, MultiPolygon, Polygon, Position } from 'geojson';
 import type { GeoJSONSource, Map as GLMap } from 'maplibre-gl';
 import type { Primitive } from './entity-layer';
+import { rectangleBounds } from './screen-rectangle';
+import type { ScreenRectangle } from './screen-rectangle';
 
 const SOURCE = 'rl:entity-ground';
 const FILL = 'rl:entity-ground-fill';
@@ -83,14 +85,14 @@ export class EntityGround {
   }
 
   pick(x: number, y: number, tolerance: number) {
+    return this.query({ minX: x - tolerance, minY: y - tolerance, maxX: x + tolerance, maxY: y + tolerance });
+  }
+  query(rectangle: ScreenRectangle) {
     const layers = [FILL, LINE].filter((id) => this.map.getLayer(id));
     if (!layers.length) return [];
     return this.map
       .queryRenderedFeatures(
-        [
-          [x - tolerance, y - tolerance],
-          [x + tolerance, y + tolerance],
-        ],
+        rectangleBounds(rectangle),
         { layers },
       )
       .flatMap(({ properties }) =>

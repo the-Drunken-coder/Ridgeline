@@ -9,6 +9,8 @@ import { TERRAIN_CELLS, terrainCoordinates, cameraRangeBounds } from './gpu-came
 import type { CameraTerrain } from './gpu-camera-terrain';
 import { SENSOR_SIZE, COVERAGE_SIZE, DISPLAY_SIZE, depthVertex, depthFragment, coverageVertex, coverageFragment, voteVertex, voteFragment, boundaryFragment, smoothRegionFragment, regionStyleFragment } from './gpu-camera-shaders';
 import { parseColor } from './color';
+import { clipToRectangle } from './screen-rectangle';
+import type { ScreenRectangle } from './screen-rectangle';
 
 export type GpuCamera = {
   entityId: string;
@@ -395,6 +397,35 @@ export class GpuCameras implements CustomLayerInterface {
       const py = Math.floor(((point.y-terrain.centre.y)/terrain.scale/terrain.half+1)*.5*DISPLAY_SIZE);
       return px>=0 && py>=0 && px<DISPLAY_SIZE && py<DISPLAY_SIZE && item.image.data[(py*DISPLAY_SIZE+px)*4+3]!>0
         ? [{entityId:published.entityId,attachmentId:published.camera.id}] : [];
+    });
+  }
+  query(rectangle: ScreenRectangle) {
+    const longitude = this.map.getCenter().lng;
+    return [...this.cameras.values()].flatMap(item => {
+      const published = item.published, terrain = published?.terrain;
+      if (!published || !terrain || !this.map.getLayer(item.source)) return [];
+      const project = (x: number, y: number) => {
+        const location = new MercatorCoordinate(terrain.centre.x + (x / DISPLAY_SIZE * 2 - 1) * terrain.half * terrain.scale,
+          terrain.centre.y + (y / DISPLAY_SIZE * 2 - 1) * terrain.half * terrain.scale).toLngLat();
+        location.lng += Math.round((longitude - location.lng) / 360) * 360;
+        const point = this.map.project(location);
+        return { x: point.x, y: point.y, depth: 0 };
+      };
+      // Test every opaque texel through contiguous row spans. This preserves thin mask regions,
+      // while approximating terrain draping by each span's projected corners.
+      for (let y = 0; y < DISPLAY_SIZE; y++) {
+        let start = -1;
+        for (let x = 0; x <= DISPLAY_SIZE; x++) {
+          const visible = x < DISPLAY_SIZE && item.image.data[(y * DISPLAY_SIZE + x) * 4 + 3]! > 0;
+          if (visible && start < 0) start = x;
+          if (!visible && start >= 0) {
+            const polygon = [project(start, y), project(x, y), project(x, y + 1), project(start, y + 1)];
+            if (clipToRectangle(polygon, rectangle).length) return [{ entityId: published.entityId, attachmentId: published.camera.id }];
+            start = -1;
+          }
+        }
+      }
+      return [];
     });
   }
   private saveState() {

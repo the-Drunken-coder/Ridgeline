@@ -121,6 +121,7 @@ Give the container an explicit height and `position: relative`. This is a browse
 | `retryUpdates()` | Retry failed incremental changes once using the latest stored data, including pending removals. |
 | `refreshStyles(ids?)` | Re-evaluate appearance from current stored features, for all IDs or a supplied subset, without replacing data or emitting `datachange`. Unknown IDs are ignored. |
 | `getFeature(id)` / `getFeatures()` | Return snapshots, not mutable internal objects. |
+| `queryFeatures([{ x, y }, { x, y }])` | Return `{ features, attachments }` intersecting a rectangle in canvas CSS pixels, using displayed representations. |
 | `setSelection(ids)` | Show the application's chosen IDs. Unknown IDs are ignored. |
 | `setCamera(camera, { duration })` | Move immediately unless an animation duration is explicitly supplied. |
 | `fitBounds(bounds, { duration, padding })` | Frame coordinates, with 48 px padding by default. |
@@ -129,7 +130,7 @@ Give the container an explicit height and `position: relative`. This is a browse
 | `reportCallbackError(cause, operation, featureId?)` | Send an attached UI callback failure through the viewport's diagnostic and logger channels. |
 | `destroy()` | Release the map, workers owned by that map, listeners, animation frame, observer, and attached UI. Safe before readiness or repeatedly. |
 
-Updates are accumulated by ID and submitted once per animation frame using MapLibre's incremental GeoJSON API. Moving a feature never moves the camera. The library snapshots data, so properties must be structured-cloneable. Name and style callbacks receive detached snapshots; mutating their arguments cannot alter accepted data. Replacing an ID also replaces its name and styling inputs. Use immutable IDs separate from display names.
+Updates are accumulated by ID and submitted once per animation frame using MapLibre's incremental GeoJSON API. Feature updates leave the camera unchanged. Applications choose when to update positions and move the camera. The library snapshots data, so properties must be structured-cloneable. Name and style callbacks receive detached snapshots; mutating their arguments cannot alter accepted data. Replacing an ID also replaces its name and styling inputs. Use immutable IDs separate from display names.
 
 Only one renderer submission runs at a time; updates arriving during it are coalesced for the next frame. A throwing style callback leaves that feature's last rendered version visible and reports `UPDATE_FAILED` with its `featureId`. Other features and removals in the batch still proceed. Renderer rejections and source error events retain the submitted IDs for recovery. No failed update retries automatically. Fix the callback or renderer problem, then call `retryUpdates()`, or replace the affected feature with `upsert()`. Retries use current data and cannot overwrite a newer queued change. A basemap rebuild restores features whose styling succeeds and retains failed IDs for retry. Store reads reflect accepted data immediately, so failed features may differ from the display until recovery succeeds.
 
@@ -260,9 +261,14 @@ An optional `elevationSampler` supplies raw unexaggerated meters through `sample
 
 ## Interaction and application UI
 
+Optional Shift clicks survive unrelated feature/entity updates and choose the current displayed target at release. Camera, scene, focus or interaction-ownership loss cancels a held Shift press.
+
+
 Core events are `click`, `hover`, `contextmenu`, `selectionrequest`, `datachange`, `entitychange`, `camerachange`, `diagnostic`, and `destroy`. Pointer interactions include original consumer features in topmost-first order, screen coordinates, geographic coordinates, and the original mouse event. Click picking includes features within 12 CSS pixels. Hover reports changes to the top feature. The core never changes application selection on its own.
 
 `attachInteractions(viewport, options)` is optional. It adds name/icon hover UI and an eight-per-page radial picker. Arrow keys move between candidates; Enter selects; Escape closes. Hovering previews without selecting. Candidate slots stay fixed while features move; removed choices become disabled. Closing the picker, clicking outside it, or moving the map preserves selection. Set `hover: false` or `picker: false` to disable either behavior; without the picker, a click requests the top candidate.
+
+`additiveSelection: true` enables Shift-click toggling. `boxSelection: true` enables Alt-left-drag to request a replacement selection, or Alt+Shift-left-drag to add to it. Both default to `false`; ordinary Shift-drag keeps MapLibre box zoom. Consumers still handle `selectionrequest` and apply their own policy with `setSelection`. Rectangle selection resolves current displayed features when the drag ends, so moving entities stay selectable. Camera, style, resize, renderer loss or interaction-ownership changes cancel it without changing accepted selection.
 
 The interaction helper also shows a screen-space grab cursor over empty map areas, a grabbing cursor while dragging, and a pointer over selectable features. `visualFeedback` defaults to `true`; set it to `false` to use your own cursor presentation without changing hover events, selection requests, or picker behavior. Drawing takes cursor priority while it owns interaction.
 
@@ -274,7 +280,7 @@ If a feature's style callback throws while its picker is open, the choice remain
 
 Use `renderFeature(feature)` to supply custom name/icon markup. Use `contextMenu(interaction, close)` to supply application actions. Either hook can return an element or `{ element, dispose }`, for framework mounting and cleanup. The context hook may return `null`. Calling its `close` synchronously keeps that operation closed. Content returned after closure, replacement, or destruction is disposed once without mounting or taking focus. Display names use text content by default. The playground demonstrates a consumer-owned right-click menu.
 
-Override `--rl-surface`, `--rl-text`, `--rl-border`, `--rl-active`, and `--rl-muted` on `.rl-ui` to match your application. Native buttons retain keyboard operation. Current validation is for desktop; touch interaction and a complete accessibility audit remain future work.
+Override `--rl-surface`, `--rl-text`, `--rl-border`, `--rl-active`, and `--rl-muted` on `.rl-ui` to match your application. Native buttons retain keyboard operation. Physical-device acceptance and a complete accessibility audit remain pending.
 
 `viewport.map` exposes MapLibre for advanced integrations. The `rl:` source/layer/image namespace is reserved. Ridgeline encodes feature IDs inside its MapLibre sources; treat rendered source IDs as internal and use `_rl_feature_id` or viewport events for the original consumer ID. Use `configure` for basemap changes so Ridgeline can restore its features and selection. Consumers own the restoration of their own MapLibre additions after a style change.
 
