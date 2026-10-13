@@ -746,9 +746,13 @@ export function attachDrawing<P extends Properties>(
       }
   }
   function render() {
-    stateRevision++;
+    const revision = ++stateRevision;
     const next = Boolean(session.getState().draft);
+    if (disposed || revision !== stateRevision) return;
     if (!next || !editable()) onGestureLoss();
+    // Settling a gesture notifies consumer observers synchronously. They can
+    // replace this attachment or cause a newer render to own the draft.
+    if (disposed || revision !== stateRevision) return;
     if (next && !active) {
       restoreDoubleClick = map.doubleClickZoom.isEnabled();
       map.doubleClickZoom.disable();

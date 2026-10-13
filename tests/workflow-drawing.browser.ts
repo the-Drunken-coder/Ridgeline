@@ -484,13 +484,15 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
     const editor = attachDrawing(viewport, { createFeature: () => ({ id: 'line', properties: {} }), submit: () => ({ accepted: true }) });
     try {
       await viewport.ready; editor.start('line'); editor.addPoint([-.003, 0]); editor.addPoint([.003, 0]); editor.setSnapping(false);
-      check(window.browserMouse && window.browserClick, 'Native mouse bridge unavailable');
+      check(window.browserMouse && window.browserClick && window.browserReleaseMouseElsewhere, 'Native mouse bridge unavailable');
       const button = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]'); check(button, 'Mouse handle absent');
       const box = button.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2;
       const trace: string[] = [];
       for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, () => trace.push(type));
       editor.onChange(() => trace.push(JSON.stringify(editor.getState().draft!.shape)));
       const original = JSON.stringify(editor.getState().draft!.shape);
+      let releases = 0;
+      viewport.map.on('mouseup', () => { releases++; });
       await window.browserMouse('down', x, y); await window.browserMouse('move', x + 20, y + 10);
       const partial = JSON.stringify(editor.getState().draft!.shape); check(partial !== original, 'Mouse drag never began');
       viewport.upsert([{ type: 'Feature', id: 'live', properties: {}, geometry: { type: 'Point', coordinates: [.01, .01] } }]);
@@ -501,10 +503,20 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
       window.dispatchEvent(new Event('blur'));
       const recoveredHandle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]');
       check(recoveredHandle && getComputedStyle(recoveredHandle).pointerEvents !== 'none', 'Retired native marker stayed unclickable until mouseup');
-      await window.browserMouse('move', x + 70, y + 30); await window.browserMouse('up', x + 70, y + 30);
+      await window.browserMouse('move', x + 70, y + 30);
+      await window.browserReleaseMouseElsewhere();
+      check(releases === 0, 'Lost-release fixture delivered a mouseup to the old map');
       check(JSON.stringify(editor.getState().draft!.shape) === live, 'Blur failed to retire the mouse gesture');
       editor.undo(); check(JSON.stringify(editor.getState().draft!.shape) === original, 'Mouse interruption split draft history');
       editor.redo(); check(JSON.stringify(editor.getState().draft!.shape) === live, 'Mouse interruption redo lost the partial draft');
+      const nextHandle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]'); check(nextHandle, 'Recovery handle absent');
+      const nextBox = nextHandle.getBoundingClientRect(), nextX = nextBox.left + nextBox.width / 2, nextY = nextBox.top + nextBox.height / 2;
+      await window.browserMouse('down', nextX, nextY); await window.browserMouse('move', nextX + 30, nextY + 15);
+      await window.browserMouse('up', nextX + 30, nextY + 15);
+      const recovered = JSON.stringify(editor.getState().draft!.shape);
+      check(recovered !== live, 'Next native handle drag failed after losing the old release');
+      editor.undo(); check(JSON.stringify(editor.getState().draft!.shape) === live, 'Recovery drag did not keep its own atomic history');
+      editor.redo(); check(JSON.stringify(editor.getState().draft!.shape) === recovered, 'Recovery drag redo failed');
     } finally { editor.destroy(); viewport.destroy(); }
   } },
 
@@ -538,7 +550,7 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
   { name: 'Drawing upgrades snapping uses retained displayed geometry after rejected updates', async run({ container, setCurrent, until }) {
     let fail = false; const diagnostics: string[] = [];
     const line: MapFeature = { type: 'Feature', id: 'edge', properties: {}, geometry: { type: 'LineString', coordinates: [[-.01, 0], [.01, 0]] } };
-    const viewport = createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 15 }, features: [line], logger: () => {},
+    const viewport = createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 13 }, features: [line], logger: () => {},
       style: feature => { if (fail && feature.id === 'edge') throw new Error('Retain the drawn edge'); return {}; }, onError: error => diagnostics.push(error.code) });
     setCurrent(viewport);
     const editor = attachDrawing(viewport, { createFeature: () => ({ id: 'draft', properties: {} }), submit: () => ({ accepted: true }), snapping: { edges: true, vertices: false } });
@@ -550,11 +562,48 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
       const retained = viewport.map.querySourceFeatures('rl:features').find(feature => feature.properties._rl_feature_id === 'edge');
       check(retained?.geometry.type === 'LineString' && retained.geometry.coordinates[0]?.[1] === 0, 'Renderer did not retain the old drawn edge');
       editor.start('line'); editor.addPoint([-.004, .004]);
-      const target = viewport.map.project([0, 0]), box = viewport.map.getCanvas().getBoundingClientRect();
+      // Correct snap, obsolete snap and no snap must land at distinct positions.
+      const target = viewport.map.project([0, .0002]), box = viewport.map.getCanvas().getBoundingClientRect();
       check(window.browserMouse, 'Native snap mouse bridge unavailable'); await window.browserMouse('click', box.left + target.x, box.top + target.y);
       await until(() => editor.getState().draft?.placed === 2, 'snapped point placement');
       const shape = editor.getState().draft!.shape; check(shape.kind === 'line' && Math.abs(shape.vertices[1]![1]) < 1e-8, 'Snapping used an undisplayed accepted edge');
       const accepted = viewport.getFeature('edge'); check(accepted?.geometry.type === 'LineString' && accepted.geometry.coordinates[0]?.[1] === .0005, 'Displayed-target snapping overwrote authoritative data');
     } finally { editor.destroy(); viewport.destroy(); }
+  } },
+  { name: 'Drawing upgrades permission interruption preserves a reentrant replacement editor', async run({ container, setCurrent, until }) {
+    const accepted: MapFeature = { type: 'Feature', id: 'accepted', properties: {}, geometry: { type: 'LineString', coordinates: [[-.003, .002], [.003, .002]] } };
+    const viewport = createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 15 }, features: [accepted], logger: () => {} }); setCurrent(viewport);
+    let allowed = true, armed = false;
+    const editor = attachDrawing(viewport, { createFeature: () => ({ id: 'draft', properties: {} }), submit: () => ({ accepted: true }), canEdit: () => allowed });
+    let replacement: ReturnType<typeof attachDrawing> | undefined;
+    const query = () => viewport.queryFeatures([{ x: 0, y: 0 }, { x: container.clientWidth, y: container.clientHeight }]).features.map(feature => feature.id);
+    try {
+      await viewport.ready; await until(() => query().includes('accepted'), 'accepted line drawn before replacement');
+      editor.start('line'); editor.addPoint([-.003, 0]); editor.addPoint([.003, 0]); editor.setSnapping(false);
+      editor.onChange(() => {
+        if (!armed || editor.getState().phase !== 'forbidden') return;
+        armed = false; editor.destroy();
+        replacement = attachDrawing(viewport, { createFeature: () => ({ id: 'replacement', properties: {} }), submit: () => ({ accepted: true }) });
+        replacement.edit('accepted');
+        check(!query().includes('accepted'), 'Replacement did not hide its accepted feature');
+      });
+      const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]'); check(handle && window.browserMouse, 'Native replacement probe handle unavailable');
+      const bounds = handle.getBoundingClientRect(), x = bounds.left + bounds.width / 2, y = bounds.top + bounds.height / 2;
+      const before = JSON.stringify(editor.getState().draft!.shape);
+      await window.browserMouse('down', x, y); await window.browserMouse('move', x + 25, y + 10);
+      check(JSON.stringify(editor.getState().draft!.shape) !== before, 'Reentrant replacement fixture never began a native drag');
+      armed = true; allowed = false; editor.refreshPermissions();
+      check(replacement?.getState().phase === 'editing' && replacement.getState().draft?.before?.id === 'accepted' && viewport.getInteractionOwner() === 'drawing', 'Replacement failed to acquire drawing ownership');
+      check(!query().includes('accepted'), 'Retired outer render cleared replacement editing ownership');
+      await window.browserMouse('up', x + 25, y + 10);
+      check(!query().includes('accepted'), 'Old mouse release cleared replacement editing ownership');
+      replacement.setSnapping(false);
+      const next = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]'); check(next, 'Replacement handle unavailable');
+      const box = next.getBoundingClientRect(), nextX = box.left + box.width / 2, nextY = box.top + box.height / 2;
+      const original = JSON.stringify(replacement.getState().draft!.shape);
+      await window.browserMouse('down', nextX, nextY); await window.browserMouse('move', nextX + 30, nextY + 15); await window.browserMouse('up', nextX + 30, nextY + 15);
+      check(JSON.stringify(replacement.getState().draft!.shape) !== original, 'Replacement could not edit after the old callback returned');
+      replacement.undo(); check(JSON.stringify(replacement.getState().draft!.shape) === original, 'Replacement drag lost atomic undo');
+    } finally { replacement?.destroy(); editor.destroy(); viewport.destroy(); }
   } },
 ];
