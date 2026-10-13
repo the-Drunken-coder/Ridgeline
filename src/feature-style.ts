@@ -14,6 +14,13 @@ function color(value: string | undefined, name: string) {
 function anchor(value: SymbolAnchor | undefined) {
   if (value !== undefined && !anchors.includes(value)) throw new Error('Unsupported symbol anchor.');
 }
+function arraySnapshot(value: unknown, minimum: number, maximum: number, name: string): unknown[] {
+  if (!Array.isArray(value)) throw new Error(`${name} must be an array.`);
+  const length = value.length;
+  if (!Number.isInteger(length) || length < minimum || length > maximum) throw new Error(`${name} has an invalid length.`);
+  // Bound allocation before reading indexed getters; do not invoke custom iterators.
+  return Array.from({ length }, (_, index): unknown => value[index]);
+}
 function highlight(value: FeatureHighlight | undefined) {
   if (value === undefined) return undefined;
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Highlight appearance must be an object.');
@@ -29,22 +36,31 @@ function label(value: LabelStyle | undefined) {
   if (value === undefined) return undefined;
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Label appearance must be an object.');
   value = { ...value };
-  if (Array.isArray(value.font)) value.font = Array.from(value.font);
-  if (Array.isArray(value.offset)) value.offset = [value.offset[0], value.offset[1]];
+  if (value.font !== undefined) {
+    const font = arraySnapshot(value.font, 1, 16, 'Label fonts');
+    if (!font.every((item): item is string => typeof item === 'string' && Boolean(item.trim()))) throw new Error('Label fonts need nonempty names.');
+    value.font = font;
+  }
+  if (value.offset !== undefined) {
+    const [x, y] = arraySnapshot(value.offset, 2, 2, 'Label offset');
+    if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) throw new Error('Label offset needs two finite numbers.');
+    value.offset = [x, y];
+  }
   number(value.size, 'Label size', 0, Infinity, true); number(value.haloWidth, 'Label halo width');
   color(value.color, 'Label color'); color(value.haloColor, 'Label halo color'); anchor(value.anchor);
-  if (value.font !== undefined && (!Array.isArray(value.font) || !value.font.length || value.font.length > 16 || Array.from(value.font).some(font => typeof font !== 'string' || !font.trim())))
-    throw new Error('Label fonts need 1 to 16 nonempty names.');
-  if (value.offset !== undefined && (!Array.isArray(value.offset) || value.offset.length !== 2 || Array.from(value.offset).some(part => typeof part !== 'number' || !Number.isFinite(part))))
-    throw new Error('Label offset needs two finite numbers.');
-  return { ...value, ...(value.font ? { font: [...value.font] } : {}), ...(value.offset ? { offset: [value.offset[0], value.offset[1]] as [number, number] } : {}) };
+  return value;
 }
 
 /** Snapshot callback output before it can reach renderer-owned state. */
 export function featureStyle(style: FeatureStyle): FeatureStyle {
   if (!style || typeof style !== 'object' || Array.isArray(style)) throw new Error('Feature style must be an object.');
   style = { ...style };
-  if (Array.isArray(style.dashArray)) style.dashArray = Array.from(style.dashArray);
+  if (style.dashArray !== undefined) {
+    const dash = arraySnapshot(style.dashArray, 1, 32, 'Dash array');
+    if (!dash.every((item): item is number => typeof item === 'number' && Number.isFinite(item) && item >= 0) || !dash.some(item => item > 0))
+      throw new Error('Dash arrays need nonnegative finite lengths, including a positive length.');
+    style.dashArray = dash;
+  }
   for (const key of ['color', 'fillColor'] as const) color(style[key], key);
   for (const key of ['radius', 'lineWidth'] as const) number(style[key], key);
   number(style.fillOpacity, 'Fill opacity', 0, 1); number(style.iconSize, 'Icon size', 0, Infinity, true);
@@ -53,9 +69,6 @@ export function featureStyle(style: FeatureStyle): FeatureStyle {
   anchor(style.iconAnchor);
   for (const key of ['icon', 'label'] as const) if (style[key] !== undefined && typeof style[key] !== 'string') throw new Error(`${key} must be a string.`);
   if (style.dashed !== undefined && typeof style.dashed !== 'boolean') throw new Error('Dashed must be a boolean.');
-  if (style.dashArray !== undefined && (!Array.isArray(style.dashArray) || !style.dashArray.length || style.dashArray.length > 32 ||
-    Array.from(style.dashArray).some(value => typeof value !== 'number' || !Number.isFinite(value) || value < 0) || !style.dashArray.some(value => value > 0)))
-    throw new Error('Dash arrays need 1 to 32 nonnegative finite lengths, including a positive length.');
   return { ...style, modelAppearance: modelAppearance(style.modelAppearance), labelStyle: label(style.labelStyle),
     selected: highlight(style.selected), hover: highlight(style.hover), ...(style.dashArray ? { dashArray: [...style.dashArray] } : {}) };
 }
