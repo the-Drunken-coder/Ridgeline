@@ -17,6 +17,7 @@ export type ModelDrawInstance = {
   anchor: [number, number, number, number];
   appearance?: ModelAppearance;
   feedback?: ModelFeedback;
+  brightness?: number;
 };
 export type ModelDraw = { asset: RegisteredModel<ModelGpu>; origin: [number, number]; instances: ModelDrawInstance[] };
 export type PreparedModelFrame = { draw(): void };
@@ -158,7 +159,7 @@ export class ModelRenderer {
         const [red, green, blue] = color.rgb;
         values.push(...instance.basis[0], ...instance.basis[1], ...instance.basis[2], ...instance.anchor,
           linear(red), linear(green), linear(blue), appearance?.mode === 'original' ? 1 : 0,
-          instance.feedback === 'selected' ? .18 : instance.feedback === 'hover' ? .08 : 0);
+          instance.brightness ?? (instance.feedback === 'selected' ? .18 : instance.feedback === 'hover' ? .08 : 0));
       }
       groups.set(draw.asset, values);
       return { ...draw, offset, count: draw.instances.length };

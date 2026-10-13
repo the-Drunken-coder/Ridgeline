@@ -3655,7 +3655,9 @@ async function suite() {
     let accepts = 0;
     const editor = attachDrawing(draw, { createFeature: () => ({ id: 'inspector-finish', properties: {} }), submit: () => { accepts++; return { accepted: true }; } });
     const tools = document.createElement('div'), inspector = document.createElement('div');
-    inspector.id = 'case25-inspector'; container.append(tools, inspector);
+    inspector.id = 'case25-inspector';
+    // Consumer controls sit outside the clipped MapLibre viewport.
+    document.body.append(tools, inspector);
     const controls = attachDrawingControls(draw, editor, { tools, inspector });
     try {
       editor.start('line'); editor.addPoint([0, 0]); editor.addPoint([.01, 0]);

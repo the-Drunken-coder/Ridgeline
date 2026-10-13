@@ -186,7 +186,8 @@ export const modelPresentationCases: readonly { name: string; run(context: Conte
       clicked = []; await window.drawingPointer('click', ...point);
       check(clicked.length === 0, 'Opacity-zero stale native label remained a public hit');
       currentSource.updateData = apply; for (const release of heldLayouts) await release(); await idle(viewport); unclick();
-      check(JSON.stringify(viewport.map.getLayoutProperty('rl:labels', 'text-font')) === JSON.stringify(['Noto Sans Regular']), 'Model labels changed the existing font contract');
+      check(viewport.map.querySourceFeatures('rl:features').every(hit => JSON.stringify(hit.properties?._rl_label_font) === JSON.stringify(['Noto Sans Regular'])),
+        'Model labels changed the default font contract');
     } finally { viewport.destroy(); }
   } },
   { name: 'Model enlargement preserves physical attachments and quiet presentation', async run(context) {

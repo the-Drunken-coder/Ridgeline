@@ -1,6 +1,7 @@
 import type { CustomLayerInterface, Map as GLMap } from 'maplibre-gl';
 import { modelPresentationGeometry } from './model-presentation';
 import type { ModelPresentation } from './model-presentation';
+import { Color } from '@maplibre/maplibre-gl-style-spec';
 
 /** Readable, static decoration over physical geometry; the scene owns all repaint scheduling. */
 export class ModelFeedbackLayer implements CustomLayerInterface {
@@ -36,19 +37,19 @@ export class ModelFeedbackLayer implements CustomLayerInterface {
       if (!this.program || !this.buffer || !this.vao) throw new Error('Cannot allocate model feedback resources.');
       const vertex = `#version 300 es
 precision highp float;
-layout(location=0) in vec4 a_ring; uniform vec2 u_size;
-out vec2 v_point; flat out float v_radius; flat out float v_selected;
+layout(location=0) in vec4 a_ring; layout(location=1) in vec4 a_color; uniform vec2 u_size;
+out vec2 v_point; flat out float v_radius; flat out float v_width; flat out vec4 v_color;
 void main(){vec2 corner=vec2(float(gl_VertexID&1),float((gl_VertexID>>1)&1))*2.-1.;
-v_point=corner*(a_ring.z+5.);v_radius=a_ring.z;v_selected=a_ring.w;
+v_point=corner*(a_ring.z+a_ring.w+3.);v_radius=a_ring.z;v_width=a_ring.w;v_color=a_color;
 vec2 p=(a_ring.xy+v_point)/u_size;gl_Position=vec4(p.x*2.-1.,1.-p.y*2.,0.,1.);}`;
       const fragment = `#version 300 es
 precision highp float;
-in vec2 v_point;flat in float v_radius;flat in float v_selected;out vec4 color;
-void main(){float d=abs(length(v_point)-v_radius),halfWidth=mix(.75,1.5,v_selected);
+in vec2 v_point;flat in float v_radius;flat in float v_width;flat in vec4 v_color;out vec4 color;
+void main(){float d=abs(length(v_point)-v_radius),halfWidth=v_width;
 float outer=1.-smoothstep(halfWidth+1.,halfWidth+2.,d);
 float inner=1.-smoothstep(halfWidth-.5,halfWidth+.5,d);
-vec3 rgb=mix(vec3(.06,.08,.08),mix(vec3(1.),vec3(1.,.58,.13),v_selected),inner);
-color=vec4(rgb*outer,outer);}`;
+vec3 rgb=mix(vec3(.06,.08,.08),v_color.rgb,inner);
+color=vec4(rgb*outer*v_color.a,outer*v_color.a);}`;
       for (const [type, source] of [[gl.VERTEX_SHADER, vertex], [gl.FRAGMENT_SHADER, fragment]] as const) {
         const shader = gl.createShader(type); if (!shader) throw new Error('Cannot allocate model feedback shader.');
         shaders.push(shader); gl.shaderSource(shader, source); gl.compileShader(shader);
@@ -58,7 +59,8 @@ color=vec4(rgb*outer,outer);}`;
       gl.linkProgram(this.program);
       if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(this.program) ?? 'Model feedback program failed.');
       gl.bindVertexArray(this.vao); gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 16, 0); gl.vertexAttribDivisor(0, 1);
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 32, 0); gl.vertexAttribDivisor(0, 1);
+      gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 32, 16); gl.vertexAttribDivisor(1, 1);
     } catch (cause) { this.release(); this.diagnostic(cause); }
     finally { for (const shader of shaders) gl.deleteShader(shader); gl.bindVertexArray(null); }
   }
@@ -67,8 +69,13 @@ color=vec4(rgb*outer,outer);}`;
     if (!gl || !map || !this.program || !this.buffer || !this.vao || gl.isContextLost() || !this.current()) return;
     const values = this.records.flatMap(record => {
       if (!record.feedback) return [];
+      if (record.feedbackWidth === 0) return [];
       const geometry = modelPresentationGeometry(record);
-      return [...geometry.center, geometry.radius, record.feedback === 'selected' ? 1 : 0];
+      const selected = record.feedback === 'selected';
+      const color = Color.parse(record.feedbackColor ?? (selected ? 'rgb(255,148,33)' : '#ffffff'));
+      if (!color) return [];
+      return [...geometry.center, geometry.radius, (record.feedbackWidth ?? (selected ? 3 : 1.5)) / 2,
+        ...color.rgb];
     });
     if (!values.length) return;
     try {
@@ -78,7 +85,7 @@ color=vec4(rgb*outer,outer);}`;
       gl.uniform2f(gl.getUniformLocation(this.program, 'u_size'), canvas.clientWidth, canvas.clientHeight);
       gl.disable(gl.DEPTH_TEST); gl.depthMask(false); gl.disable(gl.CULL_FACE);
       gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, values.length / 4);
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, values.length / 8);
     } finally { gl.depthMask(true); gl.bindVertexArray(null); }
   }
   onRemove() { this.clear(); this.release(); this.map = undefined; this.gl = undefined; }

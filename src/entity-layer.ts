@@ -12,7 +12,11 @@ export type Primitive = {
   vertices: GeoPoint[];
   color: [number, number, number, number];
   size?: number;
+  /** Hollow marker stroke's inner diameter as a fraction of its outer diameter. */
+  innerRadius?: number;
   surface?: boolean;
+  /** Fallback dot parts can change feedback without recomputing physical attachments. */
+  marker?: 'fill' | 'stroke';
 };
 type Draw = Primitive & { first: number; count: number; origin: ProjectionOrigin };
 type Program = {
@@ -141,7 +145,7 @@ export class EntityLayer implements CustomLayerInterface {
           gl.vertexAttribPointer(location, size!, gl.FLOAT, false, 56, offset!);
         }
       gl.enable(gl.BLEND);
-      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       gl.disable(gl.CULL_FACE);
       gl.depthMask(false);
       for (const draw of this.draws) {
@@ -150,6 +154,7 @@ export class EntityLayer implements CustomLayerInterface {
         gl.uniform1f(uniform('u_line_width'), (draw.size ?? 1) * devicePixelRatio);
         gl.uniform1f(uniform('u_point_size'), (draw.size ?? 10) * devicePixelRatio);
         gl.uniform1i(uniform('u_point'), draw.mode === 'points' ? 1 : 0);
+        gl.uniform1f(uniform('u_inner_radius'), draw.innerRadius ?? 0);
         gl.drawArrays(
           draw.mode === 'triangles' || draw.mode === 'lines' ? gl.TRIANGLES : gl.POINTS,
           draw.first,
@@ -193,8 +198,8 @@ void main(){
   gl_PointSize=u_point_size;v_color=a_color;
 }`;
     const fragment = `#version 300 es
-precision highp float; in vec4 v_color;uniform bool u_point;out vec4 color;
-void main(){if(u_point&&distance(gl_PointCoord,vec2(.5))>.5)discard;color=v_color;}`;
+precision highp float; in vec4 v_color;uniform bool u_point;uniform float u_inner_radius;out vec4 color;
+void main(){if(u_point){float radius=distance(gl_PointCoord,vec2(.5));if(radius>.5||radius<u_inner_radius*.5)discard;}color=v_color;}`;
     const shaders: WebGLShader[] = [];
     const p = gl.createProgram();
     if (!p) throw new Error('Cannot allocate entity shader.');

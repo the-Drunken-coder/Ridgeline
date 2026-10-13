@@ -6,6 +6,7 @@ import type { Map as GLMap } from 'maplibre-gl';
 import { EntityScene, DEFAULT_ENTITY_VISIBILITY } from '../src/entities';
 import type { RidgelineError } from '../src/errors';
 import type { FeatureStyle, MapConfiguration, MapFeature } from '../src/types';
+import type { Primitive } from '../src/entity-layer';
 
 const configuration: MapConfiguration = {
   basemap: { version: 8, sources: {}, layers: [] }, projection: 'flat', terrain: false,
@@ -26,7 +27,10 @@ function sceneFixture(prepare: (positions: readonly [number, number][], signal: 
   const originalCancel = globalThis.cancelAnimationFrame;
   const originalCanvas = Object.getOwnPropertyDescriptor(globalThis, 'OffscreenCanvas');
   Object.defineProperty(globalThis, 'OffscreenCanvas', { configurable: true, value: class {
-    getContext() { return { fillStyle: '', fillRect() {}, getImageData() { return { data: new Uint8ClampedArray([33, 110, 92, 255]) }; } }; }
+    getContext() { return { fillStyle: '#216e5b', fillRect() {}, getImageData() {
+      const hex = this.fillStyle.replace('#', '');
+      return { data: new Uint8ClampedArray([0, 2, 4].map(index => Number.parseInt(hex.slice(index, index + 2), 16)).concat(255)) };
+    } }; }
   } });
   globalThis.requestAnimationFrame = callback => { const id = ++nextFrame; frames.set(id, callback); return id; };
   globalThis.cancelAnimationFrame = id => { frames.delete(id); };
@@ -177,16 +181,50 @@ test('a required sampling failure removes completed camera coverage while retain
   } finally { f.destroy(); }
 });
 
-test('selection rebuilds only entities whose highlight changes', () => {
-  let styles = 0;
-  const f = sceneFixture(async () => {}, () => { styles++; return {}; });
+test('selection and preview retain prepared feedback without changing physical attachments', () => {
+  let broken = false;
+  const f = sceneFixture(async () => {}, () => {
+    if (broken) throw new Error('Current accessor is unavailable');
+    return { color: '#123456', radius: 7, selected: { color: '#2468ac', radius: 11 },
+      hover: { color: '#789abc', radius: 9 } };
+  });
+  let published: Primitive[] = [];
+  const publish = f.scene.layer.set.bind(f.scene.layer);
+  f.scene.layer.set = (primitives, scale) => { published = structuredClone(primitives); publish(primitives, scale); };
+  const aircraft: MapFeature = { ...entity(), entity: { ...entity().entity,
+    attachments: [{ id: 'body', type: 'sphere', radius: 20 }, { id: 'area', type: 'circle', radius: 30 }] } };
   try {
-    f.scene.set([entity(), { ...entity(1), id: 'other' }]);
+    f.scene.set([aircraft]);
     f.frame();
-    assert.equal(styles, 2);
+    const physical = published.filter(primitive => !primitive.marker);
+    const ground = f.groundFeatures();
+    assert.ok(physical.length > 0, 'Physical airborne attachment must be published');
+    assert.ok(ground.length > 0, 'Ground attachment source must be published');
+    const source = structuredClone(aircraft);
+    function assertFeedback(size: number, rgb: [number, number, number]) {
+      const fill = published.find(primitive => primitive.marker === 'fill');
+      assert.ok(fill, 'Airborne fallback dot must be published');
+      assert.equal(fill.size, size);
+      assert.deepEqual(fill.color, [...rgb.map(channel => channel / 255), 1]);
+      assert.deepEqual(published.filter(primitive => !primitive.marker), physical);
+      assert.deepEqual(f.groundFeatures(), ground);
+      assert.deepEqual(aircraft, source);
+      assert.deepEqual(f.diagnostics, [], 'Feedback must not call a now-failing style accessor');
+    }
+    assertFeedback(14, [0x12, 0x34, 0x56]);
+    broken = true;
     f.scene.selection(['aircraft']);
     f.frame();
-    assert.equal(styles, 3);
+    assertFeedback(22, [0x24, 0x68, 0xac]);
+    f.scene.preview('aircraft');
+    f.frame();
+    assertFeedback(22, [0x24, 0x68, 0xac]);
+    f.scene.selection([]);
+    f.frame();
+    assertFeedback(18, [0x78, 0x9a, 0xbc]);
+    f.scene.preview(null);
+    f.frame();
+    assertFeedback(14, [0x12, 0x34, 0x56]);
   } finally { f.destroy(); }
 });
 
