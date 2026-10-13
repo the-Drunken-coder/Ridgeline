@@ -23,6 +23,9 @@ The human-readable name of a feature, used in hover information and picker choic
 **Selection**:
 The set of feature identities chosen by the consumer and displayed as selected in the viewport. A map interaction is an input to that choice, not the choice itself.
 
+**Rectangle selection**:
+A selection request for features whose displayed representations intersect a user-drawn screen rectangle. The consumer decides how that request changes selection.
+
 **Radial picker**:
 A circular arrangement of feature choices used to disambiguate overlapping or closely packed features at a clicked location.
 _Avoid_: Cluster, action menu

@@ -82,6 +82,7 @@
 .rl-coordinates { font-variant-numeric:tabular-nums;overflow-wrap:anywhere; }
 .rl-basemaps { display:flex;align-items:center;gap:8px; }
 .rl-basemaps select { min-width:0;max-width:150px;background:inherit;color:inherit;font:inherit;padding:4px;border:1px solid #c7d2c8; }
+.rl-selection-box { position:absolute;pointer-events:none;z-index:4;border:2px solid #32624c;background:#32624c20; }
 @media(prefers-color-scheme:dark) {
   .rl-drawing-tools,.rl-drawing-inspector { --draw-surface:#222a25;--draw-field:#19231c;--draw-text:#eff3ed;--draw-border:#4b584e;--draw-accent:#a2c9a4;--draw-on-accent:#19231c; }
   .rl-map-control { background:#222a25;color:#eff3ed;border-color:#4b584e; }

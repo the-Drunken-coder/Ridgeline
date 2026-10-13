@@ -1,6 +1,7 @@
 import { ModelMeasurement } from './model-measurement';
 import { ModelLabels } from './model-labels';
 import { dashExpression, featureStyle, fontExpression, highlightExpression, resolveHighlight, styleProperties } from './feature-style';
+import { rectangleBounds, screenRectangle } from './screen-rectangle';
 import { ModelVisibility } from './model-visibility';
 import { shapeGeometry } from './drawing-shapes';
 import { createArrowheads } from './arrowheads';
@@ -15,13 +16,14 @@ import { ModelRegistry } from './models';
 import type { ModelGpu } from './model-renderer';
 import { DEFAULT_ENTITY_MODELS, modelSettings } from './model-settings';
 import { EntityScene, DEFAULT_ENTITY_VISIBILITY } from './entities';
-import type { FeatureStyle, IconDefinition, Interaction, MapConfiguration, MapFeature, Properties, Viewport, ViewportEvents, ViewportOptions } from './types';
+import type { FeatureQuery, FeatureStyle, IconDefinition, Interaction, MapConfiguration, MapFeature, Properties, ScreenBounds, Viewport, ViewportEvents, ViewportOptions } from './types';
 
 const TERRAIN = 'rl:terrain';
 const SHADE = 'rl:hillshade';
 const layerIds = ['rl:fill', 'rl:line', 'rl:dashed', 'rl:arrowheads', 'rl:points', 'rl:icons', 'rl:map-icons', 'rl:labels'];
 
 type ViewportDrawingInternals = {
+  dispatchClick(point: { x: number; y: number }, originalEvent: MouseEvent): void;
   setEditing(id: string | null): void;
   onPrepared(listener: () => void): () => void;
   onSceneChange(listener: () => void): () => void;
@@ -29,7 +31,7 @@ type ViewportDrawingInternals = {
 };
 const drawingInternals = new WeakMap<object, ViewportDrawingInternals>();
 
-/** The drawing tools use this seam without expanding the consumer Viewport API. */
+/** Map attachments share this seam without expanding the consumer Viewport API. */
 export function getViewportDrawingInternals<P extends Properties>(viewport: Viewport<P>): ViewportDrawingInternals | undefined {
   return drawingInternals.get(viewport.map);
 }
@@ -412,7 +414,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       failReady(new RidgelineError('STYLE_FAILED', 'Unable to initialize Ridgeline map layers.', { operation: 'style', recoverable: readySettled }, cause));
     }
   }
-  function interaction(event: Pick<MapMouseEvent, 'point' | 'lngLat' | 'originalEvent'>, tolerance: number): Interaction<P> {
+  function interaction(event: Pick<Interaction<P>, 'point' | 'lngLat' | 'originalEvent'>, tolerance: number): Interaction<P> {
     const features: MapFeature<P>[] = [];
     const attachments: Interaction<P>['attachments'] = [];
     if (prepared) {
@@ -446,6 +448,46 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     }
     return { features, attachments, point: { x: event.point.x, y: event.point.y }, lngLat: { lng: event.lngLat.lng, lat: event.lngLat.lat }, originalEvent: event.originalEvent };
   }
+  function queryFeatures(bounds: ScreenBounds): FeatureQuery<P> {
+    assertActive();
+    let rectangle: ReturnType<typeof screenRectangle>;
+    try { rectangle = screenRectangle(bounds); }
+    catch (cause) {
+      const error = new RidgelineError('INVALID_CONFIGURATION', 'Screen bounds need two finite CSS-pixel points.', { operation: 'queryFeatures', recoverable: true }, cause);
+      diagnostic(error); throw error;
+    }
+    if (!prepared || contextLost) return { features: [], attachments: [] };
+    const revision = interactionRevision;
+    const ids = new Set<string>(), attachmentIds = new Map<string, Set<string>>();
+    for (const hit of map.queryRenderedFeatures(rectangleBounds(rectangle), { layers: layerIds.filter(id => map.getLayer(id)) })) {
+      const id = hit.properties?._rl_feature_id;
+      if (typeof id !== 'string' || id === editingId || hit.properties?._rl_hidden === true) continue;
+      if (hit.layer.id === 'rl:labels' && !modelLabels.acceptsHit(id, hit.properties?._rl_label_stamp)) continue;
+      const representation = entities.getState(id)?.representation;
+      if ((hit.layer.id === 'rl:points' || hit.layer.id === 'rl:icons' || hit.layer.id === 'rl:map-icons') && (representation === 'model' || representation === 'withheld')) continue;
+      const style = publishedStyles.get(id);
+      const highlight = resolveHighlight(style, selected.has(id), previewId === id);
+      const iconOpacity = highlight.appearance.iconOpacity ?? 1;
+      const fillOpacity = highlight.appearance.fillOpacity ?? (highlight.selected ? .45 : style?.fillOpacity ?? .2);
+      if ((hit.layer.id === 'rl:icons' || hit.layer.id === 'rl:map-icons') && iconOpacity === 0 || hit.layer.id === 'rl:fill' && fillOpacity === 0) continue;
+      ids.add(id);
+    }
+    for (const hit of entities.query(rectangle)) {
+      ids.add(hit.entityId);
+      if ('attachmentId' in hit && typeof hit.attachmentId === 'string') {
+        let values = attachmentIds.get(hit.entityId);
+        if (!values) { values = new Set(); attachmentIds.set(hit.entityId, values); }
+        values.add(hit.attachmentId);
+      }
+    }
+    if (destroyed || revision !== interactionRevision) return { features: [], attachments: [] };
+    // Store order and attachment declaration order are stable across native tiles and world copies.
+    const features = store.all().filter(feature => ids.has(feature.id));
+    const attachments = features.flatMap(feature => (feature.entity?.attachments ?? [])
+      .filter(attachment => attachmentIds.get(feature.id)?.has(attachment.id))
+      .map(attachment => ({ entityId: feature.id, attachmentId: attachment.id })));
+    return { features, attachments };
+  }
   function onError(event: GLErrorEvent) {
     if (contextLost && event.error instanceof GPUInitializationError) models.readinessFailed(new RidgelineError('MODEL_RENDERER_FAILED', 'The restored map could not create its rendering context.',
       { operation: 'restoreModel', recoverable: true }, event.error));
@@ -457,6 +499,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     if (!prepared && !readySettled && !sourceId) failReady(error); else diagnostic(error);
   }
   map.on('style.load', prepareStyle);
+  map.on('movestart', () => { interactionRevision++; });
+  map.on('resize', () => { interactionRevision++; });
   map.on('error', onError);
   map.on('webglcontextlost', () => entities.contextLost());
   map.on('webglcontextrestored', () => {
@@ -467,7 +511,12 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     if (restoreBasemap) { restoreBasemap = false; map.setStyle(structuredClone(configuration.basemap), { diff: false }); }
   });
   const interactionCurrent = (revision: number) => () => !destroyed && !interactionOwner && interactionRevision === revision;
-  map.on('click', event => { if (!interactionOwner) emit('click', interaction(event, 12), interactionCurrent(interactionRevision)); });
+  function dispatchClick(point: { x: number; y: number }, originalEvent: MouseEvent) {
+    if (destroyed || interactionOwner) return;
+    const revision = interactionRevision, lngLat = map.unproject([point.x, point.y]);
+    emit('click', interaction({ point, lngLat, originalEvent }, 12), interactionCurrent(revision));
+  }
+  map.on('click', event => dispatchClick(event.point, event.originalEvent));
   map.on('contextmenu', event => { if (!interactionOwner) emit('contextmenu', interaction(event, 6), interactionCurrent(interactionRevision)); });
   let lastPointer: Pick<MapMouseEvent, 'point' | 'originalEvent'> | undefined;
   function updateHover(event: Pick<MapMouseEvent, 'point' | 'lngLat' | 'originalEvent'>) {
@@ -580,7 +629,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       // Native publication must use the latest accepted inputs for each ID.
       publication.update(features.flatMap(feature => { const current = store.get(feature.id); return current ? [current] : []; }));
     },
-    getFeature: id => store.get(id), getFeatures: () => store.all(), getEntityState: id => entities.getState(id), getName, getStyle,
+    getFeature: id => store.get(id), getFeatures: () => store.all(), queryFeatures, getEntityState: id => entities.getState(id), getName, getStyle,
     getIcon: id => icons.get(id),
     registerModel(id, definition) { assertActive(); return models.register(id, definition); },
     unregisterModel(id) { assertActive(); models.unregister(id); },
@@ -626,8 +675,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     },
     requestSelection(ids, attachments = []) {
       assertActive(); if (interactionOwner) return;
-      const selectedIds = ids.filter(id => store.has(id));
-      emit('selectionrequest', { ids: selectedIds, attachments: attachments.filter(hit => selectedIds.includes(hit.entityId) && store.get(hit.entityId)?.entity?.attachments?.some(a => a.id === hit.attachmentId)).map(hit => ({ ...hit })) });
+      const selectedIds = [...new Set(ids)].filter(id => store.has(id));
+      emit('selectionrequest', { ids: selectedIds, attachments: attachments.filter(hit => selectedIds.includes(hit.entityId) && store.get(hit.entityId)?.entity?.attachments?.some(a => a.id === hit.attachmentId)).map(hit => ({ ...hit })) }, interactionCurrent(interactionRevision));
     },
     configure(next) {
       assertActive();
@@ -718,6 +767,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     },
   };
   drawingInternals.set(map, {
+    dispatchClick,
     reportTargetError(cause) {
       diagnostic(new RidgelineError('ELEVATION_UNAVAILABLE', 'Ground targeting requires MapLibre 6.11.0 terrain capabilities.',
         { operation: 'drawing-target', recoverable: true }, cause));

@@ -9,6 +9,8 @@ import type { ModelFrame } from './model-layer';
 import { EntityProjection, entityVertex } from './entity-projection';
 import { modelPlacement } from './model-placement';
 import { pickModelBox } from './model-picking';
+import { clipToRectangle } from './screen-rectangle';
+import type { ScreenRectangle } from './screen-rectangle';
 import { modelFloorScale, modelScreenBox } from './model-frame';
 import { modelChoice } from './model-switching';
 import type { ModelChoice } from './model-switching';
@@ -154,6 +156,7 @@ export class EntityScene<P extends Properties> {
       this.features.get(feature.id)?.entity?.model?.id !== feature.entity.model?.id).map(feature => feature.id));
     // Install the whole accepted batch before aborting old work. An abort callback
     // may replace any member; its newer feature must survive the remaining cleanup.
+    this.modelHits = this.modelHits.filter(({ feature }) => !retired.has(feature.id));
     for (const id of retired) {
       this.features.delete(id);
       this.states.delete(id);
@@ -270,7 +273,7 @@ export class EntityScene<P extends Properties> {
     if (this.lost || this.destroyed) return [];
     const pickStart = this.options.measurement?.begin();
     const models: { entityId: string; attachmentId?: string; depth: number }[] = this.modelHits.flatMap(({ feature, polygons }) => {
-      if (this.features.get(feature.id) !== feature) return [];
+      if (!this.features.has(feature.id)) return [];
       const point = pickModelBox(polygons, x, y, tolerance, this.terrainDepth);
       return point ? [{ entityId: feature.id, depth: point.depth }] : [];
     });
@@ -289,6 +292,16 @@ export class EntityScene<P extends Properties> {
   }
   pickGround(x: number, y: number, tolerance: number) {
     return this.groundLayer.pick(x, y, tolerance);
+  }
+  query(rectangle: ScreenRectangle) {
+    if (this.lost || this.destroyed) return [];
+    const models = this.modelHits.flatMap(({ feature, polygons }) => {
+      if (!this.features.has(feature.id)) return [];
+      const intersections = polygons.flatMap(polygon => clipToRectangle(polygon, rectangle));
+      return intersections.length ? [{ entityId: feature.id, depth: Math.min(...intersections.map(point => point.depth)) }] : [];
+    });
+    return [...[...models, ...this.layer.query(rectangle)].sort((a, b) => a.depth - b.depth),
+      ...this.coverage.query(rectangle), ...this.groundLayer.query(rectangle)];
   }
   attach() {
     this.modelHits = []; this.terrainDepth = undefined;
