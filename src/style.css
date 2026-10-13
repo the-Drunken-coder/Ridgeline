@@ -78,6 +78,12 @@
 .rl-drawing-handle:disabled { cursor:default; }
 .rl-drawing-move { width:24px;height:24px;font-size:17px; }
 .rl-drawing-insert { width:16px;height:16px;border-width:1px;cursor:copy; }
+.rl-map-control { background:#fafbf7;color:#243a31;font:12px/1.4 system-ui,sans-serif;padding:7px 10px;border:1px solid #c7d2c8;border-radius:3px; }
+.rl-coordinates { font-variant-numeric:tabular-nums;overflow-wrap:anywhere; }
+.rl-basemaps { display:flex;align-items:center;gap:8px; }
+.rl-basemaps select { min-width:0;max-width:150px;background:inherit;color:inherit;font:inherit;padding:4px;border:1px solid #c7d2c8; }
 @media(prefers-color-scheme:dark) {
   .rl-drawing-tools,.rl-drawing-inspector { --draw-surface:#222a25;--draw-field:#19231c;--draw-text:#eff3ed;--draw-border:#4b584e;--draw-accent:#a2c9a4;--draw-on-accent:#19231c; }
+  .rl-map-control { background:#222a25;color:#eff3ed;border-color:#4b584e; }
+  .rl-basemaps select { border-color:#4b584e; }
 }

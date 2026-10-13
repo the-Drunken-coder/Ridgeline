@@ -33,6 +33,16 @@ export const browserCases = [
   'Shared solid models register replace and remove through the public viewport',
   'Model registration waits cancels and isolates allocation failures',
   'Model callbacks cannot restore removed registrations or destroyed viewports',
+  'Workflow controls expose coordinates preserve native ownership and release on teardown',
+  'Basemap selector follows accepted external and failed style configuration',
+  'Basemap selector native keyboard retains equivalent choices and follows external styles',
+  'Basemap selector drawing preview reentry publishes current style after patch and replacement',
+  'Basemap selector drawing preview destruction leaves replacement controls usable',
+  'Workflow controls clean partial native initialization and preserve consumer controls',
+  'Native geolocation waits for activation and releases its active watch',
+  'Native fullscreen options retain viewport container as default target',
+  'Native fullscreen retirement restores owned layout and cooperative gestures',
+  'Feature presentation basemap changes survive elevation preparation abort callbacks',
   'Reliability entity meter-scale projection agrees with double precision in flat views',
   'Reliability entity meter-scale projection agrees with double precision in globe views',
   'Reliability entity coherent attachments reject empty space across the opposite world seam',
@@ -188,5 +198,5 @@ export const browserCases = [
   'Retained camera masks survive a style rebuild during terrain retry',
   'GPU visibility preserves flat-ground coverage at long range and caches terrain during movement',
   'GPU grid stays clear across a sloped plane during movement',
-  'GPU voting and depth-refined contours respond to subpixel boundaries'
+  'GPU voting and depth-refined contours respond to subpixel boundaries',
 ] as const;

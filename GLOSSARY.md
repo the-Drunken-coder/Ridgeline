@@ -9,7 +9,7 @@ An interactive view of geographic features and their map context, defined by a c
 _Avoid_: Map implementation, map engine
 
 **Consumer**:
-An application that uses Ridgeline to display and interact with geographic data.
+An application that uses Ridgeline to display and interact with geographic data. It owns the source data and decides which current state the viewport displays, including movement timing and historical views.
 
 **Feature**:
 A geographic object with a stable identity and point, line, or polygon geometry. Icons and labels are visual representations associated with features.

@@ -8,6 +8,8 @@ import { modelRegistrationCases } from './model-registration.browser';
 import { modelPlacementCases } from './model-placement.browser';
 import { modelSwitchingCases } from './model-switching.browser';
 import { modelMaterialCases } from './model-materials.browser';
+import { workflowControlCases } from './workflow-controls.browser';
+import { selectionWorkflowCases } from './workflow-selection.browser';
 import { createViewport, createDrawingSession, attachInteractions, attachDrawing, attachDrawingControls, shapeGeometry, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
 import { MercatorCoordinate, GeoJSONSource, ErrorEvent as MapErrorEvent, setWorkerUrl, addProtocol, removeProtocol } from 'maplibre-gl';
@@ -28,6 +30,9 @@ declare global {
     cleanupBrowserCase?: () => void;
     browserMouse?: (action: 'down' | 'move' | 'up' | 'click', x: number, y: number) => Promise<void>;
     browserFill?: (selector: string, value: string) => Promise<void>;
+    drawingDirectionObservation?: { image: string; wings: number[]; handle: string | null };
+    browserCaptureMap?: () => Promise<string>;
+    browserTouch?: (action: 'start' | 'move' | 'end' | 'cancel', points: { id: number; x: number; y: number }[]) => Promise<void>;
   }
 }
 
@@ -56,7 +61,7 @@ async function run(name: string, test: () => Promise<void>) {
   ran = true;
   const row = document.createElement('li'); row.textContent = name; results.append(row);
   try { await test(); row.className = 'pass'; row.textContent = `PASS: ${name}`; }
-  catch (error) { row.className = 'fail'; row.textContent = `FAIL: ${name}: ${error instanceof Error ? error.stack : String(error)}`; throw error; }
+  catch (error) { row.className = 'fail'; row.textContent = `FAIL: ${name}: ${error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ''}` : String(error)}`; throw error; }
 }
 async function pointer(action: 'move' | 'click', point: { x: number; y: number }) {
   const drawingPointer = window.drawingPointer;
@@ -116,8 +121,21 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
-  for (const test of [...modelFrameReviewCases, ...modelRecoveryCases, ...modelPickingCases, ...modelPresentationCases, ...modelPlacementCases, ...modelSwitchingCases, ...modelMaterialCases, ...modelRegistrationCases]) {
-    await run(test.name, () => test.run({ container, setCurrent(viewport) { current = viewport; }, until }));
+  for (const test of [...modelFrameReviewCases, ...modelRecoveryCases, ...modelPickingCases, ...modelPresentationCases, ...modelPlacementCases, ...modelSwitchingCases, ...modelMaterialCases, ...modelRegistrationCases, ...workflowControlCases, ...selectionWorkflowCases]) {
+    await run(test.name, () => test.run({ container, setCurrent(viewport) {
+      current = viewport;
+      // Capture before cases intentionally destroy their viewport during lifecycle checks.
+      void viewport.ready.then(() => {
+        const gl = viewport.map.getCanvas().getContext('webgl2');
+        const debug = gl?.getExtension('WEBGL_debug_renderer_info');
+        Reflect.set(window, 'browserEnvironment', {
+          userAgent: navigator.userAgent, platform: navigator.platform,
+          touchPoints: navigator.maxTouchPoints, devicePixelRatio,
+          renderer: gl ? gl.getParameter(debug?.UNMASKED_RENDERER_WEBGL ?? gl.RENDERER) : null,
+          vendor: gl ? gl.getParameter(debug?.UNMASKED_VENDOR_WEBGL ?? gl.VENDOR) : null,
+        });
+      }).catch(() => {});
+    }, until }));
   }
   for (const projection of ['flat', 'globe'] as const) {
     await run(`Reliability entity meter-scale projection agrees with double precision in ${projection} views`, async () => {
