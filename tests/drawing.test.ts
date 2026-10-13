@@ -90,6 +90,223 @@ function feature(shape: DrawingShape, id = "existing"): MapFeature {
   };
 }
 
+test("Polygon hole creation, ring edits, history and version 1 save/reload retain every ring", async () => {
+  const { editor, host } = fixture();
+  editor.start("polygon");
+  for (const point of [[0, 0], [.02, 0], [.02, .02], [0, .02]] satisfies DrawingPosition[]) editor.addPoint(point);
+  editor.startHole();
+  assert.equal(editor.getState().draft?.placingRing, 1);
+  assert.match(editor.getState().validation!, /Hole 1/);
+  for (const point of [[.004, .004], [.008, .004], [.008, .008], [.004, .008]] satisfies DrawingPosition[]) editor.addPoint(point);
+  editor.finishRing();
+  const complete = editor.getState().draft!.shape;
+  editor.moveVertex(1, [.009, .004], 1);
+  editor.undo();
+  assert.deepEqual(editor.getState().draft!.shape, complete);
+  editor.redo();
+  assert.equal(await editor.finish(), true);
+  const saved = host.getFeature("new")!;
+  assert.equal(saved.drawing?.version, 1);
+  assert.equal(saved.geometry.type, "Polygon");
+  if (saved.geometry.type !== "Polygon") throw new Error("Missing saved polygon");
+  assert.equal(saved.geometry.coordinates.length, 2);
+  editor.edit("new");
+  assert.deepEqual(shapeGeometry(editor.getState().draft!.shape), saved.geometry);
+  editor.removeHole(1);
+  assert.equal(shapeGeometry(editor.getState().draft!.shape).type, "Polygon");
+  editor.undo();
+  assert.deepEqual(shapeGeometry(editor.getState().draft!.shape), saved.geometry);
+  editor.cancel();
+  assert.deepEqual(host.getFeature("new"), saved);
+});
+
+test("Hole validation rejects outside, touching, crossing, nested and overlapping rings", () => {
+  const outer: DrawingPosition[] = [[0, 0], [10, 0], [10, 10], [0, 10]];
+  const hole: DrawingPosition[] = [[2, 2], [4, 2], [4, 4], [2, 4]];
+  assert.equal(validateShape({ kind: "polygon", vertices: outer, holes: [hole] }), undefined);
+  for (const holes of [
+    [[[11, 2], [12, 2], [12, 3]]],
+    [[[0, 2], [2, 2], [2, 3]]],
+    [[[8, 8], [12, 8], [8, 9]]],
+    [hole, [[2.5, 2.5], [3, 2.5], [3, 3]]],
+    [hole, [[3, 3], [5, 3], [5, 5]]],
+    [hole, [[4, 3], [5, 3], [5, 4]]],
+  ] satisfies DrawingPosition[][][]) {
+    assert.ok(validateShape({ kind: "polygon", vertices: outer, holes }));
+  }
+});
+
+test("An oversized hole retains negative raw area, blocks acceptance and restores valid area through undo", async () => {
+  const { editor, host, requests } = fixture();
+  const shape: Extract<DrawingShape, { kind: "polygon" }> = {
+    kind: "polygon", vertices: [[0, 0], [.02, 0], [.02, .02], [0, .02]],
+    holes: [[[.004, .004], [.008, .004], [.008, .008], [.004, .008]]],
+  };
+  const accepted = feature(shape);
+  host.upsert([accepted]); editor.edit(accepted.id);
+  const validArea = editor.getMeasurements().area;
+  assert.ok(validArea !== undefined && validArea > 0);
+
+  editor.setShape({ ...shape, holes: [[[-.01, -.01], [.03, -.01], [.03, .03], [-.01, .03]]] });
+  const invalid = editor.getState();
+  assert.equal(invalid.phase, "editing");
+  assert.match(invalid.validation!, /Hole 1.*inside/);
+  assert.ok(invalid.measurements.area !== undefined && invalid.measurements.area < 0);
+  assert.equal(editor.getMeasurements().area, invalid.measurements.area);
+  assert.equal(invalid.canUndo, true);
+  assert.equal(await editor.finish(), false);
+  assert.deepEqual(host.getFeature(accepted.id), accepted);
+  assert.equal(requests.length, 0);
+  assert.deepEqual(editor.getState().draft, invalid.draft);
+
+  editor.moveVertex(1, [.04, -.01], 1);
+  assert.notDeepEqual(editor.getState().draft!.shape, invalid.draft!.shape);
+  assert.ok(editor.getState().validation);
+  editor.undo();
+  assert.deepEqual(editor.getState().draft, invalid.draft);
+  editor.undo();
+  assert.equal(editor.getState().validation, undefined);
+  assert.deepEqual(editor.getState().draft!.shape, shape);
+  assert.equal(editor.getState().measurements.area, validArea);
+  assert.equal(editor.getMeasurements().area, validArea);
+  assert.deepEqual(host.getFeature(accepted.id), accepted);
+  assert.equal(await editor.finish(), true);
+  assert.equal(requests.length, 1);
+});
+
+test("Hole measurements subtract area and add perimeter across the date line; translation moves every ring", () => {
+  const vertices: DrawingPosition[] = [[179, 60], [-179, 60], [-179, 62], [179, 62]];
+  const hole: DrawingPosition[] = [[179.5, 60.5], [-179.5, 60.5], [-179.5, 61.5], [179.5, 61.5]];
+  const shape: DrawingShape = { kind: "polygon", vertices, holes: [hole] };
+  assert.equal(validateShape(shape), undefined);
+  const outer = measurements({ kind: "polygon", vertices }), inside = measurements({ kind: "polygon", vertices: hole });
+  assert.equal(measurements(shape).area, outer.area! - inside.area!);
+  assert.equal(measurements(shape).length, outer.length + inside.length);
+  const rendered = shapeGeometry(shape, true);
+  if (rendered.type !== "Polygon") throw new Error("Missing rendered polygon");
+  assert.ok(rendered.coordinates.flat().every(point => point[0]! >= 179 && point[0]! <= 181));
+  const { host, editor } = fixture();
+  host.upsert([feature(shape)]); editor.edit("existing");
+  editor.translate([179, 60], [178, 59]);
+  const moved = editor.getState().draft!.shape;
+  assert.equal(moved.kind, "polygon");
+  if (moved.kind !== "polygon") throw new Error("Missing moved polygon");
+  assert.notDeepEqual(moved.vertices, vertices);
+  assert.notDeepEqual(moved.holes, [hole]);
+  editor.undo();
+  assert.deepEqual(editor.getState().draft!.shape, shape);
+});
+
+test("Hole containment follows displayed Mercator edges at high latitude", () => {
+  const hole: DrawingPosition[] = [[4.9, 45], [5.1, 45], [5.1, 46], [4.9, 46]];
+  assert.equal(validateShape({ kind: "polygon", vertices: [[0, 0], [10, 80], [20, 0]], holes: [hole] }), undefined);
+  assert.match(validateShape({ kind: "polygon", vertices: [[0, 80], [10, 0], [20, 80]], holes: [hole] })!, /inside/);
+});
+
+test("Wide and concave exterior rings align every hole to its contained displayed world copy", async () => {
+  const vertices: DrawingPosition[] = [[-170, 0], [-60, 0], [60, 0], [170, 0], [170, 10], [60, 10], [-60, 10], [-170, 10]];
+  const holes: DrawingPosition[][] = [[[150, 2], [160, 2], [160, 4], [150, 4]], [[-160, 2], [-150, 2], [-150, 4], [-160, 4]]];
+  const shape: DrawingShape = { kind: "polygon", vertices, holes };
+  assert.equal(validateShape(shape), undefined);
+  const rendered = shapeGeometry(shape, true);
+  assert.equal(rendered.type, "Polygon");
+  if (rendered.type !== "Polygon") throw new Error("Missing polygon");
+  assert.deepEqual(rendered.coordinates[1]!.slice(0, -1), holes[0]);
+  assert.deepEqual(rendered.coordinates[2]!.slice(0, -1), holes[1]);
+  const concave: DrawingPosition[] = [...vertices.slice(0, 5), [160, 10], [160, 5], [140, 5], [140, 10], ...vertices.slice(5)];
+  assert.equal(validateShape({ ...shape, vertices: concave }), undefined);
+  assert.ok(validateShape({ ...shape, vertices: concave, holes: [[[150, 6], [155, 6], [155, 8], [150, 8]]] }));
+  const { host, editor } = fixture();
+  host.upsert([feature(shape)]); editor.edit("existing");
+  editor.moveVertex(1, [159, 2], 1);
+  assert.equal(await editor.finish(), true);
+  const saved = host.getFeature("existing")!;
+  editor.edit("existing");
+  assert.deepEqual(shapeGeometry(editor.getState().draft!.shape), saved.geometry);
+  editor.cancel();
+});
+
+test("Ring vertex addresses cannot cross into another ring or mutate history when invalid", () => {
+  const { host, editor } = fixture();
+  const shape: DrawingShape = { kind: "polygon", vertices: [[0, 0], [1, 0], [1, 1], [0, 1]],
+    holes: [[[.2, .2], [.4, .2], [.4, .4], [.2, .4]]] };
+  host.upsert([feature(shape)]); editor.edit("existing");
+  const initial = editor.getState();
+  assert.throws(() => editor.removeHole(0), {
+    name: "RidgelineError", code: "INVALID_CONFIGURATION",
+    context: { operation: "drawing.removeHole", recoverable: true, featureId: "existing" },
+  });
+  for (const ring of [-1, .5, 2]) {
+    assert.throws(() => editor.moveVertex(0, [.3, .3], ring));
+    assert.throws(() => editor.insertVertex(0, [.3, .3], ring));
+    assert.throws(() => editor.removeVertex(0, ring));
+  }
+  for (const index of [-1, .5, 4]) for (const ring of [0, 1]) {
+    assert.throws(() => editor.moveVertex(index, [.3, .3], ring));
+    assert.throws(() => editor.insertVertex(index, [.3, .3], ring));
+    assert.throws(() => editor.removeVertex(index, ring));
+  }
+  assert.deepEqual(editor.getState(), initial);
+  editor.insertVertex(0, [.5, 0]);
+  editor.moveVertex(0, [.25, .2], 1);
+  const edited = editor.getState().draft!.shape;
+  assert.equal(edited.kind, "polygon");
+  if (edited.kind !== "polygon") throw new Error("Missing polygon");
+  assert.deepEqual(edited.holes![0]![0], [.25, .2]);
+  assert.deepEqual(edited.vertices, [[0, 0], [.5, 0], [1, 0], [1, 1], [0, 1]]);
+  editor.undo(); editor.undo();
+  assert.deepEqual(editor.getState().draft!.shape, shape);
+});
+
+test("Exact segment editing anchors the start, crosses the date line, preserves other vertices and is undoable", () => {
+  const { host, editor } = fixture();
+  const original: DrawingShape = { kind: "line", vertices: [[179.99, 70], [-179.95, 70], [-179.9, 70.02]] };
+  host.upsert([feature(original)]); editor.edit("existing");
+  editor.setSegment({ ring: 0, index: 0 }, { length: 2500, bearing: 90 });
+  const shape = editor.getState().draft!.shape;
+  if (shape.kind !== "line") throw new Error("Missing line");
+  assert.deepEqual(shape.vertices[0], original.vertices[0]);
+  assert.deepEqual(shape.vertices[2], original.vertices[2]);
+  const segment = editor.getSegments()[0]!;
+  assert.ok(Math.abs(segment.length - 2500) < 1e-6);
+  assert.ok(Math.abs(segment.bearing - 90) < 1e-8);
+  assert.ok(shape.vertices[1]![0] < 0);
+  segment.start[0] = 0;
+  assert.deepEqual(editor.getState().draft!.shape, shape);
+  editor.undo();
+  assert.deepEqual(editor.getState().draft!.shape, original);
+  editor.redo();
+  assert.deepEqual(editor.getState().draft!.shape, shape);
+  for (const values of [{ length: 0 }, { length: Infinity }, { bearing: NaN }])
+    assert.throws(() => editor.setSegment({ ring: 0, index: 0 }, values), /segment/);
+  assert.deepEqual(editor.getState().draft!.shape, shape);
+});
+
+test("Exact closing-hole segment moves the first hole vertex and respects permission and pending locks", async () => {
+  let permitted = true;
+  let decide: ((decision: DrawingDecision) => void) | undefined;
+  const { host, editor } = fixture({ canEdit: () => permitted, submit: () => new Promise(resolve => { decide = resolve; }) });
+  const shape: DrawingShape = { kind: "polygon", vertices: [[0, 0], [.1, 0], [.1, .1], [0, .1]],
+    holes: [[[.02, .02], [.04, .02], [.04, .04], [.02, .04]]] };
+  host.upsert([feature(shape)]); editor.edit("existing");
+  const closing = editor.getSegments().find(segment => segment.ring === 1 && segment.index === 3)!;
+  editor.setSegment(closing, { length: closing.length * .9 });
+  const changed = editor.getState().draft!.shape;
+  if (changed.kind !== "polygon") throw new Error("Missing polygon");
+  assert.deepEqual(changed.vertices, shape.vertices);
+  assert.deepEqual(changed.holes![0]!.slice(1), shape.holes![0]!.slice(1));
+  assert.notDeepEqual(changed.holes![0]![0], shape.holes![0]![0]);
+  permitted = false; editor.refreshPermissions();
+  assert.throws(() => editor.setSegment(closing, { length: 100 }), /cannot be edited/);
+  permitted = true; editor.refreshPermissions();
+  const request = editor.finish();
+  assert.equal(editor.getState().phase, "pending");
+  assert.throws(() => editor.startHole(), /cannot be edited/);
+  decide!({ accepted: false, reason: "Retry" });
+  assert.equal(await request, false);
+  assert.deepEqual(editor.getState().draft!.shape, changed);
+});
+
 test("Bounded stored vertices retain their exact coordinates when used as drawing positions", () => {
   for (const coordinate of [[-179.65, 0], [0.015, 60], [180, -45]] satisfies DrawingPosition[])
     assert.deepEqual(position(coordinate), coordinate);
@@ -327,7 +544,10 @@ test("Feature validation rejects stale shape metadata and preserves ordinary pol
   };
   const { host, editor } = fixture();
   host.upsert([hole]);
-  assert.throws(() => editor.edit("hole"), /holes/);
+  editor.edit("hole");
+  assert.equal(editor.getState().draft?.shape.kind, "polygon");
+  assert.deepEqual(shapeGeometry(editor.getState().draft!.shape), hole.geometry);
+  editor.cancel();
   assert.deepEqual(host.getFeature("hole"), hole);
 });
 test("Arrowheads follow Mercator segments at high latitude and across the date line", () => {

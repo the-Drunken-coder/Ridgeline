@@ -1,9 +1,13 @@
 import type { LineString, Point, Polygon } from "geojson";
-import type { DrawingPosition, DrawingShape, DrawingTool } from "./drawing-types";
+import { RidgelineError } from "./errors";
+import type { DrawingPosition, DrawingSegment, DrawingShape, DrawingTool } from "./drawing-types";
 import { bearing, destination, distance, position, unroll, wrapLongitude } from "./drawing-geometry";
 
 const R = 6_371_008.8;
 const rad = Math.PI / 180;
+function invalidRing(message: string): never {
+  throw new RidgelineError("INVALID_CONFIGURATION", message, { operation: "drawing.ring", recoverable: true });
+}
 
 type Kind = DrawingShape["kind"];
 type VertexKind = "line" | "polygon" | "arrow";
@@ -204,12 +208,31 @@ export function emptyShape(tool: DrawingTool): DrawingShape {
   return definitions[tool].empty!();
 }
 
-export function placePoint(shape: DrawingShape, placed: number, point: DrawingPosition): Placement | undefined {
+export function placePoint(shape: DrawingShape, placed: number, point: DrawingPosition, ring = 0): Placement | undefined {
+  if (shape.kind === "polygon" && ring > 0) {
+    const vertices = shape.holes?.[ring - 1];
+    if (!vertices) invalidRing("Unknown polygon ring.");
+    const result = definitions.polygon.place({ kind: "polygon", vertices }, placed, point);
+    return result && "vertices" in result.shape
+      ? { shape: replaceRing(shape, ring, result.shape.vertices), placing: result.placing }
+      : undefined;
+  }
   return withShapeDefinition(shape, (shape, rules) => rules.place(shape, placed, point));
 }
 
 export function shapeHandles(shape: DrawingShape): ShapeHandle[] {
+  if (shape.kind === "polygon") return shapeRings(shape).flatMap((vertices, ring) =>
+    vertices.map((p, index) => handle(p, ring ? `Hole ${ring} vertex ${index + 1}` : `Vertex ${index + 1}`,
+      (point) => replaceRing(shape, ring, vertices.map((vertex, i) => i === index ? [...point] : vertex)), false, true)));
   return withShapeDefinition(shape, (shape, rules) => rules.handles(shape));
+}
+export function shapeRings(shape: DrawingShape): DrawingPosition[][] {
+  return shape.kind === "polygon" ? [shape.vertices, ...(shape.holes ?? [])] : [shapeVertices(shape)];
+}
+function replaceRing(shape: Extract<DrawingShape, { kind: "polygon" }>, ring: number, vertices: DrawingPosition[]) {
+  if (!ring) return { ...shape, vertices };
+  if (!shape.holes?.[ring - 1]) invalidRing("Unknown polygon ring.");
+  return { ...shape, holes: shape.holes.map((hole, i) => i === ring - 1 ? vertices : hole) };
 }
 
 export function shapeMoveHandle(shape: DrawingShape): { position: DrawingPosition; label: "Move drawing" } | undefined {
@@ -225,7 +248,10 @@ export function shapeMoveHandle(shape: DrawingShape): { position: DrawingPositio
   };
 }
 
-export function shapeInsertHandles(shape: DrawingShape): { after: number; position: DrawingPosition; label: string }[] {
+export function shapeInsertHandles(shape: DrawingShape): { ring: number; after: number; position: DrawingPosition; label: string }[] {
+  if (shape.kind === "polygon" && shape.holes?.length) return shapeRings(shape).flatMap((vertices, ring) =>
+    shapeInsertHandles({ kind: "polygon", vertices }).map((item) => ({ ...item, ring,
+      label: ring ? `Insert hole ${ring} vertex after ${item.after + 1}` : item.label })));
   const points = withShapeDefinition(shape, (shape, rules) => rules.editableVertices?.(shape));
   if (!points) return [];
   const unrolled = unroll(points);
@@ -236,6 +262,7 @@ export function shapeInsertHandles(shape: DrawingShape): { after: number; positi
     // moves off the displayed edge at high latitude.
     const northing = (latitude: number) => Math.log(Math.tan(Math.PI / 4 + latitude * rad / 2));
     return {
+      ring: 0,
       after,
       position: [
         wrapLongitude(a[0] + wrapLongitude(b[0] - a[0]) / 2),
@@ -246,11 +273,28 @@ export function shapeInsertHandles(shape: DrawingShape): { after: number; positi
   });
 }
 
-export function insertVertex(shape: DrawingShape, after: number, point: DrawingPosition): DrawingShape {
+export function insertVertex(shape: DrawingShape, after: number, point: DrawingPosition, ring = 0): DrawingShape {
+  if (!Number.isInteger(ring) || ring < 0 || (ring > 0 && shape.kind !== "polygon")) invalidRing("Unknown polygon ring.");
+  if (shape.kind === "polygon" && (!Number.isInteger(after) || after < 0 || after >= (shapeRings(shape)[ring]?.length ?? 0)))
+    invalidRing("Unknown vertex.");
+  if (shape.kind === "polygon" && ring) {
+    const vertices = shape.holes?.[ring - 1];
+    if (!vertices) invalidRing("Unknown polygon ring.");
+    const next = [...vertices]; next.splice(after + 1, 0, [...point]);
+    return replaceRing(shape, ring, next);
+  }
   return withShapeDefinition(shape, (shape, rules) => rules.insert?.(shape, after, point) ?? shape);
 }
 
-export function removeVertex(shape: DrawingShape, index: number): DrawingShape {
+export function removeVertex(shape: DrawingShape, index: number, ring = 0): DrawingShape {
+  if (!Number.isInteger(ring) || ring < 0 || (ring > 0 && shape.kind !== "polygon")) invalidRing("Unknown polygon ring.");
+  if (shape.kind === "polygon" && (!Number.isInteger(index) || index < 0 || index >= (shapeRings(shape)[ring]?.length ?? 0)))
+    invalidRing("Unknown vertex.");
+  if (shape.kind === "polygon" && ring) {
+    const vertices = shape.holes?.[ring - 1];
+    if (!vertices) invalidRing("Unknown polygon ring.");
+    return replaceRing(shape, ring, vertices.filter((_, i) => i !== index));
+  }
   return withShapeDefinition(shape, (shape, rules) => rules.remove?.(shape, index) ?? shape);
 }
 
@@ -265,16 +309,61 @@ export function shapeParameters(shape: DrawingShape): ShapeParameter[] {
 export function shapeFromGeometry(geometry: Point | LineString | Polygon): DrawingShape {
   if (geometry.type === "Point") return { kind: "point", position: position(geometry.coordinates) };
   if (geometry.type === "LineString") return { kind: "line", vertices: geometry.coordinates.map(position) };
-  return { kind: "polygon", vertices: geometry.coordinates[0]!.slice(0, -1).map(position) };
+  return { kind: "polygon", vertices: geometry.coordinates[0]!.slice(0, -1).map(position),
+    ...(geometry.coordinates.length > 1 ? { holes: geometry.coordinates.slice(1).map(ring => ring.slice(0, -1).map(position)) } : {}) };
 }
 
 export function shapeVertices(shape: DrawingShape): DrawingPosition[] {
   return withShapeDefinition(shape, (shape, rules) => rules.vertices(shape));
 }
+function ringContains(ring: DrawingPosition[], point: DrawingPosition) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i]!, b = ring[j]!;
+    if ((a[1] > point[1]) !== (b[1] > point[1]) &&
+      point[0] < (b[0] - a[0]) * (point[1] - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
+  }
+  return inside;
+}
+function renderPolygonRings(shape: Extract<DrawingShape, { kind: "polygon" }>): DrawingPosition[][] {
+  const rings = shapeRings(shape).map(unroll), outer = rings[0]!;
+  if (!outer.length || rings.length === 1) return rings;
+  const extent = (ring: DrawingPosition[]) => ring.reduce(({ min, max }, point) =>
+    ({ min: Math.min(min, point[0]), max: Math.max(max, point[0]) }), { min: Infinity, max: -Infinity });
+  const { min, max } = extent(outer);
+  let projectedOuter: DrawingPosition[] | undefined;
+  return [outer, ...rings.slice(1).map(ring => {
+    if (!ring.length) return ring;
+    const { min: holeMin, max: holeMax } = extent(ring);
+    const preferred = Math.round(((min + max) - (holeMin + holeMax)) / 720);
+    const first = Math.ceil((min - holeMin) / 360), last = Math.floor((max - holeMax) / 360);
+    const shifted = (copy: number): DrawingPosition[] => ring.map(([lng, lat]) => [lng + 360 * copy, lat]);
+    // A wide exterior can span either side of its first vertex. Fit the complete
+    // hole to its extent, and use containment when more than one copy can fit.
+    if (first === last) return shifted(first);
+    if (first > last) return shifted(preferred);
+    const projected = projectedOuter ??= topologyPoints(outer);
+    const fits = (copy: number) => {
+      const hole = topologyPoints(shifted(copy));
+      return hole.every(point => ringContains(projected, point)) && !hole.some((a, i) => projected.some((b, j) =>
+        intersects(a, hole[(i + 1) % hole.length]!, b, projected[(j + 1) % projected.length]!)));
+    };
+    if (preferred >= first && preferred <= last && fits(preferred)) return shifted(preferred);
+    for (let copy = first; copy <= last; copy++) if (fits(copy)) return shifted(copy);
+    return shifted(preferred);
+  })];
+}
 export function shapeGeometry(
   shape: DrawingShape,
   render = false,
 ): Point | LineString | Polygon {
+  if (shape.kind === "polygon") {
+    return { type: "Polygon", coordinates: (render ? renderPolygonRings(shape) : shapeRings(shape)).map(ring => {
+      const closed: DrawingPosition[] = ring.map(p => [...p]);
+      if (closed.length) closed.push([...closed[0]!]);
+      return closed;
+    }) };
+  }
   const definition = definitions[shape.kind];
   const points = shapeVertices(shape);
   if (definition.geometry === "Point")
@@ -296,7 +385,12 @@ function signedArea(points: readonly DrawingPosition[]) {
   }
   return (sum * R * R) / 2;
 }
-export function measurements(shape: DrawingShape) {
+export function measurements(shape: DrawingShape): { length: number; area?: number } {
+  if (shape.kind === "polygon" && shape.holes?.length) {
+    const rings = shapeRings(shape).map(vertices => measurements({ kind: "polygon", vertices }));
+    return { length: rings.reduce((sum, ring) => sum + ring.length, 0),
+      area: rings[0]!.area! - rings.slice(1).reduce((sum, ring) => sum + ring.area!, 0) };
+  }
   const points = shapeVertices(shape),
     closed = definitions[shape.kind].closed;
   const length =
@@ -312,6 +406,17 @@ export function measurements(shape: DrawingShape) {
         }
       : {}),
   };
+}
+export function shapeSegments(shape: DrawingShape): DrawingSegment[] {
+  if (!("vertices" in shape)) return [];
+  return shapeRings(shape).flatMap((vertices, ring) => {
+    const count = vertices.length < 2 ? 0 : shape.kind === "polygon" ? vertices.length : vertices.length - 1;
+    return Array.from({ length: count }, (_, index) => {
+      const start = vertices[index]!, end = vertices[(index + 1) % vertices.length]!;
+      return { ring, index, start: [...start], end: [...end], length: distance(start, end),
+        bearing: (bearing(start, end) + 360) % 360 };
+    });
+  });
 }
 function intersects(
   a: DrawingPosition,
@@ -338,12 +443,37 @@ function intersects(
     (cdB === 0 && within(c, d, b))
   );
 }
+function topologyPoints(ring: DrawingPosition[]): DrawingPosition[] {
+  // Displayed polygon edges are straight in Mercator, including at high latitude.
+  return unroll(ring).map(([lng, lat]) => [lng, Math.log(Math.tan(Math.PI / 4 + lat * rad / 2))]);
+}
 export function validateShape(shape: DrawingShape): string | undefined {
   if (
     !shape ||
     !Object.hasOwn(definitions, shape.kind)
   )
     return "Unknown drawing shape.";
+  if (shape.kind === "polygon" && shape.holes?.length) {
+    const rings = shapeRings(shape);
+    for (const [i, vertices] of rings.entries()) {
+      const error = validateShape({ kind: "polygon", vertices });
+      if (error) return i ? `Hole ${i}: ${error}` : error;
+    }
+    const aligned = renderPolygonRings(shape).map(topologyPoints);
+    for (let i = 1; i < aligned.length; i++) {
+      const hole = aligned[i]!;
+      if (!ringContains(aligned[0]!, hole[0]!)) return `Hole ${i} must lie strictly inside the boundary.`;
+      for (let j = 0; j < i; j++) {
+        const other = aligned[j]!;
+        for (let a = 0; a < hole.length; a++) for (let b = 0; b < other.length; b++)
+          if (intersects(hole[a]!, hole[(a + 1) % hole.length]!, other[b]!, other[(b + 1) % other.length]!))
+            return `Hole ${i} touches or crosses another boundary.`;
+        if (j && (ringContains(other, hole[0]!) || ringContains(hole, other[0]!)))
+          return "Holes cannot overlap or contain another hole.";
+      }
+    }
+    return;
+  }
   const dimensionError = withShapeDefinition(shape, (shape, rules) => rules.validateDimensions?.(shape));
   if (dimensionError) return dimensionError;
   const definingPoints = withShapeDefinition(shape, (shape, rules) => rules.definingPoints(shape));
@@ -383,9 +513,9 @@ export function validateShape(shape: DrawingShape): string | undefined {
     if (Math.abs(signedArea(points)) >= 2 * Math.PI * R * R)
       return "Shapes covering more than half the Earth are not supported.";
     // Only overlapping edge bounds can intersect. Sweep in longitude order.
-    const segments = points
-      .map((a, index) => {
-        const b = points[(index + 1) % edges]!;
+    const segments = topologyPoints(raw)
+      .map((a, index, projected) => {
+        const b = projected[(index + 1) % edges]!;
         return {
           a, b, index,
           minX: Math.min(a[0], b[0]), maxX: Math.max(a[0], b[0]),
@@ -415,5 +545,7 @@ export function translateShape(
   const meters = distance(from, to),
     degrees = bearing(from, to);
   const shift = (p: DrawingPosition) => destination(p, meters, degrees);
+  if (shape.kind === "polygon") return { ...shape, vertices: shape.vertices.map(shift),
+    ...(shape.holes ? { holes: shape.holes.map(ring => ring.map(shift)) } : {}) };
   return withShapeDefinition(shape, (shape, rules) => rules.translate(shape, shift));
 }
