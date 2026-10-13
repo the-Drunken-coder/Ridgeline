@@ -9,6 +9,7 @@ import { modelPlacementCases } from './model-placement.browser';
 import { modelSwitchingCases } from './model-switching.browser';
 import { modelMaterialCases } from './model-materials.browser';
 import { workflowControlCases } from './workflow-controls.browser';
+import { workflowDrawingCases } from './workflow-drawing.browser';
 import { selectionWorkflowCases } from './workflow-selection.browser';
 import { createViewport, createDrawingSession, attachInteractions, attachDrawing, attachDrawingControls, shapeGeometry, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
@@ -122,7 +123,7 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
-  for (const test of [...modelFrameReviewCases, ...modelRecoveryCases, ...modelPickingCases, ...modelPresentationCases, ...modelPlacementCases, ...modelSwitchingCases, ...modelMaterialCases, ...modelRegistrationCases, ...workflowControlCases, ...selectionWorkflowCases]) {
+  for (const test of [...modelFrameReviewCases, ...modelRecoveryCases, ...modelPickingCases, ...modelPresentationCases, ...modelPlacementCases, ...modelSwitchingCases, ...modelMaterialCases, ...modelRegistrationCases, ...workflowControlCases, ...workflowDrawingCases, ...selectionWorkflowCases]) {
     await run(test.name, () => test.run({ container, setCurrent(viewport) {
       current = viewport;
       // Capture before cases intentionally destroy their viewport during lifecycle checks.
@@ -3158,14 +3159,16 @@ async function suite() {
       await window.browserMouse('move', x + 50, y);
       editor.refreshPermissions();
       check(editor.getState().phase === 'forbidden' && editor.getState().message?.includes('could not be checked'), 'Permission exception became ordinary denial');
-      check(handle.disabled && !!container.querySelector('.rl-ground-feedback[hidden]'), 'Failed check retained actionable handle or feedback');
+      const lockedHandle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]');
+      check(lockedHandle?.disabled && !!container.querySelector('.rl-ground-feedback[hidden]'), 'Failed check retained actionable current handle or feedback');
       await window.browserMouse('move', x + 70, y); await window.browserMouse('up', x + 70, y);
       check(JSON.stringify(editor.getState().draft) === retained, 'Permission failure changed retained draft');
       check(diagnostics.length === 1 && observed.length === 1 && diagnostics[0]?.cause === cause &&
         diagnostics[0]?.context.operation === 'drawing.canEdit' && diagnostics[0]?.context.featureId === original.id,
       'Permission failure lost cause/context or repeated reports');
       fail = false; editor.refreshPermissions();
-      handle.focus(); await browserKey('Control+z');
+      const recoveredHandle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]'); if (!recoveredHandle) throw new Error('Permission repair lost the current handle');
+      recoveredHandle.focus(); await browserKey('Control+z');
       check(JSON.stringify(editor.getState().draft?.shape) === initialShape, `Failure lost gesture undo: ${JSON.stringify(editor.getState())}`);
       await browserKey('Control+Shift+z');
       check(JSON.stringify(editor.getState().draft) === retained, 'Failure lost gesture redo');
@@ -3663,8 +3666,10 @@ async function suite() {
       editor.start('line'); editor.addPoint([0, 0]); editor.addPoint([.01, 0]);
       if (!window.browserFill || !window.browserKey || !window.browserClick) throw new Error('Playwright input bridge required');
       await window.browserFill('#case25-inspector [data-field="Label"]', 'First label');
-      await window.browserKey('Tab');
-      check(document.activeElement?.getAttribute('data-field') === 'Stroke', 'Tab skipped the next inspector field');
+      for (const field of ['Segment', 'Distance (m)', 'Bearing (°)', 'Stroke']) {
+        await window.browserKey('Tab');
+        check(document.activeElement?.getAttribute('data-field') === field, `Tab skipped the ${field} inspector field`);
+      }
       await window.browserFill('#case25-inspector [data-field="Label"]', 'Final label');
       await window.browserClick('#case25-inspector [data-field="action:Finish"]');
       await until(() => Boolean(draw.getFeature('inspector-finish')), 'first Finish click accepted');
@@ -3845,11 +3850,14 @@ async function suite() {
       check(editor.getState().phase === 'forbidden', 'Revoked permission did not lock the draft');
       check(container.querySelector('.rl-ground-feedback')?.hasAttribute('hidden') === true,
         'Revoked permission retained drag feedback');
-      check(handle.disabled, 'Revoked permission left the handle enabled');
+      const lockedHandle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]');
+      if (!lockedHandle) throw new Error('Revoked permission lost the current handle');
+      check(lockedHandle.disabled, 'Revoked permission left the current handle enabled');
+      check(document.activeElement === draw.map.getCanvas(), 'Retiring a forbidden handle lost the keyboard fallback');
       const shape = editor.getState().draft?.shape;
       if (shape?.kind !== 'line') throw new Error('Revoked permission lost the line draft');
       const expected = draw.map.project(shape.vertices[1]!);
-      const lockedBox = handle.getBoundingClientRect();
+      const lockedBox = lockedHandle.getBoundingClientRect();
       check(Math.hypot(lockedBox.left + lockedBox.width / 2 - canvasBox.left - expected.x - markerOffset.x,
         lockedBox.top + lockedBox.height / 2 - canvasBox.top - expected.y - markerOffset.y) < 2,
       'Revoked permission left the handle away from its draft position');
@@ -3857,7 +3865,12 @@ async function suite() {
       check(JSON.stringify(editor.getState().draft?.shape) === moved, 'Drag changed after permission loss');
       permitted = true;
       editor.refreshPermissions();
-      check(!handle.disabled && editor.getState().phase === 'editing', 'Restored permission did not unlock the handle');
+      const restoredHandle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]');
+      if (!restoredHandle) throw new Error('Permission recovery lost the current handle');
+      check(!restoredHandle.disabled && editor.getState().phase === 'editing', 'Restored permission did not unlock the current handle');
+      restoredHandle.focus(); await browserKey('ArrowRight');
+      check(JSON.stringify(editor.getState().draft?.shape) !== moved, 'Retiring native mouse state broke the next keyboard edit');
+      editor.undo(); check(JSON.stringify(editor.getState().draft?.shape) === moved, 'Recovered keyboard edit joined the interrupted drag');
     } finally { editor.destroy(); draw.destroy(); }
   });
   await run('Ordinary edits preserve dynamic styles, delete-only controls, and hover recovery', async () => {
@@ -4064,16 +4077,18 @@ async function suite() {
       const lastValid = JSON.stringify(editor.getState().draft?.shape);
       draw.configure({ elevation: { tiles: ['/missing-edit-dem.png'], encoding: 'custom', redFactor: 1,
         greenFactor: 0, blueFactor: 0, baseShift: 100, maxzoom: 0 } });
-      await until(() => !!container.querySelector('.rl-ground-unavailable:not([hidden])'),
-        'stationary drag reacts to unavailable terrain');
+      check(!container.querySelector('.rl-ground-crosshair:not([hidden]), .rl-ground-unavailable:not([hidden])'),
+        'Scene replacement retained obsolete gesture feedback');
       check(JSON.stringify(editor.getState().draft?.shape) === lastValid,
         'Terrain loss changed a stationary drag');
       await window.browserMouse('move', x + 80, y + 40);
-      await until(() => !!container.querySelector('.rl-ground-unavailable:not([hidden])'), 'invalid drag feedback');
+      check(!container.querySelector('.rl-ground-crosshair:not([hidden]), .rl-ground-unavailable:not([hidden])'), 'Retired drag revived feedback');
       check(JSON.stringify(editor.getState().draft?.shape) === lastValid, 'Invalid drag changed the last valid shape');
       await window.browserMouse('up', x + 80, y + 40);
-      handle.focus();
+      const currentHandle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]'); if (!currentHandle) throw new Error('Scene replacement lost the current handle');
+      currentHandle.focus();
       await browserKey('Shift+ArrowRight');
+      await until(() => !!container.querySelector('.rl-ground-unavailable:not([hidden])'), 'new keyboard input resolves unavailable terrain');
       check(JSON.stringify(editor.getState().draft?.shape) === lastValid, 'Invalid large keyboard step changed the shape');
       editor.undo();
       check(JSON.stringify(editor.getState().draft?.shape) === JSON.stringify(beforeDrag),
@@ -4587,9 +4602,17 @@ async function suite() {
         for (const projection of ['flat', 'globe'] as const) {
           let firstLatitude: number | undefined;
           for (const exaggeration of [1, 2]) {
+            let liveUpdates = 0;
+            const liveTimer = projection === 'flat' && exaggeration === 2 ? setInterval(() => {
+              draw.upsert([point('unrelated-live', 170 + (++liveUpdates % 100) * .0001)]);
+            }, 16) : undefined;
+            try {
             draw.configure({ projection, exaggeration });
-            await until(() => draw.map.getProjection()?.type === (projection === 'flat' ? 'mercator' : 'globe') &&
-              draw.map.loaded() && Math.abs((draw.map.queryTerrainElevation(known) ?? NaN) - 100 * exaggeration) < 1,
+            // Feature and draft publication can keep global loaded() false.
+            // Require the displayed DEM and height that placement actually uses.
+            await until(() => (!liveTimer || liveUpdates >= 2) &&
+              draw.map.getProjection()?.type === (projection === 'flat' ? 'mercator' : 'globe') &&
+              draw.map.isSourceLoaded('rl:terrain') && Math.abs((draw.map.queryTerrainElevation(known) ?? NaN) - 100 * exaggeration) < 1,
               `${projection} terrain at exaggeration ${exaggeration}`);
             const screen = { x: 320, y: 180 };
             await pointer('move', screen);
@@ -4604,6 +4627,7 @@ async function suite() {
             if (firstLatitude === undefined) firstLatitude = placed[1];
             else check(Math.abs(placed[1] - firstLatitude) < .002,
               `${projection} uniform terrain shifted geographic placement under exaggeration: ${firstLatitude}, ${placed[1]}`);
+            } finally { clearInterval(liveTimer); }
           }
         }
         await pointer('click', { x: 320, y: 180 });

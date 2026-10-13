@@ -1,10 +1,13 @@
-import { GeoJSONSource, Marker } from "maplibre-gl";
+import { GeoJSONSource, Marker, MercatorCoordinate } from "maplibre-gl";
+import { RidgelineError } from "./errors";
 import type { MapMouseEvent } from "maplibre-gl";
 import type { Feature, Geometry } from "geojson";
 import type { MapFeature, Properties, Viewport } from "./types";
 import type {
   DrawingOptions,
   DrawingPosition,
+  DrawingShape,
+  DrawingSegment,
 } from "./drawing-types";
 import { createDrawingSession } from "./drawing-session";
 import {
@@ -23,6 +26,7 @@ import {
   shapeHandles,
   shapeInsertHandles,
   shapeMoveHandle,
+  shapeRings,
   shapeVertices,
 } from "./drawing-shapes";
 
@@ -33,6 +37,7 @@ const layers = [
   "rl:draft-line",
   "rl:draft-points",
   "rl:draft-label",
+  "rl:draft-active-segment",
 ];
 
 /** Map gestures and draft rendering. Controls are optional and attach separately. */
@@ -48,7 +53,8 @@ export function attachDrawing<P extends Properties>(
   const drawingInternals = internals;
   attached.add(viewport.map);
   let disposed = false,
-    stateRevision = 0;
+    stateRevision = 0,
+    renderRevision = 0;
   let inputRevision: number | undefined;
   const session = createDrawingSession(viewport, {
     ...options,
@@ -68,6 +74,13 @@ export function attachDrawing<P extends Properties>(
     cause => drawingInternals.reportTargetError(cause));
   const feedback = options.visualFeedback === false ? undefined : createGroundFeedback(viewport.container, map, resolveGround);
   const draftArrowheads = createArrowheads(map, "rl:draft-arrows", "rl:draft-arrow");
+  // Broader wings remain visible between endpoint and insertion handles on short
+  // segments. MapLibre scales icon offsets by icon size, giving a 9px offset.
+  const segmentArrowheads = createArrowheads(map, "rl:draft-segment-arrows", "rl:draft-segment-arrow",
+    { offset: [0, 6], size: 1.5 });
+  let activeSegment: Pick<DrawingSegment, "ring" | "index"> | undefined;
+  let activeSegmentDraft: string | undefined;
+  let snapKind: "vertex" | "edge" | undefined;
   const markers = new Map<
     string,
     {
@@ -85,10 +98,14 @@ export function attachDrawing<P extends Properties>(
   let ownsNavigationCursor = false;
   const navigationGestures = new Set<"drag" | "rotate" | "pitch">();
   let snapEnabled = true,
+    edgeSnapping = options.snapping?.edges ?? false,
     pointerType = "mouse",
     bypassSnap = false;
   let pointer: ScreenPoint | undefined;
   let draggingHandle = false;
+  let endHandle: ((interrupted?: boolean) => void) | undefined;
+  let touchNavigating = false;
+  let touchTap: { id: number; start: ScreenPoint; point: ScreenPoint; epoch: number; moved: boolean } | undefined;
   let refreshDraggedHandle: (() => void) | undefined;
   let keyboardFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
   let draftEpoch = 0;
@@ -121,6 +138,7 @@ export function attachDrawing<P extends Properties>(
     skip = false,
     except?: number | "draft",
   ): DrawingPosition | undefined {
+    snapKind = undefined;
     if (!snapEnabled || skip) return point;
     // Observer-driven refresh can resolve again before the filter returns.
     // Leave that refresh empty rather than recursively invoking consumer code.
@@ -140,7 +158,26 @@ export function attachDrawing<P extends Properties>(
     const revision = stateRevision;
     const current = () => !disposed && revision === stateRevision;
     const state = session.getState(),
-      candidates: DrawingPosition[] = [];
+      candidates: DrawingPosition[] = [],
+      edges: [DrawingPosition, DrawingPosition][] = [];
+    const appendEdges = (rings: DrawingPosition[][], closed: boolean, excluded?: number) => {
+      let offset = 0;
+      for (const ring of rings) {
+        const count = closed ? ring.length : ring.length - 1;
+        for (let i = 0; i < count; i++) {
+          const end = (i + 1) % ring.length;
+          if (excluded !== undefined && (offset + i === excluded || offset + end === excluded)) continue;
+          edges.push([ring[i]!, ring[end]!]);
+        }
+        offset += ring.length;
+      }
+    };
+    const appendGeometryEdges = (geometry: MapFeature["geometry"], excluded?: number) => {
+      if (geometry.type === "Point") return;
+      const rings = geometry.type === "LineString" ? [geometry.coordinates]
+        : geometry.coordinates.map(ring => ring.slice(0, -1));
+      appendEdges(rings.map(ring => ring.map((p): DrawingPosition => [p[0]!, p[1]!])), geometry.type === "Polygon", excluded);
+    };
     if (!current()) return;
     const visible = new Set(
       map
@@ -172,7 +209,9 @@ export function attachDrawing<P extends Properties>(
       if (!current()) return;
       if (allowed === false) continue;
       if (feature.entity) continue;
-      const g = feature.geometry;
+      const displayed = drawingInternals.getDisplayedFeature(id);
+      if (!displayed || displayed.entity) continue;
+      const g = displayed.geometry;
       candidates.push(
         ...(g.type === "Point"
           ? [position(g.coordinates)]
@@ -180,6 +219,7 @@ export function attachDrawing<P extends Properties>(
             ? g.coordinates.map(position)
             : g.coordinates.flatMap((ring) => ring.slice(0, -1).map(position))),
       );
+      if (edgeSnapping) appendGeometryEdges(displayed.drawing ? shapeGeometry(displayed.drawing.shape, true) : g);
     }
     if (state.draft && except !== "draft")
       candidates.push(
@@ -187,10 +227,12 @@ export function attachDrawing<P extends Properties>(
           .filter((_, i) => i !== except)
           .map((h) => h.position),
       );
+    if (edgeSnapping && state.draft && except !== "draft" && "vertices" in state.draft.shape)
+      appendGeometryEdges(shapeGeometry(state.draft.shape, true), except);
     let best = 12,
       chosen = point;
     const reference = map.unproject([screen.x, screen.y]).lng;
-    for (const candidate of candidates) {
+    for (const candidate of options.snapping?.vertices === false ? [] : candidates) {
       if (!current()) return;
       const projected = map.project([
         nearbyLongitude(candidate[0], reference),
@@ -207,7 +249,48 @@ export function attachDrawing<P extends Properties>(
       if (d < best && visibleGroundVertex(candidate, projected)) {
         best = d;
         chosen = candidate;
+        snapKind = "vertex";
       }
+    }
+    for (const [a, b] of edges) {
+      if (!current()) return;
+      // Keep the renderer's segment span: ordinary GeoJSON can intentionally
+      // cross longitude zero, while saved drawings unroll a date-line crossing.
+      const middle = (a[0] + b[0]) / 2,
+        shift = nearbyLongitude(middle, reference) - middle;
+      const start = MercatorCoordinate.fromLngLat([a[0] + shift, a[1]]);
+      const end = MercatorCoordinate.fromLngLat([b[0] + shift, b[1]]);
+      const at = (t: number): DrawingPosition => {
+        const location = new MercatorCoordinate(start.x + (end.x - start.x) * t, start.y + (end.y - start.y) * t).toLngLat();
+        return [wrapLongitude(location.lng), location.lat];
+      };
+      const score = (t: number) => {
+        const candidate = at(t), projected = map.project([nearbyLongitude(candidate[0], reference), candidate[1]]);
+        return Math.hypot(projected.x - screen.x, projected.y - screen.y);
+      };
+      // Terrain and globe edges curve on screen. Bound the search in geographic
+      // edge space rather than snapping to a chord between projected endpoints.
+      const target = MercatorCoordinate.fromLngLat([nearbyLongitude(point[0], start.toLngLat().lng), point[1]]);
+      const dx = end.x - start.x, dy = end.y - start.y;
+      if (!dx && !dy) continue;
+      let nearest = Math.max(0, Math.min(1, ((target.x - start.x) * dx + (target.y - start.y) * dy) / (dx * dx + dy * dy))),
+        nearestDistance = score(nearest);
+      for (let i = 0; i <= 16; i++) {
+        const value = score(i / 16);
+        if (value < nearestDistance) { nearest = i / 16; nearestDistance = value; }
+      }
+      let low = Math.max(0, nearest - 1 / 16), high = Math.min(1, nearest + 1 / 16);
+      for (let i = 0; i < 36; i++) {
+        const left = low + (high - low) / 3, right = high - (high - low) / 3;
+        if (score(left) <= score(right)) high = right;
+        else low = left;
+      }
+      const refined = (low + high) / 2;
+      const candidate = at(score(refined) < nearestDistance ? refined : nearest), projected = map.project([nearbyLongitude(candidate[0], reference), candidate[1]]);
+      const d = Math.hypot(projected.x - screen.x, projected.y - screen.y);
+      if (d < 12 && (chosen === point ? d < best : d < best - 1) &&
+        projected.x >= 0 && projected.y >= 0 && projected.x <= viewport.container.clientWidth && projected.y <= viewport.container.clientHeight &&
+        visibleGroundVertex(candidate, projected)) { best = d; chosen = candidate; snapKind = "edge"; }
     }
     return current() ? chosen : undefined;
   }
@@ -231,17 +314,28 @@ export function attachDrawing<P extends Properties>(
       shape = session.getPreview();
     const features: Feature<Geometry>[] = [];
     let arrow: MapFeature | undefined;
+    let segmentArrow: MapFeature | undefined;
+    if (!draft || activeSegmentDraft !== draft.feature.id) activeSegment = undefined;
     if (draft && shape) {
       const points = shapeVertices(shape),
         style = draft.style;
+      const validPosition = (p: DrawingPosition) => p.every(Number.isFinite) && Math.abs(p[1]) < 90;
       let geometry: Geometry = shapeGeometry(shape, true);
+      if (shape.kind === "polygon" && draft.placingRing) {
+        const activeRing = shape.holes?.[draft.placingRing - 1] ?? [];
+        geometry = shapeGeometry({ ...shape, holes: shape.holes?.filter((_, i) => i !== draft.placingRing! - 1) }, true);
+        if (activeRing.length && activeRing.every(validPosition)) features.push({ type: "Feature", geometry: activeRing.length === 1
+          ? { type: "Point", coordinates: activeRing[0]! }
+          : { type: "LineString", coordinates: unroll(activeRing) },
+          properties: { color: style.color, fill: style.fillColor, opacity: style.fillOpacity, width: style.lineWidth, label: "" } });
+      }
       if (points.length === 1)
         geometry = { type: "Point", coordinates: points[0]! };
       else if (geometry.type === "Polygon" && points.length < 3)
         geometry = { type: "LineString", coordinates: unroll(points) };
       if (
         points.length &&
-        points.every((p) => p.every(Number.isFinite) && Math.abs(p[1]) < 90)
+        (shape.kind === "polygon" ? shapeRings(shape) : [points]).every(ring => ring.every(validPosition))
       )
         features.push({
           type: "Feature",
@@ -254,6 +348,17 @@ export function attachDrawing<P extends Properties>(
             label: style.label,
           },
         });
+      const address = activeSegment;
+      const segment = address && session.getSegments().find(item =>
+        item.ring === address.ring && item.index === address.index);
+      if (segment && options.visualFeedback !== false) {
+        const vertices = unroll([segment.start, segment.end]);
+        features.push({ type: "Feature", geometry: { type: "LineString", coordinates: vertices },
+          properties: { activeSegment: true, color: "#19805c", width: Math.max(style.lineWidth + 3, 6) } });
+        segmentArrow = { ...draft.feature, drawing: { version: 1,
+          shape: { kind: "arrow", vertices: [segment.start, segment.end] },
+          style: { ...style, color: "#19805c" } } };
+      }
       if (shape.kind === "arrow")
         arrow = { ...draft.feature, drawing: { version: 1, shape, style } };
       map.setPaintProperty(
@@ -266,6 +371,7 @@ export function attachDrawing<P extends Properties>(
     if (source instanceof GeoJSONSource)
       source.setData({ type: "FeatureCollection", features });
     draftArrowheads.show(arrow ? [arrow] : []);
+    segmentArrowheads.show(segmentArrow ? [segmentArrow] : []);
   }
   function prepare() {
     if (disposed) return;
@@ -289,7 +395,7 @@ export function attachDrawing<P extends Properties>(
         id: layers[1]!,
         type: "line",
         source: SOURCE,
-        filter: ["in", "$type", "LineString", "Polygon"],
+        filter: ["all", ["in", "$type", "LineString", "Polygon"], ["!has", "activeSegment"]],
         paint: {
           "line-color": ["get", "color"],
           "line-width": ["get", "width"],
@@ -319,7 +425,52 @@ export function attachDrawing<P extends Properties>(
         },
       });
     }
+    if (!map.getLayer("rl:draft-active-segment")) map.addLayer({
+      id: "rl:draft-active-segment", type: "line", source: SOURCE,
+      filter: ["==", "activeSegment", true],
+      paint: { "line-color": ["get", "color"], "line-width": ["get", "width"], "line-opacity": 0.85 },
+    });
     render();
+  }
+  const moveOffsets: readonly [number, number][] = [[0, 0], [0, -48], [48, 0], [0, 48], [-48, 0], [48, -48], [48, 48], [-48, 48], [-48, -48]];
+  function chooseMoveOffset(position: DrawingPosition, shape: DrawingShape): [number, number] {
+    const origin = map.project(position), canvas = map.getCanvas();
+    const occupied = [...shapeHandles(shape), ...shapeInsertHandles(shape)].map(handle =>
+      map.project([nearbyLongitude(handle.position[0], position[0]), handle.position[1]]));
+    let chosen: [number, number] = [0, -48], best = -Infinity;
+    // Pick one of nine nearby positions for this single control. Square
+    // clearance preserves the 44px touch targets, without moving draft vertices.
+    for (const [x, y] of moveOffsets) {
+      const point = { x: origin.x + x, y: origin.y + y };
+      if (point.x < 22 || point.y < 22 || point.x > canvas.clientWidth - 22 || point.y > canvas.clientHeight - 22) continue;
+      let clearance = Infinity;
+      for (const target of occupied) clearance = Math.min(clearance, Math.max(Math.abs(point.x - target.x), Math.abs(point.y - target.y)));
+      if (clearance > best) { chosen = [x, y]; best = clearance; }
+      if (clearance >= 46) return chosen;
+    }
+    // A crowded shape can occupy every nearby slot. Its bounding box supplies
+    // four bounded fallback positions outside all editing targets.
+    if (occupied.length) {
+      let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
+      for (const point of occupied) {
+        left = Math.min(left, point.x); right = Math.max(right, point.x);
+        top = Math.min(top, point.y); bottom = Math.max(bottom, point.y);
+      }
+      const outside: [number, number][] = [[0, top - origin.y - 48], [right - origin.x + 48, 0], [0, bottom - origin.y + 48], [left - origin.x - 48, 0]];
+      for (const [x, y] of outside) {
+        const point = { x: origin.x + x, y: origin.y + y };
+        if (point.x >= 22 && point.y >= 22 && point.x <= canvas.clientWidth - 22 && point.y <= canvas.clientHeight - 22) return [x, y];
+      }
+    }
+    return chosen;
+  }
+  function refreshMoveOffset() {
+    const item = markers.get("move");
+    if (disposed || draggingHandle || !item) return;
+    const revision = renderRevision, draft = session.getState().draft;
+    if (disposed || revision !== renderRevision || markers.get("move") !== item || !draft) return;
+    const position = item.marker.getLngLat(), offset = chooseMoveOffset([position.lng, position.lat], draft.shape), current = item.marker.getOffset();
+    if (current.x !== offset[0] || current.y !== offset[1]) item.marker.setOffset(offset);
   }
   function updateMarkers() {
     const state = session.getState(),
@@ -362,33 +513,90 @@ export function attachDrawing<P extends Properties>(
         let previous = p;
         let dragScreen: ScreenPoint | undefined;
         let dragEpoch = draftEpoch;
+        let touchPointer: number | undefined;
+        let ignoreClickUntil = 0;
         const currentDrag = (revision?: number) => draggingHandle && !disposed && dragEpoch === draftEpoch &&
           markers.get(key)?.marker === marker && editable() &&
           (revision === undefined || revision === stateRevision);
-        button.addEventListener(
-          "touchstart",
-          (e) => {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-          },
-          { signal: abort.signal, passive: false },
-        );
+        function touchScreen(event: PointerEvent): ScreenPoint {
+          const box = map.getCanvas().getBoundingClientRect(), offset = marker.getOffset();
+          return { x: event.clientX - box.left - offset.x, y: event.clientY - box.top - offset.y };
+        }
+        function finishHandle(interrupted = false) {
+          if (endHandle !== finishHandle) return;
+          const pointerId = touchPointer;
+          touchPointer = undefined;
+          endHandle = undefined;
+          const started = draggingHandle && dragEpoch === draftEpoch;
+          const focused = document.activeElement === button;
+          let retired = false;
+          draggingHandle = false;
+          dragScreen = undefined;
+          refreshDraggedHandle = undefined;
+          feedback?.clear();
+          // A lost native mouseup leaves MapLibre's marker drag listeners and
+          // pointer-events active. Retire that marker owner through its public
+          // lifetime; endGesture's render creates a fresh usable handle.
+          if (interrupted && pointerId === undefined && markers.get(key)?.marker === marker) {
+            marker.remove();
+            markers.delete(key);
+            retired = true;
+          }
+          if (pointerId !== undefined && button.hasPointerCapture(pointerId)) button.releasePointerCapture(pointerId);
+          if (started && !disposed) session.endGesture();
+          // Retiring native drag state must retain keyboard access, without
+          // taking focus from a reentrant replacement or a cancelled draft.
+          if (retired && focused && !disposed && dragEpoch === draftEpoch && document.activeElement === document.body) {
+            const replacement = markers.get(key)?.button;
+            const target = replacement && !replacement.disabled ? replacement : map.getCanvas();
+            target.focus({ preventScroll: true });
+          }
+        }
         button.addEventListener(
           "pointerdown",
           (e) => {
             bypassSnap = e.altKey;
+            pointerType = e.pointerType;
             if (e.pointerType !== "mouse") {
               e.preventDefault();
-              e.stopImmediatePropagation();
+              e.stopPropagation();
+              if (!editable() || touchNavigating || endHandle) return;
+              touchTap = undefined;
+              touchPointer = e.pointerId;
+              dragEpoch = draftEpoch;
+              ignoreClickUntil = Date.now() + 800;
+              endHandle = finishHandle;
+              button.setPointerCapture(e.pointerId);
+              if (!insert) {
+                draggingHandle = true;
+                previous = markers.get(key)?.position ?? p;
+                dragScreen = touchScreen(e);
+                refreshDraggedHandle = () => { if (dragScreen) applyDrag(dragScreen); };
+                if (!editFromInput(() => session.beginGesture())) finishHandle();
+              }
             }
           },
           { signal: abort.signal },
         );
+        button.addEventListener("pointermove", e => {
+          if (e.pointerId !== touchPointer || insert) return;
+          dragScreen = touchScreen(e);
+          applyDrag(dragScreen);
+        }, { signal: abort.signal });
+        button.addEventListener("pointerup", e => {
+          if (e.pointerId !== touchPointer) return;
+          if (insert && !touchNavigating && editable() && dragEpoch === draftEpoch)
+            editFromInput(() => markers.get(key)?.insert?.());
+          finishHandle();
+        }, { signal: abort.signal });
+        button.addEventListener("pointercancel", () => finishHandle(true), { signal: abort.signal });
+        button.addEventListener("lostpointercapture", () => finishHandle(true), { signal: abort.signal });
         button.addEventListener(
           "click",
           (e) => {
             e.preventDefault();
             e.stopPropagation();
+            if (Date.now() < ignoreClickUntil) return;
             if (insert && editable()) editFromInput(() => markers.get(key)?.insert?.());
           },
           { signal: abort.signal },
@@ -400,6 +608,7 @@ export function attachDrawing<P extends Properties>(
           if (!editable()) return;
           if (keyboardFeedbackTimer) clearTimeout(keyboardFeedbackTimer);
           draggingHandle = true;
+          endHandle = finishHandle;
           dragEpoch = draftEpoch;
           dragScreen = map.project(marker.getLngLat());
           refreshDraggedHandle = () => { if (dragScreen) applyDrag(dragScreen); };
@@ -412,9 +621,7 @@ export function attachDrawing<P extends Properties>(
             // MapLibre can emit drag immediately after a rejected dragstart.
             // Keep that native gesture inactive without touching a replacement.
             if (!disposed && dragEpoch === draftEpoch && markers.get(key)?.marker === marker) {
-              draggingHandle = false;
-              dragScreen = undefined;
-              refreshDraggedHandle = undefined;
+              finishHandle();
             }
             restoreHandle();
           }
@@ -460,7 +667,7 @@ export function attachDrawing<P extends Properties>(
             restoreHandle();
             return;
           }
-          feedback?.show(screen, target, next !== target.position ? next : undefined);
+          feedback?.show(screen, target, next !== target.position ? next : undefined, snapKind);
           if (!currentDrag(revision)) {
             restoreHandle();
             return;
@@ -480,15 +687,7 @@ export function attachDrawing<P extends Properties>(
           dragScreen = map.project(marker.getLngLat());
           applyDrag(dragScreen);
         });
-        marker.on("dragend", () => {
-          if (dragEpoch !== draftEpoch) return;
-          const started = draggingHandle;
-          draggingHandle = false;
-          dragScreen = undefined;
-          refreshDraggedHandle = undefined;
-          feedback?.clear();
-          if (started && editable()) session.endGesture();
-        });
+        marker.on("dragend", () => finishHandle());
         button.addEventListener(
           "keydown",
           (e) => {
@@ -503,11 +702,11 @@ export function attachDrawing<P extends Properties>(
                 e.preventDefault();
                 e.stopPropagation();
                 const epoch = draftEpoch;
-                if (!editFromInput(() => session.removeVertex(index)) || disposed || epoch !== draftEpoch)
+                const address = vertexAddress(current.shape, index);
+                if (!editFromInput(() => session.removeVertex(address.index, address.ring)) || disposed || epoch !== draftEpoch)
                   return;
                 const remaining = session.getState().draft?.shape;
-                const count = remaining && "vertices" in remaining
-                  ? remaining.vertices.length : 0;
+                const count = remaining ? shapeHandles(remaining).length : 0;
                 const target = markers.get(`vertex-${Math.min(index, count - 1)}`)?.button
                   ?? markers.get("move")?.button;
                 if (target) target.focus({ preventScroll: true });
@@ -558,6 +757,8 @@ export function attachDrawing<P extends Properties>(
         );
       }
       item.insert = insert;
+      item.button.setAttribute("aria-label", label);
+      item.button.title = label;
       const actual = item.marker.getLngLat();
       if (actual.lng !== displayed[0] || actual.lat !== displayed[1])
         item.marker.setLngLat(displayed);
@@ -572,7 +773,12 @@ export function attachDrawing<P extends Properties>(
           `vertex-${i}`,
           h.label,
           h.position,
-          (p) => session.moveVertex(i, p),
+          (p) => {
+            const current = session.getState().draft?.shape;
+            if (!current) return;
+            const address = vertexAddress(current, i);
+            session.moveVertex(address.index, p, address.ring);
+          },
           i,
         ),
       );
@@ -580,12 +786,12 @@ export function attachDrawing<P extends Properties>(
       if (move) handle("move", move.label, move.position, () => {});
       for (const insert of shapeInsertHandles(draft.shape))
         handle(
-          `insert-${insert.after}`,
+          `insert-${insert.ring}-${insert.after}`,
           insert.label,
           insert.position,
           () => {},
           undefined,
-          () => session.insertVertex(insert.after, insert.position),
+          () => session.insertVertex(insert.after, insert.position, insert.ring),
         );
     }
     for (const [key, item] of markers)
@@ -593,10 +799,17 @@ export function attachDrawing<P extends Properties>(
         item.marker.remove();
         markers.delete(key);
       }
+    refreshMoveOffset();
   }
   function render() {
+    const revision = ++renderRevision;
     stateRevision++;
     const next = Boolean(session.getState().draft);
+    if (disposed || revision !== renderRevision) return;
+    if (!next || !editable()) onGestureLoss();
+    // Settling a gesture notifies consumer observers synchronously. They can
+    // replace this attachment or cause a newer render to own the draft.
+    if (disposed || revision !== renderRevision) return;
     if (next && !active) {
       restoreDoubleClick = map.doubleClickZoom.isEnabled();
       map.doubleClickZoom.disable();
@@ -641,19 +854,30 @@ export function attachDrawing<P extends Properties>(
       event.originalEvent.detail > 1
     )
       return;
+    placeAt(event.point, event.originalEvent.altKey);
+  }
+  function placeAt(point: ScreenPoint, alt = false) {
     const revision = stateRevision;
-    const target = resolveGround(event.point);
+    const target = resolveGround(point);
     if (disposed || revision !== stateRevision) return;
     if (target.kind !== "available") {
       if (keyboardFeedbackTimer) clearTimeout(keyboardFeedbackTimer);
       session.setCursor(undefined);
       if (disposed || revision !== stateRevision) return;
-      feedback?.show(event.point, target, undefined);
+      feedback?.show(point, target, undefined);
       return;
     }
-    const chosen = snap(target.position, event.point, event.originalEvent.altKey);
+    const chosen = snap(target.position, point, alt);
     if (!chosen || disposed || revision !== stateRevision) return;
     editFromInput(() => session.addPoint(chosen));
+  }
+  function vertexAddress(shape: DrawingShape, index: number) {
+    if (shape.kind !== "polygon") return { ring: 0, index };
+    for (const [ring, points] of shapeRings(shape).entries()) {
+      if (index < points.length) return { ring, index };
+      index -= points.length;
+    }
+    throw new RidgelineError("INVALID_CONFIGURATION", "Unknown drawing vertex.", { operation: "drawing.moveVertex", recoverable: true });
   }
   function refreshPointer() {
     if (disposed || navigating || !pointer || !session.getState().draft?.placing || !editable()) return;
@@ -667,7 +891,7 @@ export function attachDrawing<P extends Properties>(
     // Preview subscribers can cancel, destroy, or replace the draft synchronously.
     if (disposed || revision !== stateRevision || pointer !== point) return;
     feedback?.show(point, target, chosen && target.kind === "available" &&
-      (chosen[0] !== target.position[0] || chosen[1] !== target.position[1]) ? chosen : undefined);
+      (chosen[0] !== target.position[0] || chosen[1] !== target.position[1]) ? chosen : undefined, snapKind);
   }
   function onMove(event: MapMouseEvent) {
     if (!session.getState().draft?.placing) return;
@@ -682,6 +906,7 @@ export function attachDrawing<P extends Properties>(
   };
   const onSceneRender = () => {
     if (pointer) refreshPointer();
+    refreshMoveOffset();
     if (draggingHandle) refreshDraggedHandle?.();
   };
   const onTerrainData = (event: { sourceId?: string }) => {
@@ -691,6 +916,8 @@ export function attachDrawing<P extends Properties>(
     feedback?.invalidate();
   };
   const beginNavigation = (gesture: "drag" | "rotate" | "pitch") => {
+    endHandle?.(true);
+    touchTap = undefined;
     navigationGestures.add(gesture);
     if (navigating) return;
     navigating = true;
@@ -721,17 +948,28 @@ export function attachDrawing<P extends Properties>(
     }
     refreshPointer();
   };
-  const onDragStart = () => beginNavigation("drag");
+  const onDragStart = (event: { originalEvent?: Event }) => { if (event.originalEvent) beginNavigation("drag"); };
   const onDragEnd = () => endNavigation("drag");
-  const onRotateStart = () => beginNavigation("rotate");
+  const onRotateStart = (event: { originalEvent?: Event }) => { if (event.originalEvent) beginNavigation("rotate"); };
   const onRotateEnd = () => endNavigation("rotate");
-  const onPitchStart = () => beginNavigation("pitch");
+  const onPitchStart = (event: { originalEvent?: Event }) => { if (event.originalEvent) beginNavigation("pitch"); };
   const onPitchEnd = () => endNavigation("pitch");
   const onGestureLoss = () => {
+    const revision = ++stateRevision;
+    suppressReleaseClick = true;
+    touchTap = undefined;
+    touchNavigating = false;
+    // A lost contact ends placement, but an in-bounds mouse still owns hover.
+    // Scene changes must re-resolve that stationary screen position.
+    if (pointerType !== "mouse") pointer = undefined;
+    feedback?.clear();
+    endHandle?.(true);
+    if (disposed || revision !== stateRevision) return;
+    session.setCursor(undefined);
+    if (disposed || revision !== stateRevision) return;
     if (!navigating) return;
     navigationGestures.clear();
     onDragEnd();
-    onLeave();
   };
   map.on("click", onClick);
   map.on("mousemove", onMove);
@@ -745,12 +983,74 @@ export function attachDrawing<P extends Properties>(
   map.on("pitchstart", onPitchStart);
   map.on("pitchend", onPitchEnd);
   map.getCanvas().addEventListener("mouseleave", onLeave);
+  const touchPoint = (touch: Touch): ScreenPoint => {
+    const box = map.getCanvas().getBoundingClientRect();
+    return { x: touch.clientX - box.left, y: touch.clientY - box.top };
+  };
+  const ownTouch = (event: TouchEvent) => { event.preventDefault(); event.stopImmediatePropagation(); };
+  map.getCanvasContainer().addEventListener("touchstart", event => {
+    if (!session.getState().draft || !editable()) return;
+    if (event.touches.length > 1) {
+      touchNavigating = true;
+      touchTap = undefined;
+      endHandle?.(true);
+      onLeave();
+      return;
+    }
+    ownTouch(event);
+    if (touchNavigating || endHandle || !(event.target instanceof Element) || event.target.closest(".rl-drawing-handle")) return;
+    const contact = event.touches[0];
+    if (!contact) return;
+    const point = touchPoint(contact);
+    touchTap = { id: contact.identifier, start: point, point, epoch: draftEpoch, moved: false };
+    pointer = point;
+    refreshPointer();
+  }, { capture: true, passive: false, signal: abort.signal });
+  map.getCanvasContainer().addEventListener("touchmove", event => {
+    if (!session.getState().draft || event.touches.length > 1 || (!editable() && !touchNavigating && !touchTap && !endHandle)) return;
+    ownTouch(event);
+    if (!touchTap || touchNavigating) return;
+    const contact = [...event.touches].find(touch => touch.identifier === touchTap?.id);
+    if (!contact) return;
+    const point = touchPoint(contact);
+    touchTap.point = point;
+    touchTap.moved ||= Math.hypot(point.x - touchTap.start.x, point.y - touchTap.start.y) > 8;
+    pointer = point;
+    refreshPointer();
+  }, { capture: true, passive: false, signal: abort.signal });
+  map.getCanvasContainer().addEventListener("touchend", event => {
+    if (touchNavigating) {
+      if (!event.touches.length) touchNavigating = false;
+      return;
+    }
+    if (!touchTap) return;
+    ownTouch(event);
+    const tap = touchTap;
+    touchTap = undefined;
+    if (!event.touches.length && !tap.moved && !disposed && tap.epoch === draftEpoch &&
+      editable() && session.getState().draft?.placing) placeAt(tap.point);
+    onLeave();
+  }, { capture: true, passive: false, signal: abort.signal });
+  map.getCanvasContainer().addEventListener("touchcancel", onGestureLoss, { capture: true, signal: abort.signal });
   window.addEventListener("pointercancel", onGestureLoss, { signal: abort.signal });
-  map.getCanvas().addEventListener("lostpointercapture", onGestureLoss, { signal: abort.signal });
+  let releasedTouchPointer: number | undefined;
+  map.getCanvas().addEventListener("pointermove", event => {
+    // Hover can switch devices without a new press. Compatibility mouse events
+    // after touch do not establish a physical mouse pointer.
+    pointerType = event.pointerType;
+  }, { capture: true, signal: abort.signal });
+  map.getCanvas().addEventListener("pointerup", event => {
+    if (event.pointerType !== "mouse") releasedTouchPointer = event.pointerId;
+  }, { signal: abort.signal });
+  map.getCanvas().addEventListener("lostpointercapture", event => {
+    // Normal touch release loses implicit capture before touchend commits the tap.
+    if (event.pointerId !== releasedTouchPointer) onGestureLoss();
+  }, { signal: abort.signal });
   map.getCanvas().addEventListener(
     "pointerdown",
     (event) => {
       pointerType = event.pointerType;
+      releasedTouchPointer = undefined;
       suppressReleaseClick = false;
     },
     { signal: abort.signal },
@@ -814,7 +1114,9 @@ export function attachDrawing<P extends Properties>(
     feedback?.clear();
     session.setCursor(undefined);
   };
-  const offSceneChange = drawingInternals.onSceneChange(invalidateTarget);
+  const offSceneChange = drawingInternals.onSceneChange(() => {
+    onGestureLoss();
+  });
   const offDataChange = viewport.on("datachange", invalidateTarget);
   const offCameraChange = viewport.on("camerachange", invalidateTarget);
   // Animated camera operations emit movestart before their first frame;
@@ -862,6 +1164,7 @@ export function attachDrawing<P extends Properties>(
     for (const layer of [...layers].reverse())
       if (map.getLayer(layer)) map.removeLayer(layer);
     draftArrowheads.remove();
+    segmentArrowheads.remove();
     if (map.getSource(SOURCE)) map.removeSource(SOURCE);
   }
   offDestroy = viewport.on("destroy", destroy);
@@ -870,6 +1173,16 @@ export function attachDrawing<P extends Properties>(
   return {
     ...session,
     destroy,
+    /** Highlight one directed draft segment without changing geometry or undo history. */
+    setActiveSegment(address: Pick<DrawingSegment, "ring" | "index"> | undefined) {
+      if (disposed) return;
+      const target = address && { ring: address.ring, index: address.index };
+      if (target && !session.getSegments().some(item => item.ring === target.ring && item.index === target.index))
+        throw new RidgelineError("INVALID_FEATURE", "Unknown drawing segment.", { operation: "drawing.setActiveSegment", recoverable: true });
+      activeSegment = target;
+      activeSegmentDraft = session.getState().draft?.feature.id;
+      renderGeometry();
+    },
     setSnapping(value: boolean) {
       stateRevision++;
       snapEnabled = value;
@@ -877,6 +1190,13 @@ export function attachDrawing<P extends Properties>(
       refreshDraggedHandle?.();
     },
     getSnapping: () => snapEnabled,
+    setEdgeSnapping(value: boolean) {
+      stateRevision++;
+      edgeSnapping = value;
+      refreshPointer();
+      refreshDraggedHandle?.();
+    },
+    getEdgeSnapping: () => edgeSnapping,
   };
 }
 export type DrawingEditor<P extends Properties = Properties> = ReturnType<

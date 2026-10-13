@@ -124,3 +124,12 @@ Work on one drawing draft, including its geometry, appearance, and label. It end
 
 **Vertex snapping**:
 Positioning a drawing vertex at an eligible visible vertex. It copies the position without creating an attachment between features.
+
+**Edge snapping**:
+Positioning a drawing vertex on an eligible visible segment. It copies the position without creating an attachment between features.
+
+**Polygon hole**:
+An interior ring that excludes an area from a polygon. Its boundary lies strictly inside the exterior boundary and does not touch, cross, overlap or nest with another hole.
+
+**Drawing segment**:
+A directed edge between consecutive vertices of a line, arrow or polygon ring. Its distance and initial bearing describe movement from its start to its end.

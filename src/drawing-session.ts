@@ -1,10 +1,12 @@
 import { validateFeature } from "./features";
+import { RidgelineError } from "./errors";
 import type { MapFeature, Properties, Viewport, ViewportEvents } from "./types";
 import type {
   DrawingChange,
   DrawingDraft,
   DrawingOptions,
   DrawingPosition,
+  DrawingSegment,
   DrawingShape,
   DrawingState,
   DrawingStyle,
@@ -13,6 +15,7 @@ import type {
 import {
   DEFAULT_DRAWING_STYLE,
   validateDrawingStyle,
+  destination,
 } from "./drawing-geometry";
 import {
   emptyShape,
@@ -24,6 +27,8 @@ import {
   shapeFromGeometry,
   shapeGeometry,
   shapeHandles,
+  shapeRings,
+  shapeSegments,
   translateShape,
   validateShape,
 } from "./drawing-shapes";
@@ -217,7 +222,7 @@ export function createDrawingSession<P extends Properties>(
       ["editing", "rejected"].includes(state.phase) &&
       ("vertices" in candidate.shape || candidate.placed)
     ) {
-      const placed = placePoint(candidate.shape, candidate.placed, cursor);
+      const placed = placePoint(candidate.shape, candidate.placed, cursor, candidate.placingRing);
       if (placed) {
         candidate.shape = placed.shape;
         candidate.placing = placed.placing;
@@ -248,7 +253,7 @@ export function createDrawingSession<P extends Properties>(
   }
 
   function sameDraft(a: DrawingDraft<P>, b: DrawingDraft<P>) {
-    return a.placed === b.placed && a.placing === b.placing &&
+    return a.placed === b.placed && a.placing === b.placing && a.placingRing === b.placingRing &&
       JSON.stringify(a.shape) === JSON.stringify(b.shape) &&
       JSON.stringify(a.style) === JSON.stringify(b.style);
   }
@@ -345,11 +350,6 @@ export function createDrawingSession<P extends Properties>(
     if (!before) throw new Error("Feature no longer exists.");
     if (before.entity)
       throw new Error("Entity geometry uses the entity editor.");
-    if (
-      before.geometry.type === "Polygon" &&
-      before.geometry.coordinates.length !== 1
-    )
-      throw new Error("Editing polygons with holes is not supported.");
     const shape = before.drawing?.shape ?? shapeFromGeometry(before.geometry);
     const defaults = { ...DEFAULT_DRAWING_STYLE, ...options.defaults };
     const rendered = host.getStyle(before);
@@ -373,7 +373,7 @@ export function createDrawingSession<P extends Properties>(
   function addPoint(p: DrawingPosition) {
     if (!draft?.placing) return;
     change((current) => {
-      const placed = placePoint(current.shape, current.placed, p);
+      const placed = placePoint(current.shape, current.placed, p, current.placingRing);
       if (!placed) return;
       current.shape = placed.shape;
       current.placing = placed.placing;
@@ -400,21 +400,80 @@ export function createDrawingSession<P extends Properties>(
       current.style = next;
     });
   }
-  function moveVertex(index: number, p: DrawingPosition) {
+  function invalidDrawingInput(message: string, operation: string): never {
+    throw new RidgelineError("INVALID_CONFIGURATION", message, { operation, recoverable: true, featureId: draft?.feature.id });
+  }
+  function moveVertex(index: number, p: DrawingPosition, ring = 0) {
     change((current) => {
-      const handle = shapeHandles(current.shape)[index];
-      if (!handle) throw new Error("Unknown vertex.");
+      const rings = shapeRings(current.shape);
+      if (!Number.isInteger(ring) || ring < 0 || !rings[ring]) invalidDrawingInput("Unknown polygon ring.", "drawing.moveVertex");
+      if (!Number.isInteger(index) || index < 0 || (current.shape.kind === "polygon" && index >= rings[ring]!.length))
+        invalidDrawingInput("Unknown vertex.", "drawing.moveVertex");
+      const offset = current.shape.kind === "polygon" ? rings.slice(0, ring).reduce((sum, points) => sum + points.length, 0) : 0;
+      const handle = shapeHandles(current.shape)[offset + index];
+      if (!handle) invalidDrawingInput("Unknown vertex.", "drawing.moveVertex");
       current.shape = handle.move(p);
     });
   }
-  function insertVertex(after: number, p: DrawingPosition) {
+  function insertVertex(after: number, p: DrawingPosition, ring = 0) {
     change((current) => {
-      current.shape = insertShapeVertex(current.shape, after, p);
+      current.shape = insertShapeVertex(current.shape, after, p, ring);
     });
   }
-  function removeVertex(index: number) {
+  function removeVertex(index: number, ring = 0) {
     change((current) => {
-      current.shape = removeShapeVertex(current.shape, index);
+      current.shape = removeShapeVertex(current.shape, index, ring);
+    });
+  }
+  function startHole() {
+    change((current) => {
+      if (current.shape.kind !== "polygon") invalidDrawingInput("Only polygons can have holes.", "drawing.startHole");
+      if (current.placingRing) invalidDrawingInput("Finish the current hole first.", "drawing.startHole");
+      const error = validateShape(current.shape);
+      if (error) invalidDrawingInput(error, "drawing.startHole");
+      const holes = [...(current.shape.holes ?? []), []];
+      current.shape = { ...current.shape, holes };
+      current.placingRing = holes.length;
+      current.placing = true;
+    });
+  }
+  function finishRing() {
+    change((current) => {
+      if (current.shape.kind !== "polygon") invalidDrawingInput("Only polygons have rings.", "drawing.finishRing");
+      const error = validateShape(current.shape);
+      if (error) invalidDrawingInput(error, "drawing.finishRing");
+      current.placing = false;
+      delete current.placingRing;
+    });
+  }
+  function removeHole(ring: number) {
+    change((current) => {
+      if (current.shape.kind !== "polygon" || !Number.isInteger(ring) || ring < 1 || !current.shape.holes?.[ring - 1])
+        invalidDrawingInput("Unknown polygon hole.", "drawing.removeHole");
+      current.shape = { ...current.shape, holes: current.shape.holes.filter((_, i) => i !== ring - 1) };
+      if (current.placingRing === ring) {
+        current.placing = false;
+        delete current.placingRing;
+      } else if (current.placingRing && current.placingRing > ring) current.placingRing--;
+    });
+  }
+  function getSegments(): DrawingSegment[] {
+    return draft ? shapeSegments(draft.shape) : [];
+  }
+  function setSegment(address: Pick<DrawingSegment, "ring" | "index">, values: { length?: number; bearing?: number }) {
+    const target = { ...address }, numeric = { ...values };
+    if ((numeric.length !== undefined && (!Number.isFinite(numeric.length) || numeric.length <= 0 || numeric.length >= Math.PI * 6_371_008.8)) ||
+      (numeric.bearing !== undefined && !Number.isFinite(numeric.bearing)))
+      invalidDrawingInput("Enter a positive segment distance below half the Earth and a finite bearing.", "drawing.setSegment");
+    change((current) => {
+      const segment = shapeSegments(current.shape).find(item => item.ring === target.ring && item.index === target.index);
+      if (!segment || !("vertices" in current.shape)) invalidDrawingInput("Unknown drawing segment.", "drawing.setSegment");
+      const vertices = shapeRings(current.shape)[segment.ring]!;
+      const next = (segment.index + 1) % vertices.length;
+      const offset = current.shape.kind === "polygon"
+        ? shapeRings(current.shape).slice(0, segment.ring).reduce((sum, ring) => sum + ring.length, 0) : 0;
+      const handle = shapeHandles(current.shape)[offset + next]!;
+      current.shape = handle.move(destination(segment.start, numeric.length ?? segment.length, numeric.bearing ?? segment.bearing));
     });
   }
   function translate(from: DrawingPosition, to: DrawingPosition) {
@@ -647,6 +706,11 @@ export function createDrawingSession<P extends Properties>(
     moveVertex,
     insertVertex,
     removeVertex,
+    startHole,
+    finishRing,
+    removeHole,
+    getSegments,
+    setSegment,
     translate,
     reverse,
     undo,
