@@ -49,6 +49,7 @@ export const browserCases = [
   'Drawing upgrades snapping toggles retain native keyboard focus',
   'Drawing upgrades mouse gesture ownership survives live updates and retires on blur',
   'Drawing upgrades numeric validation updates while keyboard focus stays in the field',
+  'Drawing upgrades snapping uses retained displayed geometry after rejected updates',
   'Feature presentation basemap changes survive elevation preparation abort callbacks',
   'Feature presentation refresh discards callback replacements and removals',
   'Optional selection remains request only until the consumer applies a filtered proposal',

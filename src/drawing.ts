@@ -102,7 +102,7 @@ export function attachDrawing<P extends Properties>(
     bypassSnap = false;
   let pointer: ScreenPoint | undefined;
   let draggingHandle = false;
-  let endHandle: (() => void) | undefined;
+  let endHandle: ((interrupted?: boolean) => void) | undefined;
   let touchNavigating = false;
   let touchTap: { id: number; start: ScreenPoint; point: ScreenPoint; epoch: number; moved: boolean } | undefined;
   let refreshDraggedHandle: (() => void) | undefined;
@@ -208,7 +208,9 @@ export function attachDrawing<P extends Properties>(
       if (!current()) return;
       if (allowed === false) continue;
       if (feature.entity) continue;
-      const g = feature.geometry;
+      const displayed = drawingInternals.getDisplayedFeature(id);
+      if (!displayed || displayed.entity) continue;
+      const g = displayed.geometry;
       candidates.push(
         ...(g.type === "Point"
           ? [position(g.coordinates)]
@@ -216,7 +218,7 @@ export function attachDrawing<P extends Properties>(
             ? g.coordinates.map(position)
             : g.coordinates.flatMap((ring) => ring.slice(0, -1).map(position))),
       );
-      if (edgeSnapping) appendGeometryEdges(feature.drawing ? shapeGeometry(feature.drawing.shape, true) : g);
+      if (edgeSnapping) appendGeometryEdges(displayed.drawing ? shapeGeometry(displayed.drawing.shape, true) : g);
     }
     if (state.draft && except !== "draft")
       candidates.push(
@@ -475,7 +477,7 @@ export function attachDrawing<P extends Properties>(
         const currentDrag = (revision?: number) => draggingHandle && !disposed && dragEpoch === draftEpoch &&
           markers.get(key)?.marker === marker && editable() &&
           (revision === undefined || revision === stateRevision);
-        function finishHandle() {
+        function finishHandle(interrupted = false) {
           if (endHandle !== finishHandle) return;
           const pointerId = touchPointer;
           touchPointer = undefined;
@@ -485,6 +487,13 @@ export function attachDrawing<P extends Properties>(
           dragScreen = undefined;
           refreshDraggedHandle = undefined;
           feedback?.clear();
+          // A lost native mouseup leaves MapLibre's marker drag listeners and
+          // pointer-events active. Retire that marker owner through its public
+          // lifetime; endGesture's render creates a fresh usable handle.
+          if (interrupted && pointerId === undefined && markers.get(key)?.marker === marker) {
+            marker.remove();
+            markers.delete(key);
+          }
           if (pointerId !== undefined && button.hasPointerCapture(pointerId)) button.releasePointerCapture(pointerId);
           if (started && !disposed) session.endGesture();
         }
@@ -525,8 +534,8 @@ export function attachDrawing<P extends Properties>(
             editFromInput(() => markers.get(key)?.insert?.());
           finishHandle();
         }, { signal: abort.signal });
-        button.addEventListener("pointercancel", finishHandle, { signal: abort.signal });
-        button.addEventListener("lostpointercapture", finishHandle, { signal: abort.signal });
+        button.addEventListener("pointercancel", () => finishHandle(true), { signal: abort.signal });
+        button.addEventListener("lostpointercapture", () => finishHandle(true), { signal: abort.signal });
         button.addEventListener(
           "click",
           (e) => {
@@ -623,7 +632,7 @@ export function attachDrawing<P extends Properties>(
           dragScreen = map.project(marker.getLngLat());
           applyDrag(dragScreen);
         });
-        marker.on("dragend", finishHandle);
+        marker.on("dragend", () => finishHandle());
         button.addEventListener(
           "keydown",
           (e) => {
@@ -739,7 +748,7 @@ export function attachDrawing<P extends Properties>(
   function render() {
     stateRevision++;
     const next = Boolean(session.getState().draft);
-    if ((!next || !editable()) && endHandle) endHandle();
+    if (!next || !editable()) onGestureLoss();
     if (next && !active) {
       restoreDoubleClick = map.doubleClickZoom.isEnabled();
       map.doubleClickZoom.disable();
@@ -845,7 +854,7 @@ export function attachDrawing<P extends Properties>(
     feedback?.invalidate();
   };
   const beginNavigation = (gesture: "drag" | "rotate" | "pitch") => {
-    endHandle?.();
+    endHandle?.(true);
     touchTap = undefined;
     navigationGestures.add(gesture);
     if (navigating) return;
@@ -885,7 +894,7 @@ export function attachDrawing<P extends Properties>(
   const onPitchEnd = () => endNavigation("pitch");
   const onGestureLoss = () => {
     suppressReleaseClick = true;
-    endHandle?.();
+    endHandle?.(true);
     touchTap = undefined;
     touchNavigating = false;
     onLeave();
@@ -915,7 +924,7 @@ export function attachDrawing<P extends Properties>(
     if (event.touches.length > 1) {
       touchNavigating = true;
       touchTap = undefined;
-      endHandle?.();
+      endHandle?.(true);
       onLeave();
       return;
     }
