@@ -131,3 +131,48 @@ The query uses displayed native features, entity geometry and clipped projected 
 
 Modifiers at mouse release determine click intent. Releasing Shift before mouseup performs one ordinary click; holding it through release toggles selection. Drags retain native box zoom once the 3 CSS pixel threshold is reached.
 
+
+
+## Drawing extensions
+
+The [drawing guide in README](../README.md#drawing-and-editing) covers submission, permissions, conflict and accepted-change ownership. The APIs below operate inside the same draft. They are available on `createDrawingSession` and `attachDrawing`, except screen snapping and touch gestures, which require the attached editor.
+
+### Rings and holes
+
+Polygon `DrawingShape` uses open `vertices` for its exterior and optional open `holes: DrawingPosition[][]`. Do not repeat the first point at the end of a shape ring. `shapeGeometry` closes every ring for GeoJSON. Preserve both geometry and `drawing: { version: 1, shape, style }` in storage; holes extend version 1 additively. Editing imported hole geometry preserves its rings. Translating a polygon moves all rings.
+
+| Method | Behavior |
+| --- | --- |
+| `startHole()` | Require a valid polygon and no hole currently being placed; add an empty hole and route subsequent `addPoint` calls into it. |
+| `finishRing()` | End placement after at least three vertices. Invalid geometry remains editable and blocks submission. |
+| `removeHole(ring)` | Remove a positive, one-based hole ring. Ring 0 is the exterior and cannot be removed through this method. |
+| `moveVertex(index, position, ring = 0)` | Move the ring-local vertex. |
+| `insertVertex(after, position, ring = 0)` | Insert after the ring-local vertex. |
+| `removeVertex(index, ring = 0)` | Remove the ring-local vertex. |
+
+Draw the exterior, close it with `finishRing`, then call `startHole`, place hole vertices and call `finishRing` again. `finish()` submits the entire drawing. Controls provide Boundary/Hole selection, Add hole, Delete hole, Close boundary and Finish hole. A hole must lie strictly inside the exterior; it cannot touch or cross another boundary. Holes cannot overlap or nest. Invalid drafts remain editable and undoable, but submission is blocked. Area subtracts hole interiors; perimeter includes every ring.
+
+### Exact segments
+
+`getSegments()` returns detached `{ ring, index, start, end, length, bearing }` records for lines, arrows and polygon rings. `index` is zero-based within the ring. Length is horizontal spherical meters and bearing is initial clockwise-from-north degrees in [0, 360). Circles and rectangles retain their own parameter controls.
+
+```ts
+const segment = drawing.getSegments()[0];
+if (segment) {
+  drawing.setSegment({ ring: segment.ring, index: segment.index }, {
+    length: 250, bearing: 90,
+  });
+}
+```
+
+`setSegment(address, values)` holds the start fixed and moves the end using geographic destination. Omitted length or bearing retains that value. Length must be positive, finite and below half the spherical Earth's circumference; bearing must be finite. Changing a shared endpoint also changes its neighboring segment. The inspector commits each distance/bearing field change as one draft undo action. Metric/imperial display units do not change stored meters or degrees.
+
+`setActiveSegment({ ring, index })` highlights a directed draft segment without changing geometry or draft history. Pass `undefined` to clear it. The inspector keeps this feedback synchronized with its ring and segment fields. Vertex snap targets use solid rings; edge snap targets use dashed rings. Alt bypass remains available.
+
+### Snapping and touch
+
+`snapping.vertices` defaults to `true`; `snapping.edges` defaults to `false`. Edge snapping targets visible eligible line/polygon segments, including holes, within 12 CSS pixels. Vertices win when an edge is at most 1 CSS pixel closer. `canSnap` filters both, Alt bypasses both, and a valid displayed ground target is required first. Edge targets follow the rendered segment under the current projection and terrain rather than a straight screen chord between endpoints. Ordinary GeoJSON retains its longitude span; saved drawings use their render-only unwrapped crossing. Snapping copies a position without linking features.
+
+`setSnapping(boolean)` controls the editor's master switch; `getSnapping()` reads it. `setEdgeSnapping(boolean)` / `getEdgeSnapping()` control the edge option. The inspector's Snap and Include edges controls expose these switches. Disabling the master leaves the edge preference available for re-enabling it.
+
+Touch taps place points, handle drags edit, and two fingers navigate the map. A one-finger canvas drag does not pan during an active drawing draft. Use Finish and Cancel buttons; there is no double-tap completion. Starting multi-touch settles a partial handle edit and suppresses an accidental later tap. Cancellation, capture loss, native camera navigation and lost edit permission retire the active screen gesture while retaining valid draft changes as one undo action. Mouse navigation and keyboard handles remain available. Pen-specific placement and physical-device acceptance are not established.

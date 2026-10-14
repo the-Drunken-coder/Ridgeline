@@ -24,6 +24,7 @@ const SHADE = 'rl:hillshade';
 const layerIds = ['rl:fill', 'rl:line', 'rl:dashed', 'rl:arrowheads', 'rl:points', 'rl:icons', 'rl:map-icons', 'rl:labels'];
 
 type ViewportDrawingInternals = {
+  getDisplayedFeature(id: string): MapFeature | undefined;
   isQueryReady(): boolean;
   dispatchClick(point: { x: number; y: number }, originalEvent: MouseEvent): void;
   setEditing(id: string | null): void;
@@ -49,6 +50,7 @@ export const DEFAULT_ELEVATION = {
 export function createViewport<P extends Properties = Properties>(options: ViewportOptions<P>): Viewport<P> {
   const store = new FeatureStore<P>();
   const publishedArrows = new Map<string, MapFeature<P>>();
+  const publishedFeatures = new Map<string, MapFeature<P>>();
   const preparedStyles = new WeakMap<MapFeature<P>, FeatureStyle>();
   const publishedStyles = new Map<string, FeatureStyle>();
   const pendingStyles = new Map<string, FeatureStyle>();
@@ -213,6 +215,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   const arrowheads = createArrowheads(map, 'rl:arrows', 'rl:arrowheads');
   const publication = createFeaturePublication({ store, target: mapLibreFeaturePublication(map), render: rendered, sourceId: sourceFeatureId, diagnostic,
     published: (id, feature) => {
+      if (feature) publishedFeatures.set(id, feature); else publishedFeatures.delete(id);
       const style = feature && preparedStyles.get(feature);
       if (style) publishedStyles.set(id, style); else publishedStyles.delete(id);
       pendingStyles.delete(id); refreshStyleArrays();
@@ -225,6 +228,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       synchronizeState(id);
     },
     restored: features => {
+      publishedFeatures.clear();
+      for (const feature of features) publishedFeatures.set(feature.id, feature);
       publishedStyles.clear(); pendingStyles.clear();
       for (const feature of features) { const style = preparedStyles.get(feature); if (style) publishedStyles.set(feature.id, style); }
       publishedMarkerKeys.clear();
@@ -807,7 +812,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       map.getCanvas().removeEventListener('mouseleave', onLeave);
       if (nativeRenderDepth) removeAfterRender = true;
       else { const nativeFailure = removeMap(); failure ??= nativeFailure; }
-      icons.clear(); selected.clear(); publishedStyles.clear(); pendingStyles.clear(); publishedMarkerKeys.clear(); availableMarkers.clear();
+      icons.clear(); selected.clear(); publishedFeatures.clear(); publishedStyles.clear(); pendingStyles.clear(); publishedMarkerKeys.clear(); availableMarkers.clear();
       retire('destroy.features', () => store.remove(store.ids()));
       for (const set of Object.values(listeners)) set.clear();
       hoverNotified.clear();
@@ -815,6 +820,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     },
   };
   drawingInternals.set(map, {
+    getDisplayedFeature: id => publishedFeatures.get(id),
     isQueryReady: () => prepared && !contextLost && !destroyed,
     dispatchClick,
     reportTargetError(cause) {

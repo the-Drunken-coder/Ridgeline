@@ -59,11 +59,11 @@ export function createGroundFeedback(
   function invalidate() {
     revision++;
   }
-  function show(pointer: ScreenPoint, target: GroundTarget, snapped: DrawingPosition | undefined) {
+  function show(pointer: ScreenPoint, target: GroundTarget, snapped: DrawingPosition | undefined, snapKind: "vertex" | "edge" = "vertex") {
     const camera = map.getCenter();
     const signature = [revision, pointer.x, pointer.y, target.kind,
       target.kind === "available" ? target.position.join(",") : target.reason,
-      snapped?.join(","), camera.lng, camera.lat, map.getZoom(), map.getPitch(), map.getBearing(),
+      snapped?.join(","), snapKind, camera.lng, camera.lat, map.getZoom(), map.getPitch(), map.getBearing(),
       map.getProjection()?.type, canvas.clientWidth, canvas.clientHeight].join("|");
     if (signature === lastSignature) return;
     lastSignature = signature;
@@ -83,6 +83,8 @@ export function createGroundFeedback(
     visible(snapRing, Boolean(snapped));
     visible(snapGuide, Boolean(snapped) && Math.hypot(center.x - pointer.x, center.y - pointer.y) > 2);
     if (snapped) {
+      snapRing.dataset.snapKind = snapKind;
+      snapRing.setAttribute("stroke-dasharray", snapKind === "edge" ? "3 3" : "none");
       snapRing.setAttribute("cx", String(center.x));
       snapRing.setAttribute("cy", String(center.y));
       snapGuide.setAttribute("d", `M ${pointer.x} ${pointer.y} L ${center.x} ${center.y}`);

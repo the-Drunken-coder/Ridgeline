@@ -28,6 +28,17 @@ function registerCase(name: string) {
       await page.setViewportSize({ width: 2000, height: 720 });
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
+    if (name.startsWith('Drawing upgrades touch')) {
+      const session = await page.context().newCDPSession(page);
+      await session.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+      await page.exposeFunction('browserTouch', async (action: string, points: { id: number; x: number; y: number }[]) => {
+        const types = { start: 'touchStart', move: 'touchMove', end: 'touchEnd', cancel: 'touchCancel' } as const;
+        if (action !== 'start' && action !== 'move' && action !== 'end' && action !== 'cancel') throw new Error('Invalid touch action');
+        if (!Array.isArray(points) || points.some(point => !Number.isInteger(point.id) || !Number.isFinite(point.x) || !Number.isFinite(point.y)))
+          throw new Error('Invalid touch coordinates');
+        await session.send('Input.dispatchTouchEvent', { type: types[action], touchPoints: points });
+      });
+    }
     await page.exposeFunction('drawingPointer', async (action: string, x: number, y: number) => {
       if (!['move', 'click'].includes(action) || ![x, y].every(Number.isFinite)) throw new Error('Invalid pointer action');
       await page.locator('#map canvas').first().scrollIntoViewIfNeeded();
@@ -36,6 +47,7 @@ function registerCase(name: string) {
       if (action === 'move') await page.mouse.move(box.x + x, box.y + y);
       else await page.mouse.click(box.x + x, box.y + y);
     });
+    await page.exposeFunction('browserWheel', (deltaY: number) => page.mouse.wheel(0, deltaY));
     await page.exposeFunction('browserKey', (key: string) => page.keyboard.press(key));
     await page.exposeFunction('browserKeyDown', (key: string) => page.keyboard.down(key));
     await page.exposeFunction('browserKeyUp', (key: string) => page.keyboard.up(key));
@@ -45,12 +57,18 @@ function registerCase(name: string) {
     });
     await page.exposeFunction('browserClick', (selector: string) => page.locator(selector).click({ timeout: 5_000 }));
     await page.exposeFunction('browserFill', (selector: string, value: string) => page.locator(selector).fill(value, { timeout: 5_000 }));
+    await page.exposeFunction('browserCaptureMap', async () => (await page.locator('#map').screenshot({ animations: 'disabled' })).toString('base64'));
     await page.exposeFunction('browserMouse', async (action: string, x: number, y: number) => {
       if (!['down', 'move', 'up', 'click'].includes(action) || ![x, y].every(Number.isFinite)) throw new Error('Invalid mouse action');
       await page.mouse.move(x, y);
       if (action === 'down') await page.mouse.down();
       else if (action === 'up') await page.mouse.up();
       else if (action === 'click') await page.mouse.click(x, y);
+    });
+    await page.exposeFunction('browserReleaseMouseElsewhere', async () => {
+      const other = await page.context().newPage();
+      try { await other.goto('about:blank'); await other.mouse.up(); }
+      finally { await other.close(); await page.bringToFront(); }
     });
     await page.exposeFunction('browserDrag', async (fromX: number, fromY: number, toX: number, toY: number, button: 'left' | 'right' = 'left') => {
       await page.mouse.move(fromX, fromY);
@@ -76,6 +94,14 @@ function registerCase(name: string) {
     } catch (error) {
       failure = error;
       if (!page.isClosed()) {
+        const observation = await page.evaluate(() => window.drawingDirectionObservation).catch(() => undefined);
+        if (observation) {
+          const capture = testInfo.outputPath('drawing-direction.png'), details = testInfo.outputPath('drawing-direction.json');
+          await writeFile(capture, Buffer.from(observation.image, 'base64'));
+          await writeFile(details, JSON.stringify({ wings: observation.wings, handle: observation.handle }));
+          await testInfo.attach('Composed drawing direction', { path: capture, contentType: 'image/png' });
+          await testInfo.attach('Drawing direction observation', { path: details, contentType: 'application/json' });
+        }
         const path = testInfo.outputPath('failure.png');
         await page.screenshot({ path }).then(() => testInfo.attach('failure screenshot', { path, contentType: 'image/png' })).catch(() => {});
       }

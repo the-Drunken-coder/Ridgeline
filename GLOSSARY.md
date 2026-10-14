@@ -130,3 +130,12 @@ Style-derived display settings for geographic features, separate from accepted g
 
 **Highlight**:
 The selected or hovered appearance applied by the viewport. It changes feedback, not consumer selection policy.
+
+**Edge snapping**:
+Positioning a drawing vertex on an eligible visible segment. It copies the position without creating an attachment between features.
+
+**Polygon hole**:
+An interior ring that excludes an area from a polygon. Its boundary lies strictly inside the exterior boundary and does not touch, cross, overlap or nest with another hole.
+
+**Drawing segment**:
+A directed edge between consecutive vertices of a line, arrow or polygon ring. Its distance and initial bearing describe movement from its start to its end.

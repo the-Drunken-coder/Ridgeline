@@ -66,7 +66,8 @@ export function arrowFeatures(
 }
 
 /** Owns one arrowhead source and layer. The image is shared by all arrowhead layers. */
-export function createArrowheads(map: GLMap, sourceId: string, layerId: string) {
+export function createArrowheads(map: GLMap, sourceId: string, layerId: string,
+  presentation?: { offset?: [number, number]; size?: number }) {
   imageUsers.set(map, (imageUsers.get(map) ?? 0) + 1);
   let removed = false;
   return {
@@ -88,6 +89,8 @@ export function createArrowheads(map: GLMap, sourceId: string, layerId: string) 
           "icon-rotate": ["get", "bearing"],
           "icon-rotation-alignment": "map",
           "icon-allow-overlap": true,
+          ...(presentation?.offset ? { "icon-offset": presentation.offset } : {}),
+          ...(presentation?.size !== undefined ? { "icon-size": presentation.size } : {}),
         },
         paint: { "icon-color": ["get", "color"] },
       });
