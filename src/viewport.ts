@@ -40,7 +40,7 @@ export const DEFAULT_ELEVATION = {
   tileSize: 512,
 } satisfies MapConfiguration['elevation'];
 
-/** Creates one viewport. Data may be supplied before ready; destroy is always safe. */
+/** Creates one viewport. Data may precede ready; destroy tolerates partial setup and repeated calls. */
 export function createViewport<P extends Properties = Properties>(options: ViewportOptions<P>): Viewport<P> {
   const store = new FeatureStore<P>();
   const publishedArrows = new Map<string, MapFeature<P>>();
@@ -56,6 +56,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   let prepared = false;
   let contextLost = false;
   let restoreBasemap = false;
+  let pendingElevationReset = false;
   let interactionRevision = 0;
   let sceneGeneration = 0;
   let readySettled = false;
@@ -75,7 +76,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   };
   const listeners: { [K in keyof ViewportEvents<P>]: Set<(value: ViewportEvents<P>[K]) => void> } = {
     interactionchange: new Set(), selectionchange: new Set(), click: new Set(), hover: new Set(), contextmenu: new Set(), selectionrequest: new Set(),
-    datachange: new Set(), entitychange: new Set(), camerachange: new Set(), diagnostic: new Set(), destroy: new Set(),
+    datachange: new Set(), entitychange: new Set(), camerachange: new Set(), configurationchange: new Set(), diagnostic: new Set(), destroy: new Set(),
   };
   function diagnostic(error: RidgelineError) {
     if (destroyed) return;
@@ -85,12 +86,13 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   }
   function emit<K extends keyof ViewportEvents<P>>(event: K, value: ViewportEvents<P>[K], current?: () => boolean, notified?: Set<(value: ViewportEvents<P>[K]) => void>) {
     for (const listener of listeners[event]) {
+      if (destroyed && event !== 'destroy') break;
       if (current && !current()) break;
       if (notified?.has(listener)) continue;
       notified?.add(listener);
       try { listener(value); } catch (cause) {
         const error = new RidgelineError('CALLBACK_FAILED', `A ${event} listener threw.`, { operation: event, recoverable: true }, cause);
-        if (event === 'diagnostic') report(error); else diagnostic(error);
+        if (event === 'diagnostic' || event === 'destroy') report(error); else diagnostic(error);
       }
     }
   }
@@ -135,10 +137,22 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (!nativeRenderDepth && removeAfterRender) { removeAfterRender = false; removeMap(); }
     }
   };
+  function disposeOwner(operation: string, dispose: () => void): RidgelineError | undefined {
+    try { dispose(); }
+    catch (cause) {
+      const error = new RidgelineError('UPDATE_FAILED', 'Unable to complete viewport cleanup.',
+        { operation, recoverable: false }, cause);
+      // Disposal has already stopped viewport events. The logger still records
+      // each failed owner without allowing an observer to interrupt cleanup.
+      report(error);
+      return error;
+    }
+  }
   function removeMap() {
-    arrowheads.remove();
-    try { map.remove(); }
-    finally { map._render = nativeRender; map._cleanupContainer = cleanupContainer; }
+    const decorationFailure = disposeOwner('destroy.arrowheads', () => arrowheads.remove());
+    const nativeFailure = disposeOwner('destroy.map', () => map.remove());
+    map._render = nativeRender; map._cleanupContainer = cleanupContainer;
+    return decorationFailure ?? nativeFailure;
   }
   const modelVisibility = new ModelVisibility(map);
   const modelLabels = new ModelLabels(map, ids => publication.update(ids.flatMap(id => { const feature = store.get(id); return feature ? [feature] : []; })));
@@ -153,6 +167,10 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     contextLost: () => {
       contextLost = true; prepared = false; sceneGeneration++; interactionRevision++;
       publication.retire(); modelVisibility.invalidate(); modelLabels.invalidate();
+      for (const listener of sceneListeners) {
+        if (destroyed) break;
+        notifyDrawingListener(listener, 'contextLost');
+      }
       scheduleHover();
     },
     contextRestored: () => { contextLost = false; },
@@ -283,7 +301,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     arrowheads.show([...publishedArrows.values()].filter(feature => feature.id !== editingId));
   }
 
-  function notifyDrawingListener(listener: () => void, operation: 'style' | 'configure') {
+  function notifyDrawingListener(listener: () => void, operation: 'style' | 'configure' | 'contextLost') {
     try { listener(); } catch (cause) {
       diagnostic(new RidgelineError('CALLBACK_FAILED', 'A drawing listener threw.', { operation, recoverable: true }, cause));
     }
@@ -558,7 +576,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       let hillshadeOptions;
       try { hillshadeOptions = resolveHillshade(next.hillshadeOptions, configuration.hillshadeOptions); }
       catch (cause) { if (cause instanceof RidgelineError) diagnostic(cause); throw cause; }
-      const styleChanged = next.basemap !== undefined && next.basemap !== configuration.basemap;
+      const styleChanged = next.basemap !== undefined && JSON.stringify(next.basemap) !== JSON.stringify(configuration.basemap);
       configuration = {
         basemap: structuredClone(next.basemap ?? configuration.basemap),
         projection: next.projection ?? configuration.projection,
@@ -570,23 +588,38 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         entityVisibility: { ...configuration.entityVisibility, ...next.entityVisibility },
         entityModels,
       };
-      if (styleChanged || next.projection !== undefined || next.terrain !== undefined ||
-        next.exaggeration !== undefined || next.elevation !== undefined) {
-        const configuredScene = configuration;
-        for (const listener of sceneListeners) notifyDrawingListener(listener, 'configure');
-        if (destroyed || configuration !== configuredScene) return;
-      }
-      if (styleChanged) { sceneGeneration++; prepared = false; publication.retire(); }
       const configuredScene = configuration;
-      entities.configure(next.elevation !== undefined);
-      if (destroyed || configuration !== configuredScene) return;
-      if (styleChanged) {
-        if (contextLost) restoreBasemap = true;
-        else map.setStyle(structuredClone(configuration.basemap), { diff: false });
-      }
-      else if (prepared) {
-        map.setProjection({ type: configuration.projection === 'flat' ? 'mercator' : 'globe' });
-        applyElevation(next.elevation !== undefined);
+      if (next.elevation !== undefined) pendingElevationReset = true;
+      const sceneChanged = styleChanged || next.projection !== undefined || next.terrain !== undefined ||
+        next.exaggeration !== undefined || next.elevation !== undefined;
+      if (sceneChanged) interactionRevision++;
+      if (styleChanged) { sceneGeneration++; prepared = false; publication.retire(); }
+      try {
+        if (styleChanged) {
+          if (contextLost) restoreBasemap = true;
+          else map.setStyle(structuredClone(configuration.basemap), { diff: false });
+        }
+        else if (prepared) {
+          map.setProjection({ type: configuration.projection === 'flat' ? 'mercator' : 'globe' });
+          applyElevation(next.elevation !== undefined);
+        }
+      } finally {
+        // Drawing callbacks can configure the viewport too. Start native work
+        // before notifying them so an unrelated patch cannot skip this style.
+        if (sceneChanged) for (const listener of sceneListeners) {
+          // These listeners retire screen-derived work without applying an old
+          // configuration. A nested patch must not skip that retirement.
+          if (destroyed) break;
+          notifyDrawingListener(listener, 'configure');
+        }
+        if (!destroyed && (configuration === configuredScene || pendingElevationReset)) {
+          // Native style observers and preparation abort listeners can reenter.
+          // Consume the required reset before callbacks, using current settings.
+          const resetElevation = pendingElevationReset; pendingElevationReset = false;
+          entities.configure(resetElevation);
+        }
+        if (!destroyed && configuration === configuredScene)
+          emit('configurationchange', structuredClone(configuration), () => !destroyed && configuration === configuredScene);
       }
     },
     getConfiguration: () => structuredClone(configuration),
@@ -596,22 +629,33 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     destroy() {
       if (destroyed) return;
       interactionRevision++; destroyed = true; prepared = false;
+      let failure: RidgelineError | undefined;
+      const retire = (operation: string, dispose: () => void) => {
+        const error = disposeOwner(operation, dispose);
+        failure ??= error;
+      };
       // Destroy listeners may synchronously mount a new viewport in this same
       // container. Retire only our DOM before giving them that ownership.
-      cleanupContainer.call(map);
       map._cleanupContainer = () => {};
+      retire('destroy.container', () => cleanupContainer.call(map));
       emit('destroy', undefined);
-      publication.destroy();
+      retire('destroy.publication', () => publication.destroy());
       if (!readySettled) { readySettled = true; rejectReady(new RidgelineError('DESTROYED', 'Viewport was destroyed before initialization completed.', { operation: 'initialize', recoverable: false })); }
-      clearTimeout(timer); resize.disconnect();
-      entities.destroy(); models.destroy(); modelLabels.destroy(); measurement.destroy();
+      clearTimeout(timer);
+      retire('destroy.resize', () => resize.disconnect());
+      retire('destroy.entities', () => entities.destroy());
+      retire('destroy.models', () => models.destroy());
+      retire('destroy.labels', () => modelLabels.destroy());
+      retire('destroy.measurement', () => measurement.destroy());
       preparedListeners.clear(); sceneListeners.clear(); drawingInternals.delete(map);
       map.getCanvas().removeEventListener('mouseleave', onLeave);
       if (nativeRenderDepth) removeAfterRender = true;
-      else removeMap();
-      icons.clear(); selected.clear(); publishedMarkerKeys.clear(); availableMarkers.clear(); store.remove(store.ids());
+      else { const nativeFailure = removeMap(); failure ??= nativeFailure; }
+      icons.clear(); selected.clear(); publishedMarkerKeys.clear(); availableMarkers.clear();
+      retire('destroy.features', () => store.remove(store.ids()));
       for (const set of Object.values(listeners)) set.clear();
       hoverNotified.clear();
+      if (failure) throw failure;
     },
   };
   drawingInternals.set(map, {

@@ -20,6 +20,8 @@ await copyFile('tests/model-switching.browser.ts', `${directory}/model-switching
 await copyFile('tests/model-materials.browser.ts', `${directory}/model-materials.browser.ts`);
 await copyFile('tests/model-material-fixtures.ts', `${directory}/model-material-fixtures.ts`);
 await copyFile('tests/model-fixtures.ts', `${directory}/model-fixtures.ts`);
+await copyFile('tests/workflow-controls.browser.ts', `${directory}/workflow-controls.browser.ts`);
+await copyFile('tests/workflow-selection.browser.ts', `${directory}/workflow-selection.browser.ts`);
 // The focused GPU test compiles the production GLSL function directly.
 await copyFile('src/gpu-camera-shaders.ts', `${directory}/gpu-camera-shaders.ts`);
 await writeFile(`${directory}/gpu-vote.ts`, (await readFile('tests/gpu-vote.ts', 'utf8')).replace('../src/gpu-camera-shaders', './gpu-camera-shaders'));

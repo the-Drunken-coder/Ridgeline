@@ -18,3 +18,8 @@ export type * from './drawing-types';
 
 export { attachDrawingControls } from './drawing-controls';
 export type { DrawingControlsOptions } from './drawing-controls';
+
+export { attachMapControls } from './controls';
+export type { BasemapChoice, MapControlsOptions } from './controls';
+export { formatCoordinate, parseCoordinate, geographicDistance, geographicBearing, geographicDestination } from './coordinates';
+export type { GeographicPosition, CoordinateFormat, CoordinateFormatOptions } from './coordinates';

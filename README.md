@@ -126,7 +126,7 @@ Give the container an explicit height and `position: relative`. This is a browse
 | `configure(settings)` | Independently change basemap, projection, terrain, hillshade, exaggeration, or elevation provider. |
 | `on(event, callback)` | Subscribe; the returned function unsubscribes. |
 | `reportCallbackError(cause, operation, featureId?)` | Send an attached UI callback failure through the viewport's diagnostic and logger channels. |
-| `destroy()` | Release the map, workers owned by that map, listeners, animation frame, observer, and attached UI. Safe before readiness or repeatedly. |
+| `destroy()` | Release the map, its workers, listeners, animation frame, observer, and attached UI. Supports partial setup and repeated calls. Cleanup failures are logged; synchronous teardown throws the first failure after attempting independent owners. |
 
 Updates are accumulated by ID and submitted once per animation frame using MapLibre's incremental GeoJSON API. Moving a feature never moves the camera. The library snapshots data, so properties must be structured-cloneable. Name and style callbacks receive detached snapshots; mutating their arguments cannot alter accepted data. Replacing an ID also replaces its name and styling inputs. Use immutable IDs separate from display names.
 
@@ -255,7 +255,7 @@ An optional `elevationSampler` supplies raw unexaggerated meters through `sample
 
 ## Interaction and application UI
 
-Core events are `click`, `hover`, `contextmenu`, `selectionrequest`, `datachange`, `entitychange`, `camerachange`, `diagnostic`, and `destroy`. Pointer interactions include original consumer features in topmost-first order, screen coordinates, geographic coordinates, and the original mouse event. Click picking includes features within 12 CSS pixels. Hover reports changes to the top feature. The core never changes application selection on its own.
+Core events are `click`, `hover`, `contextmenu`, `selectionrequest`, `datachange`, `entitychange`, `camerachange`, `configurationchange`, `diagnostic`, and `destroy`. Pointer interactions include original consumer features in topmost-first order, screen coordinates, geographic coordinates, and the original mouse event. Click picking includes features within 12 CSS pixels. Hover reports changes to the top feature. The core never changes application selection on its own.
 
 `attachInteractions(viewport, options)` is optional. It adds name/icon hover UI and an eight-per-page radial picker. Arrow keys move between candidates; Enter selects; Escape closes. Hovering previews without selecting. Candidate slots stay fixed while features move; removed choices become disabled. Closing the picker, clicking outside it, or moving the map preserves selection. Set `hover: false` or `picker: false` to disable either behavior; without the picker, a click requests the top candidate.
 
@@ -272,6 +272,34 @@ Use `renderFeature(feature)` to supply custom name/icon markup. Use `contextMenu
 Override `--rl-surface`, `--rl-text`, `--rl-border`, `--rl-active`, and `--rl-muted` on `.rl-ui` to match your application. Native buttons retain keyboard operation. Current validation is for desktop; touch interaction and a complete accessibility audit remain future work.
 
 `viewport.map` exposes MapLibre for advanced integrations. The `rl:` source/layer/image namespace is reserved. Ridgeline encodes feature IDs inside its MapLibre sources; treat rendered source IDs as internal and use `_rl_feature_id` or viewport events for the original consumer ID. Use `configure` for basemap changes so Ridgeline can restore its features and selection. Consumers own the restoration of their own MapLibre additions after a style change.
+
+## Map controls and coordinates
+
+`attachMapControls(viewport, options)` installs native MapLibre navigation, scale and fullscreen controls by default. Each can be disabled or receive its native options. Geolocation, map-center coordinates and a consumer-supplied basemap selector are opt-in. Location is requested only when the user activates the geolocation control. `positions` selects each control's corner; `destroy()` removes only this attachment's controls.
+
+`formatCoordinate` and `parseCoordinate` handle longitude-first decimal degrees, degrees/minutes and degrees/minutes/seconds. `geographicDistance`, `geographicBearing` and `geographicDestination` use horizontal spherical meters and clockwise-from-north degrees. They do not transform coordinate reference systems or include terrain slope.
+
+MapLibre 6.11.0 has no public cancellation for a one-shot geolocation request or its ten-second fallback timer. Destroying the attachment clears its active watch; it cannot cancel that one-shot request.
+
+`configurationchange` reports accepted configuration independently of asynchronous basemap loading. Fullscreen targets `viewport.container` unless a different container is supplied. Navigation, fullscreen and geolocation default to top-right, scale to bottom-left, coordinates to bottom-right and basemaps to top-left. Equivalent basemap choices retain the chosen label; an unmatched external style displays Custom. Coordinate precision is an integer from 0 to 8 in the final unit. Parsing accepts at most 256 characters and a sign or hemisphere per coordinate, never both. Spherical calculations use a 6,371,008.8 m radius. See the [controls and coordinates guide](docs/viewport-tools.md#map-controls-and-coordinates). Undefined bearings for coincident or antipodal positions and ambiguous polar directions throw `INVALID_CONFIGURATION`.
+
+Destruction retires viewport DOM synchronously and releases native resources. It supports calls before readiness, after renderer loss, during restoration and repeated or reentrant calls from a destroy listener. The viewport emits `destroy` once and no other viewport events after destruction; `ready` still rejects if initialization was abandoned. Synchronously mounted replacements keep their own DOM and resources. Each independent cleanup is attempted even if another fails. Cleanup failures reach the logger with their original cause and `destroy.*` operation; synchronous destruction then throws the first `RidgelineError`. Native cleanup deferred until a rendering callback returns reports failures through the logger without replacing that callback's failure. A failing native teardown may leave its own resources partially released; destroy does not retry it or emit later viewport events.
+
+## Consumer-owned live updates
+
+Applications choose which state to display and submit it through `upsert`, using `remove` or `clear` when displayed features are no longer needed. Ridgeline validates and snapshots the current feature state for rendering. Applications own their source data, transport, history, clocks, interpolation, replay and retention policy.
+
+```ts
+// Called when your application has chosen a new display position and pose.
+viewport.upsert([{
+  type: 'Feature', id: 'rescue-1',
+  geometry: { type: 'Point', coordinates: [6.88, 45.93] },
+  properties: { name: 'Rescue 1' },
+  entity: { heading: 10 },
+}]);
+```
+
+`upsert` replaces the whole feature for that ID. Supply the complete current properties, entity and attachments you want retained. Feature updates preserve selection by ID and do not move the map camera. Applications can send their chosen camera through `setCamera`, and render a path as an ordinary LineString feature.
 
 ## Maps, terrain, and network access
 
@@ -310,7 +338,7 @@ Recoverable tile failures leave the rest of the map usable. The elevation-unavai
 
 ## Verification
 
-Focused Node tests cover replacement semantics, atomic invalid batches, snapshot ownership, geometry validation, diagnostics, and hillshade option validation. Install Chromium once, then run the browser suites:
+Focused Node tests cover replacement semantics, atomic invalid batches, snapshot ownership, geometry validation, diagnostics, hillshade options, coordinates. Install the browsers once, then run the suites:
 
 ```sh
 pnpm exec playwright install chromium
