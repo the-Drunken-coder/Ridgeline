@@ -407,17 +407,23 @@ export const selectionWorkflowCases: readonly { name: string; run(context: Conte
   { name: 'Optional selection point and rectangle queries agree on hidden native representations', async run(context) {
     const polygon: MapFeature = { type: 'Feature', id: 'fill', properties: {}, geometry: { type: 'Polygon', coordinates: [[[-.004, -.001], [-.002, -.001], [-.002, .001], [-.004, .001], [-.004, -.001]]] } };
     let hidden = false;
+    let fillStyle: FeatureStyle = { fillColor: '#00ff00', lineWidth: 0, label: '' };
     const viewport = createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [polygon, point('icon', .003)], logger: () => {},
-      style: feature => feature.id === 'fill' ? { fillColor: '#00ff00', lineWidth: 0, selected: { fillOpacity: hidden ? 0 : 1 } }
+      style: feature => feature.id === 'fill' ? fillStyle
         : { icon: 'visible', label: '', selected: { iconOpacity: hidden ? 0 : 1 } } });
     context.setCurrent(viewport);
-    let clickIds: string[] = []; viewport.on('click', event => { clickIds = event.features.map(feature => feature.id); });
+    let clickIds: string[] = [], hoverIds: string[] = [], contextIds: string[] = [];
+    let clicks = 0, contexts = 0;
+    viewport.on('click', event => { clicks++; clickIds = event.features.map(feature => feature.id); });
+    viewport.on('hover', event => { hoverIds = event.features.map(feature => feature.id); });
+    viewport.on('contextmenu', event => { contexts++; contextIds = event.features.map(feature => feature.id); });
     try {
       const bytes = new Uint8ClampedArray(80 * 80 * 4);
       for (let i = 0; i < bytes.length; i += 4) { bytes[i + 2] = 255; bytes[i + 3] = 255; }
       viewport.registerIcon('visible', { image: new ImageData(bytes, 80, 80) });
       await viewport.ready; await idle(viewport); viewport.setSelection(['fill', 'icon']);
       for (hidden of [false, true]) {
+        fillStyle.selected = { fillOpacity: hidden ? 0 : 1 };
         viewport.refreshStyles();
         await context.until(() => ['fill', 'icon'].every(id => viewport.map.querySourceFeatures('rl:features').some(feature => feature.properties._rl_feature_id === id && feature.properties[id === 'fill' ? '_rl_selected_fillOpacity' : '_rl_selected_iconOpacity'] === (hidden ? 0 : 1))), 'current opacity palette publication');
         await idle(viewport);
@@ -432,6 +438,53 @@ export const selectionWorkflowCases: readonly { name: string; run(context: Conte
           await input().mouse('click', p.x, p.y);
           check(queried.includes(id) === !hidden && clickIds.includes(id) === !hidden, `hidden=${hidden}, ${id}: rectangle=${queried}, click=${clickIds}, layers=${viewport.map.queryRenderedFeatures([[p.x - 5, p.y - 5], [p.x + 5, p.y + 5]], { layers: ['rl:fill', 'rl:line', 'rl:icons'] }).map(hit => hit.layer.id)}`);
         }
+      }
+      const variants: readonly { name: string; style: FeatureStyle; selected?: boolean; hovered?: boolean; hidden: boolean; rgb: readonly [number, number, number] }[] = [
+        { name: 'rgba zero', style: { fillColor: 'rgba(0,255,0,0)' }, hidden: true, rgb: [255, 255, 255] },
+        { name: 'transparent', style: { fillColor: 'transparent' }, hidden: true, rgb: [255, 255, 255] },
+        { name: 'hex zero', style: { fillColor: '#00ff0000' }, hidden: true, rgb: [255, 255, 255] },
+        { name: 'base color fallback', style: { fillColor: undefined, color: 'transparent' }, hidden: true, rgb: [255, 255, 255] },
+        { name: 'fill overrides base color', style: { color: 'transparent' }, hidden: false, rgb: [0, 255, 0] },
+        { name: 'positive alpha', style: { fillColor: 'rgba(0,255,0,0.5)' }, hidden: false, rgb: [128, 255, 128] },
+        { name: 'selected zero beats hover', style: { selected: { fillColor: 'transparent' }, hover: { fillColor: '#00ff00' } }, selected: true, hovered: true, hidden: true, rgb: [255, 255, 255] },
+        { name: 'selected visible beats hover', style: { selected: { fillColor: '#00ff00', fillOpacity: 1 }, hover: { fillColor: 'transparent' } }, selected: true, hovered: true, hidden: false, rgb: [0, 255, 0] },
+        { name: 'hover zero', style: { hover: { fillColor: '#00ff0000' } }, hovered: true, hidden: true, rgb: [255, 255, 255] },
+        { name: 'omitted selected fill retains hover', style: { selected: { color: '#00ff00' }, hover: { fillColor: 'rgba(0,255,0,0)' } }, selected: true, hovered: true, hidden: true, rgb: [255, 255, 255] },
+        { name: 'state color does not recolor fill', style: { fillColor: 'transparent', selected: { color: '#00ff00' } }, selected: true, hidden: true, rgb: [255, 255, 255] },
+        { name: 'state color does not hide fill', style: { selected: { color: 'transparent', fillOpacity: 1 } }, selected: true, hidden: false, rgb: [0, 255, 0] },
+        { name: 'disabled selection suppresses hover', style: { fillColor: 'transparent', selected: { enabled: false, fillColor: '#00ff00' }, hover: { fillColor: '#00ff00' } }, selected: true, hovered: true, hidden: true, rgb: [255, 255, 255] },
+        { name: 'disabled hover retains base', style: { hover: { enabled: false, fillColor: 'transparent' } }, hovered: true, hidden: false, rgb: [0, 255, 0] },
+      ];
+      const { browserDrag } = window; check(browserDrag, 'Native right-click bridge unavailable');
+      const center = viewport.map.project([-.003, 0]);
+      const edge = viewport.map.project([-.002, 0]);
+      check(edge.x - center.x > 12, 'Fill sample must be beyond the outline and pointer tolerances');
+      for (const variant of variants) {
+        await input().mouse('move', 10, 10);
+        fillStyle = { fillColor: '#00ff00', fillOpacity: 1, lineWidth: 0, label: '', ...variant.style };
+        viewport.setSelection(variant.selected ? ['fill'] : []); viewport.preview(variant.hovered ? 'fill' : null);
+        viewport.refreshStyles();
+        await context.until(() => viewport.map.querySourceFeatures('rl:features').some(feature => {
+          const properties = feature.properties;
+          return properties._rl_feature_id === 'fill' && properties._rl_fill === (fillStyle.fillColor ?? fillStyle.color ?? '#216e5b')
+            && properties._rl_selected_fillColor === fillStyle.selected?.fillColor && properties._rl_hover_fillColor === fillStyle.hover?.fillColor
+            && properties._rl_selected_color === fillStyle.selected?.color && properties._rl_selected_fillOpacity === fillStyle.selected?.fillOpacity
+            && properties._rl_selected_enabled === (fillStyle.selected?.enabled ?? true) && properties._rl_hover_enabled === (fillStyle.hover?.enabled ?? true);
+        }), `${variant.name} palette publication`);
+        await idle(viewport);
+        const color = await pixel(viewport, center);
+        check(variant.rgb.every((channel, index) => Math.abs(color[index]! - channel) <= 2) && color[3] === 255, `${variant.name} pixels: ${[...color]}`);
+        const queried = viewport.queryFeatures([{ x: center.x - 5, y: center.y - 5 }, { x: center.x + 5, y: center.y + 5 }]).features.map(feature => feature.id);
+        const expected = variant.hidden ? [] : ['fill'];
+        await input().mouse('move', center.x, center.y);
+        const before = clicks; await input().mouse('click', center.x, center.y);
+        check(clicks === before + 1, `${variant.name} native click was not delivered`);
+        const canvas = viewport.map.getCanvas().getBoundingClientRect(), beforeContext = contexts;
+        await browserDrag(canvas.left + center.x, canvas.top + center.y, canvas.left + center.x, canvas.top + center.y, 'right');
+        check(contexts === beforeContext + 1, `${variant.name} native context menu was not delivered`);
+        check(JSON.stringify(queried) === JSON.stringify(expected) && JSON.stringify(clickIds) === JSON.stringify(expected)
+          && JSON.stringify(hoverIds) === JSON.stringify(expected) && JSON.stringify(contextIds) === JSON.stringify(expected),
+          `${variant.name}: rectangle=${queried}, click=${clickIds}, hover=${hoverIds}, context=${contextIds}`);
       }
     } finally { viewport.destroy(); }
   } },

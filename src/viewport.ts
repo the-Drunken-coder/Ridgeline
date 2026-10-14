@@ -1,3 +1,4 @@
+import { Color } from '@maplibre/maplibre-gl-style-spec';
 import { ModelMeasurement } from './model-measurement';
 import { ModelLabels } from './model-labels';
 import { dashExpression, featureStyle, fontExpression, highlightExpression, resolveHighlight, styleProperties } from './feature-style';
@@ -446,7 +447,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     const style = publishedStyles.get(id), highlight = resolveHighlight(style, selected.has(id), previewId === id);
     const iconOpacity = highlight.appearance.iconOpacity ?? 1;
     const fillOpacity = highlight.appearance.fillOpacity ?? (highlight.selected ? .45 : style?.fillOpacity ?? .2);
-    if ((hit.layer.id === 'rl:icons' || hit.layer.id === 'rl:map-icons') && iconOpacity === 0 || hit.layer.id === 'rl:fill' && fillOpacity === 0) return undefined;
+    const fillColor = highlight.appearance.fillColor ?? style?.fillColor ?? style?.color ?? '#216e5b';
+    if ((hit.layer.id === 'rl:icons' || hit.layer.id === 'rl:map-icons') && iconOpacity === 0
+      || hit.layer.id === 'rl:fill' && (fillOpacity === 0 || Color.parse(fillColor)?.a === 0)) return undefined;
     return id;
   }
   function interaction(event: Pick<Interaction<P>, 'point' | 'lngLat' | 'originalEvent'>, tolerance: number): Interaction<P> {
