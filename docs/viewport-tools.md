@@ -43,3 +43,50 @@ All geographic helpers use `[longitude, latitude]`, with longitude [-180, 180] a
 
 Distance, bearing and destination use Ridgeline's 6,371,008.8 m spherical Earth radius. They exclude terrain slope and are not ellipsoidal survey calculations.
 
+
+## Feature presentation
+
+Supply a `style(feature)` accessor to `createViewport`. Callback results are validated and copied before rendering. Invalid style output reports `INVALID_FEATURE` with operation `style` and leaves the feature's last rendered version available while its working source remains available. Context loss can withhold output; source replacement rebuilds current features whose styling succeeds. Call `refreshStyles()` after changing an external palette, or pass IDs to refresh a subset. It uses current stored features without replacing accepted data, emitting `datachange`, moving the camera or interrupting a drawing draft. Selection and hover feedback update without feature replacement.
+
+```ts
+const viewport = createViewport<{ name: string }>({
+  container,
+  style: feature => ({
+    color: '#216e5b',
+    lineWidth: 3,
+    dashArray: [4, 2],
+    label: feature.properties.name,
+    labelStyle: {
+      font: ['Noto Sans Regular'], size: 14,
+      haloColor: '#ffffff', haloWidth: 2,
+      anchor: 'top', offset: [0, 2],
+    },
+    selected: { color: '#be4b1b', lineWidth: 5, labelColor: '#8f3514' },
+    hover: { color: '#db6a20' },
+  }),
+});
+```
+
+| Style field | Default and units |
+| --- | --- |
+| `color`, `fillColor` | Stroke/dot `#216e5b`; fill inherits `color`. |
+| `radius`, `lineWidth`, `fillOpacity` | 6 CSS px, 3 CSS px, 0.2. Opacity is 0–1. |
+| `dashed`, `dashArray` | Solid by default. `dashed: true` uses `[3, 2]`; explicit `dashArray` overrides it. Values alternate dash/gap lengths in line-width units. |
+| `icon` | Registered icon ID, otherwise a dot. Registration and fetching remain consumer-owned. |
+| `iconSize` | 1, multiplying the registered image's pixel-ratio-adjusted size. Must be positive and finite. |
+| `iconRotation`, `iconRotationAlignment` | 0 clockwise degrees, relative to `'viewport'`; use `'map'` for map-relative rotation. |
+| `iconAnchor` | `'center'`. |
+| `label` | Optional text. |
+| `labelStyle.font`, `size` | `['Noto Sans Regular']`, 12 CSS px. Size must be positive and finite. |
+| `labelStyle.color`, `haloColor`, `haloWidth` | `#203b32`, `#ffffff`, 1.5 CSS px. Halo width is nonnegative. |
+| `labelStyle.anchor`, `offset` | `'top'`, `[0, 1.8]` in text-size units. An explicit non-top anchor defaults to `[0, 0]`. |
+| `selected`, `hover` | Optional overrides for `color`, `radius`, `lineWidth`, `fillColor`, `fillOpacity`, `labelColor`, `iconOpacity`. Omitted fields keep existing feedback. |
+| `selected.enabled`, `hover.enabled` | `true`. Set to `false` to retain base appearance for that state. Disabled selection suppresses hover appearance while selected. Selection identity and label priority are unaffected. |
+| `selected.modelBrightness`, `hover.modelBrightness` | 0.18 and 0.08. Finite values from 0 to 1 brighten a model toward white; zero retains its base material colors. |
+
+Anchors are `center`, `left`, `right`, `top`, `bottom`, and the four corner combinations such as `top-left`. Fonts need 1–16 nonempty names available through the basemap glyph source or MapLibre's local font configuration. Ridgeline does not install fonts. Offsets contain two finite numbers. Dash arrays contain 1–32 nonnegative finite lengths, including at least one positive length. Colors use MapLibre-supported CSS color strings.
+
+Explicit selection overrides hover per field. Labels on models use the same label style and collision rules, with additional offset in the anchor direction to clear model bounds. Model feedback rings accept highlight color and line width; set `lineWidth: 0` to hide the ring while retaining configured brightening. Icon size/rotation/opacity describe the icon representation and do not resize, rotate or hide a 3D model. Use `modelAppearance` and entity pose for that representation. Saved drawing appearance retains its documented stroke/fill/width/opacity/dash/label precedence over the accessor.
+
+Default selection feedback preserves an already thick line; explicit highlight widths still take precedence.
+

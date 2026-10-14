@@ -1,5 +1,6 @@
 import { ModelMeasurement } from './model-measurement';
 import { ModelLabels } from './model-labels';
+import { dashExpression, featureStyle, fontExpression, highlightExpression, resolveHighlight, styleProperties } from './feature-style';
 import { ModelVisibility } from './model-visibility';
 import { shapeGeometry } from './drawing-shapes';
 import { createArrowheads } from './arrowheads';
@@ -18,7 +19,7 @@ import type { FeatureStyle, IconDefinition, Interaction, MapConfiguration, MapFe
 
 const TERRAIN = 'rl:terrain';
 const SHADE = 'rl:hillshade';
-const layerIds = ['rl:fill', 'rl:line', 'rl:dashed', 'rl:arrowheads', 'rl:points', 'rl:icons', 'rl:labels'];
+const layerIds = ['rl:fill', 'rl:line', 'rl:dashed', 'rl:arrowheads', 'rl:points', 'rl:icons', 'rl:map-icons', 'rl:labels'];
 
 type ViewportDrawingInternals = {
   setEditing(id: string | null): void;
@@ -44,6 +45,12 @@ export const DEFAULT_ELEVATION = {
 export function createViewport<P extends Properties = Properties>(options: ViewportOptions<P>): Viewport<P> {
   const store = new FeatureStore<P>();
   const publishedArrows = new Map<string, MapFeature<P>>();
+  const preparedStyles = new WeakMap<MapFeature<P>, FeatureStyle>();
+  const publishedStyles = new Map<string, FeatureStyle>();
+  const pendingStyles = new Map<string, FeatureStyle>();
+  let styleArraysQueued = false;
+  let dashSignature = '';
+  let fontSignature = '';
   const report = createReporter(options.logger);
   const icons = new Map<string, IconDefinition>();
   let selected = new Set<string>();
@@ -202,6 +209,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   const arrowheads = createArrowheads(map, 'rl:arrows', 'rl:arrowheads');
   const publication = createFeaturePublication({ store, target: mapLibreFeaturePublication(map), render: rendered, sourceId: sourceFeatureId, diagnostic,
     published: (id, feature) => {
+      const style = feature && preparedStyles.get(feature);
+      if (style) publishedStyles.set(id, style); else publishedStyles.delete(id);
+      pendingStyles.delete(id); refreshStyleArrays();
       const marker = feature && preparedMarkerKeys.get(feature);
       if (marker) publishedMarkerKeys.set(id, marker); else publishedMarkerKeys.delete(id);
       const wasArrow = publishedArrows.has(id);
@@ -211,6 +221,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       synchronizeState(id);
     },
     restored: features => {
+      publishedStyles.clear(); pendingStyles.clear();
+      for (const feature of features) { const style = preparedStyles.get(feature); if (style) publishedStyles.set(feature.id, style); }
       publishedMarkerKeys.clear();
       for (const feature of features) { const key = preparedMarkerKeys.get(feature); if (key) publishedMarkerKeys.set(feature.id, key); }
       publishedArrows.clear();
@@ -229,14 +241,46 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     const name = options.name?.(structuredClone(feature)) ?? feature.properties.name;
     return typeof name === 'string' && name.trim() ? name : feature.id;
   }
-  function getStyle(feature: MapFeature<P>): FeatureStyle { return { ...options.style?.(structuredClone(feature)), ...feature.drawing?.style }; }
+  function getStyle(feature: MapFeature<P>): FeatureStyle {
+    // Consumer exceptions retain their callback classification. Invalid output
+    // is a library validation failure with the feature and operation attached.
+    const raw = options.style ? options.style(structuredClone(feature)) : {};
+    try {
+      const style = { ...featureStyle(raw), ...feature.drawing?.style };
+      // Saved drawings own their dash choice, including an explicit solid line.
+      if (feature.drawing) delete style.dashArray;
+      return featureStyle(style);
+    } catch (cause) {
+      throw new RidgelineError('INVALID_FEATURE', 'Invalid feature appearance.',
+        { operation: 'style', recoverable: true, featureId: feature.id }, cause);
+    }
+  }
+  function refreshStyleArrays() {
+    if (styleArraysQueued || destroyed) return;
+    styleArraysQueued = true;
+    queueMicrotask(() => {
+      styleArraysQueued = false;
+      if (destroyed || !prepared) return;
+      const styles = [...publishedStyles.values(), ...pendingStyles.values()];
+      const expression = dashExpression(styles), signature = JSON.stringify(expression);
+      if (map.getLayer('rl:dashed') && signature !== dashSignature) { map.setPaintProperty('rl:dashed', 'line-dasharray', expression); dashSignature = signature; }
+      const fonts = fontExpression(styles), fontKey = JSON.stringify(fonts);
+      if (!destroyed && prepared && map.getLayer('rl:labels') && fontKey !== fontSignature) { map.setLayoutProperty('rl:labels', 'text-font', fonts); fontSignature = fontKey; }
+    });
+  }
   function markerKey(feature: MapFeature<P>, style: FeatureStyle) {
     const marker = entities.marker(feature);
     return JSON.stringify([marker.position ?? feature.geometry.coordinates, marker.visible, marker.ground, marker.offset,
-      style.icon && icons.has(style.icon) ? style.icon : '', style.color ?? '#216e5b', style.radius ?? 6]);
+      style.icon && icons.has(style.icon) ? style.icon : '', style.color ?? '#216e5b', style.radius ?? 6,
+      style.iconSize ?? 1, style.iconRotation ?? 0, style.iconRotationAlignment ?? 'viewport', style.iconAnchor ?? 'center']);
   }
   function rendered(feature: MapFeature<P>): MapFeature {
+    const generation = sceneGeneration;
     const style = getStyle(feature);
+    // Publication owns replacement/removal checks for this ID. Unrelated data
+    // or selection changes do not invalidate its successfully prepared style.
+    if (destroyed || generation !== sceneGeneration) throw new Error('Feature presentation was superseded during styling.');
+    preparedStyles.set(feature, style); pendingStyles.set(feature.id, style); refreshStyleArrays();
     const marker = entities.marker(feature), key = feature.entity ? markerKey(feature, style) : undefined;
     if (key) preparedMarkerKeys.set(feature, key);
     return {
@@ -244,10 +288,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       geometry: feature.drawing ? shapeGeometry(feature.drawing.shape, true)
         : marker.position ? { type: 'Point', coordinates: marker.position } : feature.geometry,
       properties: {
-        ...modelLabels.properties(feature.id),
+        ...modelLabels.properties(feature.id, style.labelStyle),
+        ...styleProperties(style),
         _rl_id: sourceFeatureId(feature.id), _rl_feature_id: feature.id, ...(key ? { _rl_marker: key } : {}),
-        _rl_color: style.color ?? '#216e5b', _rl_fill: style.fillColor ?? style.color ?? '#216e5b', _rl_dashed: style.dashed ?? false, _rl_radius: style.radius ?? 6,
-        _rl_width: style.lineWidth ?? 3, _rl_opacity: style.fillOpacity ?? 0.2,
         _rl_icon: style.icon && icons.has(style.icon) ? `rl:icon:${style.icon}` : '',
         _rl_label: style.label ?? '',
         _rl_hidden: !marker.visible, _rl_airborne: !marker.ground, _rl_height: marker.offset,
@@ -298,7 +341,11 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
 
   function syncArrows() {
     if (!prepared || destroyed) return;
-    arrowheads.show([...publishedArrows.values()].filter(feature => feature.id !== editingId));
+    arrowheads.show([...publishedArrows.values()].filter(feature => feature.id !== editingId), feature => {
+      const style = publishedStyles.get(feature.id);
+      const highlight = resolveHighlight(style, selected.has(feature.id), previewId === feature.id);
+      return highlight.appearance.color ?? (highlight.hovered ? '#db6a20' : undefined) ?? style?.color ?? feature.drawing?.style.color ?? '#216e5b';
+    });
   }
 
   function notifyDrawingListener(listener: () => void, operation: 'style' | 'configure' | 'contextLost') {
@@ -323,21 +370,47 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       publication.restore();
       if (!current()) return;
       const layers: LayerSpecification[] = [
-        { id: 'rl:fill', type: 'fill', source: SOURCE, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': ['get', '_rl_fill'], 'fill-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, ['boolean', ['feature-state', 'selected'], false], 0.45, ['get', '_rl_opacity']] } },
-        { id: 'rl:line', type: 'line', source: SOURCE, filter: ['all', ['in', '$type', 'LineString', 'Polygon'], ['!=', '_rl_dashed', true]], paint: { 'line-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', ['get', '_rl_color']], 'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 5, ['get', '_rl_width']] } },
-        { id: 'rl:dashed', type: 'line', source: SOURCE, filter: ['all', ['in', '$type', 'LineString', 'Polygon'], ['==', '_rl_dashed', true]], paint: { 'line-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1], 'line-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', ['get', '_rl_color']], 'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 5, ['get', '_rl_width']], 'line-dasharray': [3, 2] } },
-        { id: 'rl:points', type: 'circle', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_airborne', true], ['!=', '_rl_hidden', true]], paint: { 'circle-opacity': ['case', ['any', ['boolean', ['feature-state', 'editing'], false], ['boolean', ['feature-state', 'model'], false]], 0, 1], 'circle-stroke-opacity': ['case', ['any', ['boolean', ['feature-state', 'editing'], false], ['boolean', ['feature-state', 'model'], false]], 0, 1], 'circle-radius': ['case', ['boolean', ['feature-state', 'hover'], false], 12, ['get', '_rl_radius']], 'circle-color': ['get', '_rl_color'], 'circle-stroke-width': ['case', ['boolean', ['feature-state', 'selected'], false], 4, 2], 'circle-stroke-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#db6a20', '#ffffff'] } },
-        { id: 'rl:icons', type: 'symbol', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_icon', ''], ['!=', '_rl_hidden', true]], layout: { 'icon-image': ['get', '_rl_icon'], 'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-height-offset': ['get', '_rl_height'] }, paint: { 'icon-opacity': ['case', ['any', ['boolean', ['feature-state', 'editing'], false], ['boolean', ['feature-state', 'model'], false]], 0, 1] } },
-        { id: 'rl:labels', type: 'symbol', source: SOURCE, filter: ['!=', '_rl_hidden', true], layout: { 'text-field': ['get', '_rl_label'], 'text-font': ['Noto Sans Regular'], 'text-size': 12, 'text-offset': ['coalesce', ['get', '_rl_label_offset'], ['literal', [0, 1.8]]], 'text-anchor': 'top', 'symbol-height-offset': ['get', '_rl_height'] }, paint: { 'text-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, ['==', ['coalesce', ['get', '_rl_label_stamp'], ''], ['coalesce', ['feature-state', 'labelStamp'], '']], 1, 0], 'text-color': '#203b32', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } },
+        { id: 'rl:fill', type: 'fill', source: SOURCE, filter: ['==', '$type', 'Polygon'], paint: {
+          'fill-color': highlightExpression('fillColor', ['get', '_rl_fill']),
+          'fill-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, highlightExpression('fillOpacity', ['get', '_rl_opacity'], .45)] } },
+        { id: 'rl:line', type: 'line', source: SOURCE, filter: ['all', ['in', '$type', 'LineString', 'Polygon'], ['!=', '_rl_dashed', true]], paint: {
+          'line-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1],
+          'line-color': highlightExpression('color', ['get', '_rl_color'], undefined, '#db6a20'),
+          'line-width': highlightExpression('lineWidth', ['get', '_rl_width'], ['max', 5, ['get', '_rl_width']]) } },
+        { id: 'rl:dashed', type: 'line', source: SOURCE, filter: ['all', ['in', '$type', 'LineString', 'Polygon'], ['==', '_rl_dashed', true]], paint: {
+          'line-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1],
+          'line-color': highlightExpression('color', ['get', '_rl_color'], undefined, '#db6a20'),
+          'line-width': highlightExpression('lineWidth', ['get', '_rl_width'], ['max', 5, ['get', '_rl_width']]),
+          'line-dasharray': dashExpression([...publishedStyles.values(), ...pendingStyles.values()]) } },
+        { id: 'rl:points', type: 'circle', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_airborne', true], ['!=', '_rl_hidden', true]], paint: {
+          'circle-opacity': ['case', ['any', ['boolean', ['feature-state', 'editing'], false], ['boolean', ['feature-state', 'model'], false]], 0, 1],
+          'circle-stroke-opacity': ['case', ['any', ['boolean', ['feature-state', 'editing'], false], ['boolean', ['feature-state', 'model'], false]], 0, 1],
+          'circle-radius': highlightExpression('radius', ['get', '_rl_radius'], undefined, ['max', 12, ['get', '_rl_radius']]),
+          'circle-color': highlightExpression('color', ['get', '_rl_color']),
+          'circle-stroke-width': ['case', ['all', ['boolean', ['feature-state', 'selected'], false], ['!=', ['get', '_rl_selected_enabled'], false]], 4, 2],
+          'circle-stroke-color': ['case', ['all', ['boolean', ['feature-state', 'selected'], false], ['==', ['get', '_rl_selected_enabled'], false]], '#ffffff',
+            ['all', ['boolean', ['feature-state', 'hover'], false], ['!=', ['get', '_rl_hover_enabled'], false]], '#db6a20', '#ffffff'] } },
+        ...(['viewport', 'map'] as const).map((alignment): LayerSpecification => ({ id: alignment === 'map' ? 'rl:map-icons' : 'rl:icons', type: 'symbol', source: SOURCE,
+          filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_icon', ''], ['!=', '_rl_hidden', true], ['==', '_rl_icon_alignment', alignment]], layout: {
+          'icon-image': ['get', '_rl_icon'], 'icon-size': ['get', '_rl_icon_size'], 'icon-rotate': ['get', '_rl_icon_rotation'],
+          'icon-anchor': ['get', '_rl_icon_anchor'], 'icon-rotation-alignment': alignment,
+          'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-height-offset': ['get', '_rl_height'] }, paint: {
+          'icon-opacity': ['case', ['any', ['boolean', ['feature-state', 'editing'], false], ['boolean', ['feature-state', 'model'], false]], 0, highlightExpression('iconOpacity', 1)] } })),
+        { id: 'rl:labels', type: 'symbol', source: SOURCE, filter: ['!=', '_rl_hidden', true], layout: {
+          'text-field': ['get', '_rl_label'], 'text-font': fontExpression([...publishedStyles.values(), ...pendingStyles.values()]), 'text-size': ['get', '_rl_label_size'],
+          'text-offset': ['get', '_rl_label_offset'], 'text-anchor': ['get', '_rl_label_anchor'], 'symbol-height-offset': ['get', '_rl_height'] }, paint: {
+          'text-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, ['==', ['coalesce', ['get', '_rl_label_stamp'], ''], ['coalesce', ['feature-state', 'labelStamp'], '']], 1, 0],
+          'text-color': highlightExpression('labelColor', ['get', '_rl_label_color']), 'text-halo-color': ['get', '_rl_label_halo_color'], 'text-halo-width': ['get', '_rl_label_halo_width'] } },
       ];
       for (const layer of layers) { if (!current()) return; if (!map.getLayer(layer.id)) map.addLayer(layer); }
+      dashSignature = ''; fontSignature = ''; refreshStyleArrays();
       syncArrows();
       if (!current()) return;
       applyElevation();
       if (!current()) return;
       entities.attach();
       // Fallbacks draw after models, so a detected model draw failure can expose them in this frame.
-      for (const id of ['rl:points', 'rl:icons', 'rl:labels']) map.moveLayer(id);
+      for (const id of ['rl:points', 'rl:icons', 'rl:map-icons', 'rl:labels']) map.moveLayer(id);
       modelVisibility.invalidate(); modelLabels.invalidate();
       if (!current()) return;
       for (const id of selected) synchronizeState(id);
@@ -377,11 +450,11 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         if (typeof id !== 'string' || seen.has(id)) continue;
         if (hit.layer.id === 'rl:labels' && !modelLabels.acceptsHit(id, hit.properties?._rl_label_stamp)) continue;
         const representation = entities.getState(id)?.representation;
-        if ((hit.layer.id === 'rl:points' || hit.layer.id === 'rl:icons') && (representation === 'model' || representation === 'withheld')) continue;
+        if ((hit.layer.id === 'rl:points' || hit.layer.id === 'rl:icons' || hit.layer.id === 'rl:map-icons') && (representation === 'model' || representation === 'withheld')) continue;
         const feature = store.get(id);
         if (feature) { seen.add(id); features.push(feature); }
       } };
-      const overlay = (id: string) => id === 'rl:labels' || id === 'rl:icons' || id === 'rl:points';
+      const overlay = (id: string) => id === 'rl:labels' || id === 'rl:icons' || id === 'rl:map-icons' || id === 'rl:points';
       addNativeHits(hits.filter(hit => overlay(hit.layer.id)));
       addEntityHits(entities.pickAbove(x, y, tolerance));
       addNativeHits(hits.filter(hit => !overlay(hit.layer.id)));
@@ -513,6 +586,15 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       entities.retry();
       publication.retry();
     },
+    refreshStyles(ids = store.ids()) {
+      assertActive();
+      const features = [...new Set(ids)].flatMap(id => { const feature = store.get(id); return feature ? [feature] : []; });
+      entities.set(features);
+      if (destroyed) return;
+      // Style callbacks may replace data while entity preparation is running.
+      // Native publication must use the latest accepted inputs for each ID.
+      publication.update(features.flatMap(feature => { const current = store.get(feature.id); return current ? [current] : []; }));
+    },
     getFeature: id => store.get(id), getFeatures: () => store.all(), getEntityState: id => entities.getState(id), getName, getStyle,
     getIcon: id => icons.get(id),
     registerModel(id, definition) { assertActive(); return models.register(id, definition); },
@@ -545,6 +627,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       assertActive(); const previous = selected; selected = new Set(ids.filter(id => store.has(id)));
       entities.selection([...selected]);
       for (const id of new Set([...previous, ...selected])) synchronizeState(id);
+      if ([...previous, ...selected].some(id => publishedArrows.has(id))) syncArrows();
       emit('selectionchange', { ids: [...selected] });
     },
     getSelection: () => [...selected],
@@ -553,6 +636,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       const previous = previewId; previewId = id && store.has(id) ? id : null;
       entities.preview(previewId);
       if (previous) synchronizeState(previous); if (previewId) synchronizeState(previewId);
+      if (publishedArrows.has(previous ?? '') || publishedArrows.has(previewId ?? '')) syncArrows();
     },
     requestSelection(ids, attachments = []) {
       assertActive(); if (interactionOwner) return;
@@ -651,7 +735,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       map.getCanvas().removeEventListener('mouseleave', onLeave);
       if (nativeRenderDepth) removeAfterRender = true;
       else { const nativeFailure = removeMap(); failure ??= nativeFailure; }
-      icons.clear(); selected.clear(); publishedMarkerKeys.clear(); availableMarkers.clear();
+      icons.clear(); selected.clear(); publishedStyles.clear(); pendingStyles.clear(); publishedMarkerKeys.clear(); availableMarkers.clear();
       retire('destroy.features', () => store.remove(store.ids()));
       for (const set of Object.values(listeners)) set.clear();
       hoverNotified.clear();

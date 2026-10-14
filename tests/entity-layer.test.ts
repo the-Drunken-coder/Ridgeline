@@ -17,7 +17,7 @@ for (const mode of ['triangles', 'lines'] as const) {
         shaderSource: noop, compileShader: noop, attachShader: noop, linkProgram: noop,
         deleteShader: noop, deleteBuffer: noop, deleteProgram: noop, useProgram: noop, bindBuffer: noop, bufferData: noop,
         uniformMatrix4fv: noop, uniform3f: noop, uniform4f: noop, uniform4fv: noop, uniform1f: noop, uniform2f: noop, uniform1i: noop,
-        enableVertexAttribArray: noop, vertexAttribPointer: noop, enable: noop, blendFunc: noop, disable: noop,
+        enableVertexAttribArray: noop, vertexAttribPointer: noop, enable: noop, blendFunc: noop, blendFuncSeparate: noop, disable: noop,
         depthMask: noop, drawArrays: noop, drawingBufferWidth: 1000, drawingBufferHeight: 1000,
       } as unknown as WebGL2RenderingContext;
       const layer = new EntityLayer(cause => { throw cause; });
@@ -69,7 +69,7 @@ test('null entity buffer allocation reports once and explicit retry renders only
     deleteBuffer: () => { deletedBuffers++; }, deleteProgram: () => { deletedPrograms++; },
     useProgram: noop, bindBuffer: noop, bufferData: noop, uniformMatrix4fv: noop, uniform3f: noop, uniform4f: noop, uniform4fv: noop,
     uniform1f: noop, uniform2f: noop, uniform1i: noop, enableVertexAttribArray: noop, vertexAttribPointer: noop,
-    enable: noop, blendFunc: noop, disable: noop, depthMask: noop, drawArrays: () => { draws++; },
+    enable: noop, blendFunc: noop, blendFuncSeparate: noop, disable: noop, depthMask: noop, drawArrays: () => { draws++; },
     drawingBufferWidth: 1000, drawingBufferHeight: 1000,
   } as unknown as WebGL2RenderingContext;
   const map = { getCanvas: () => ({ clientWidth: 1000, clientHeight: 1000 }), getCenter: () => ({ lng: 0 }),
@@ -138,7 +138,7 @@ test('picks the visible part of a face whose third vertex crosses the near plane
     deleteShader: noop, deleteBuffer: noop, deleteProgram: noop, useProgram: noop, bindBuffer: noop, bufferData: noop,
     uniformMatrix4fv: noop, uniform3f: noop, uniform4f: noop, uniform4fv: noop, uniform1f: noop,
     uniform2f: noop, uniform1i: noop, enableVertexAttribArray: noop,
-    vertexAttribPointer: noop, enable: noop, blendFunc: noop, disable: noop,
+    vertexAttribPointer: noop, enable: noop, blendFunc: noop, blendFuncSeparate: noop, disable: noop,
     depthMask: noop, drawArrays: () => { drawCalls++; },
     drawingBufferWidth: 1000, drawingBufferHeight: 1000,
   } as unknown as WebGL2RenderingContext;
