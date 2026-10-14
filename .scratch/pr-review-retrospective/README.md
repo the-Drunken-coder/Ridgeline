@@ -1,6 +1,6 @@
 # PR review retrospective
 
-This directory retains the 2026-10-05 retrospective and its original proposals. The integrated standards now live in [CODE_CONVENTIONS.md](../../CODE_CONVENTIONS.md) and its linked topic files; [the review procedure](../../docs/agents/review.md) connects them to delegated review and PR feedback. The proposal files below are historical rationale, not additional active standards.
+This directory retains the 2026-10-05 retrospective and its original proposals. The integrated standards now live in [CODE_CONVENTIONS.md](../../CODE_CONVENTIONS.md) and its linked topic files. The proposal files below are historical rationale, not additional active standards.
 
 Reviewed Ridgeline's entire visible PR history on 2026-10-05: 37 PRs, 137 inline comments, 107 review submissions, and 89 PR conversation comments. Of the review submissions, 33 have bodies and 74 are empty. That gives 259 nonempty bodies, including replies, repeated summaries, status messages, and deployment notices. The [source inventory](sources.md) records coverage and exclusions.
 

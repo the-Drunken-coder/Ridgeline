@@ -140,7 +140,7 @@ Repository context and source evidence:
 - [Pinned evidence inventory and archive policy](https://github.com/the-Drunken-coder/Ridgeline/blob/eb878b9617151f92d1136df24b07bb947ecc239e/.scratch/entity-models/evidence/README.md).
 - [Pinned validation commands](https://github.com/the-Drunken-coder/Ridgeline/blob/eb878b9617151f92d1136df24b07bb947ecc239e/package.json) and [CI workflow](https://github.com/the-Drunken-coder/Ridgeline/blob/eb878b9617151f92d1136df24b07bb947ecc239e/.github/workflows/validation.yml).
 - [Repository conventions](../../CODE_CONVENTIONS.md), [domain vocabulary](../../GLOSSARY.md), [consumer-owned workflow decision](../../docs/adr/0001-consumer-owned-workflows.md), and [MapLibre integration decision](../../docs/adr/0002-maplibre-extension-access.md).
-- [Tracker and closeout requirements](../../docs/agents/issue-tracker.md), [CI and local runner guidance](../../docs/ci-validation.md), and [portable measurement consumer](../../tools/model-measurement/README.md).
+- [CI and local runner guidance](../../docs/ci-validation.md) and [portable measurement consumer](../../tools/model-measurement/README.md).
 - [Pending hardware evidence, #80](https://github.com/the-Drunken-coder/Ridgeline/issues/80) and [pending limits and production acceptance, #91](https://github.com/the-Drunken-coder/Ridgeline/issues/91).
 
 This spec records the six improvements discussed in the retrospective. It authorizes later implementation through the tracker; this publication creates requirements and makes no claim that the environment changes already exist.

@@ -1,0 +1,6 @@
+# Select one workflow here while keeping shared installations enabled elsewhere.
+[plugins."mattpocock-skills-community@mattpocock-skills-community"]
+enabled = false
+
+[plugins."t3-pstack@t3-pstack"]
+enabled = true

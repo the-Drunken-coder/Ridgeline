@@ -118,7 +118,7 @@ Keep the public library APIs, saved drawing format, consumer-owned selection and
 
 ## Further Notes
 
-The user requested a full review, supplied a second review of the same baseline, asked to combine them, and invoked Matt To Spec to synthesize the resulting 17 findings. This document records the intended behavior; it does not assert that the repairs are implemented. No accepted architectural decision needs reopening.
+The user requested a full review, supplied a second review of the same baseline, and asked to synthesize the resulting 17 findings into a spec. This document records the intended behavior; it does not assert that the repairs are implemented. No accepted architectural decision needs reopening.
 
 On 2026-10-02, the user confirmed the existing packaged-consumer browser boundary, production playground and control-lab workflows, and focused module tests for geometry and controlled failures.
 

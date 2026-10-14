@@ -12,5 +12,4 @@ knowledge_base:
       - docs/conventions/rendering.md
       - docs/conventions/interactions.md
       - docs/conventions/testing.md
-      - docs/agents/review.md
       - docs/agents/entity-review.md

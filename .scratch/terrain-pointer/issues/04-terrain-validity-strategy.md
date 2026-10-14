@@ -1,9 +1,9 @@
 # Choose how Ridgeline establishes terrain-target validity
 
-Type: grilling
+Type: research
 Status: resolved
 Blocked by: 01
-Parent: [Terrain-aware pointer feedback](../map.md)
+Parent: [Terrain-aware pointer feedback](../plan.md)
 
 ## Question
 

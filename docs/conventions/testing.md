@@ -39,4 +39,4 @@ For example, a late-terrain test must settle its held preparation before asserti
 - Documentation-only changes need link, configuration where affected, and diff checks rather than the runtime suite.
 - Distinguish completed checks from manual observations and unverified behavior. Keep historical measurements dated rather than presenting them as current guarantees.
 
-Use the [review procedure](../agents/review.md) for revision-specific review and completion evidence. The common implementation standards remain in [CODE_CONVENTIONS.md](../../CODE_CONVENTIONS.md).
+Record the reviewed and exercised revisions when reporting verification. The common implementation standards remain in [CODE_CONVENTIONS.md](../../CODE_CONVENTIONS.md).

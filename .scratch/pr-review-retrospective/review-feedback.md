@@ -2,7 +2,7 @@
 
 Priority: medium. Classification: review workflow and navigation.
 
-Suggested home: a triggered `docs/agents/review.md` reference if adopted. Keep [CODE_CONVENTIONS.md](../../CODE_CONVENTIONS.md) authoritative for both implementation and Standards review.
+Keep [CODE_CONVENTIONS.md](../../CODE_CONVENTIONS.md) authoritative for implementation and standards review.
 
 ## Read every feedback channel
 

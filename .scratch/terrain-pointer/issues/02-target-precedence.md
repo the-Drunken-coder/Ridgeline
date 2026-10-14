@@ -1,9 +1,9 @@
 # Decide target precedence and gesture transitions
 
-Type: grilling
+Type: research
 Status: resolved
 Blocked by: 01, 04
-Parent: [Terrain-aware pointer feedback](../map.md)
+Parent: [Terrain-aware pointer feedback](../plan.md)
 
 ## Question
 

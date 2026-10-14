@@ -56,17 +56,17 @@ for (const feature of await entries(join(root, '.scratch'))) {
       if (!/^\[[^\]\r\n]+\]\(https:\/\/github\.com\/the-Drunken-coder\/Ridgeline\/issues\/[1-9]\d*\)$/.test(canonicalIssue)) {
         fail('Canonical issue: must link to a GitHub issue in the-Drunken-coder/Ridgeline');
       }
-      // Migrated snapshots retain history; their GitHub issue owns current requirements.
+      // Published issues own ticket state; feature requirements stay in versioned specs.
       continue;
     }
     const type = field('Type');
-    // Wayfinding tickets answer questions under a map, rather than implementing a spec.
-    if (['research', 'prototype', 'grilling', 'task'].includes(type) && await isFile(join(directory, 'map.md'))) continue;
+    // Exploration tickets resolve questions under a plan rather than implement a spec.
+    if (['research', 'prototype', 'task'].includes(type) && await isFile(join(directory, 'plan.md'))) continue;
     checked++;
     for (const name of ['Status', 'Spec', 'Blocked by', 'Acceptance depends on', 'Integration owner']) {
       if (!field(name)) fail(`missing nonempty ${name}: field before the first section`);
     }
-    if (type && type !== 'implementation') fail('unknown Type: or wayfinding ticket without map.md');
+    if (type && type !== 'implementation') fail('unknown Type: or exploration ticket without plan.md');
     if (field('Spec')) {
       const target = field('Spec').match(/^\[[^\]]+\]\(([^\s)]+)\)$/)?.[1];
       if (!target || resolve(dirname(path), target) !== join(directory, 'spec.md') || !await isFile(join(directory, 'spec.md'))) {

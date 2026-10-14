@@ -34,12 +34,12 @@ async function fixture(t) {
   };
 }
 
-test('accepts implementation tickets and map-backed wayfinding tickets', async t => {
+test('accepts implementation tickets and plan-backed exploration tickets', async t => {
   const files = await fixture(t);
   await files.write(valid);
   assert.equal(files.run().status, 0);
-  await writeFile(join(files.directory, 'map.md'), '# Investigation map\n');
-  for (const type of ['research', 'prototype', 'grilling', 'task']) {
+  await writeFile(join(files.directory, 'plan.md'), '# Investigation plan\n');
+  for (const type of ['research', 'prototype', 'task']) {
     await writeFile(join(files.directory, 'issues', `02-${type}.md`), `# Investigate\nType: ${type}\nStatus: claimed\n\nWhat should we build?\n`);
   }
   assert.equal(files.run().status, 0);
@@ -127,12 +127,26 @@ test('rejects empty acceptance sections and criteria hidden in examples or later
   }
 });
 
-test('does not exempt unknown ticket types or wayfinding types without a map', async t => {
+test('does not exempt unknown ticket types or exploration types without a plan', async t => {
   const files = await fixture(t);
   for (const type of ['research', 'implementation', 'unknown']) {
     await files.write(`# Missing requirements\nType: ${type}\n`);
     assert.equal(files.run().status, 1);
   }
+});
+
+test('requires a plan file before accepting exploration tickets', async t => {
+  const files = await fixture(t);
+  await files.write('# Investigate behavior\nType: research\nStatus: claimed\n');
+  await writeFile(join(files.directory, 'map.md'), '# Questions\n');
+  assert.equal(files.run().status, 1);
+  await mkdir(join(files.directory, 'plan.md'));
+  assert.equal(files.run().status, 1);
+  await rm(join(files.directory, 'plan.md'), { recursive: true });
+  await writeFile(join(files.directory, 'plan.md'), '# Research plan\n');
+  assert.equal(files.run().status, 0);
+  await files.write('# Investigate behavior\nType: unknown\nStatus: claimed\n');
+  assert.equal(files.run().status, 1);
 });
 
 test('ignores fenced examples with longer closers, indentation, or no closer', async t => {

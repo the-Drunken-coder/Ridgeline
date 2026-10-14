@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 
-Canonical requirements: this versioned file. Source: [GitHub spec #32](https://github.com/the-Drunken-coder/Ridgeline/issues/32), recorded here on 2026-09-29. Follow the [tracker precedence rule](../../docs/agents/issue-tracker.md#canonical-requirements) if the copies diverge.
+Canonical requirements: this versioned file. Source: [GitHub spec #32](https://github.com/the-Drunken-coder/Ridgeline/issues/32), recorded here on 2026-09-29. This file owns approved requirements; GitHub Issues own discussion, status, and dependencies. Resolve conflicting requirement edits before implementation.
 
 ## Problem Statement
 
@@ -106,6 +106,6 @@ The review on 2026-09-29 found 87 registered packaged browser cases, four contro
 
 GitHub reported the repository as private during the review, despite the initial public-repository assumption. Standard GitHub-hosted runner usage is free for public repositories. Verify current visibility and plan capabilities during implementation without changing visibility.
 
-Historical publication context: this spec initially used local Markdown for project tracking. The current [tracker guidance](../../docs/agents/issue-tracker.md) makes GitHub Issues authoritative for publication, ticket status, discussion, and dependencies. Approved requirements remain versioned in this file; nightly failure issues are a separate operational workflow in the same tracker.
+Historical publication context: this spec initially used local Markdown for project tracking. GitHub Issues are authoritative for publication, ticket status, discussion, and dependencies. Approved requirements remain versioned in this file; nightly failure issues are a separate operational workflow in the same tracker.
 
 The testing boundaries and operational choices above synthesize the completed interview. No further testing-boundary interview is needed before implementing this spec.

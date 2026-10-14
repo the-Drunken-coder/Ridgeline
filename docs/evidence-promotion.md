@@ -2,7 +2,7 @@
 
 Development output belongs in ignored `.artifacts/` directories. At closeout, the integration owner selects a compact final set for `.scratch/<feature>/evidence/`. Useful research or decision artifacts can be versioned deliberately before closeout. Existing tracked historical evidence stays intact.
 
-The [tracker closeout record](agents/issue-tracker.md#closeout-record) owns the verification claims. Keep final Standards/Spec review reports, a compact record of reviewed and exercised revisions, readable summaries, selected visuals, and compressed original producer reports. Keep unsuccessful attempts and historical results dated; curation does not turn them into current successes.
+The promotion manifest records the reviewed and exercised revisions and their verification evidence. Keep individual review reports and the synthesized verdict, a compact record of reviewed and exercised revisions, readable summaries, selected visuals, and compressed original producer reports. Keep unsuccessful attempts and historical results dated; curation does not turn them into current successes.
 
 ## Protect the selected inputs
 
@@ -28,8 +28,7 @@ Write a plan in `.artifacts/`. Each selected source must be an ignored, untracke
   },
   "reproduction": ["pnpm install --frozen-lockfile", "<original verification command>"],
   "files": [
-    { "source": ".artifacts/closeout/standards-review.md", "name": "standards-review.md" },
-    { "source": ".artifacts/closeout/spec-review.md", "name": "spec-review.md" },
+    { "source": ".artifacts/closeout/review.md", "name": "review.md" },
     { "source": ".artifacts/closeout/summary.md", "name": "summary.md" },
     { "source": ".artifacts/closeout/selected.png", "name": "selected.png" }
   ],

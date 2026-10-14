@@ -14,8 +14,6 @@ Read the common standards below and every topic whose behavior the change affect
 | Observable behavior, parsers, tests, report consumers, or verification tooling | [Testing](docs/conventions/testing.md) |
 | Entity preparation, publication, callbacks, recovery, or disposal | [Entity review](docs/agents/entity-review.md) |
 
-For code review, follow the [review procedure](docs/agents/review.md). Standards reviewers receive this file and the selected topic files explicitly; a link alone does not establish that a delegated reviewer read its target.
-
 ## Keep the final code lean
 
 Review every addition critically before finishing. Remove code left over from experiments, debugging, and temporary test setup. Delete duplicate paths and speculative abstractions; keep production code and tests only when they support a real behavior, constraint, or failure mode. Work that helped during development does not need to remain in the product.

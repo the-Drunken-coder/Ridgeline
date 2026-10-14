@@ -39,6 +39,6 @@ Focused companions include [entity-scene tests](../../tests/entity-scene.test.ts
 
 ## Record what the review established
 
-Pin the base/head and executed checkout, including uncommitted inputs, using the [tracker closeout record](issue-tracker.md#closeout-record). Record the attempted history, observed result, and relevant producer output. Distinguish inspection, executed module checks, and executed packaged-browser checks. A case listed here is available coverage, not evidence that the current revision passed it.
+Pin the base/head and executed checkout, including uncommitted inputs. Record the attempted history, observed result, and relevant producer output. Distinguish inspection, executed module checks, and executed packaged-browser checks. A case listed here is available coverage, not evidence that the current revision passed it.
 
 If a changed guarantee has no executable case, state the missing sequence and required observation explicitly. Add one focused behavioral regression at the agreed public seam only when coverage is missing; avoid duplicating these cases or weakening their pixel, picking, recovery, and quiet-period assertions. Report unexplained failures as gaps. Keep target-hardware acceptance and historical runs separate from current software verification.

@@ -35,7 +35,7 @@ Suggested convention clarification:
 | [Reference-style Markdown links are skipped](https://github.com/the-Drunken-coder/Ridgeline/pull/102#discussion_r4187454753) | Resolve inline and supported reference links to the same retained-target checks. Unsupported syntax must fail explicitly. | Reference links to retained files pass; missing or transient targets fail before publication. |
 | [Existing untracked external targets pass](https://github.com/the-Drunken-coder/Ridgeline/pull/102#discussion_r4187454760) | External repository targets must be tracked and included in the published revision, or retained in the promoted output. | Promote from a temporary Git repository, then verify links in a fresh checkout of the published commit. |
 
-Put these guarantees in the existing tool and its tests. [docs/agents/issue-tracker.md](../../docs/agents/issue-tracker.md) already owns the revision/check record; another prose requirement would repeat it without closing the acceptance gaps.
+Put these guarantees in the existing tool and its tests. Additional prose requirements would not close the acceptance gaps.
 
 ## Validate document structure through its real forms
 

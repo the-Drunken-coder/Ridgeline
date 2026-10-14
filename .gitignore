@@ -2,6 +2,7 @@ node_modules/
 dist/
 playground-dist/
 .artifacts/
+.audit/
 *.tgz
 .DS_Store
 

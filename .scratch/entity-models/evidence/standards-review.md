@@ -1,7 +1,7 @@
 # Final independent Standards re-review
 
 Date: 2026-10-05 UTC.
-Reviewer: independent Matt Code Review Standards worker. Root owns integrated verification.
+Reviewer: independent standards reviewer. Root owns integrated verification.
 
 ## Revisions and scope
 

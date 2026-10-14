@@ -4,7 +4,7 @@ Type: prototype
 Status: resolved
 Assignee: current session
 Blocked by: 01
-Parent: [Terrain-aware pointer feedback](../map.md)
+Parent: [Terrain-aware pointer feedback](../plan.md)
 
 ## Question
 
