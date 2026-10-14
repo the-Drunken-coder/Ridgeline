@@ -4654,7 +4654,13 @@ async function suite() {
     context.fillStyle = 'rgb(200,0,0)'; context.fillRect(0, 0, 256, 256);
     const data = await (await fetch(dem.toDataURL())).arrayBuffer();
     const protocol = `ground-dateline-${crypto.randomUUID()}`;
-    addProtocol(protocol, async () => ({ data: data.slice(0) }));
+    let holdReload = false, reloadRequested = false;
+    let releaseReload = () => {};
+    const reloadGate = new Promise<void>(resolve => { releaseReload = resolve; });
+    addProtocol(protocol, async () => {
+      if (holdReload) { reloadRequested = true; await reloadGate; }
+      return { data: data.slice(0) };
+    });
     const known: [number, number] = [179.8, 0];
     try {
       const draw = createViewport({ container, basemap: style(), terrain: true,
@@ -4675,26 +4681,28 @@ async function suite() {
               draw.upsert([point('unrelated-live', 170 + (++liveUpdates % 100) * .0001)]);
             }, 16) : undefined;
             try {
+            holdReload = projection === 'globe' && exaggeration === 1;
             draw.configure({ projection, exaggeration });
-            // Feature and draft publication can keep global loaded() false.
-            // Require the displayed DEM and height that placement actually uses.
+            const screen = { x: 320, y: 180 };
+            await pointer('move', screen);
+            type TerrainReadinessObservation = ReturnType<typeof readiness>;
             const readiness = () => ({ projection: draw.map.getProjection()?.type,
               terrainLoaded: draw.map.isSourceLoaded('rl:terrain'), elevation: draw.map.queryTerrainElevation(known),
               terrain: draw.map.getTerrain(), center: draw.map.getCenter().toArray(), moving: draw.map.isMoving(),
-              loaded: draw.map.loaded(), liveUpdates });
-            let observed = readiness();
+              loaded: draw.map.loaded(), liveUpdates, reloadRequested, preview: editor.getPreview(),
+              crosshair: !!container.querySelector('.rl-ground-crosshair:not([hidden])') });
+            let observed: TerrainReadinessObservation = readiness();
             try {
               await until(() => {
                 observed = readiness();
-                return (!liveTimer || observed.liveUpdates >= 2) &&
+                return (!liveTimer || observed.liveUpdates >= 2) && (!holdReload || observed.reloadRequested) &&
                   observed.projection === (projection === 'flat' ? 'mercator' : 'globe') &&
-                  observed.terrainLoaded && Math.abs((observed.elevation ?? NaN) - 100 * exaggeration) < 1;
+                  observed.terrain?.exaggeration === exaggeration && observed.preview?.kind === 'line' && observed.crosshair &&
+                  Math.abs((observed.elevation ?? NaN) - 100 * exaggeration) < 1;
               }, `${projection} terrain at exaggeration ${exaggeration}`);
             } catch (cause) {
               throw new Error(`Date-line terrain readiness: ${JSON.stringify({ expected: { projection, exaggeration, elevation: 100 * exaggeration }, observed })}`, { cause });
             }
-            const screen = { x: 320, y: 180 };
-            await pointer('move', screen);
             await until(() => !!container.querySelector('.rl-ground-crosshair:not([hidden])'),
               `${projection} ground target at exaggeration ${exaggeration}`);
             const shape = editor.getPreview();
@@ -4706,13 +4714,18 @@ async function suite() {
             if (firstLatitude === undefined) firstLatitude = placed[1];
             else check(Math.abs(placed[1] - firstLatitude) < .002,
               `${projection} uniform terrain shifted geographic placement under exaggeration: ${firstLatitude}, ${placed[1]}`);
+            if (holdReload) {
+              check(!observed.terrainLoaded, 'Globe target did not exercise a pending DEM reload');
+              holdReload = false;
+              releaseReload();
+            }
             } finally { clearInterval(liveTimer); }
           }
         }
         await pointer('click', { x: 320, y: 180 });
         check(editor.getState().draft?.placed === 1, 'Date-line scene did not place the current target');
       } finally { editor.destroy(); draw.destroy(); }
-    } finally { removeProtocol(protocol); }
+    } finally { releaseReload(); removeProtocol(protocol); }
   });
   await run('Stationary target resumes after permission and submission changes', async () => {
     const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
