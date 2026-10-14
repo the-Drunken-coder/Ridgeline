@@ -1,0 +1,226 @@
+{
+  "promotedAt": "2026-10-11T17:35:07.193Z",
+  "provenance": {
+    "spec": ".scratch/viewport-upgrades/spec.md",
+    "integrationOwner": "root",
+    "reviewed": {
+      "base": "cbef055b14fe218aa24611031c4ba1a9aa0ed540",
+      "head": "cbef055b14fe218aa24611031c4ba1a9aa0ed540",
+      "result": "Root combined and independent removal/starter review at uncommitted digest 50853a463fee75ff3edc4a75d7332ba42388a588c263b0893256a7253977d46e. No outstanding confirmed code findings. Earlier motion/replay scope withdrawn by user."
+    },
+    "localVerification": [
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted runtime/test/config digest 2e06f96de6a714b7ccde12b4db24157020bb60c24e0e26790d5b64fa27d78d05",
+        "command": "pnpm check && pnpm test",
+        "result": "Passed typechecks, 424 library/tooling tests and five control-lab state tests."
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted runtime/test/config digest 2e06f96de6a714b7ccde12b4db24157020bb60c24e0e26790d5b64fa27d78d05",
+        "command": "pnpm test:support --reporter=list,json",
+        "result": "30/33 passed; starter stale selection label reproduced in all three engines. Failure retained; not a pass."
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted runtime/test/config digest 50853a463fee75ff3edc4a75d7332ba42388a588c263b0893256a7253977d46e",
+        "command": "pnpm check",
+        "result": "Passed ticket validation, root and control-lab TypeScript."
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted runtime/test/config digest 50853a463fee75ff3edc4a75d7332ba42388a588c263b0893256a7253977d46e",
+        "command": "pnpm test:support --reporter=list,json",
+        "result": "33 passed, 11 per engine, no failures/skips/retries; installs and builds fresh packed package and starter."
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted runtime/test/config digest 50853a463fee75ff3edc4a75d7332ba42388a588c263b0893256a7253977d46e",
+        "command": "pnpm test:browser --grep 'Incremental updates replace data without moving the camera|Picker candidates stay stable during movement|Drawing upgrades touch' --reporter=list,json",
+        "result": "All three cases passed."
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted runtime/test/config digest 50853a463fee75ff3edc4a75d7332ba42388a588c263b0893256a7253977d46e",
+        "command": "pnpm build:playground && pnpm measure",
+        "result": "Build passed; complete library plus CSS adds 40,651 raw and 11,218 gzip bytes over clean baseline; no new library dependency."
+      }
+    ],
+    "hostedVerification": "Excluded by user publishing constraint. No PR, commit, push, deployment or hosted checks.",
+    "historical": [
+      "Prior evidence/final and its motion/replay reports remain unchanged, superseded by the user scope correction. Prior closeout retained in this raw archive."
+    ],
+    "remainingLimits": [
+      "Physical GPU, Android/iOS, pen, installed browsers, manual VoiceOver/NVDA and long-session memory acceptance unverified.",
+      "Full Chromium regression, playground/control-lab browser and measurement-tool suites were not rerun for this removal; unchanged files retain prior dated evidence.",
+      "Rectangle custom 3D/model/GPU queries retain documented conservative approximations."
+    ]
+  },
+  "reproduction": [
+    "pnpm install --frozen-lockfile",
+    "pnpm exec playwright install --with-deps chromium firefox webkit",
+    "pnpm check && pnpm test",
+    "pnpm test:support",
+    "pnpm test:browser --grep 'Incremental updates replace data without moving the camera|Picker candidates stay stable during movement|Drawing upgrades touch'",
+    "pnpm build:playground && pnpm measure"
+  ],
+  "files": [
+    {
+      "path": "review.md",
+      "source": ".artifacts/viewport-upgrades/consumer-owned-data/review.md",
+      "bytes": 3915,
+      "sha256": "c19a0db8a13dc46e7b1ca00090d3ee269d8d4f9f77161bc517a86b3e715cfa54"
+    },
+    {
+      "path": "summary.md",
+      "source": ".artifacts/viewport-upgrades/consumer-owned-data/summary.md",
+      "bytes": 2344,
+      "sha256": "c873db639b709565e00d0c92ab95d4b38bc8c407855bac6f0ab850427f2a24ac"
+    },
+    {
+      "path": "environment.json",
+      "source": ".artifacts/viewport-upgrades/consumer-owned-data/environment.json",
+      "bytes": 7420,
+      "sha256": "28b1561a846947153d3360188fde2adce77f7c4c16af093a2e90d35e7022a3df"
+    },
+    {
+      "path": "drawing-starter.png",
+      "source": ".artifacts/viewport-upgrades/consumer-owned-data/drawing-starter.png",
+      "bytes": 42174,
+      "sha256": "21ee5d1a3fdf92ceb44371352366f3e069a6a844479d84da0abdf6fb48305d15"
+    },
+    {
+      "path": "drawing-narrow.png",
+      "source": ".artifacts/viewport-upgrades/consumer-owned-data/drawing-narrow.png",
+      "bytes": 25253,
+      "sha256": "572b26d9b1f4380600c208dd802ecc3b1f443fdfa618e4517288ce10859c8805"
+    }
+  ],
+  "rawArchive": {
+    "path": "raw-reports.tar.gz",
+    "bytes": 482576,
+    "sha256": "43d55882515b7253a87aab2e975687c5eda8811fe0067c27c138184ddfd2f6ea",
+    "members": [
+      {
+        "path": "check.log",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/check.log",
+        "bytes": 155,
+        "sha256": "104af3b80f8e282c56d366ce0db28957ff99a8dc2f21f108894ee327706852fd"
+      },
+      {
+        "path": "unit.log",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/unit.log",
+        "bytes": 39357,
+        "sha256": "a05718ab0c4154a80c573a6fb0514fb82e1dea36306b132a555fbd9509f658b8"
+      },
+      {
+        "path": "check-final.log",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/check-final.log",
+        "bytes": 155,
+        "sha256": "104af3b80f8e282c56d366ce0db28957ff99a8dc2f21f108894ee327706852fd"
+      },
+      {
+        "path": "support-failure.log",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/support-failure.log",
+        "bytes": 18695,
+        "sha256": "9da1ae1f7575dc4c4d5ef2593679f85683c56080e30c5324072f77955aa32350"
+      },
+      {
+        "path": "support-failure-report.json",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/support-failure-report.json",
+        "bytes": 454893,
+        "sha256": "b018af65778ce6c099c135e0a7c9a1823e33f321b2fa6bbcf1b467c1823398a4"
+      },
+      {
+        "path": "support-final.log",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/support-final.log",
+        "bytes": 9339,
+        "sha256": "4808b7666b2e465bbe56e38084974b0eef923b378823aa5dce90b1fbf02c66d6"
+      },
+      {
+        "path": "support-final-report.json",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/support-final-report.json",
+        "bytes": 439183,
+        "sha256": "67b058278a78965d7d056c3571c2371ec2c08ba14f1416563217693291c54c6e"
+      },
+      {
+        "path": "live-updates.log",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/live-updates.log",
+        "bytes": 4685,
+        "sha256": "151feea8e2f1852caecc58e706d4ae2a9babaca1a3326eb7d2d799edc7ab910b"
+      },
+      {
+        "path": "live-updates-report.json",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/live-updates-report.json",
+        "bytes": 5446,
+        "sha256": "eb848217c123731ef32a59afc3af3918c4d3ce82930710bbb7a7d6b56107edec"
+      },
+      {
+        "path": "build-playground.log",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/build-playground.log",
+        "bytes": 1371,
+        "sha256": "679f04b2655d9d91022da2ee34eacf1686e5f7600db2c4bee5bb605df7892426"
+      },
+      {
+        "path": "bundle-size.log",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/bundle-size.log",
+        "bytes": 526,
+        "sha256": "8e9347667656f1ddef42c9e8206c2ab9f1120170cea23b001d21e53659cb4836"
+      },
+      {
+        "path": "bundle-size.json",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/bundle-size.json",
+        "bytes": 980,
+        "sha256": "2369ccce2617cebee8f4a344e87cb0e172b9623032eb9a4e41e01c4341528439"
+      },
+      {
+        "path": "baseline-bundle.json",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/baseline-bundle.json",
+        "bytes": 758,
+        "sha256": "d2fd2136330662fcb71d71b53f8c68fecd9564fdaa8e5a7acf4bd2cd5b66d129"
+      },
+      {
+        "path": "inputs-before.json",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/inputs-before.json",
+        "bytes": 25716,
+        "sha256": "56c321f191c214ac88332a6ec676c71141ffc61554f8a9cb861a2b82ac75c2e2"
+      },
+      {
+        "path": "inputs-final-before.json",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/inputs-final-before.json",
+        "bytes": 25716,
+        "sha256": "626bce63f7c023a4b3ce0d0d4d4d415ec1582f539b3308708bfd4f11688d4ebb"
+      },
+      {
+        "path": "inputs-final-after.json",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/inputs-final-after.json",
+        "bytes": 25716,
+        "sha256": "0c1767b799bb877260489cb563e933d37266ab999d0b94146d0aeebc1698703f"
+      },
+      {
+        "path": "failure-run.json",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/failure-run.json",
+        "bytes": 525,
+        "sha256": "733f2f2461ca3e6680278b95e1cc11dc586d9ce3ad1d211e08d40a8a17a3eb78"
+      },
+      {
+        "path": "support-run.json",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/support-run.json",
+        "bytes": 527,
+        "sha256": "d0b334f86e983c878f160726c87d84093a8597bcb45e55fb5f6999325efecfd0"
+      },
+      {
+        "path": "live-updates-run.json",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/live-updates-run.json",
+        "bytes": 661,
+        "sha256": "8e9b2a14c3510ea5cfd60ad420d2b274772a1177644acf88bee7ebc0e7e48622"
+      },
+      {
+        "path": "spec-snapshot.md",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/spec-snapshot.md",
+        "bytes": 11738,
+        "sha256": "e15b25a33effb0421240fe1c846e99ec6d77172a685871709a6da309a97ac366"
+      },
+      {
+        "path": "prior-closeout.md",
+        "source": ".artifacts/viewport-upgrades/consumer-owned-data/prior-closeout.md",
+        "bytes": 12698,
+        "sha256": "3887ce3379002388fa38e3a6c403d2eacd6fb86435335dfb047fadd59699dde3"
+      }
+    ]
+  }
+}

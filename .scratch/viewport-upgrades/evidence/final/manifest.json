@@ -1,0 +1,277 @@
+{
+  "promotedAt": "2026-10-11T08:34:30.018Z",
+  "provenance": {
+    "spec": ".scratch/viewport-upgrades/spec.md",
+    "integrationOwner": "root",
+    "reviewed": {
+      "base": "cbef055b14fe218aa24611031c4ba1a9aa0ed540",
+      "head": "cbef055b14fe218aa24611031c4ba1a9aa0ed540",
+      "result": "Root combined review of uncommitted implementation, final runtime/test/config digest 8ccbe6759d8f309c98902d8c115fceed111215cb16150d00004a2a2621c39b66. No outstanding confirmed code findings in implemented library/starter scope; Spec still pending playground replay placement."
+    },
+    "localVerification": [
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted runtime/test/config digest 9aa3b1727c1a4e2564622266a2996199f22e85e024a28b5990f1bafe7eb8aa1c",
+        "command": "pnpm validate",
+        "result": "Stopped at old inspector fixture: check passed; 439 Node and 5 control-lab state tests passed; Chromium 198/199 passed. Not a successful single-command run."
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted runtime/test/config digest 16581104a0a5a150d7244d689723b5924703ccf415e636adbce9e53666a886b0",
+        "command": "pnpm check && pnpm test",
+        "result": "Passed; 440 Node library/tooling tests and 5 control-lab state tests."
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted runtime/test/config digest 8a39dd2e64696e3751ddd5f1c0738d644d38024cecd80c24a228462b377c59b1",
+        "command": "pnpm test:support",
+        "result": "42 passed, 14 per Chromium/Firefox/WebKit; no retries."
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted runtime/test/config digest 8a39dd2e64696e3751ddd5f1c0738d644d38024cecd80c24a228462b377c59b1",
+        "command": "pnpm test:playground:browser && pnpm test:controls:browser && pnpm build:playground && pnpm build:controls && pnpm test:measurement",
+        "result": "6 playground and 5 control-lab browser cases passed; both builds and measurement checks passed."
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted runtime/test/config digest 8ccbe6759d8f309c98902d8c115fceed111215cb16150d00004a2a2621c39b66",
+        "command": "pnpm exec tsc --noEmit",
+        "result": "Passed."
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted runtime/test/config digest 8ccbe6759d8f309c98902d8c115fceed111215cb16150d00004a2a2621c39b66",
+        "command": "PLAYWRIGHT_JSON_OUTPUT_FILE=.artifacts/viewport-upgrades/support-report.json pnpm test:support --grep 'Workflow controls|Adoption starter|Inspector label editing' --reporter=list,json",
+        "result": "9 affected cases passed across three engines, no skipped/flaky/unexpected results; includes narrow replay keyboard/overflow journey."
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted runtime/test/config digest 8ccbe6759d8f309c98902d8c115fceed111215cb16150d00004a2a2621c39b66",
+        "command": "pnpm build:playground && pnpm measure",
+        "result": "Passed; library plus CSS adds 64,590 raw and 17,717 gzip bytes over the clean baseline."
+      }
+    ],
+    "hostedVerification": "Excluded by the user publishing constraint. No PR, commit, push, deployment or hosted verification.",
+    "historical": [
+      "Initial broad run and first support fixture failures are retained honestly; final affected cases pass."
+    ],
+    "remainingLimits": [
+      "User-required static mock A/B choice for playground replay placement. Library/controller and packed starter are usable.",
+      "Physical GPU, installed browsers, Android/iOS, pen, manual VoiceOver/NVDA and long-session memory acceptance remain unverified.",
+      "Rectangle custom 3D/model/GPU hits retain documented conservative approximations.",
+      "T3 manual drawing preview inspection stopped when the native automation host became explicitly unavailable."
+    ]
+  },
+  "reproduction": [
+    "pnpm install --frozen-lockfile",
+    "pnpm exec playwright install --with-deps chromium firefox webkit",
+    "pnpm check && pnpm test",
+    "pnpm test:browser",
+    "pnpm test:support",
+    "pnpm test:playground:browser && pnpm test:controls:browser",
+    "pnpm build:playground && pnpm build:controls && pnpm test:measurement",
+    "pnpm measure",
+    "PLAYWRIGHT_JSON_OUTPUT_FILE=.artifacts/viewport-upgrades/support-report.json pnpm test:support --grep 'Workflow controls|Adoption starter|Inspector label editing' --reporter=list,json"
+  ],
+  "files": [
+    {
+      "path": "review.md",
+      "source": ".artifacts/viewport-upgrades/review.md",
+      "bytes": 4697,
+      "sha256": "1561addcbd88645e585d306bb96c00f8ddedf2b7d2594c9bcd4d66922933286f"
+    },
+    {
+      "path": "summary.md",
+      "source": ".artifacts/viewport-upgrades/summary.md",
+      "bytes": 2618,
+      "sha256": "db98b46368408a4bcc542cb253be9f9ca23eb10f2d3f594ce6fb080a593c2a6f"
+    },
+    {
+      "path": "environment.json",
+      "source": ".artifacts/viewport-upgrades/environment.json",
+      "bytes": 2051,
+      "sha256": "7204ea1f77e9cc5a8f9167056f1e6695394de7ba263a1b744416652ce2c709f0"
+    },
+    {
+      "path": "replay-starter.png",
+      "source": ".artifacts/viewport-upgrades/replay-starter.png",
+      "bytes": 32182,
+      "sha256": "2c4b59ff13a245e54c36c2a4040e694f14d8554971e675b3a5fe7b03cc7df77a"
+    },
+    {
+      "path": "replay-narrow.png",
+      "source": ".artifacts/viewport-upgrades/replay-narrow.png",
+      "bytes": 28770,
+      "sha256": "4ce52a84c6360360931f2414c01f4c47c863da90dd846658f89c190def8ba024"
+    }
+  ],
+  "rawArchive": {
+    "path": "raw-reports.tar.gz",
+    "bytes": 269654,
+    "sha256": "dff662b655df7df2f5762a37d8ea80bdeb0671df5457c7ee3add91baec257421",
+    "members": [
+      {
+        "path": "validate.log",
+        "source": ".artifacts/viewport-upgrades/validate.log",
+        "bytes": 76277,
+        "sha256": "ba4820f14d8509971375ef2dedfd7483b99ac97bd64d265d0d1b2462d035722e"
+      },
+      {
+        "path": "support-fixture-failure.log",
+        "source": ".artifacts/viewport-upgrades/support-fixture-failure.log",
+        "bytes": 25866,
+        "sha256": "412d000f4ebd1b3cbcfa4dadeb7be28c6f0b74666098a84e3859436f481f92aa"
+      },
+      {
+        "path": "final-check.log",
+        "source": ".artifacts/viewport-upgrades/final-check.log",
+        "bytes": 155,
+        "sha256": "104af3b80f8e282c56d366ce0db28957ff99a8dc2f21f108894ee327706852fd"
+      },
+      {
+        "path": "final-unit.log",
+        "source": ".artifacts/viewport-upgrades/final-unit.log",
+        "bytes": 41050,
+        "sha256": "edf258d12fb0e65277f27f8e6f5ea49da7c6b836ebc0b5201fe43c373b21fa31"
+      },
+      {
+        "path": "final-typecheck.log",
+        "source": ".artifacts/viewport-upgrades/final-typecheck.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "final-tickets.log",
+        "source": ".artifacts/viewport-upgrades/final-tickets.log",
+        "bytes": 34,
+        "sha256": "7ccdd39fbe5637ba8cbaa81687c5d83ac67b8379327bd6749fde6ade3e9a4b88"
+      },
+      {
+        "path": "support.log",
+        "source": ".artifacts/viewport-upgrades/support.log",
+        "bytes": 10897,
+        "sha256": "4b39423b654d67491608915f346d2e04f3e74a1afd7c1e59a2f8f042226b99bc"
+      },
+      {
+        "path": "playground.log",
+        "source": ".artifacts/viewport-upgrades/playground.log",
+        "bytes": 2999,
+        "sha256": "0a80a2aa172b8ad81001394483eddb4afff18c8646e2f0eac24d80d9f5f1c0ca"
+      },
+      {
+        "path": "controls.log",
+        "source": ".artifacts/viewport-upgrades/controls.log",
+        "bytes": 1785,
+        "sha256": "0c0c3c3c9d0b73c6780c837123114fcb48068b922b20b78c4a05a680997a2d46"
+      },
+      {
+        "path": "build-playground.log",
+        "source": ".artifacts/viewport-upgrades/build-playground.log",
+        "bytes": 1371,
+        "sha256": "dcd3b52cbfa9c9e20da13e06d6ce20cf3eb25b5957feb451ed2ae2351763cc9a"
+      },
+      {
+        "path": "build-controls.log",
+        "source": ".artifacts/viewport-upgrades/build-controls.log",
+        "bytes": 411,
+        "sha256": "60139ad09f7f0728a2ef1d0a06d58436f4140cee33d985cb114cbeb202d54c89"
+      },
+      {
+        "path": "measurement.log",
+        "source": ".artifacts/viewport-upgrades/measurement.log",
+        "bytes": 1182,
+        "sha256": "0e8e97df76c4d2b582e8c3caf233131490a484f6c03f780d12d0e23e9533ee14"
+      },
+      {
+        "path": "support-capture.log",
+        "source": ".artifacts/viewport-upgrades/support-capture.log",
+        "bytes": 6103,
+        "sha256": "6f652f3bb9b4a9ea87c4fc6c5698de1c38d96d28bc06022a898564e623b662f5"
+      },
+      {
+        "path": "support-report.json",
+        "source": ".artifacts/viewport-upgrades/support-report.json",
+        "bytes": 309914,
+        "sha256": "e91f140888d82a117da273d2beeb054d0b1193fa9a44eb22f07b30d37d6bf7d4"
+      },
+      {
+        "path": "environment.json",
+        "source": ".artifacts/viewport-upgrades/environment.json",
+        "bytes": 2051,
+        "sha256": "7204ea1f77e9cc5a8f9167056f1e6695394de7ba263a1b744416652ce2c709f0"
+      },
+      {
+        "path": "bundle-size.log",
+        "source": ".artifacts/viewport-upgrades/bundle-size.log",
+        "bytes": 496,
+        "sha256": "c87379053af7d520c8b07f319d99a93d235f277af3f58c8e38d6fc19b998a701"
+      },
+      {
+        "path": "bundle-size.json",
+        "source": ".artifacts/viewport-upgrades/bundle-size.json",
+        "bytes": 1590,
+        "sha256": "81905c596cf93bdf157b36a5062a1d7fda73aa0899ee84c6fd4d75fd0f722f21"
+      },
+      {
+        "path": "baseline-build.log",
+        "source": ".artifacts/viewport-upgrades/baseline-build.log",
+        "bytes": 283,
+        "sha256": "723d76d7346dd6d971816d5894a99ba063d1d0488b693427244355b5eb86e057"
+      },
+      {
+        "path": "baseline-bundle.json",
+        "source": ".artifacts/viewport-upgrades/baseline-bundle.json",
+        "bytes": 758,
+        "sha256": "d2fd2136330662fcb71d71b53f8c68fecd9564fdaa8e5a7acf4bd2cd5b66d129"
+      },
+      {
+        "path": "inputs-before.json",
+        "source": ".artifacts/viewport-upgrades/inputs-before.json",
+        "bytes": 27142,
+        "sha256": "3dfbadad830464c81ca434e2421b8efd8f634fb0cebe733b1b5d5869a1309f9f"
+      },
+      {
+        "path": "inputs-integrated.json",
+        "source": ".artifacts/viewport-upgrades/inputs-integrated.json",
+        "bytes": 27073,
+        "sha256": "02ef2b384ec5d6c3a0ac8ead75d40315bf74c5ee37e1bf2dc8d1513036a31b29"
+      },
+      {
+        "path": "inputs-final-before.json",
+        "source": ".artifacts/viewport-upgrades/inputs-final-before.json",
+        "bytes": 27073,
+        "sha256": "11476e1a4055e224050fdfac23dd6a14bd86b0f7bb14fc047ccf38a1ac71bbf0"
+      },
+      {
+        "path": "inputs-final-after.json",
+        "source": ".artifacts/viewport-upgrades/inputs-final-after.json",
+        "bytes": 27073,
+        "sha256": "f715496713a59d1ca66b46c97e9bd731242551ad57295f297e7c013a260bbcb4"
+      },
+      {
+        "path": "support-run.json",
+        "source": ".artifacts/viewport-upgrades/support-run.json",
+        "bytes": 497,
+        "sha256": "04e59835249e5b078bdb4bbb6ac43c887b54abc774e20c8397dc21a09ee1a42b"
+      },
+      {
+        "path": "capture-run.json",
+        "source": ".artifacts/viewport-upgrades/capture-run.json",
+        "bytes": 611,
+        "sha256": "3e9a5fea8e9e91706ee4ab0da2fd3743a6d7595b3e34ec088399dd4ba00a1a10"
+      },
+      {
+        "path": "snapshot-inputs.mjs",
+        "source": ".artifacts/viewport-upgrades/snapshot-inputs.mjs",
+        "bytes": 1126,
+        "sha256": "5f72aca5736684a7d25b6c1e1c83f1cded9266b4a24519ae1cdbe9ef8d75ea08"
+      },
+      {
+        "path": "spec-snapshot.md",
+        "source": ".artifacts/viewport-upgrades/spec-snapshot.md",
+        "bytes": 12987,
+        "sha256": "a57f120ae39add55027281189e7c2a50ea598c9adc222d1f6bc7a2e6571afa3e"
+      },
+      {
+        "path": "inputs-unit-reconstructed.json",
+        "source": ".artifacts/viewport-upgrades/inputs-unit-reconstructed.json",
+        "bytes": 27303,
+        "sha256": "6daca44bbc6e2c927330585778468b21360e9cf1dd8b9af8512cd93647d9c449"
+      }
+    ]
+  }
+}

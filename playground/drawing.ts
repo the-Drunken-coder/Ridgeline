@@ -58,6 +58,7 @@ export function mountDrawingDemo(
   }
   const editor = attachDrawing(viewport, {
     visualFeedback: true,
+    snapping: { vertices: true, edges: true },
     canSnap: feature => feature.id !== "drawing-no-snap",
     createFeature: () => ({
       id: crypto.randomUUID(),
@@ -140,6 +141,7 @@ export function drawingFeatures(): MapFeature<Sample>[] {
           [6.894, 45.925],
           [6.878, 45.917],
         ],
+        holes: [[[6.875, 45.923], [6.879, 45.925], [6.883, 45.923], [6.879, 45.921]]],
       },
       color: "#b15624",
     },

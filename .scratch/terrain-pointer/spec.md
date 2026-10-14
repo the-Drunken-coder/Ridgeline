@@ -1,5 +1,7 @@
 # Terrain-aware pointer feedback
 
+Scope update, 2026-10-11: [viewport workflow upgrades](../viewport-upgrades/spec.md) extends drawing targets with optional edge snapping and touch input. It preserves this spec's ground validation and callback/scene ownership guarantees; initial edge/touch deferrals below remain historical context.
+
 Status: ready-for-agent
 
 ## Problem Statement

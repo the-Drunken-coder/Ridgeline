@@ -1,0 +1,59 @@
+{
+  "capturedFrom": "support-final-report.json",
+  "environments": {
+    "chromium": {
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+      "platform": "Linux x86_64",
+      "touchPoints": 0,
+      "devicePixelRatio": 1,
+      "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "vendor": "Google Inc. (Google)",
+      "browserVersion": "153.0.8010.12",
+      "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540",
+      "status": " M .github/workflows/validation.yml\n M .scratch/airborne-entities/spec.md\n M .scratch/initial-viewport/spec.md\n M .scratch/map-drawing/spec.md\n M .scratch/terrain-pointer/spec.md\n M GLOSSARY.md\n M README.md\n M docs/adr/0001-consumer-owned-workflows.md\n M docs/ci-validation.md\n M docs/performance.md\n M package.json\n M playground/drawing.ts\n M playground/index.html\n M playground/main.ts\n M playground/style.css\n M playwright.packaged.config.mjs\n M scripts/check-validation.mjs\n M scripts/prepare-consumer.mjs\n M scripts/test-browser.mjs\n M scripts/validation.test.mjs\n M src/arrowheads.ts\n M src/drawing-controls.ts\n M src/drawing-session.ts\n M src/drawing-shapes.ts\n M src/drawing-types.ts\n M src/drawing.ts\n M src/entities.ts\n M src/entity-computation.ts\n M src/entity-ground.ts\n M src/entity-layer.ts\n M src/gpu-cameras.ts\n M src/ground-feedback.ts\n M src/index.ts\n M src/interactions.ts\n M src/model-feedback-layer.ts\n M src/model-labels.ts\n M src/model-presentation.ts\n M src/sensor-camera-coverage.ts\n M src/style.css\n M src/types.ts\n M src/viewport.ts\n M tests/browser-cases.ts\n M tests/browser.ts\n M tests/drawing.test.ts\n M tests/entity-scene.test.ts\n M tests/model-presentation.browser.ts\n M tests/packaged/browser.spec.ts\n M tsconfig.json\n?? .scratch/viewport-upgrades/\n?? docs/support.md\n?? docs/viewport-tools.md\n?? examples/\n?? playwright.support.config.mjs\n?? src/box-selection.ts\n?? src/controls.ts\n?? src/coordinates.ts\n?? src/feature-style.ts\n?? src/screen-rectangle.ts\n?? tests/coordinates.test.ts\n?? tests/feature-style.test.ts\n?? tests/packaged/starter.spec.ts\n?? tests/workflow-controls.browser.ts\n?? tests/workflow-drawing.browser.ts\n?? tests/workflow-selection.browser.ts\n",
+      "diffSha256": "149ddd1517a816051cb91a1b1d972292d044df96666b6928b96871f2288232f2",
+      "command": [
+        "/usr/bin/node",
+        "/home/ubuntu/.t3/worktrees/Ridgeline/t3-11b20903/scripts/test-browser.mjs",
+        "--support",
+        "--reporter=list,json"
+      ]
+    },
+    "firefox": {
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:155.0) Gecko/20100101 Firefox/155.0",
+      "platform": "Linux x86_64",
+      "touchPoints": 0,
+      "devicePixelRatio": 1,
+      "renderer": "llvmpipe, or similar",
+      "vendor": "Mesa",
+      "browserVersion": "155.0",
+      "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540",
+      "status": " M .github/workflows/validation.yml\n M .scratch/airborne-entities/spec.md\n M .scratch/initial-viewport/spec.md\n M .scratch/map-drawing/spec.md\n M .scratch/terrain-pointer/spec.md\n M GLOSSARY.md\n M README.md\n M docs/adr/0001-consumer-owned-workflows.md\n M docs/ci-validation.md\n M docs/performance.md\n M package.json\n M playground/drawing.ts\n M playground/index.html\n M playground/main.ts\n M playground/style.css\n M playwright.packaged.config.mjs\n M scripts/check-validation.mjs\n M scripts/prepare-consumer.mjs\n M scripts/test-browser.mjs\n M scripts/validation.test.mjs\n M src/arrowheads.ts\n M src/drawing-controls.ts\n M src/drawing-session.ts\n M src/drawing-shapes.ts\n M src/drawing-types.ts\n M src/drawing.ts\n M src/entities.ts\n M src/entity-computation.ts\n M src/entity-ground.ts\n M src/entity-layer.ts\n M src/gpu-cameras.ts\n M src/ground-feedback.ts\n M src/index.ts\n M src/interactions.ts\n M src/model-feedback-layer.ts\n M src/model-labels.ts\n M src/model-presentation.ts\n M src/sensor-camera-coverage.ts\n M src/style.css\n M src/types.ts\n M src/viewport.ts\n M tests/browser-cases.ts\n M tests/browser.ts\n M tests/drawing.test.ts\n M tests/entity-scene.test.ts\n M tests/model-presentation.browser.ts\n M tests/packaged/browser.spec.ts\n M tsconfig.json\n?? .scratch/viewport-upgrades/\n?? docs/support.md\n?? docs/viewport-tools.md\n?? examples/\n?? playwright.support.config.mjs\n?? src/box-selection.ts\n?? src/controls.ts\n?? src/coordinates.ts\n?? src/feature-style.ts\n?? src/screen-rectangle.ts\n?? tests/coordinates.test.ts\n?? tests/feature-style.test.ts\n?? tests/packaged/starter.spec.ts\n?? tests/workflow-controls.browser.ts\n?? tests/workflow-drawing.browser.ts\n?? tests/workflow-selection.browser.ts\n",
+      "diffSha256": "149ddd1517a816051cb91a1b1d972292d044df96666b6928b96871f2288232f2",
+      "command": [
+        "/usr/bin/node",
+        "/home/ubuntu/.t3/worktrees/Ridgeline/t3-11b20903/scripts/test-browser.mjs",
+        "--support",
+        "--reporter=list,json"
+      ]
+    },
+    "webkit": {
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6 Safari/605.1.15",
+      "platform": "Linux x86_64",
+      "touchPoints": 0,
+      "devicePixelRatio": 1,
+      "renderer": "Apple GPU",
+      "vendor": "Apple Inc.",
+      "browserVersion": "26.6",
+      "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540",
+      "status": " M .github/workflows/validation.yml\n M .scratch/airborne-entities/spec.md\n M .scratch/initial-viewport/spec.md\n M .scratch/map-drawing/spec.md\n M .scratch/terrain-pointer/spec.md\n M GLOSSARY.md\n M README.md\n M docs/adr/0001-consumer-owned-workflows.md\n M docs/ci-validation.md\n M docs/performance.md\n M package.json\n M playground/drawing.ts\n M playground/index.html\n M playground/main.ts\n M playground/style.css\n M playwright.packaged.config.mjs\n M scripts/check-validation.mjs\n M scripts/prepare-consumer.mjs\n M scripts/test-browser.mjs\n M scripts/validation.test.mjs\n M src/arrowheads.ts\n M src/drawing-controls.ts\n M src/drawing-session.ts\n M src/drawing-shapes.ts\n M src/drawing-types.ts\n M src/drawing.ts\n M src/entities.ts\n M src/entity-computation.ts\n M src/entity-ground.ts\n M src/entity-layer.ts\n M src/gpu-cameras.ts\n M src/ground-feedback.ts\n M src/index.ts\n M src/interactions.ts\n M src/model-feedback-layer.ts\n M src/model-labels.ts\n M src/model-presentation.ts\n M src/sensor-camera-coverage.ts\n M src/style.css\n M src/types.ts\n M src/viewport.ts\n M tests/browser-cases.ts\n M tests/browser.ts\n M tests/drawing.test.ts\n M tests/entity-scene.test.ts\n M tests/model-presentation.browser.ts\n M tests/packaged/browser.spec.ts\n M tsconfig.json\n?? .scratch/viewport-upgrades/\n?? docs/support.md\n?? docs/viewport-tools.md\n?? examples/\n?? playwright.support.config.mjs\n?? src/box-selection.ts\n?? src/controls.ts\n?? src/coordinates.ts\n?? src/feature-style.ts\n?? src/screen-rectangle.ts\n?? tests/coordinates.test.ts\n?? tests/feature-style.test.ts\n?? tests/packaged/starter.spec.ts\n?? tests/workflow-controls.browser.ts\n?? tests/workflow-drawing.browser.ts\n?? tests/workflow-selection.browser.ts\n",
+      "diffSha256": "149ddd1517a816051cb91a1b1d972292d044df96666b6928b96871f2288232f2",
+      "command": [
+        "/usr/bin/node",
+        "/home/ubuntu/.t3/worktrees/Ridgeline/t3-11b20903/scripts/test-browser.mjs",
+        "--support",
+        "--reporter=list,json"
+      ]
+    }
+  }
+}

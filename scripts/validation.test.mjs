@@ -64,7 +64,7 @@ test('local full validation executes all ordinary checks and measurement exactly
   assert.ifError(result.error);
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.deepEqual(await fixture.commands(), [
-    'check', 'test', 'test:browser', 'test:playground:browser', 'test:controls:browser',
+    'check', 'test', 'test:browser', 'test:support', 'test:playground:browser', 'test:controls:browser',
     'build:playground', 'build:controls', 'test:measurement',
   ]);
 });

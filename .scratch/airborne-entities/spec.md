@@ -1,5 +1,7 @@
 # Airborne entities and attached geometry
 
+Scope clarification, 2026-10-11: the user reaffirmed consumer ownership of movement timing, interpolation and playback. The [viewport workflow upgrades](../viewport-upgrades/spec.md) omit a motion/history controller and replay UI; applications supply current geometry and pose through the existing feature API.
+
 Status: Implemented. The playground uses the expanded inspector and the library exposes the same entity and attachment model to consumers.
 
 ## Requested capabilities
