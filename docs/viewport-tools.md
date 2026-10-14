@@ -90,3 +90,44 @@ Explicit selection overrides hover per field. Labels on models use the same labe
 
 Default selection feedback preserves an already thick line; explicit highlight widths still take precedence.
 
+
+## Selection and rectangle queries
+
+Selected labels get placement priority over unselected labels. Collision suppression remains enabled, so selected labels can still be hidden when they collide with each other. Selection and deselection update placement without replacing consumer features.
+
+```ts
+import { attachInteractions } from '@ridgeline/map';
+
+const interactions = attachInteractions(viewport, {
+  additiveSelection: true,
+  boxSelection: true,
+});
+const off = viewport.on('selectionrequest', ({ ids }) => {
+  viewport.setSelection(ids);
+});
+
+const { features, attachments } = viewport.queryFeatures([
+  { x: 20, y: 40 },
+  { x: 240, y: 180 },
+]);
+// On unmount: off(); interactions.destroy();
+```
+
+`additiveSelection` and `boxSelection` default to `false`. Picker, hover and cursor feedback remain enabled by default. Selection requests never apply selection by themselves.
+
+| Input with its option enabled | Request |
+| --- | --- |
+| Shift-click a feature | Toggle it against `getSelection()`. An overlap picker retains the original click's modifier. |
+| Shift-click empty map | Preserve current selection. |
+| Alt-left-drag | Replace selection with features intersecting the rectangle. |
+| Alt+Shift-left-drag | Add rectangle hits to the current consumer selection, without duplicates. |
+| Ordinary Shift-drag | Native MapLibre box zoom. |
+
+Rectangle selection is a mouse gesture on the map canvas and requires at least 3 CSS pixels of movement. It reserves interaction while active. Escape, blur, pointer cancellation, capture loss, camera movement, resize, renderer context loss, basemap/projection/terrain/elevation changes or another interaction owner cancel it without changing accepted selection. Ordinary feature and entity updates keep it active; release queries current displayed representations. It rechecks data and ownership before requesting selection. A canceled or completed rectangle does not produce an extra click selection.
+
+`queryFeatures(bounds)` accepts two opposite corners in canvas CSS pixels, in either order. Its result is an object, `{ features, attachments }`. Features are detached consumer snapshots, deduplicated in feature-store order. Attachment hits use `{ entityId, attachmentId }` and retain declaration order within each entity. Attachment hits also include their owning feature in `features`.
+
+The query uses displayed native features, entity geometry and clipped projected model boxes, including the displayed world copy. It excludes the feature under drawing edit and withheld representations. Custom 3D rectangle hits conservatively intersect projected accepted geometry and can include geometry hidden by terrain. Model boxes can include empty space between parts and transparent cutouts. GPU coverage uses nonzero-alpha texel spans with projected span corners to approximate terrain draping. Rectangle selection is not mesh- or pixel-accurate. Ordinary and additive point picking retain their terrain-depth rejection. Direct queries return empty arrays before readiness or during renderer context loss. Rectangle gestures refuse unavailable queries and never turn them into a completed empty selection. Querying does not apply selection or acquire interaction ownership.
+
+Modifiers at mouse release determine click intent. Releasing Shift before mouseup performs one ordinary click; holding it through release toggles selection. Drags retain native box zoom once the 3 CSS pixel threshold is reached.
+

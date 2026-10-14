@@ -101,6 +101,12 @@ export type FeatureStyle = {
   selected?: FeatureHighlight;
   hover?: FeatureHighlight;
 };
+/** Two opposite corners in canvas CSS pixels. Corner order is unrestricted. */
+export type ScreenBounds = readonly [Readonly<{ x: number; y: number }>, Readonly<{ x: number; y: number }>];
+export type FeatureQuery<P extends Properties = Properties> = {
+  features: MapFeature<P>[];
+  attachments: { entityId: string; attachmentId: string }[];
+};
 export type ElevationProvider = Omit<RasterDEMSourceSpecification, 'type'> & { scheme?: 'xyz' | 'tms' };
 type HillshadePaint = NonNullable<HillshadeLayerSpecification['paint']>;
 export type HillshadeOptions = {
@@ -180,6 +186,8 @@ export interface Viewport<P extends Properties = Properties> {
   refreshStyles(ids?: readonly string[]): void;
   getFeature(id: string): MapFeature<P> | undefined;
   getFeatures(): MapFeature<P>[];
+  /** Intersect displayed representations with a screen rectangle. Models use clipped projected boxes. */
+  queryFeatures(bounds: ScreenBounds): FeatureQuery<P>;
   getEntityState(id: string): EntityState | undefined;
   getName(feature: MapFeature<P>): string;
   getStyle(feature: MapFeature<P>): FeatureStyle;

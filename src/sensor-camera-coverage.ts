@@ -8,6 +8,7 @@ import type { Primitive } from './entity-layer';
 import { GpuCameras, sameCamera, sameCameraAppearance } from './gpu-cameras';
 import type { GpuCamera } from './gpu-cameras';
 import { cameraAreaKey, placementAreaKey, type Elevation } from './elevation';
+import type { ScreenRectangle } from './screen-rectangle';
 
 
 /** The only rendering seam the coverage owner needs from the GPU adapter. */
@@ -15,6 +16,7 @@ export type SensorCameraAdapter = {
   set(values: GpuCamera[], retained?: readonly GpuCamera[]): void;
   attach(): void;
   pick(x: number, y: number): { entityId: string; attachmentId?: string }[];
+  query?(rectangle: ScreenRectangle): { entityId: string; attachmentId?: string }[];
   retry(): void;
   destroy(): void;
 };
@@ -276,6 +278,9 @@ export class SensorCameraCoverage {
 
   pick(x: number, y: number) {
     return this.adapter.pick(x, y);
+  }
+  query(rectangle: ScreenRectangle) {
+    return this.adapter.query?.(rectangle) ?? [];
   }
 
   attach() {
