@@ -65,6 +65,14 @@ function registerCase(name: string) {
       const status = await page.locator('#status').evaluate(element => ({ state: (element as HTMLElement).dataset.state, text: element.textContent }));
       expect(status.state, status.text).toBe('passed');
       expect(errors, 'Uncaught browser errors').toEqual([]);
+      if (['chromium', 'firefox', 'webkit'].includes(testInfo.project.name)) {
+        const environment = await page.evaluate(() => {
+          const captured: unknown = Reflect.get(window, 'browserEnvironment');
+          return captured ?? { userAgent: navigator.userAgent, platform: navigator.platform,
+            touchPoints: navigator.maxTouchPoints, devicePixelRatio, renderer: null, vendor: null };
+        });
+        await testInfo.attach('Browser environment', { body: JSON.stringify({ ...environment, browserVersion: page.context().browser()?.version(), ...source }, null, 2), contentType: 'application/json' });
+      }
     } catch (error) {
       failure = error;
       if (!page.isClosed()) {

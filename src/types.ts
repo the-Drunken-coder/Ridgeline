@@ -104,6 +104,8 @@ export type ViewportEvents<P extends Properties> = {
   datachange: { ids: string[]; removed: string[] };
   entitychange: { ids: string[] };
   camerachange: CameraOptions;
+  /** Accepted configuration, independent of asynchronous basemap loading. */
+  configurationchange: MapConfiguration;
   diagnostic: RidgelineError;
   destroy: undefined;
 };

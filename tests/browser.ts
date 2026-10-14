@@ -8,6 +8,8 @@ import { modelRegistrationCases } from './model-registration.browser';
 import { modelPlacementCases } from './model-placement.browser';
 import { modelSwitchingCases } from './model-switching.browser';
 import { modelMaterialCases } from './model-materials.browser';
+import { workflowControlCases } from './workflow-controls.browser';
+import { selectionWorkflowCases } from './workflow-selection.browser';
 import { createViewport, createDrawingSession, attachInteractions, attachDrawing, attachDrawingControls, shapeGeometry, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
 import { MercatorCoordinate, GeoJSONSource, ErrorEvent as MapErrorEvent, setWorkerUrl, addProtocol, removeProtocol } from 'maplibre-gl';
@@ -56,7 +58,7 @@ async function run(name: string, test: () => Promise<void>) {
   ran = true;
   const row = document.createElement('li'); row.textContent = name; results.append(row);
   try { await test(); row.className = 'pass'; row.textContent = `PASS: ${name}`; }
-  catch (error) { row.className = 'fail'; row.textContent = `FAIL: ${name}: ${error instanceof Error ? error.stack : String(error)}`; throw error; }
+  catch (error) { row.className = 'fail'; row.textContent = `FAIL: ${name}: ${error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ''}` : String(error)}`; throw error; }
 }
 async function pointer(action: 'move' | 'click', point: { x: number; y: number }) {
   const drawingPointer = window.drawingPointer;
@@ -116,8 +118,21 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
-  for (const test of [...modelFrameReviewCases, ...modelRecoveryCases, ...modelPickingCases, ...modelPresentationCases, ...modelPlacementCases, ...modelSwitchingCases, ...modelMaterialCases, ...modelRegistrationCases]) {
-    await run(test.name, () => test.run({ container, setCurrent(viewport) { current = viewport; }, until }));
+  for (const test of [...modelFrameReviewCases, ...modelRecoveryCases, ...modelPickingCases, ...modelPresentationCases, ...modelPlacementCases, ...modelSwitchingCases, ...modelMaterialCases, ...modelRegistrationCases, ...workflowControlCases, ...selectionWorkflowCases]) {
+    await run(test.name, () => test.run({ container, setCurrent(viewport) {
+      current = viewport;
+      // Capture before cases intentionally destroy their viewport during lifecycle checks.
+      void viewport.ready.then(() => {
+        const gl = viewport.map.getCanvas().getContext('webgl2');
+        const debug = gl?.getExtension('WEBGL_debug_renderer_info');
+        Reflect.set(window, 'browserEnvironment', {
+          userAgent: navigator.userAgent, platform: navigator.platform,
+          touchPoints: navigator.maxTouchPoints, devicePixelRatio,
+          renderer: gl ? gl.getParameter(debug?.UNMASKED_RENDERER_WEBGL ?? gl.RENDERER) : null,
+          vendor: gl ? gl.getParameter(debug?.UNMASKED_VENDOR_WEBGL ?? gl.VENDOR) : null,
+        });
+      }).catch(() => {});
+    }, until }));
   }
   for (const projection of ['flat', 'globe'] as const) {
     await run(`Reliability entity meter-scale projection agrees with double precision in ${projection} views`, async () => {
@@ -663,8 +678,18 @@ async function suite() {
             const canvas = draw.map.getCanvas().getBoundingClientRect();
             await browserDrag(canvas.x + 340, canvas.y + 250, canvas.x + 250, canvas.y + 250);
             draw.setCamera({ center: [-179.8, 0] });
-            await until(() => draw.map.loaded() && Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - 100) < 1,
-              'western globe terrain loaded');
+            let liveUpdates = 0;
+            const live = setInterval(() => draw.upsert([point('western-readiness-live', 170 + (++liveUpdates % 100) * .0001)]), 16);
+            try {
+              // Global loaded() includes unrelated feature publication. Require
+              // the DEM and camera used by this target while live data continues.
+              await until(() => liveUpdates >= 2 && !draw.map.isMoving() && draw.map.isSourceLoaded('rl:terrain') === true &&
+                Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - 100) < 1, 'western globe terrain loaded');
+            } catch (cause) {
+              throw new Error(`Western terrain readiness: ${JSON.stringify({ liveUpdates, loaded: draw.map.loaded(),
+                terrainLoaded: draw.map.isSourceLoaded('rl:terrain'), elevation: draw.map.queryTerrainElevation(anchor),
+                moving: draw.map.isMoving() })}`, { cause });
+            } finally { clearInterval(live); }
           }
           const across = draw.map.project(canonicalGlobeTerrain ? [-179.6, 0] : [180.4, 0]);
           await pointer('move', across);

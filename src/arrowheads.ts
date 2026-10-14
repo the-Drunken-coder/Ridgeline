@@ -100,7 +100,9 @@ export function createArrowheads(map: GLMap, sourceId: string, layerId: string) 
       if (users) imageUsers.set(map, users);
       else {
         imageUsers.delete(map);
-        if (map.hasImage(ARROW_IMAGE)) map.removeImage(ARROW_IMAGE);
+        // Context loss already destroys the native style and its images.
+        // Still retire our shared reference without querying a missing style.
+        if (map.getStyle() && map.hasImage(ARROW_IMAGE)) map.removeImage(ARROW_IMAGE);
       }
     },
   };

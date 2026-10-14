@@ -1,3 +1,5 @@
 # Keep application workflows with consumers
 
 Ridgeline's public API is designed for consuming applications generally; consumers supply feature data and own authentication, application networking, persistence, and business workflows. The playground and Atlas are ordinary consumers: the library must remain usable without their code, layouts, sample data, state, or workflows. A playground request belongs in the library only when it solves a reusable mapping need, and preserving this boundary takes precedence over shortcuts that make the playground easier to build.
+
+Clarified 2026-10-11: consumers also own time selection, sample history, interpolation, replay, retention and camera-follow policy. They send the current geometry and pose through the feature API and choose camera changes through the camera API. Ridgeline owns the current display snapshot, rendering resources and interaction drafts. Keeping temporal data policy in the application lets consumers choose their own data formats and update schedules without adopting a library-managed timeline.
