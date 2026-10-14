@@ -2,6 +2,7 @@ import type { ModelMeasurement } from './model-measurement';
 import { MercatorCoordinate, Point } from 'maplibre-gl';
 import { ModelFeedbackLayer } from './model-feedback-layer';
 import { modelFeedback } from './model-presentation';
+import { resolveHighlight } from './feature-style';
 import type { ModelPresentation } from './model-presentation';
 import { ModelLayer } from './model-layer';
 import type { ModelFrame } from './model-layer';
@@ -24,6 +25,8 @@ import type { EntityComputationResult } from './entity-computation';
 import { Elevation, entityIdForAreaKey, placementAreaKey, modelAreaKey } from './elevation';
 import { SensorCameraCoverage } from './sensor-camera-coverage';
 import { RidgelineError } from './errors';
+import { parseColor } from './color';
+import { Color } from '@maplibre/maplibre-gl-style-spec';
 import type {
   ElevationSampler,
   CameraAttachment,
@@ -221,17 +224,17 @@ export class EntityScene<P extends Properties> {
   preview(id: string | null) {
     if (this.previewed === id || this.destroyed) return;
     this.previewed = id; this.revision++;
-    if (!this.lost) this.options.map.triggerRepaint();
+    if (!this.lost) this.renderLayers(false);
   }
   selection(ids: readonly string[]) {
     if (this.destroyed) return;
     const next = new Set(ids);
     if (next.size === this.selected.size && [...next].every(id => this.selected.has(id))) return;
     this.revision++;
-    for (const id of new Set([...this.selected, ...next]))
-      if (this.selected.has(id) !== next.has(id) && this.features.has(id)) this.dirty.add(id);
     this.selected = next;
-    if (this.dirty.size) this.schedule('selection');
+    // Feedback uses the last successfully prepared appearance. Selection does
+    // not need a new style callback or physical attachment computation.
+    if (!this.lost) this.renderLayers(false);
   }
   getState(id: string) {
     const state = this.states.get(id);
@@ -375,8 +378,9 @@ export class EntityScene<P extends Properties> {
     let style: FeatureStyle;
     try { style = this.options.style(feature); }
     catch (cause) {
-      this.options.diagnostic(new RidgelineError('CALLBACK_FAILED', 'An entity style callback threw.',
-        { operation: 'style', recoverable: true, featureId: feature.id }, cause));
+      this.options.diagnostic(cause instanceof RidgelineError && cause.code === 'INVALID_FEATURE' && cause.context.operation === 'style'
+        ? cause : new RidgelineError('CALLBACK_FAILED', 'An entity style callback threw.',
+          { operation: 'style', recoverable: true, featureId: feature.id }, cause));
       return;
     }
     if (!current()) return;
@@ -511,8 +515,10 @@ export class EntityScene<P extends Properties> {
           const box = modelScreenBox(projection, placement, origin);
           if (measured) projectionScalingMs += performance.now() - phaseStart;
           if (box && projection.intersectsViewport(box)) {
+            const highlight = resolveHighlight(style, this.selected.has(id), this.previewed === id);
+            const feedback = modelFeedback(highlight.selected, highlight.hovered);
             const draw = grouped.get(asset) ?? { asset, origin, instances: [] };
-            draw.instances.push({ feedback: modelFeedback(this.selected.has(id), this.previewed === id), basis: placement.basis, anchor: entityVertex(placement.position, origin),
+            draw.instances.push({ feedback, brightness: highlight.appearance.modelBrightness, basis: placement.basis, anchor: entityVertex(placement.position, origin),
               appearance: style.modelAppearance && { ...style.modelAppearance } });
             grouped.set(asset, draw);
             hits.push({ feature: accepted, polygons: box.polygons });
@@ -520,7 +526,10 @@ export class EntityScene<P extends Properties> {
             const labelHeight = state.placement === 'airborne' ? (state.altitude ?? 0) * verticalScale(configuration)
               : configuration.terrain ? (state.ground ?? 0) * configuration.exaggeration : 0;
             const labelAnchor = projection.project([input.location[0], input.location[1], labelHeight], origin);
-            if (anchor && labelAnchor) presentation.push({ id, anchor, labelAnchor, box, hasLabel: Boolean(style.label), feedback: modelFeedback(this.selected.has(id), this.previewed === id) });
+            if (anchor && labelAnchor) presentation.push({ id, anchor, labelAnchor, box, hasLabel: Boolean(style.label), labelStyle: style.labelStyle,
+              feedback, feedbackColor: highlight.appearance.color, feedbackWidth: highlight.appearance.lineWidth,
+              labelClearance: Math.max(10, Math.max(style.selected?.enabled === false ? 0 : style.selected?.lineWidth ?? 5,
+                style.hover?.enabled === false ? 0 : style.hover?.lineWidth ?? 3) / 2 + 4) });
           }
         }
       }
@@ -581,7 +590,17 @@ export class EntityScene<P extends Properties> {
     this.renderLayers();
   }
   private renderLayers(includeGround = true) {
-    const primitives = [...this.geometry.values()].flat().concat(this.coverage.allGeometry());
+    const primitives = [...this.geometry.values()].flat().map(primitive => {
+      if (!primitive.marker) return primitive;
+      const style = this.preparedModels.get(primitive.entityId)?.style;
+      if (!style) return primitive;
+      const { selected, hovered, appearance } = resolveHighlight(style, this.selected.has(primitive.entityId), this.previewed === primitive.entityId);
+      const radius = appearance.radius ?? (hovered ? Math.max(12, style.radius ?? 6) : style.radius ?? 6);
+      const color = primitive.marker === 'stroke' ? selected ? '#ffa633' : hovered ? '#db6a20' : '#ffffff'
+        : appearance.color ?? style.color ?? '#216e5b';
+      const size = radius * 2 + (primitive.marker === 'stroke' ? selected ? 8 : 4 : 0);
+      return { ...primitive, size, innerRadius: primitive.marker === 'stroke' ? radius * 2 / size : 0, color: parseColor(color, Color.parse(color)?.a ?? 1, { initialCss: '#216e5b' }) };
+    }).concat(this.coverage.allGeometry());
     this.layer.set(primitives.filter(p => !p.surface), verticalScale(this.options.configuration()));
     if (includeGround) this.groundLayer.set(primitives.filter(p => p.surface));
   }

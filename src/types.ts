@@ -53,6 +53,32 @@ export type EntityState = {
 };
 /** An optional raw, unexaggerated terrain source, useful for offline data and deterministic tests. */
 export type ElevationSampler = { sample(lng: number, lat: number): number | null; prepare?(positions: readonly [number, number][], signal: AbortSignal): Promise<void> };
+export type SymbolAnchor = 'center' | 'left' | 'right' | 'top' | 'bottom' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+export type LabelStyle = {
+  /** Font names must be available from the basemap glyph source or local font configuration. */
+  font?: readonly string[];
+  /** Text size and halo width in CSS pixels. */
+  size?: number;
+  color?: string;
+  haloColor?: string;
+  haloWidth?: number;
+  anchor?: SymbolAnchor;
+  /** Offset in text-size units. Model labels reserve space in the anchor direction. */
+  offset?: readonly [number, number];
+};
+export type FeatureHighlight = {
+  /** Disable this state's appearance. Disabled selection also suppresses hover appearance. */
+  enabled?: boolean;
+  /** Model brightening toward white, from 0 to 1. Defaults to .18 selected and .08 hovered. */
+  modelBrightness?: number;
+  color?: string;
+  radius?: number;
+  lineWidth?: number;
+  fillColor?: string;
+  fillOpacity?: number;
+  labelColor?: string;
+  iconOpacity?: number;
+};
 export type FeatureStyle = {
   modelAppearance?: ModelAppearance;
   color?: string;
@@ -61,8 +87,19 @@ export type FeatureStyle = {
   fillOpacity?: number;
   fillColor?: string;
   dashed?: boolean;
+  /** Alternating dash/gap lengths in line-width units; overrides dashed. */
+  dashArray?: readonly number[];
   icon?: string;
+  /** Multiplier of the registered icon's pixel-ratio-adjusted size. */
+  iconSize?: number;
+  /** Clockwise degrees relative to iconRotationAlignment, which defaults to viewport. */
+  iconRotation?: number;
+  iconRotationAlignment?: 'map' | 'viewport';
+  iconAnchor?: SymbolAnchor;
   label?: string;
+  labelStyle?: LabelStyle;
+  selected?: FeatureHighlight;
+  hover?: FeatureHighlight;
 };
 export type ElevationProvider = Omit<RasterDEMSourceSpecification, 'type'> & { scheme?: 'xyz' | 'tms' };
 type HillshadePaint = NonNullable<HillshadeLayerSpecification['paint']>;
@@ -139,6 +176,8 @@ export interface Viewport<P extends Properties = Properties> {
   clear(): void;
   /** Retry failed feature updates once, using the latest stored data. */
   retryUpdates(): void;
+  /** Re-evaluate appearance using current stored features, without replacing feature data. */
+  refreshStyles(ids?: readonly string[]): void;
   getFeature(id: string): MapFeature<P> | undefined;
   getFeatures(): MapFeature<P>[];
   getEntityState(id: string): EntityState | undefined;

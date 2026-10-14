@@ -16,3 +16,10 @@ test('feedback uses the displayed model altitude while labels clear the stronges
   assert.equal(modelFeedback(false, true), 'hover');
   assert.equal(modelFeedback(false, false), undefined);
 });
+
+test('directional labels reserve custom ring stroke width without a feedback-state relayout', () => {
+  const frame = { id: 'aircraft', hasLabel: true, anchor: { x: 100, y: 80, depth: 0 }, labelAnchor: { x: 100, y: 80, depth: 0 },
+    box: { minX: 94, minY: 72, maxX: 106, maxY: 88 }, feedbackWidth: 80 };
+  assert.deepEqual(modelPresentationGeometry(frame).labelOffset, [0, 5]);
+  assert.deepEqual(modelPresentationGeometry({ ...frame, feedbackWidth: undefined, labelClearance: 44 }).labelOffset, [0, 5]);
+});

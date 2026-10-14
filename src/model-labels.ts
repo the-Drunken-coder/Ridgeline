@@ -2,31 +2,35 @@ import type { Map as GLMap } from 'maplibre-gl';
 import { FEATURE_SOURCE, sourceFeatureId } from './maplibre-feature-publication';
 import { modelPresentationGeometry } from './model-presentation';
 import type { ModelPresentation } from './model-presentation';
+import type { LabelStyle } from './types';
 
 /** Native symbol buckets own collision layout. A stamp hides old buckets until their layout catches up. */
 export class ModelLabels {
-  private offsets = new Map<string, number>();
+  private offsets = new Map<string, [number, number]>();
   private written = new Map<string, string>();
   private destination?: object;
   private destroyed = false;
   constructor(private map: GLMap, private changed: (ids: string[]) => void) {}
-  properties(id: string) {
-    const offset = this.offsets.get(id) ?? 1.8;
-    return { _rl_label_offset: [0, offset], _rl_label_stamp: offset === 1.8 ? '' : String(offset) };
+  properties(id: string, style?: LabelStyle) {
+    const adjusted = this.offsets.get(id);
+    const offset = adjusted ?? style?.offset ?? (style?.anchor && style.anchor !== 'top' ? [0, 0] : [0, 1.8]);
+    return { _rl_label_offset: [...offset], _rl_label_stamp: adjusted ? JSON.stringify(adjusted) : '' };
   }
   acceptsHit(id: string, stamp: unknown) {
     return !this.destroyed && (typeof stamp === 'string' ? stamp : '') === this.properties(id)._rl_label_stamp;
   }
   commit(records: readonly ModelPresentation[], current: () => boolean) {
     if (this.destroyed || !current()) return false;
-    const next = new Map<string, number>();
+    const next = new Map<string, [number, number]>();
     for (const record of records) {
       if (!record.hasLabel) continue;
-      const offset = modelPresentationGeometry(record).labelOffset[1];
-      if (offset > 1.8) next.set(record.id, Math.max(offset, next.get(record.id) ?? 0));
+      const offset = modelPresentationGeometry(record).labelOffset;
+      const requested = record.labelStyle?.offset ?? (record.labelStyle?.anchor && record.labelStyle.anchor !== 'top' ? [0, 0] : [0, 1.8]);
+      const previous = next.get(record.id);
+      if ((offset[0] !== requested[0] || offset[1] !== requested[1]) && (!previous || Math.hypot(...offset) > Math.hypot(...previous))) next.set(record.id, offset);
     }
     const changed = [...new Set([...this.offsets.keys(), ...next.keys()])]
-      .filter(id => this.offsets.get(id) !== next.get(id));
+      .filter(id => JSON.stringify(this.offsets.get(id)) !== JSON.stringify(next.get(id)));
     this.offsets = next;
     if (changed.length) this.changed(changed);
     if (this.destroyed || !current()) return false;

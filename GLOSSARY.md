@@ -121,3 +121,9 @@ Work on one drawing draft, including its geometry, appearance, and label. It end
 
 **Vertex snapping**:
 Positioning a drawing vertex at an eligible visible vertex. It copies the position without creating an attachment between features.
+
+**Feature appearance**:
+Style-derived display settings for geographic features, separate from accepted geometry and physical model settings.
+
+**Highlight**:
+The selected or hovered appearance applied by the viewport. It changes feedback, not consumer selection policy.
