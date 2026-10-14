@@ -1,4 +1,4 @@
-# Select one workflow here while keeping shared installations enabled elsewhere.
+# Use P-Stack in this repository.
 [plugins."mattpocock-skills-community@mattpocock-skills-community"]
 enabled = false
 
