@@ -11,11 +11,13 @@ export type ElevationArea = {
   radiusMeters: number;
   preparationBounds?: readonly [number, number, number, number];
   sampleRange?: number;
+  groundRequirementKey?: string;
   /** Exact probes needed in addition to the footprint preparation grid. */
   requiredPositions?: readonly (readonly [number, number])[];
 };
 
-type Area = ElevationArea & { work?: Work; revision: number; unavailable?: boolean };
+type GroundSamplingProgress = { samples: Map<string, number> };
+type Area = ElevationArea & { work?: Work; revision: number; unavailable?: boolean; groundProgress?: GroundSamplingProgress };
 type WorkStatus =
   | { phase: 'scheduled'; deferred: boolean; force: boolean }
   | { phase: 'pending' }
@@ -120,7 +122,22 @@ export class Elevation {
     return this.destroyed ? null : this.raster?.maximum(west, south, east, north) ?? null;
   }
 
-  sampling(): HeightAt {
+  sampling(key?: string): HeightAt {
+    const area = key === undefined ? undefined : this.areas.get(key);
+    if (this.raster && area?.groundRequirementKey !== undefined) {
+      const progress = area.groundProgress ??= { samples: new Map() };
+      const height: HeightAt = (lng, lat) => {
+        if (this.destroyed || this.areas.get(area.key) !== area || area.groundProgress !== progress) return null;
+        const point = pointKey([lng, lat]), known = progress.samples.get(point);
+        if (known !== undefined) return known;
+        const value = this.height(lng, lat);
+        if (value !== null) progress.samples.set(point, value);
+        return value;
+      };
+      // Only actual finite probes survive eviction. A fetching rectangle maximum would restart completed work.
+      height.failedAt = (lng, lat) => this.failedAt(area.key, lng, lat);
+      return height;
+    }
     const height: HeightAt = (lng, lat) => this.height(lng, lat);
     if (this.raster) {
       height.maximum = (west, south, east, north) => this.maximum(west, south, east, north);
@@ -151,6 +168,11 @@ export class Elevation {
     for (const request of requests) {
       const previous = this.areas.get(request.key);
       if (previous && sameArea(previous, request)) {
+        if (previous.groundRequirementKey !== request.groundRequirementKey) {
+          previous.groundRequirementKey = request.groundRequirementKey;
+          previous.groundProgress = undefined;
+          previous.unavailable = false;
+        }
         if (!options.deferProbe) this.startDeferred(previous.work);
         continue;
       }
@@ -164,6 +186,7 @@ export class Elevation {
         preparationBounds: request.preparationBounds && [...request.preparationBounds],
         requiredPositions: request.requiredPositions?.map(([lng, lat]) => [wrapLongitude(lng), lat]),
         sampleRange: request.sampleRange,
+        groundRequirementKey: request.groundRequirementKey,
         revision: ++this.revisionCounter,
       };
       this.areas.set(area.key, area);
@@ -266,7 +289,7 @@ export class Elevation {
     if (this.destroyed) return;
     this.operation++;
     if (this.raster) {
-      for (const area of this.areas.values()) area.unavailable = false;
+      for (const area of this.areas.values()) { area.unavailable = false; area.groundProgress = undefined; }
       this.raster.retry();
       this.notify([...this.areas.keys()]);
     } else this.restart();
@@ -276,7 +299,7 @@ export class Elevation {
     if (this.destroyed) return;
     this.operation++;
     if (this.raster) {
-      for (const area of this.areas.values()) area.unavailable = false;
+      for (const area of this.areas.values()) { area.unavailable = false; area.groundProgress = undefined; }
       this.raster.destroy();
       this.raster = this.createRaster(provider);
       this.notify([...this.areas.keys()]);
