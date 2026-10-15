@@ -1,4 +1,4 @@
-import { MercatorCoordinate } from 'maplibre-gl';
+import { MercatorCoordinate, Point } from 'maplibre-gl';
 import type { CustomLayerInterface, CustomRenderMethodInput, Map as GLMap } from 'maplibre-gl';
 import type { GeoPoint } from './entity-geometry';
 import { EntityProjection, entityProjectionShader, entityVertex } from './entity-projection';
@@ -21,6 +21,12 @@ export type Primitive = {
   marker?: 'fill' | 'stroke';
 };
 type Draw = Primitive & { first: number; count: number; origin: ProjectionOrigin };
+type CompletedEntityFrame = {
+  draws: Draw[];
+  projection: EntityProjection;
+  verticalScale: number;
+  terrainDepth: (x: number, y: number) => number | undefined;
+};
 type Program = {
   program: WebGLProgram;
   position: number;
@@ -37,16 +43,13 @@ export class EntityLayer implements CustomLayerInterface {
   private programs = new Map<string, Program>();
   private draws: Draw[] = [];
   private dirty = true;
-  private projection?: EntityProjection;
+  private completed?: CompletedEntityFrame;
   private gl?: WebGL2RenderingContext;
   private failed = false;
   private verticalScale = 1;
   private hiddenPoints: ReadonlySet<string> = new Set();
   constructor(private report: (cause: unknown) => void) {}
   suppressPoints(ids: ReadonlySet<string>) { this.hiddenPoints = ids; }
-  private displayHeight(height: number) {
-    return height * this.verticalScale;
-  }
   set(primitives: Primitive[], verticalScale: number) {
     this.verticalScale = verticalScale;
     const origins = new Map<string, [number, number]>();
@@ -76,13 +79,13 @@ export class EntityLayer implements CustomLayerInterface {
     this.allocateBuffer();
   }
   onRemove() {
+    this.completed = undefined;
     if (this.gl) {
       if (this.buffer) this.gl.deleteBuffer(this.buffer);
       for (const p of this.programs.values()) this.gl.deleteProgram(p.program);
     }
     this.programs.clear();
     this.buffer = undefined;
-    this.projection = undefined;
     this.map = undefined;
     this.gl = undefined;
   }
@@ -101,14 +104,21 @@ export class EntityLayer implements CustomLayerInterface {
       this.buffer = buffer;
     } catch (cause) {
       this.failed = true;
+      this.completed = undefined;
       this.report(cause);
     }
   }
   render(gl: WebGL2RenderingContext, input: CustomRenderMethodInput) {
-    if (!this.buffer || !this.map || this.failed || !this.draws.length) return;
-    const canvas = this.map.getCanvas();
-    this.projection = new EntityProjection(input, this.map.getCenter().lng, canvas.clientWidth, canvas.clientHeight);
+    if (!this.buffer || !this.map || this.failed) return;
+    const map = this.map, canvas = map.getCanvas();
+    const scaleX = gl.drawingBufferWidth / canvas.clientWidth, scaleY = gl.drawingBufferHeight / canvas.clientHeight;
+    if (!this.draws.length || !Number.isFinite(scaleX) || !Number.isFinite(scaleY) || scaleX <= 0 || scaleY <= 0) {
+      this.completed = undefined;
+      return;
+    }
+    const draws = this.draws, verticalScale = this.verticalScale, hiddenPoints = this.hiddenPoints;
     try {
+      const projection = new EntityProjection(input, map.getCenter().lng, canvas.clientWidth, canvas.clientHeight);
       let program = this.programs.get(input.shaderData.variantName);
       if (!program) {
         program = this.compile(gl, input);
@@ -119,8 +129,8 @@ export class EntityLayer implements CustomLayerInterface {
       if (this.dirty) {
         const values: number[] = [];
         const position = (p: GeoPoint, origin: ProjectionOrigin) =>
-          entityVertex([p[0], p[1], this.displayHeight(p[2])], origin);
-        for (const draw of this.draws) {
+          entityVertex([p[0], p[1], p[2] * verticalScale], origin);
+        for (const draw of draws) {
           if (draw.mode === 'lines') {
             for (let i = 0; i < draw.vertices.length; i += 2) {
               const a = position(draw.vertices[i]!, draw.origin), b = position(draw.vertices[i + 1]!, draw.origin);
@@ -130,11 +140,13 @@ export class EntityLayer implements CustomLayerInterface {
           } else for (const p of draw.vertices) values.push(...position(p, draw.origin), ...draw.color, 0,0,0,0,0,0);
         }
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(values), gl.DYNAMIC_DRAW);
-        this.dirty = false;
+        this.dirty = this.draws !== draws;
       }
       const uniform = (name: string) => gl.getUniformLocation(program.program, name);
-      this.projection.bindFrame(gl, program.program);
-      gl.uniform2f(uniform('u_viewport'), gl.drawingBufferWidth, gl.drawingBufferHeight);
+      projection.bindFrame(gl, program.program);
+      gl.uniform2f(uniform('u_viewport'), canvas.clientWidth, canvas.clientHeight);
+      const pointScale = Math.max(scaleX, scaleY);
+      gl.uniform2f(uniform('u_point_scale'), pointScale / scaleX, pointScale / scaleY);
       for (const [location, size, offset] of [
         [program.position, 3, 0],
         [program.scale, 1, 12],
@@ -150,11 +162,11 @@ export class EntityLayer implements CustomLayerInterface {
       gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       gl.disable(gl.CULL_FACE);
       gl.depthMask(false);
-      for (const draw of this.draws) {
-        if (draw.mode === 'points' && this.hiddenPoints.has(draw.entityId)) continue;
-        this.projection.bindOrigin(gl, program.program, draw.origin);
-        gl.uniform1f(uniform('u_line_width'), (draw.size ?? 1) * devicePixelRatio);
-        gl.uniform1f(uniform('u_point_size'), (draw.size ?? 10) * devicePixelRatio);
+      for (const draw of draws) {
+        if (draw.mode === 'points' && hiddenPoints.has(draw.entityId)) continue;
+        projection.bindOrigin(gl, program.program, draw.origin);
+        gl.uniform1f(uniform('u_line_width'), draw.size ?? 1);
+        gl.uniform1f(uniform('u_point_size'), (draw.size ?? 10) * pointScale);
         gl.uniform1i(uniform('u_point'), draw.mode === 'points' ? 1 : 0);
         gl.uniform1f(uniform('u_inner_radius'), draw.innerRadius ?? 0);
         gl.drawArrays(
@@ -164,8 +176,17 @@ export class EntityLayer implements CustomLayerInterface {
         );
       }
       gl.depthMask(true);
+      const terrain = map.terrain, transform = map._camera.transform.clone();
+      this.completed = { draws: draws.filter(draw => draw.color[3] > 0 && !(draw.mode === 'points' && hiddenPoints.has(draw.entityId))),
+        projection, verticalScale,
+        terrainDepth: (x, y) => {
+          const location = transform.screenPointToLocation(new Point(x, y), terrain);
+          const height = terrain ? map.queryTerrainElevation(location) : 0;
+          return height === null ? undefined : projection.project([location.lng, location.lat, height])?.depth;
+        } };
     } catch (cause) {
       this.failed = true;
+      this.completed = undefined;
       try { gl.depthMask(true); } catch { /* Preserve the original rendering failure. */ }
       this.report(cause);
     }
@@ -200,8 +221,8 @@ void main(){
   gl_PointSize=u_point_size;v_color=a_color;
 }`;
     const fragment = `#version 300 es
-precision highp float; in vec4 v_color;uniform bool u_point;uniform float u_inner_radius;out vec4 color;
-void main(){if(u_point){float radius=distance(gl_PointCoord,vec2(.5));if(radius>.5||radius<u_inner_radius*.5)discard;}color=v_color;}`;
+precision highp float; in vec4 v_color;uniform bool u_point;uniform vec2 u_point_scale;uniform float u_inner_radius;out vec4 color;
+void main(){if(u_point){float radius=length((gl_PointCoord-vec2(.5))*u_point_scale);if(radius>.5||radius<u_inner_radius*.5)discard;}color=v_color;}`;
     const shaders: WebGLShader[] = [];
     const p = gl.createProgram();
     if (!p) throw new Error('Cannot allocate entity shader.');
@@ -236,34 +257,32 @@ void main(){if(u_point){float radius=distance(gl_PointCoord,vec2(.5));if(radius>
     }
   }
   project(p: GeoPoint, origin?: ProjectionOrigin) {
-    return this.projection?.project([p[0], p[1], this.displayHeight(p[2])], origin) ?? null;
+    const frame = this.completed;
+    return frame?.projection.project([p[0], p[1], p[2] * frame.verticalScale], origin) ?? null;
   }
   private clippedTriangle(vertices: GeoPoint[], origin: ProjectionOrigin) {
-    const projection = this.projection;
-    if (!projection) return [];
-    const polygon = vertices.map(p => projection.clip([p[0], p[1], this.displayHeight(p[2])], origin));
+    const frame = this.completed;
+    if (!frame) return [];
+    const { projection, verticalScale } = frame;
+    const polygon = vertices.map(p => projection.clip([p[0], p[1], p[2] * verticalScale], origin));
     if (polygon.some(point => !point)) return [];
     return projection.clippedPolygon(polygon.filter((point): point is number[] => point !== null));
   }
   private clippedSegment(a: GeoPoint, b: GeoPoint, origin: ProjectionOrigin) {
-    const projection = this.projection;
-    if (!projection) return null;
-    const start = projection.clip([a[0], a[1], this.displayHeight(a[2])], origin);
-    const end = projection.clip([b[0], b[1], this.displayHeight(b[2])], origin);
+    const frame = this.completed;
+    if (!frame) return null;
+    const { projection, verticalScale } = frame;
+    const start = projection.clip([a[0], a[1], a[2] * verticalScale], origin);
+    const end = projection.clip([b[0], b[1], b[2] * verticalScale], origin);
     return start && end ? projection.clippedSegment(start, end) : null;
   }
   pick(x: number, y: number, tolerance: number) {
     const hits: { entityId: string; attachmentId?: string; depth: number }[] = [];
-    let terrainDepth: number | undefined;
-    if (this.map && this.projection) {
-      const location = this.map.unproject([x, y]);
-      const height = this.map.getTerrain() ? this.map.queryTerrainElevation(location) : 0;
-      // MapLibre's terrain query returns a height that already includes exaggeration.
-      if (height !== null) terrainDepth = this.projection.project([location.lng, location.lat, height])?.depth;
-    }
+    const frame = this.completed;
+    if (!frame) return hits;
+    const terrainDepth = frame.terrainDepth(x, y);
     const visible = (depth: number) => terrainDepth === undefined || depth <= terrainDepth + 1e-6;
-    for (const draw of this.draws) {
-      if (draw.mode === 'points' && this.hiddenPoints.has(draw.entityId)) continue;
+    for (const draw of frame.draws) {
       if (draw.mode === 'lines' && !draw.attachmentId) continue;
       if (draw.mode === 'lines') {
         for (let i = 0; i < draw.vertices.length; i += 2) {
@@ -316,9 +335,10 @@ void main(){if(u_point){float radius=distance(gl_PointCoord,vec2(.5));if(radius>
   }
   query(rectangle: ScreenRectangle) {
     const hits: { entityId: string; attachmentId?: string; depth: number }[] = [];
-    if (this.failed || !this.projection) return hits;
-    for (const draw of this.draws) {
-      if (draw.color[3] <= 0 || draw.mode === 'points' && this.hiddenPoints.has(draw.entityId) || draw.mode === 'lines' && !draw.attachmentId) continue;
+    const frame = this.completed;
+    if (!frame) return hits;
+    for (const draw of frame.draws) {
+      if (draw.mode === 'lines' && !draw.attachmentId) continue;
       let depth: number | undefined;
       if (draw.mode === 'points') {
         const point = this.project(draw.vertices[0]!, draw.origin);

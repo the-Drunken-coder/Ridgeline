@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FeatureStore } from '../src/features';
 import { RidgelineError, createReporter } from '../src/errors';
+import { DEFAULT_ENTITY_MODELS, modelSettings } from '../src/model-settings';
 import type { MapFeature } from '../src/types';
 
 const point = (id: string, name = id): MapFeature => ({ type: 'Feature', id, properties: { name }, geometry: { type: 'Point', coordinates: [6, 45] } });
@@ -69,6 +70,90 @@ test('data snapshots isolate callers and the last duplicate ID wins', () => {
   assert.equal(store.get('a')?.properties.name, 'Last');
   assert.deepEqual(store.remove(['missing', 'a', 'a']), ['a']);
   assert.equal(store.all().length, 0);
+});
+
+test('an invalid batch preserves an isolated accepted WebAssembly.Memory snapshot', () => {
+  const memory = new WebAssembly.Memory({ initial: 1, maximum: 2, shared: true });
+  new Uint8Array(memory.buffer)[0] = 7;
+  const store = new FeatureStore<{ memory: WebAssembly.Memory }>();
+  store.upsert([{ ...point('accepted'), properties: { memory } }]);
+  const replacement = new WebAssembly.Memory({ initial: 1, maximum: 2, shared: true });
+  new Uint8Array(replacement.buffer)[0] = 19;
+  assert.throws(() => store.upsert([
+    { ...point('accepted'), properties: { memory: replacement } },
+    { ...point('new'), properties: { memory: replacement } },
+    { ...point('invalid'), properties: { memory: replacement }, geometry: { type: 'Point', coordinates: [NaN, 0] } },
+  ]), { code: 'INVALID_FEATURE' });
+  new Uint8Array(memory.buffer)[0] = 9;
+  new Uint8Array(replacement.buffer)[0] = 23;
+  assert.deepEqual(store.ids(), ['accepted']);
+  assert.equal(new Uint8Array(store.get('accepted')!.properties.memory.buffer)[0], 7);
+});
+
+test('features missing geometry after cloning reject the complete batch', () => {
+  class ComputedFeature {
+    readonly type = 'Feature';
+    readonly id = 'computed';
+    readonly properties = {};
+    get geometry(): MapFeature['geometry'] { return { type: 'Point', coordinates: [6, 45] }; }
+  }
+  const store = new FeatureStore();
+  store.upsert([point('accepted', 'Original')]);
+  assert.throws(() => store.upsert([point('accepted', 'Changed'), point('new'), new ComputedFeature()]), {
+    code: 'INVALID_FEATURE',
+  });
+  assert.deepEqual(store.all(), [point('accepted', 'Original')]);
+});
+
+test('own getters are read once and the retained geometry is what validation checks', () => {
+  let reads = 0;
+  const computed: MapFeature = {
+    type: 'Feature', id: 'computed', properties: {},
+    get geometry(): MapFeature['geometry'] { return { type: 'Point', coordinates: ++reads === 1 ? [6, 45] : [NaN, 91] }; },
+  };
+  const store = new FeatureStore();
+  store.upsert([computed]);
+  assert.deepEqual(store.get('computed')?.geometry, { type: 'Point', coordinates: [6, 45] });
+  assert.equal(reads, 1);
+  assert.throws(() => store.upsert([point('computed', 'Changed'), {
+    ...point('invalid'), get geometry(): MapFeature['geometry'] { return { type: 'Point', coordinates: [NaN, 91] }; },
+  }]), { code: 'INVALID_FEATURE' });
+  assert.deepEqual(store.ids(), ['computed']);
+  assert.deepEqual(store.get('computed')?.geometry, { type: 'Point', coordinates: [6, 45] });
+});
+
+test('the validated snapshot ID determines the batch key', () => {
+  let reads = 0;
+  const computed: MapFeature = { ...point('unused'), get id() { return `snapshot-${++reads}`; } };
+  const store = new FeatureStore();
+  const changed = store.upsert([computed]);
+  assert.deepEqual(store.ids(), ['snapshot-1']);
+  assert.equal(changed[0]?.id, 'snapshot-1');
+  assert.deepEqual(store.get('snapshot-1'), point('snapshot-1', 'unused'));
+  assert.equal(reads, 1);
+});
+
+test('additional validation checks the retained model settings before committing any feature', () => {
+  const store = new FeatureStore();
+  store.upsert([point('accepted', 'Original')]);
+  let reads = 0;
+  let checked: MapFeature | undefined;
+  const validate = (candidate: MapFeature) => {
+    checked = candidate;
+    modelSettings(DEFAULT_ENTITY_MODELS, candidate.entity?.model);
+  };
+  const valid: MapFeature = { ...point('model'), entity: { model: {
+    id: 'asset', get switchDistanceMeters() { return ++reads === 1 ? 1000 : 1; },
+  } } };
+  const changed = store.upsert([valid], validate);
+  assert.equal(checked, changed[0]);
+  assert.equal(store.get('model')?.entity?.model?.switchDistanceMeters, 1000);
+  assert.equal(reads, 1);
+  assert.throws(() => store.upsert([point('accepted', 'Changed'), {
+    ...point('invalid-model'), entity: { model: { id: 'asset', switchDistanceMeters: 1 } },
+  }], validate), /Model distance/);
+  assert.equal(store.get('accepted')?.properties.name, 'Original');
+  assert.deepEqual(store.ids(), ['accepted', 'model']);
 });
 
 test('rejects unclosed polygons, nonfinite coordinates, and 3D positions', () => {

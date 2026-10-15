@@ -1,4 +1,5 @@
 import { validateFeature } from "./features";
+import { cloneSnapshot } from "./snapshot";
 import { RidgelineError } from "./errors";
 import type { MapFeature, Properties, Viewport, ViewportEvents } from "./types";
 import type {
@@ -35,6 +36,7 @@ import {
 
 type InputState = { current?: () => boolean };
 const inputStates = new WeakMap<object, InputState>();
+type Opening = { featureId: string | undefined; conflict: boolean };
 
 type DrawingHost<P extends Properties> = Pick<
   Viewport<P>,
@@ -67,7 +69,7 @@ export function createDrawingSession<P extends Properties>(
     disposed = false,
     applying = false;
   let reason: string | undefined, release: (() => void) | undefined;
-  let acquisition: object | undefined;
+  let opening: Opening | undefined;
   let submission: {
     controller: AbortController;
     kind: DrawingChange<P>["kind"];
@@ -121,7 +123,7 @@ export function createDrawingSession<P extends Properties>(
     checkingPermission = current;
     try {
       const permitted = options.canEdit?.(
-        structuredClone(current.before ?? { ...current.feature, geometry: shapeGeometry(current.shape) }),
+        cloneSnapshot(current.before ?? { ...current.feature, geometry: shapeGeometry(current.shape) }),
         operation,
       ) ?? true;
       if (disposed || draft !== current || revision !== checkedRevision) return false;
@@ -189,11 +191,11 @@ export function createDrawingSession<P extends Properties>(
               : "editing";
   }
   function getState(): DrawingState<P> {
-    if (snapshot) return structuredClone(snapshot);
+    if (snapshot) return cloneSnapshot(snapshot);
     const current = draft, checkedRevision = revision;
     const editable = allowed();
     // Observers may already have computed the replacement or refreshed state.
-    if (snapshot) return structuredClone(snapshot);
+    if (snapshot) return cloneSnapshot(snapshot);
     if (draft !== current || revision !== checkedRevision) return getState();
     const currentPhase = phase(editable);
     const operation = draft?.before ? "update" : "create";
@@ -215,7 +217,7 @@ export function createDrawingSession<P extends Properties>(
       canRedo: !pending && !conflict && editable && future.length > 0,
       measurements: draft ? measurements(draft.shape) : { length: 0 },
     };
-    return structuredClone(snapshot);
+    return cloneSnapshot(snapshot);
   }
   function getPreview(): DrawingShape | undefined {
     const state = getState();
@@ -281,7 +283,7 @@ export function createDrawingSession<P extends Properties>(
   function change(update: (current: DrawingDraft<P>) => void) {
     const current = requireDraft();
     if (gestureCancelled) return;
-    const before = structuredClone(current);
+    const before = cloneSnapshot(current);
     update(current);
     if (sameDraft(before, current)) return;
     if (!gesture) pushPast(before);
@@ -289,38 +291,48 @@ export function createDrawingSession<P extends Properties>(
     reason = undefined;
     notify();
   }
-  function open(next: DrawingDraft<P>) {
+  function beginOpening(featureId?: string): Opening {
     if (disposed) throw new Error("Drawing session has been destroyed.");
     if (draft) throw new Error("Finish or cancel the current drawing first.");
-    const active = {};
-    acquisition = active;
-    let owned: () => void;
+    const active = { featureId, conflict: false };
+    opening = active;
+    return active;
+  }
+  function open(active: Opening, next: DrawingDraft<P>) {
+    if (disposed || opening !== active) return;
+    let owned: (() => void) | undefined;
     try {
       owned = host.acquireInteraction("drawing");
-    } catch (error) {
-      if (acquisition === active) acquisition = undefined;
-      throw error;
+      if (disposed || opening !== active) return;
+      if (!next.before) {
+        const collision = host.getFeature(next.feature.id);
+        if (disposed || opening !== active) return;
+        if (active.conflict || collision)
+          throw new Error("A new drawing needs an unused feature ID.");
+      }
+      opening = undefined;
+      release = owned;
+      owned = undefined;
+      draft = next;
+      permissionFailures.clear();
+      permissionResults.clear();
+      initialStyle = structuredClone(next.style);
+      past = [];
+      future = [];
+      conflict = active.conflict;
+      reason = undefined;
+      notify();
+    } finally {
+      if (owned) {
+        if (opening === active) opening = undefined;
+        owned();
+      }
     }
-    if (disposed || acquisition !== active || draft) {
-      owned();
-      return;
-    }
-    acquisition = undefined;
-    release = owned;
-    draft = next;
-    permissionFailures.clear();
-    permissionResults.clear();
-    initialStyle = structuredClone(next.style);
-    past = [];
-    future = [];
-    conflict = false;
-    reason = undefined;
-    notify();
   }
   function cancel() {
     if (pending)
       throw new Error("Wait for the application to decide before cancelling.");
-    acquisition = undefined;
+    opening = undefined;
     const owned = release;
     release = undefined;
     draft = undefined;
@@ -340,44 +352,61 @@ export function createDrawingSession<P extends Properties>(
   function start(tool: DrawingTool) {
     if (!tools.includes(tool))
       throw new Error("This drawing tool is not enabled.");
-    const { id, properties } = options.createFeature();
-    const feature: MapFeature<P> = structuredClone({
-      type: "Feature", id, properties,
-      geometry: { type: "Point", coordinates: [0, 0] },
-    });
-    validateFeature(feature);
-    if (host.getFeature(feature.id))
-      throw new Error("A new drawing needs an unused feature ID.");
-    const shape = emptyShape(tool);
-    const style = { ...DEFAULT_DRAWING_STYLE, ...options.defaults };
-    const error = validateDrawingStyle(style);
-    if (error) throw new Error(error);
-    open({ feature, shape, style, placing: true, placed: 0 });
+    const active = beginOpening();
+    try {
+      const { id, properties } = options.createFeature();
+      if (disposed || opening !== active) return;
+      const feature: MapFeature<P> = cloneSnapshot({
+        type: "Feature", id, properties,
+        geometry: { type: "Point", coordinates: [0, 0] },
+      });
+      if (disposed || opening !== active) return;
+      validateFeature(feature);
+      active.featureId = feature.id;
+      const collision = host.getFeature(feature.id);
+      if (disposed || opening !== active) return;
+      if (collision) throw new Error("A new drawing needs an unused feature ID.");
+      const shape = emptyShape(tool);
+      const style = { ...DEFAULT_DRAWING_STYLE, ...options.defaults };
+      const error = validateDrawingStyle(style);
+      if (error) throw new Error(error);
+      open(active, { feature, shape, style, placing: true, placed: 0 });
+    } finally {
+      if (opening === active) opening = undefined;
+    }
   }
   function edit(id: string) {
-    const before = host.getFeature(id);
-    if (!before) throw new Error("Feature no longer exists.");
-    if (before.entity)
-      throw new Error("Entity geometry uses the entity editor.");
-    const shape = before.drawing?.shape ?? shapeFromGeometry(before.geometry);
-    const defaults = { ...DEFAULT_DRAWING_STYLE, ...options.defaults };
-    const rendered = host.getStyle(before);
-    const style = before.drawing?.style ?? {
-      color: rendered.color ?? defaults.color,
-      fillColor: rendered.fillColor ?? rendered.color ?? defaults.fillColor,
-      lineWidth: rendered.lineWidth ?? defaults.lineWidth,
-      fillOpacity: rendered.fillOpacity ?? defaults.fillOpacity,
-      dashed: rendered.dashed ?? defaults.dashed,
-      label: rendered.label ?? defaults.label,
-    };
-    open({
-      feature: before,
-      before: structuredClone(before),
-      shape: structuredClone(shape),
-      style: structuredClone(style),
-      placing: false,
-      placed: 2,
-    });
+    const active = beginOpening(id);
+    try {
+      const before = host.getFeature(id);
+      if (disposed || opening !== active) return;
+      if (!before) throw new Error("Feature no longer exists.");
+      if (before.entity)
+        throw new Error("Entity geometry uses the entity editor.");
+      const shape = before.drawing?.shape ?? shapeFromGeometry(before.geometry);
+      const defaults = { ...DEFAULT_DRAWING_STYLE, ...options.defaults };
+      if (disposed || opening !== active) return;
+      const rendered = host.getStyle(before);
+      if (disposed || opening !== active) return;
+      const style = before.drawing?.style ?? {
+        color: rendered.color ?? defaults.color,
+        fillColor: rendered.fillColor ?? rendered.color ?? defaults.fillColor,
+        lineWidth: rendered.lineWidth ?? defaults.lineWidth,
+        fillOpacity: rendered.fillOpacity ?? defaults.fillOpacity,
+        dashed: rendered.dashed ?? defaults.dashed,
+        label: rendered.label ?? defaults.label,
+      };
+      open(active, {
+        feature: before,
+        before: cloneSnapshot(before),
+        shape: structuredClone(shape),
+        style: structuredClone(style),
+        placing: false,
+        placed: 2,
+      });
+    } finally {
+      if (opening === active) opening = undefined;
+    }
   }
   function addPoint(p: DrawingPosition) {
     if (!draft?.placing) return;
@@ -501,7 +530,7 @@ export function createDrawingSession<P extends Properties>(
     requireDraft();
     if (gesture) {
       if (!sameDraft(gesture, draft!)) {
-        future.push(structuredClone(draft!));
+        future.push(cloneSnapshot(draft!));
         draft = gesture;
       }
       gesture = undefined;
@@ -514,7 +543,7 @@ export function createDrawingSession<P extends Properties>(
     cursor = undefined;
     const next = past.pop();
     if (next) {
-      future.push(structuredClone(draft!));
+      future.push(cloneSnapshot(draft!));
       draft = next;
       reason = undefined;
       notify();
@@ -526,7 +555,7 @@ export function createDrawingSession<P extends Properties>(
     cursor = undefined;
     const next = future.pop();
     if (next) {
-      pushPast(structuredClone(draft!));
+      pushPast(cloneSnapshot(draft!));
       draft = next;
       reason = undefined;
       notify();
@@ -534,7 +563,7 @@ export function createDrawingSession<P extends Properties>(
   }
   function beginGesture() {
     requireDraft();
-    gesture = structuredClone(draft);
+    gesture = cloneSnapshot(draft);
     gestureCancelled = false;
   }
   function endGesture() {
@@ -562,7 +591,7 @@ export function createDrawingSession<P extends Properties>(
       return false;
     }
     const after: MapFeature<P> = {
-      ...structuredClone(current.feature),
+      ...cloneSnapshot(current.feature),
       geometry: shapeGeometry(current.shape),
     };
     delete after.bbox;
@@ -577,7 +606,7 @@ export function createDrawingSession<P extends Properties>(
       };
     const request: DrawingChange<P> = {
       kind: remove ? "delete" : current.before ? "update" : "create",
-      before: current.before && structuredClone(current.before),
+      before: current.before && cloneSnapshot(current.before),
       after: remove ? undefined : after,
     };
     pending = true;
@@ -597,7 +626,7 @@ export function createDrawingSession<P extends Properties>(
         return false;
       }
       const decision = await options.submit(
-        structuredClone(request),
+        cloneSnapshot(request),
         active.controller.signal,
       );
       if (disposed || submission !== active || draft !== current) return false;
@@ -642,6 +671,8 @@ export function createDrawingSession<P extends Properties>(
     }
   }
   const off = host.on("datachange", ({ ids, removed }) => {
+    if (opening?.featureId && (ids.includes(opening.featureId) || removed.includes(opening.featureId)))
+      opening.conflict = true;
     if (applying) {
       if (draft && (ids.includes(draft.feature.id) || removed.includes(draft.feature.id))) {
         pending = false;

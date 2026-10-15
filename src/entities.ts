@@ -24,6 +24,7 @@ import { EntityGround } from './entity-ground';
 import type { Primitive } from './entity-layer';
 import { computeEntity } from './entity-computation';
 import type { EntityComputationResult } from './entity-computation';
+import type { ElevationArea } from './elevation';
 import { Elevation, entityIdForAreaKey, placementAreaKey, modelAreaKey } from './elevation';
 import { SensorCameraCoverage } from './sensor-camera-coverage';
 import { RidgelineError } from './errors';
@@ -182,7 +183,7 @@ export class EntityScene<P extends Properties> {
     }
     for (const feature of features) if (referencesChanged.has(feature.id) && current(feature))
       this.elevation.release(modelAreaKey(feature.id));
-    const areas: { feature: MapFeature<P>; request: { key: string; center: [number, number]; radiusMeters: number } }[] = [];
+    const areas: { feature: MapFeature<P>; request: ElevationArea }[] = [];
     const footprintsVisible = this.options.configuration().entityVisibility.footprints;
     for (const feature of features) {
       if (!current(feature) || !feature.entity || feature.geometry.type !== 'Point') continue;
@@ -203,7 +204,10 @@ export class EntityScene<P extends Properties> {
       this.coverage.requestAreas(feature.id, center,
         attachments.filter((attachment): attachment is CameraAttachment => attachment.type === 'camera'),
         footprintsVisible && Boolean(feature.entity.altitude) && cameraCapable);
-      areas.push({ feature, request: { key: placementAreaKey(feature.id), center, radiusMeters } });
+      const groundRequirementKey = JSON.stringify([feature.entity.altitude?.reference, feature.entity.altitude?.meters,
+        attachments.filter(attachment => attachment.type === 'circle' || attachment.type === 'polygon')
+          .map(attachment => attachment.type === 'circle' ? ['circle', attachment.radius] : ['polygon', attachment.vertices])]);
+      areas.push({ feature, request: { key: placementAreaKey(feature.id), center, radiusMeters, groundRequirementKey } });
     }
     this.elevation.requestBatch(areas.filter(area => current(area.feature)).map(area => area.request), { deferProbe: true });
     this.schedule('accepted-entities');
@@ -399,7 +403,7 @@ export class EntityScene<P extends Properties> {
     if (!current()) return;
     const input = { feature, configuration: this.options.configuration(), style, selected: this.selected.has(feature.id) };
     const placementKey = placementAreaKey(feature.id);
-    const result = computeEntity(input, this.elevation.sampling(),
+    const result = computeEntity(input, this.elevation.sampling(placementKey),
       (lng, lat) => this.elevation.failedAt(placementKey, lng, lat));
     // A consumer sampler can remove or replace the entity during computation.
     if (!current()) return;

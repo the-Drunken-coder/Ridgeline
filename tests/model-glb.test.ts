@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFile } from 'node:fs/promises';
 import { parseGlb } from '../src/model-glb';
 import { encodeGlb, solidGlb } from './model-fixtures';
 
@@ -400,5 +401,55 @@ test('floating vertex colors reject components outside their unit range', () => 
       accessors: [...json.accessors, { bufferView: 1, componentType: 5126, type: 'VEC3', count: 3 }],
       meshes: [{ primitives: [{ attributes: { POSITION: 0, COLOR_0: 1 } }] }],
     }, binary)), /GLB_INVALID_COLOR_ATTRIBUTE/);
+  }
+});
+
+function repeatedGeometry(primitives: number, nodes = 1) {
+  const { json, binary } = triangleFixture();
+  return encodeGlb({ ...json,
+    accessors: [...json.accessors, { componentType: 5125, count: 6000, type: 'SCALAR' }],
+    meshes: [{ primitives: Array.from({ length: primitives }, () => ({ attributes: { POSITION: 0 }, indices: 1 })) }],
+    nodes: Array.from({ length: nodes }, () => ({ mesh: 0 })),
+    scenes: [{ nodes: Array.from({ length: nodes }, (_, i) => i) }],
+    extras: { padding: ' '.repeat(6000) },
+  }, binary);
+}
+
+test('cumulative decoded allocation rejects repeated primitives and nodes before unbounded corner expansion', () => {
+  const control = parseGlb(repeatedGeometry(1));
+  assert.equal(control.triangles, 2000);
+  assert.equal(control.batches[0]?.indices.length, 6000);
+  for (const bytes of [repeatedGeometry(40), repeatedGeometry(1, 40)]) {
+    assert.throws(() => parseGlb(bytes), { message: 'GLB_DECODED_ALLOCATION_LIMIT' });
+  }
+});
+
+test('shared indices retain winding independently for mirrored and ordinary nodes', () => {
+  const { json, binary: positions } = triangleFixture();
+  const binary = new Uint8Array(40);
+  binary.set(positions);
+  binary.set([0, 1, 2], 36);
+  const model = parseGlb(encodeGlb({ ...json,
+    buffers: [{ byteLength: 40 }],
+    bufferViews: [...json.bufferViews, { buffer: 0, byteOffset: 36, byteLength: 3 }],
+    accessors: [...json.accessors, { bufferView: 1, componentType: 5121, count: 3, type: 'SCALAR' }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0 }, indices: 1 }] }],
+    nodes: [{ mesh: 0, scale: [-1, 1, 1] }, { mesh: 0, translation: [10, 0, 0] }, { mesh: 0, scale: [-1, 1, 1] }],
+    scenes: [{ nodes: [0, 1, 2] }],
+  }, binary));
+  const batch = model.batches[0];
+  assert.ok(batch);
+  assert.deepEqual(Array.from(batch.positions), [0, 0, 0, 0, 1, 0, -1, 0, 0,
+    10, 0, 0, 11, 0, 0, 10, 1, 0, 0, 0, 0, 0, 1, 0, -1, 0, 0]);
+  assert.equal(model.triangles, 3);
+});
+
+test('all four supported playground models fit the cumulative allocation envelope', async () => {
+  for (const name of ['boat', 'drone', 'plane', 'tank']) {
+    const bytes = await readFile(new URL(`../playground/public/entity-models/${name}.glb`, import.meta.url));
+    const model = parseGlb(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    assert.ok(model.triangles >= 12, `${name} retains its geometry`);
+    assert.ok(model.bounds.max.every((value, axis) => value > model.bounds.min[axis]!));
+    assert.ok(model.batches.every(batch => batch.positions.length > 0 && batch.indices.length > 0));
   }
 });

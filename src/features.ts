@@ -4,6 +4,7 @@ import type { MapFeature, Properties } from './types';
 import { validateDrawingStyle } from './drawing-geometry';
 import { shapeGeometry, validateShape } from './drawing-shapes';
 import { validateEntity } from './entity-geometry';
+import { cloneSnapshot } from './snapshot';
 
 // Allow storage rounding within about a centimetre while retaining shape and topology checks.
 function sameGeometry(a: MapFeature['geometry'], b: MapFeature['geometry']) {
@@ -62,11 +63,12 @@ export function validateFeature<P extends Properties>(feature: MapFeature<P>) {
 /** Own snapshots so later consumer mutations cannot silently change the viewport. */
 export class FeatureStore<P extends Properties> {
   private readonly features = new Map<string, MapFeature<P>>();
-  upsert(features: readonly MapFeature<P>[]) {
+  upsert(features: readonly MapFeature<P>[], validate?: (feature: MapFeature<P>) => void) {
     const batch = new Map<string, MapFeature<P>>();
-    for (const feature of features) {
+    for (const feature of cloneSnapshot(features)) {
       validateFeature(feature);
-      batch.set(feature.id, structuredClone(feature));
+      validate?.(feature);
+      batch.set(feature.id, feature);
     }
     for (const [id, feature] of batch) this.features.set(id, feature);
     return [...batch.values()];
@@ -74,8 +76,8 @@ export class FeatureStore<P extends Properties> {
   remove(ids: readonly string[]) {
     return [...new Set(ids)].filter(id => this.features.delete(id));
   }
-  get(id: string) { const feature = this.features.get(id); return feature && structuredClone(feature); }
-  all() { return [...this.features.values()].map(feature => structuredClone(feature)); }
+  get(id: string) { const feature = this.features.get(id); return feature && cloneSnapshot(feature); }
+  all() { return cloneSnapshot([...this.features.values()]); }
   ids() { return [...this.features.keys()]; }
   has(id: string) { return this.features.has(id); }
 }

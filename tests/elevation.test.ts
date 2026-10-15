@@ -64,6 +64,9 @@ test('batch requests share one preparation, retain unknown as settled, and retry
   elevation.request('first', [10, 20], 100);
   await flush();
   assert.equal(source.calls.length, 1);
+  elevation.requestBatch([{ key: 'first', center: [10, 20], radiusMeters: 100, groundRequirementKey: 'new-shape' }]);
+  await flush();
+  assert.equal(source.calls.length, 1, 'Ground progress does not change custom preparation ownership');
   elevation.retry();
   assert.equal(elevation.readiness('first'), 'loading');
   await flush();

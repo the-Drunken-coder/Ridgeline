@@ -364,6 +364,191 @@ for (const action of ["cancel", "destroy"] as const) {
   });
 }
 
+for (const callback of ["getStyle", "acquireInteraction"] as const) {
+  for (const update of ["update", "remove", "unrelated"] as const) {
+    test(`Opening review ${callback} ${update} preserves the original baseline and recovery`, async () => {
+      const { editor, host, requests, owner } = fixture();
+      const before = { ...feature({ kind: "line", vertices: [[0, 0], [.01, 0]] }), properties: { revision: 1 } };
+      const latest = { ...feature({ kind: "line", vertices: [[0, .01], [.02, .01]] }), properties: { revision: 2 } };
+      host.upsert([before]);
+      let armed = true;
+      const publish = () => {
+        if (!armed) return;
+        armed = false;
+        if (update === "remove") host.remove([before.id]);
+        else host.upsert([update === "update" ? latest : { ...latest, id: "other" }]);
+      };
+      if (callback === "getStyle") host.getStyle = () => { publish(); return {}; };
+      else {
+        const acquire = host.acquireInteraction;
+        host.acquireInteraction = name => { const release = acquire(name); publish(); return release; };
+      }
+      editor.edit(before.id);
+      assert.equal(armed, false);
+      assert.equal(owner(), "drawing");
+      assert.deepEqual(editor.getState().draft?.before, before);
+      assert.deepEqual(editor.getState().draft?.shape, before.drawing?.shape);
+      if (update === "unrelated") {
+        assert.equal(editor.getState().phase, "editing");
+        editor.moveVertex(1, [.03, 0]);
+        assert.equal(await editor.finish(), true);
+        assert.equal(requests.length, 1);
+        assert.deepEqual(host.getFeature("other"), { ...latest, id: "other" });
+      } else {
+        assert.equal(editor.getState().phase, "conflict");
+        await assert.rejects(editor.finish(), /cannot be edited/);
+        assert.equal(requests.length, 0);
+        assert.deepEqual(host.getFeature(before.id), update === "update" ? latest : undefined);
+        if (update === "update") {
+          editor.restart();
+          assert.equal(editor.getState().phase, "editing");
+          assert.deepEqual(editor.getState().draft?.before, latest);
+          editor.moveVertex(1, [.03, .01]);
+          assert.equal(await editor.finish(), true);
+          assert.deepEqual(requests[0]?.before, latest);
+          assert.deepEqual(host.getFeature(before.id)?.properties, { revision: 2 });
+        } else {
+          assert.throws(() => editor.restart(), /no longer exists/);
+          assert.equal(editor.getState().phase, "conflict");
+          editor.cancel();
+          line(editor);
+          assert.equal(await editor.finish(), true);
+        }
+      }
+      assert.equal(owner(), null);
+      editor.destroy();
+    });
+  }
+}
+
+for (const callback of ["createFeature", "getFeature", "getStyle"] as const) {
+  for (const action of ["cancel", "destroy", "replace"] as const) {
+    test(`Opening review ${callback} ${action} retires preparation before acquisition`, async () => {
+      let interrupt = () => {};
+      let nextId = 0;
+      const { editor, host, owner, requests } = fixture({
+        createFeature: () => { interrupt(); return { id: `prepared-${++nextId}`, properties: {} }; },
+      });
+      const before = feature({ kind: "line", vertices: [[0, 0], [.01, 0]] });
+      host.upsert([before]);
+      let acquisitions = 0;
+      const acquire = host.acquireInteraction;
+      host.acquireInteraction = name => { acquisitions++; return acquire(name); };
+      let invoked = 0;
+      const stop = () => {
+        invoked++;
+        interrupt = () => {};
+        if (action === "destroy") editor.destroy();
+        else {
+          editor.cancel();
+          if (action === "replace") line(editor);
+        }
+      };
+      if (callback === "createFeature") interrupt = stop;
+      else if (callback === "getStyle") host.getStyle = () => { stop(); return {}; };
+      else {
+        const get = host.getFeature;
+        host.getFeature = id => {
+          const value = get(id);
+          host.getFeature = get;
+          stop();
+          return value;
+        };
+      }
+      if (callback === "createFeature") editor.start("line");
+      else editor.edit(before.id);
+      assert.equal(invoked, 1);
+      assert.equal(acquisitions, action === "replace" ? 1 : 0);
+      assert.equal(owner(), action === "replace" ? "drawing" : null);
+      assert.deepEqual(host.getFeature(before.id), before);
+      if (action === "replace") {
+        assert.equal(editor.getState().phase, "editing");
+        assert.equal(editor.getState().draft?.feature.id, "prepared-1");
+        assert.deepEqual(editor.getState().draft?.shape, { kind: "line", vertices: [[0, 0], [.01, 0]] });
+        assert.equal(await editor.finish(), true);
+        assert.equal(requests[0]?.after?.id, "prepared-1");
+      } else assert.equal(editor.getState().phase, "idle");
+      editor.destroy();
+      assert.equal(owner(), null);
+    });
+  }
+}
+
+test("Opening review a create collision during acquisition releases only its lease and rejects", () => {
+  const { editor, host, owner, requests } = fixture();
+  const collision = feature({ kind: "line", vertices: [[1, 0], [2, 0]] }, "new");
+  const acquire = host.acquireInteraction;
+  host.acquireInteraction = name => {
+    const release = acquire(name);
+    host.upsert([collision]);
+    return release;
+  };
+  assert.throws(() => editor.start("line"), /unused feature ID/);
+  assert.equal(editor.getState().phase, "idle");
+  assert.equal(owner(), null);
+  assert.deepEqual(host.getFeature("new"), collision);
+  assert.equal(requests.length, 0);
+  host.acquireInteraction = acquire;
+  editor.edit("new");
+  assert.equal(editor.getState().phase, "editing");
+  assert.equal(owner(), "drawing");
+  editor.destroy();
+  assert.equal(owner(), null);
+});
+
+for (const interruption of ["cancel", "collision"] as const) {
+  test(`Opening review ${interruption} release observers retain replacement ownership`, async () => {
+    const { editor, host, owner, requests } = fixture({
+      createFeature: () => ({ id: "opening", properties: {} }),
+    });
+    const replacement = feature({ kind: "line", vertices: [[1, 0], [2, 0]] }, "replacement");
+    host.upsert([replacement]);
+    const acquire = host.acquireInteraction;
+    host.acquireInteraction = name => {
+      const release = acquire(name);
+      host.acquireInteraction = acquire;
+      if (interruption === "cancel") editor.cancel();
+      else host.upsert([feature({ kind: "line", vertices: [[3, 0], [4, 0]] }, "opening")]);
+      return () => {
+        release();
+        editor.edit(replacement.id);
+      };
+    };
+    if (interruption === "cancel") editor.start("line");
+    else assert.throws(() => editor.start("line"), /unused feature ID/);
+    assert.equal(owner(), "drawing");
+    assert.equal(editor.getState().phase, "editing");
+    assert.deepEqual(editor.getState().draft?.before, replacement);
+    editor.moveVertex(1, [2.5, 0]);
+    assert.equal(await editor.finish(), true);
+    assert.deepEqual(requests[0]?.before, replacement);
+    assert.equal(owner(), null);
+    editor.destroy();
+  });
+}
+
+test("Opening review thrown preparation and acquisition leave a usable session", () => {
+  const { editor, host, owner } = fixture();
+  const before = feature({ kind: "line", vertices: [[0, 0], [.01, 0]] });
+  host.upsert([before]);
+  const failure = new Error("Expected preparation failure");
+  host.getStyle = () => { throw failure; };
+  assert.throws(() => editor.edit(before.id), error => error === failure);
+  assert.equal(editor.getState().phase, "idle");
+  assert.equal(owner(), null);
+  host.getStyle = () => ({});
+  const acquire = host.acquireInteraction;
+  host.acquireInteraction = () => { throw failure; };
+  assert.throws(() => editor.edit(before.id), error => error === failure);
+  assert.equal(editor.getState().phase, "idle");
+  host.acquireInteraction = acquire;
+  editor.edit(before.id);
+  assert.deepEqual(editor.getState().draft?.before, before);
+  assert.equal(owner(), "drawing");
+  editor.destroy();
+  assert.equal(owner(), null);
+});
+
 for (const action of ["cancel", "replace", "destroy"] as const) {
   for (const operation of ["vertex", "style", "finish"] as const) {
     test(`Initial ${operation} permission cannot ${action} and redirect the original action`, async () => {
@@ -800,6 +985,103 @@ test("Editing properties with BigInt and cycles retains them through history and
     type: "LineString", coordinates: [[0, 0], [2, 0]],
   });
 });
+
+for (const shared of [false, true]) {
+  const kind = shared ? "shared" : "ordinary";
+  function bytesOf(feature: MapFeature | undefined) {
+    assert.ok(feature);
+    const bytes = feature.properties.bytes;
+    assert.ok(bytes instanceof Uint8Array);
+    return bytes;
+  }
+  function properties() {
+    const bytes = new Uint8Array(shared ? new SharedArrayBuffer(4) : new ArrayBuffer(4));
+    bytes[0] = 1;
+    return { bytes };
+  }
+  test(`Drawing ${kind} snapshots isolate factory properties`, async () => {
+    const input = properties();
+    const { editor, host, requests } = fixture({ createFeature: () => ({ id: "snapshot", properties: input }) });
+    try {
+      editor.start("line");
+      input.bytes[0] = 7;
+      assert.equal(bytesOf(editor.getState().draft?.feature)[0], 1);
+      editor.addPoint([0, 0]); editor.addPoint([1, 0]);
+      assert.equal(await editor.finish(), true);
+      assert.equal(bytesOf(requests[0]?.after)[0], 1);
+      assert.equal(bytesOf(host.getFeature("snapshot"))[0], 1);
+      assert.equal(input.bytes[0], 7);
+    } finally { editor.destroy(); }
+  });
+  test(`Drawing ${kind} snapshots isolate state reads through draft history`, () => {
+    const { editor, host } = fixture();
+    const accepted = { ...feature({ kind: "line", vertices: [[0, 0], [1, 0]] }), properties: properties() };
+    host.upsert([accepted]);
+    try {
+      editor.edit(accepted.id);
+      const initial = editor.getState();
+      bytesOf(initial.draft?.feature)[0] = 7;
+      bytesOf(initial.draft?.before)[0] = 8;
+      assert.equal(bytesOf(editor.getState().draft?.feature)[0], 1);
+      assert.equal(bytesOf(editor.getState().draft?.before)[0], 1);
+      editor.moveVertex(1, [2, 0]);
+      editor.beginGesture(); editor.moveVertex(1, [3, 0]); editor.endGesture();
+      editor.undo();
+      const undone = editor.getState();
+      assert.deepEqual(undone.draft?.shape, { kind: "line", vertices: [[0, 0], [2, 0]] });
+      bytesOf(undone.draft?.feature)[0] = 9;
+      editor.redo();
+      assert.deepEqual(editor.getState().draft?.shape, { kind: "line", vertices: [[0, 0], [3, 0]] });
+      assert.equal(bytesOf(editor.getState().draft?.feature)[0], 1);
+      assert.equal(bytesOf(editor.getState().draft?.before)[0], 1);
+      assert.equal(bytesOf(host.getFeature(accepted.id))[0], 1);
+    } finally { editor.destroy(); }
+  });
+  test(`Drawing ${kind} snapshots isolate permission callback mutations`, async () => {
+    const observed: Uint8Array[] = [];
+    const { editor, host, requests } = fixture({
+      createFeature: () => ({ id: "permission-snapshot", properties: properties() }),
+      canEdit(candidate) {
+        const bytes = bytesOf(candidate);
+        observed.push(bytes);
+        bytes[0] = 7;
+        return true;
+      },
+    });
+    try {
+      line(editor);
+      editor.refreshPermissions();
+      assert.ok(observed.length > 0);
+      assert.equal(bytesOf(editor.getState().draft?.feature)[0], 1);
+      for (const bytes of observed) bytes[0] = 9;
+      assert.equal(bytesOf(editor.getState().draft?.feature)[0], 1);
+      assert.equal(await editor.finish(), true);
+      assert.equal(bytesOf(requests[0]?.after)[0], 1);
+      assert.equal(bytesOf(host.getFeature("permission-snapshot"))[0], 1);
+    } finally { editor.destroy(); }
+  });
+  test(`Drawing ${kind} snapshots isolate submit arguments and accepted baselines`, async () => {
+    let request: DrawingChange | undefined;
+    const { editor, host } = fixture({ submit(change) {
+      request = change;
+      bytesOf(change.before)[0] = 7;
+      bytesOf(change.after)[0] = 9;
+      return { accepted: true };
+    } });
+    const accepted = { ...feature({ kind: "line", vertices: [[0, 0], [1, 0]] }), properties: properties() };
+    host.upsert([accepted]);
+    try {
+      editor.edit(accepted.id);
+      editor.moveVertex(1, [2, 0]);
+      assert.equal(await editor.finish(), true);
+      assert.equal(bytesOf(request?.before)[0], 7);
+      assert.equal(bytesOf(request?.after)[0], 9);
+      assert.equal(bytesOf(host.getFeature(accepted.id))[0], 1);
+      assert.equal(accepted.properties.bytes[0], 1);
+      assert.deepEqual(host.getFeature(accepted.id)?.geometry, { type: "LineString", coordinates: [[0, 0], [2, 0]] });
+    } finally { editor.destroy(); }
+  });
+}
 
 test("Edited geometry drops an imported bounding box that no longer contains it", async () => {
   const { editor, host, requests } = fixture();

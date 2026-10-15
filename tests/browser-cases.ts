@@ -1,5 +1,17 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Snapshot review rejects invalid retained geometry atomically and keys by the cloned ID',
+  'Snapshot review validates initial and updated model settings on the retained candidate',
+  'Snapshot review isolates shared and ordinary buffers across public reads and callbacks',
+  'Snapshot review drawing state permissions history and submission isolate shared memory',
+  'Attachment markers and wireframes keep CSS size across map pixel ratios',
+  'Attachment picking follows successful frames and clears on native draw failure',
+  'Model allocation rejection preserves public registration and recovers',
+  'Drawing review opening callbacks preserve conflicts and restart the latest accepted baseline',
+  'Drawing review nested destroy preserves replacement resources handles navigation and registration',
+  'Drawing review idle toolbar Undo and Redo reach application shortcuts once',
+  'Drawing review nested draft and supplied history shortcuts perform exactly one owned action',
+  'Large ground areas complete through the raster viewport and stay quiet after eviction',
   'Model style failures retain the last complete pose until successful recovery',
   'Model diagnostics preserve entity computation through selection and preview callbacks',
   'Model frame callbacks publish only current placement and appearance',

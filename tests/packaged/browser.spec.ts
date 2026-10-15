@@ -22,6 +22,15 @@ const source = { revision: git('rev-parse', 'HEAD').trim(), status: git('status'
 
 function registerCase(name: string) {
   test(name, async ({ page }, testInfo) => {
+    if (name === 'Snapshot review isolates shared and ordinary buffers across public reads and callbacks' ||
+      name === 'Snapshot review drawing state permissions history and submission isolate shared memory') {
+      await page.route('**/*', async route => {
+        const response = await route.fetch();
+        await route.fulfill({ response, headers: { ...response.headers(),
+          'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'require-corp',
+        } });
+      });
+    }
     await page.addInitScript(context => { Reflect.set(window, 'browserEvidenceContext', context); }, { ...source, testCase: name });
     if (name === 'Reliability drawing restores rejected handle edits on a third visible world copy' ||
       name === 'Reliability drawing preserves rejected handle edits after camera turns and reversal')
@@ -133,8 +142,9 @@ function registerCase(name: string) {
 }
 
 for (const name of browserCases) {
-  if (name === 'Model pixel observation aligns visible picking across canvas ratios and rejects absent models') {
-    test.describe('Model observation at browser DPR 2', () => {
+  if (name === 'Model pixel observation aligns visible picking across canvas ratios and rejects absent models' ||
+      name === 'Attachment markers and wireframes keep CSS size across map pixel ratios') {
+    test.describe('Pixel observation at browser DPR 2', () => {
       test.use({ deviceScaleFactor: 2 });
       test.describe.configure({ timeout: 90_000 });
       registerCase(name);

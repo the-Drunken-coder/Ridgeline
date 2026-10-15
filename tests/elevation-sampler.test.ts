@@ -1,6 +1,8 @@
 import { DEFAULT_ENTITY_MODELS } from '../src/model-settings';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { computeEntity } from '../src/entity-computation';
+import type { MapConfiguration, MapFeature } from '../src/types';
 import { Elevation } from '../src/elevation';
 import { SensorCameraCoverage } from '../src/sensor-camera-coverage';
 import type { SensorCameraInput } from '../src/sensor-camera-coverage';
@@ -435,4 +437,102 @@ test('a failed fine tile does not clear retained camera output awaiting coarser 
       await new Promise<void>(resolve => setImmediate(resolve));
     }
   });
+});
+
+test('100 km ground zones finish at fixed zoom 12 with competing areas and remain quiet after eviction', async () => {
+  const flat = new Uint8ClampedArray(256 * 256 * 4);
+  for (let i = 0; i < 256 * 256; i++) flat.set([128, 0, 0, 255], i * 4);
+  await withTiles(async requests => {
+    const provider = { tiles: ['https://tiles.test/{z}/{x}/{y}.png'], encoding: 'terrarium' as const,
+      minzoom: 12, maxzoom: 12, tileSize: 256 };
+    let changes = 0;
+    const elevation = new Elevation({ provider, changed: () => changes++, diagnostic: error => assert.fail(String(error)) });
+    const configuration: MapConfiguration = { basemap: { version: 8, sources: {}, layers: [] },
+      projection: 'flat', terrain: true, hillshade: false, hillshadeOptions: {}, exaggeration: 1,
+      elevation: provider, entityModels: DEFAULT_ENTITY_MODELS,
+      entityVisibility: { footprints: true, zones: true, groundLines: false } };
+    const features: MapFeature[] = [6, 12].map((lng, index) => ({ type: 'Feature', id: `ground-${index}`,
+      properties: {}, geometry: { type: 'Point', coordinates: [lng, 46] },
+      entity: { attachments: [{ id: 'area', type: 'circle', radius: 100000 }] } }));
+    const areas = features.map((feature, index) => ({ key: feature.id, center: [index === 0 ? 6 : 12, 46] as const,
+      radiusMeters: 100000, groundRequirementKey: 'circle:100000' }));
+    elevation.requestBatch(areas);
+    const compute = (feature: MapFeature) => computeEntity({ feature, configuration, style: {}, selected: false },
+      elevation.sampling(feature.id), (lng, lat) => elevation.failedAt(feature.id, lng, lat));
+    const drain = async () => { await new Promise<void>(resolve => setImmediate(resolve)); };
+    try {
+      let results = features.map(compute);
+      for (let pass = 0; pass < 12 && results.some(result => result.state.coverage !== 'ready'); pass++) {
+        await drain();
+        results = features.map(compute);
+      }
+      assert.deepEqual(results.map(result => result.state.coverage), ['ready', 'ready']);
+      assert.deepEqual(results.map(result => result.state.ground), [0, 0]);
+      assert.deepEqual(results.map(result => result.primitives.filter(p => p.mode === 'triangles').length), [1, 1]);
+      assert.ok(new Set(requests).size > 1024, 'The actual combined tile working set exceeds the 512-tile cache');
+      assert.ok(requests.every(url => url.includes('/12/')), 'Source zoom must remain 12');
+      assert.ok(requests.length <= 8000, `Unexpected request growth ${requests.length}`);
+      const completedRequests = requests.length, completedChanges = changes;
+      for (let pass = 0; pass < 3; pass++) {
+        assert.deepEqual(features.map(compute).map(result => result.state.coverage), ['ready', 'ready']);
+        await drain();
+      }
+      assert.equal(requests.length, completedRequests, 'Completion must not fetch maximum bounds or evicted probes');
+      assert.equal(changes, completedChanges);
+      elevation.retry();
+      assert.equal(elevation.sampling(features[0]!.id)(6, 46), null, 'Retry retires finite progress for evicted terrain');
+      await drain();
+      assert.equal(elevation.sampling(features[0]!.id)(6, 46), 0);
+      elevation.reset(provider);
+      assert.equal(elevation.sampling(features[0]!.id)(6, 46), null, 'Provider reset retires all progress');
+      await drain();
+      assert.equal(elevation.sampling(features[0]!.id)(6, 46), null);
+      await drain();
+      assert.equal(elevation.sampling(features[0]!.id)(6, 46), 0);
+      const retained = elevation.sampling(features[0]!.id);
+      elevation.requestBatch(areas);
+      assert.equal(retained(6, 46), 0, 'Unchanged probe requirements retain finite progress');
+      elevation.requestBatch([{ ...areas[0]!, groundRequirementKey: 'polygon-with-the-same-extent' }]);
+      assert.equal(retained(6, 46), null, 'Shape edits within the footprint retire the old probe set');
+      const replacement = elevation.sampling(features[0]!.id);
+      assert.equal(replacement(6, 46), 0);
+      elevation.release(features[0]!.id);
+      assert.equal(replacement(6, 46), null, 'Release retires finite progress');
+    } finally { elevation.destroy(); }
+    assert.equal(elevation.sampling()(6, 46), null);
+  }, undefined, flat);
+});
+
+test('scoped ground progress preserves mixed no-data and bilinear borders until explicit repair', async () => {
+  const mixed = new Uint8ClampedArray(4 * 4 * 4);
+  for (let i = 0; i < 16; i++) mixed.set([128, 0, 0, i === 4 ? 0 : 255], i * 4);
+  await withTiles(async requests => {
+    const provider = { tiles: ['https://tiles.test/{z}/{x}/{y}.png'], encoding: 'terrarium' as const,
+      minzoom: 1, maxzoom: 1, tileSize: 4 };
+    const position = (x: number, y: number): [number, number] => [
+      x / 2 * 360 - 180, Math.atan(Math.sinh(Math.PI * (1 - y))) * 180 / Math.PI,
+    ];
+    const healthy = position(.75, .75), border = position(1, .375);
+    const elevation = new Elevation({ provider, changed() {}, diagnostic: error => assert.fail(String(error)) });
+    elevation.requestBatch([{ key: 'ground', center: healthy, radiusMeters: 1, groundRequirementKey: 'border' }]);
+    const settle = async (point: [number, number]) => {
+      for (let pass = 0; pass < 6; pass++) {
+        const value = elevation.sampling('ground')(...point);
+        if (value !== null) return value;
+        await new Promise<void>(resolve => setImmediate(resolve));
+      }
+      return null;
+    };
+    try {
+      assert.equal(await settle(healthy), 0);
+      assert.equal(await settle(border), null);
+      assert.equal(elevation.failedAt('ground', ...border), true);
+      assert.equal(elevation.sampling('ground')(...healthy), 0, 'A local gap cannot erase a finite sample');
+      mixed[4 * 4 + 3] = 255;
+      elevation.retry();
+      assert.equal(await settle(border), 0);
+      assert.equal(elevation.failedAt('ground', ...border), false);
+      assert.equal(requests.filter(url => url.endsWith('/1/1/0.png')).length, 2);
+    } finally { elevation.destroy(); }
+  }, undefined, mixed);
 });

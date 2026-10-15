@@ -10,6 +10,7 @@ import { Map as GLMap, GPUInitializationError } from 'maplibre-gl';
 import type { ExpressionSpecification, LayerSpecification, MapMouseEvent, ErrorEvent as GLErrorEvent } from 'maplibre-gl';
 import { createReporter, RidgelineError } from './errors';
 import { FeatureStore } from './features';
+import { cloneSnapshot } from './snapshot';
 import { createFeaturePublication } from './feature-publication';
 import { FEATURE_SOURCE as SOURCE, mapLibreFeaturePublication, sourceFeatureId } from './maplibre-feature-publication';
 import { hillshadePaint, resolveHillshade } from './hillshade';
@@ -87,6 +88,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     entityVisibility: { ...DEFAULT_ENTITY_VISIBILITY, ...options.entityVisibility },
     entityModels: { ...DEFAULT_ENTITY_MODELS, ...options.entityModels },
   };
+  function validateModels(feature: MapFeature<P>) {
+    if (feature.entity?.model) modelSettings(configuration.entityModels, feature.entity.model);
+  }
   const listeners: { [K in keyof ViewportEvents<P>]: Set<(value: ViewportEvents<P>[K]) => void> } = {
     interactionchange: new Set(), selectionchange: new Set(), click: new Set(), hover: new Set(), contextmenu: new Set(), selectionrequest: new Set(),
     datachange: new Set(), entitychange: new Set(), camerachange: new Set(), configurationchange: new Set(), diagnostic: new Set(), destroy: new Set(),
@@ -122,8 +126,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     if (!Number.isFinite(configuration.exaggeration) || configuration.exaggeration < 0) throw new RidgelineError('INVALID_CONFIGURATION', 'Terrain exaggeration must be a finite nonnegative number.', { operation: 'create', recoverable: false });
     configuration.hillshadeOptions = resolveHillshade(options.hillshadeOptions);
     configuration.entityModels = modelSettings(DEFAULT_ENTITY_MODELS, options.entityModels);
-    for (const feature of options.features ?? []) if (feature.entity?.model) modelSettings(configuration.entityModels, feature.entity.model);
-    if (options.features) store.upsert(options.features);
+    if (options.features) store.upsert(options.features, validateModels);
     map = new GLMap({
       container: options.container,
       style: structuredClone(configuration.basemap),
@@ -247,13 +250,13 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     diagnostic(error);
   }
   function getName(feature: MapFeature<P>) {
-    const name = options.name?.(structuredClone(feature)) ?? feature.properties.name;
+    const name = options.name?.(cloneSnapshot(feature)) ?? feature.properties.name;
     return typeof name === 'string' && name.trim() ? name : feature.id;
   }
   function getStyle(feature: MapFeature<P>): FeatureStyle {
     // Consumer exceptions retain their callback classification. Invalid output
     // is a library validation failure with the feature and operation attached.
-    const raw = options.style ? options.style(structuredClone(feature)) : {};
+    const raw = options.style ? options.style(cloneSnapshot(feature)) : {};
     try {
       const style = { ...featureStyle(raw), ...feature.drawing?.style };
       // Saved drawings own their dash choice, including an explicit solid line.
@@ -618,8 +621,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     upsert(features) {
       assertActive();
       try {
-        for (const feature of features) if (feature.entity?.model) modelSettings(configuration.entityModels, feature.entity.model);
-        const changed = store.upsert(features);
+        const changed = store.upsert(features, validateModels);
         measurement.accepted(changed.length);
         interactionRevision++;
         entities.set(changed);
