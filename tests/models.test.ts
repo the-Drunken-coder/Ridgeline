@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ModelRegistry } from '../src/models';
 import { RidgelineError } from '../src/errors';
-import { solidGlb } from './model-fixtures';
+import { encodeGlb, solidGlb } from './model-fixtures';
 import { DEFAULT_ENTITY_MODELS, modelSettings } from '../src/model-settings';
 
 test('model defaults remain immutable and undefined overrides inherit accepted settings', () => {
@@ -319,4 +319,30 @@ test('invalid registration settings preserve a working revision and use scoped e
   assert.equal(errors.length, 5);
   assert.equal(errors[0]?.context.modelId, 'shared');
   registry.destroy();
+});
+
+test('allocation rejection keeps an accepted model and permits a valid replacement', async () => {
+  const diagnostics: RidgelineError[] = [];
+  const registry = new ModelRegistry({ changed() {}, diagnostic: error => diagnostics.push(error) });
+  registry.renderer({ upload: () => ({ dispose() {} }) });
+  await registry.register('bounded', { bytes: solidGlb(), metersPerUnit: 7 });
+  const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+  const excessive = encodeGlb({ asset: { version: '2.0' }, buffers: [{ byteLength: 36 }],
+    bufferViews: [{ buffer: 0, byteLength: 36 }],
+    accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: 'VEC3' },
+      { componentType: 5125, count: 6000, type: 'SCALAR' }],
+    meshes: [{ primitives: Array.from({ length: 40 }, () => ({ attributes: { POSITION: 0 }, indices: 1 })) }],
+    nodes: [{ mesh: 0 }], scenes: [{ nodes: [0] }], extras: { padding: ' '.repeat(6000) },
+  }, new Uint8Array(positions.buffer));
+  try {
+    await assert.rejects(registry.register('bounded', { bytes: excessive }), error =>
+      error instanceof RidgelineError && error.code === 'MODEL_LOAD_FAILED' &&
+      error.context.modelId === 'bounded' && error.context.operation === 'registerModel' &&
+      error.cause instanceof Error && error.cause.message === 'GLB_DECODED_ALLOCATION_LIMIT');
+    assert.equal(registry.get('bounded')?.definition.metersPerUnit, 7);
+    assert.deepEqual(registry.status('bounded'), { id: 'bounded', status: 'ready', replacementPending: false });
+    assert.equal(diagnostics.length, 1);
+    await registry.register('bounded', { bytes: solidGlb(), metersPerUnit: 2 });
+    assert.equal(registry.get('bounded')?.definition.metersPerUnit, 2);
+  } finally { registry.destroy(); }
 });

@@ -31,6 +31,20 @@ export interface ParsedModel {
   images: { bytes: Uint8Array; mimeType: string }[];
 }
 
+// Logical allocation totals include temporary number slots, copied bytes and final upload arrays.
+class GLBAllocationBudget {
+  private remaining: number;
+
+  constructor(inputBytes: number) {
+    this.remaining = Math.min(256 * 1024 * 1024, Math.max(1024 * 1024, 256 * inputBytes));
+  }
+
+  reserve(bytes: number): void {
+    if (!Number.isSafeInteger(bytes) || bytes < 0 || bytes > this.remaining) throw new Error('GLB_DECODED_ALLOCATION_LIMIT');
+    this.remaining -= bytes;
+  }
+}
+
 type JsonObject = Record<string, unknown>;
 function isObject(value: unknown): value is JsonObject {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -131,6 +145,7 @@ function normalMatrix(m: number[]): number[] | undefined {
 }
 
 export function parseGlb(buffer: ArrayBuffer): ParsedModel {
+  const budget = new GLBAllocationBudget(buffer.byteLength);
   const data = new DataView(buffer);
   if (buffer.byteLength < 20 || data.getUint32(0, true) !== 0x46546c67) throw new Error('GLB_ONLY_EXPECTED');
   if (data.getUint32(4, true) !== 2) throw new Error('GLB_VERSION_2_REQUIRED');
@@ -147,6 +162,7 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
     const bytes = new Uint8Array(buffer, offset, length);
     if (type === 0x4e4f534a) {
       if (json) throw new Error('GLB_MULTIPLE_JSON_CHUNKS');
+      budget.reserve(length * 2);
       let decoded: unknown;
       try { decoded = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
       catch (cause) { throw new Error('GLB_INVALID_JSON', { cause }); }
@@ -191,7 +207,11 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
     if (offset + length > bufferLength) throw new Error('GLB_BUFFER_VIEW_OUT_OF_BOUNDS');
     return bin.subarray(offset, offset + length);
   }
-  function accessorValues(index: number, semantic: 'POSITION' | 'NORMAL' | 'TEXCOORD_0' | 'COLOR_0' | 'indices'): { values: number[]; count: number; width: number; component: number } {
+  type AccessorValues = { values: number[]; count: number; width: number; component: number };
+  const decodedAccessors = new Map<string, AccessorValues>();
+  function accessorValues(index: number, semantic: 'POSITION' | 'NORMAL' | 'TEXCOORD_0' | 'COLOR_0' | 'indices'): AccessorValues {
+    const key = `${index}:${semantic}`, cached = decodedAccessors.get(key);
+    if (cached) return cached;
     const accessor = accessors[index];
     if (!accessor) throw new Error('GLB_INVALID_ACCESSOR');
     const widths: Record<string, number> = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
@@ -221,7 +241,10 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
       if (accessor.byteOffset !== undefined) throw new Error('GLB_INVALID_ACCESSOR_OFFSET');
       // Implicit zeros have no buffer-view bound. Keep their expansion proportional to the supplied asset.
       if (count * width > buffer.byteLength) throw new Error('GLB_INVALID_ACCESSOR_COUNT');
-      return { count, width, component, values: new Array<number>(count * width).fill(0) };
+      budget.reserve(count * width * 8);
+      const result = { count, width, component, values: new Array<number>(count * width).fill(0) };
+      decodedAccessors.set(key, result);
+      return result;
     }
     const viewIndex = integer(accessor.bufferView), view = views[viewIndex];
     if (!view) throw new Error('GLB_INVALID_BUFFER_VIEW');
@@ -253,7 +276,10 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
       if (semantic === 'COLOR_0' && (value < 0 || value > 1)) throw new Error('GLB_INVALID_COLOR_ATTRIBUTE');
       return value;
     }
-    return { count, width, component, values: Array.from({ length: count * width }, (_, i) => read(start + Math.floor(i / width) * stride + (i % width) * size)) };
+    budget.reserve(count * width * 8);
+    const result = { count, width, component, values: Array.from({ length: count * width }, (_, i) => read(start + Math.floor(i / width) * stride + (i % width) * size)) };
+    decodedAccessors.set(key, result);
+    return result;
   }
   const imageSources = list(root.images).map(object);
   for (const image of imageSources) if (image.uri !== undefined) throw new Error('GLB_EXTERNAL_IMAGES_UNSUPPORTED');
@@ -266,7 +292,9 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
     if (!source) throw new Error('GLB_INVALID_TEXTURE_IMAGE');
     if (source.mimeType !== 'image/png' && source.mimeType !== 'image/jpeg') throw new Error(`GLB_IMAGE_FORMAT_UNSUPPORTED:${String(source.mimeType)}`);
     const result = images.length;
-    images.push({ bytes: viewBytes(integer(source.bufferView)).slice(), mimeType: source.mimeType });
+    const bytes = viewBytes(integer(source.bufferView));
+    budget.reserve(bytes.byteLength);
+    images.push({ bytes: bytes.slice(), mimeType: source.mimeType });
     imageIndices.set(index, result);
     return result;
   }
@@ -311,6 +339,7 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
     const node = nodes[index];
     if (!node) throw new Error('GLB_INVALID_NODE_TREE');
     if (node.skin !== undefined) throw new Error('GLB_SKINS_UNSUPPORTED');
+    budget.reserve(2 * 16 * 8);
     const matrix = multiply(parent, nodeMatrix(node));
     if (node.mesh !== undefined) {
       const mesh = meshes[integer(node.mesh)];
@@ -324,15 +353,15 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
         if (colors && colors.width !== 3 && colors.width !== 4) throw new Error('GLB_INVALID_COLOR_ATTRIBUTE');
         for (const optional of [normals, uvs, colors]) if (optional && optional.count !== positions.count) throw new Error('GLB_ATTRIBUTE_COUNT_MISMATCH');
         const indexAccessor = primitive.indices === undefined ? undefined : accessorValues(integer(primitive.indices), 'indices');
+        if (!indexAccessor) budget.reserve(positions.count * 8);
         const indices = indexAccessor?.values ?? Array.from({ length: positions.count }, (_, i) => i);
         if (indices.length % 3) throw new Error('GLB_INVALID_TRIANGLE_COUNT');
         const restart = indexAccessor?.component === 5121 ? 255 : indexAccessor?.component === 5123 ? 65535 : 4294967295;
         for (const value of indices) if (!Number.isInteger(value) || value < 0 || value >= positions.count || value === restart) throw new Error('GLB_INDEX_OUT_OF_BOUNDS');
-        // A mirrored node must retain outward front faces when its transform is baked.
-        if (determinant3(matrix) < 0) for (let i = 0; i < indices.length; i += 3) {
-          const second = n(indices, i + 1);
-          indices[i + 1] = n(indices, i + 2);
-          indices[i + 2] = second;
+        // Cached indices belong to the accessor, so winding changes only the read order.
+        const mirrored = determinant3(matrix) < 0;
+        function indexAt(i: number): number {
+          return n(indices, mirrored && i % 3 !== 0 ? i + (i % 3 === 1 ? 1 : -1) : i);
         }
         const materialIndex = primitive.material === undefined ? -1 : integer(primitive.material);
         let batch = grouped.get(materialIndex);
@@ -344,37 +373,44 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
           grouped.set(materialIndex, batch);
         }
         if (batch.material.texture !== undefined && !uvs) throw new Error('GLB_MISSING_TEXCOORD_0');
+        budget.reserve(positions.count * 4 * 8);
         const transformed = Array.from({ length: positions.count }, (_, i) => point(matrix, n(positions.values, i * 3), n(positions.values, i * 3 + 1), n(positions.values, i * 3 + 2)));
+        if (normals) budget.reserve(9 * 8);
         const nm = normals ? normalMatrix(matrix) : undefined;
         function append(vertex: number, faceNormal?: Vec3): number {
           const p = transformed[vertex];
           if (!p || !batch) throw new Error('GLB_INVALID_VERTEX');
+          budget.reserve(12 * 8);
           const outputIndex = batch.positions.length / 3;
           batch.positions.push(...p);
           for (let axis = 0; axis < 3; axis++) { bounds.min[axis] = Math.min(n(bounds.min, axis), n(p, axis)); bounds.max[axis] = Math.max(n(bounds.max, axis), n(p, axis)); }
           if (normals && nm) {
             const x = n(normals.values, vertex * 3), y = n(normals.values, vertex * 3 + 1), z = n(normals.values, vertex * 3 + 2);
+            budget.reserve(3 * 8);
             batch.normals.push(...normalize(n(nm, 0) * x + n(nm, 3) * y + n(nm, 6) * z, n(nm, 1) * x + n(nm, 4) * y + n(nm, 7) * z, n(nm, 2) * x + n(nm, 5) * y + n(nm, 8) * z));
           } else batch.normals.push(...(faceNormal ?? [0, 1, 0]));
           batch.uvs.push(uvs ? n(uvs.values, vertex * 2) : 0, uvs ? n(uvs.values, vertex * 2 + 1) : 0);
           batch.colors.push(colors ? n(colors.values, vertex * colors.width) : 1, colors ? n(colors.values, vertex * colors.width + 1) : 1, colors ? n(colors.values, vertex * colors.width + 2) : 1, colors?.width === 4 ? n(colors.values, vertex * 4 + 3) : 1);
           return outputIndex;
         }
+        budget.reserve(indices.length * 8);
         if (normals && nm) {
           const vertices = new Map<number, number>();
-          for (const value of indices) {
+          for (let i = 0; i < indices.length; i++) {
+            const value = indexAt(i);
             let output = vertices.get(value);
-            if (output === undefined) { output = append(value); vertices.set(value, output); }
+            if (output === undefined) { budget.reserve(2 * 8); output = append(value); vertices.set(value, output); }
             batch.indices.push(output);
           }
         } else {
           // Missing normals and singular transforms use the surviving faces, with separate corners.
           for (let i = 0; i < indices.length; i += 3) {
-            const a = transformed[n(indices, i)], b = transformed[n(indices, i + 1)], c = transformed[n(indices, i + 2)];
+            const a = transformed[indexAt(i)], b = transformed[indexAt(i + 1)], c = transformed[indexAt(i + 2)];
             if (!a || !b || !c) throw new Error('GLB_INVALID_VERTEX');
             const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+            budget.reserve(3 * 8);
             const face = normalize(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
-            batch.indices.push(append(n(indices, i), face), append(n(indices, i + 1), face), append(n(indices, i + 2), face));
+            batch.indices.push(append(indexAt(i), face), append(indexAt(i + 1), face), append(indexAt(i + 2), face));
           }
         }
         triangles += indices.length / 3;
@@ -414,8 +450,11 @@ export function parseGlb(buffer: ArrayBuffer): ParsedModel {
     for (const index of [...(children[current.index] ?? [])].reverse()) stack.push({ index, parent: matrix });
   }
   if (!triangles) throw new Error('GLB_EMPTY_MODEL');
-  return { bounds, triangles, images, batches: [...grouped.values()].map((batch) => ({
-    positions: uploadValues(batch.positions), normals: uploadValues(batch.normals), uvs: uploadValues(batch.uvs),
-    colors: uploadValues(batch.colors), indices: new Uint32Array(batch.indices), material: batch.material,
-  })) };
+  return { bounds, triangles, images, batches: [...grouped.values()].map((batch) => {
+    budget.reserve((batch.positions.length + batch.normals.length + batch.uvs.length + batch.colors.length + batch.indices.length) * 4);
+    return {
+      positions: uploadValues(batch.positions), normals: uploadValues(batch.normals), uvs: uploadValues(batch.uvs),
+      colors: uploadValues(batch.colors), indices: new Uint32Array(batch.indices), material: batch.material,
+    };
+  }) };
 }
