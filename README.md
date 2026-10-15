@@ -356,7 +356,7 @@ Recoverable tile failures leave the rest of the map usable. The elevation-unavai
 Focused Node tests cover replacement semantics, atomic invalid batches, snapshot ownership, geometry validation, diagnostics, hillshade options, coordinates. Install the browsers once, then run the suites:
 
 ```sh
-pnpm exec playwright install chromium firefox webkit
+pnpm exec playwright install --with-deps chromium firefox webkit
 pnpm test:browser
 pnpm test:support
 pnpm test:playground:browser

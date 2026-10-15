@@ -2,7 +2,7 @@
 
 > The baseline measurements later in this document were recorded on 2026-09-23 for an earlier build. They do not describe current bundle sizes, throughput, or test counts. Camera terrain visibility limits are documented in the README.
 
-## Current viewport tools follow-up, 2026-10-11
+## Historical viewport tools follow-up snapshot, 2026-10-11
 
 The final uncommitted runtime/test/config digest is `d1d09ba1353f0b2ac5d31b10f5e0f1a88cf442519cbd258a415a1048105279a3`. After the review corrections, the library and playground production builds passed. The current checkout and the clean baseline below use the same installed dependencies, Node 24.21.0, Vite 8.3.0 and Node default gzip settings. The baseline was built in an isolated Git archive. Production library measurements exclude MapLibre and source maps.
 

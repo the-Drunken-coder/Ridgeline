@@ -1,6 +1,6 @@
 # Ridgeline initial viewport
 
-Scope update, 2026-10-11: [viewport workflow upgrades](../viewport-upgrades/spec.md) adds optional reusable motion, selection and control attachments. Consumer-owned interpolation/playback below describes the initial scope; the new attachment presents supplied samples while applications retain storage and workflow ownership.
+Scope update, 2026-10-11: [viewport workflow upgrades](../viewport-upgrades/spec.md) add optional reusable drawing, selection and control attachments. Interpolation and playback remain application workflows; applications retain storage and workflow ownership.
 
 Status: Initial implementation completed locally using Field desk for the surrounding UI and Map bench for UI within the map. Package and playground builds, five unit tests, and six packaged-consumer browser checks pass. Safari validation remains outstanding; see `docs/performance.md`.
 
