@@ -1,0 +1,231 @@
+{
+  "promotedAt": "2026-10-12T17:51:06.458Z",
+  "provenance": {
+    "spec": ".scratch/viewport-upgrades/spec.md",
+    "integrationOwner": "root",
+    "reviewed": {
+      "base": "cbef055b14fe218aa24611031c4ba1a9aa0ed540",
+      "head": "cbef055b14fe218aa24611031c4ba1a9aa0ed540",
+      "result": "Root combined review and independent review, callback finding corrected and rereviewed; no open confirmed findings. Uncommitted input digest 91abf5465d9d319c5af473975da1321dcf626a7e7a8a670f531c610bb92c27b1"
+    },
+    "localVerification": [
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted input digest 91abf5465d9d319c5af473975da1321dcf626a7e7a8a670f531c610bb92c27b1",
+        "command": "pnpm check",
+        "result": "Typechecks and ticket validation passed"
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted input digest 91abf5465d9d319c5af473975da1321dcf626a7e7a8a670f531c610bb92c27b1",
+        "command": "pnpm test",
+        "result": "435 library/tooling and five control-lab tests passed"
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted input digest 91abf5465d9d319c5af473975da1321dcf626a7e7a8a670f531c610bb92c27b1",
+        "command": "pnpm test:support",
+        "result": "81 workflows passed, 27 per Chromium/Firefox/WebKit, no skips/retries/failures"
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted input digest 91abf5465d9d319c5af473975da1321dcf626a7e7a8a670f531c610bb92c27b1",
+        "command": "pnpm test:browser -- --grep 'Model |models |model |Arrow |Arrowheads|Drawing upgrades touch|Style replacement keeps|Stationary placement follows|Snap callbacks cannot|Destroying during terrain replacement|Destroying from a restoration diagnostic|Permission diagnostic observers'",
+        "result": "41 packed Chromium regressions passed"
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted input digest 91abf5465d9d319c5af473975da1321dcf626a7e7a8a670f531c610bb92c27b1",
+        "command": "pnpm build:playground; pnpm measure",
+        "result": "Library/playground build passed; payload recorded"
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted input digest 91abf5465d9d319c5af473975da1321dcf626a7e7a8a670f531c610bb92c27b1",
+        "command": "pnpm pack --pack-destination .artifacts; node scripts/check-package.mjs .artifacts/ridgeline-map-0.1.0.tgz",
+        "result": "Final archive 73 files, nine Markdown files and 30 links passed; runtime/declarations match installed exercised package"
+      }
+    ],
+    "hostedVerification": "Unavailable under user local-only publishing constraint; no hosted or merge-ready claim.",
+    "historical": [
+      "Oct11 handoff and all earlier evidence preserved. Failed Oct12 attempts retain original outcomes."
+    ],
+    "remainingLimits": [
+      "Physical devices, installed browsers, target GPU performance, manual screen readers and long-session memory unverified.",
+      "Full Chromium suite, full pnpm validate, hosted verification and measurement-tool campaign not rerun.",
+      "Native one-shot geolocation cancellation and conservative rectangle approximations remain documented."
+    ]
+  },
+  "reproduction": [
+    "pnpm install --frozen-lockfile",
+    "pnpm check",
+    "pnpm test",
+    "pnpm test:support",
+    "pnpm test:browser -- --grep 'Model |models |model |Arrow |Arrowheads|Drawing upgrades touch|Style replacement keeps|Stationary placement follows|Snap callbacks cannot|Destroying during terrain replacement|Destroying from a restoration diagnostic|Permission diagnostic observers'"
+  ],
+  "files": [
+    {
+      "path": "review.md",
+      "source": ".artifacts/viewport-upgrades/approved-follow-up/curated-review.md",
+      "bytes": 19987,
+      "sha256": "69dfb700c730079bc44e9154a92e972b76deaccc23b185fd4e6c6545ef86d17a"
+    },
+    {
+      "path": "summary.md",
+      "source": ".artifacts/viewport-upgrades/approved-follow-up/summary.md",
+      "bytes": 3535,
+      "sha256": "b9ea54c86387e69134adc585d165c8a1d32b6cc7698913c29417e5b280ed664e"
+    },
+    {
+      "path": "inputs.json",
+      "source": ".artifacts/viewport-upgrades/approved-follow-up/inputs-final-after.json",
+      "bytes": 26204,
+      "sha256": "61240c2490cff9f44452e9e1cecd3bd06d33bc2cb9c12b28d8435a4db4eddee3"
+    },
+    {
+      "path": "package-identity.json",
+      "source": ".artifacts/viewport-upgrades/approved-follow-up/package-identity.json",
+      "bytes": 861,
+      "sha256": "a807a4086490ddab697d54b8ab043b8d5c1d634451ae308fe0c8f866853ff667"
+    }
+  ],
+  "rawArchive": {
+    "path": "raw-reports.tar.gz",
+    "bytes": 439727,
+    "sha256": "1e3080db32f89a832f93b2e9b7c0d4c72af33dd4ab8cb9609ebdd7784cc2d5ab",
+    "members": [
+      {
+        "path": "independent-review.md",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/independent-review.md",
+        "bytes": 19981,
+        "sha256": "35fd6418574ed53f7d60e92f6f09814a8c3318445c99bf7e4461bf8cba31b671"
+      },
+      {
+        "path": "inputs-before.json",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/inputs-before.json",
+        "bytes": 26204,
+        "sha256": "4169db255b904d51c9bfa67746167baebffbaeea0912909c04aeb5e89f2169ad"
+      },
+      {
+        "path": "inputs-final-before.json",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/inputs-final-before.json",
+        "bytes": 26204,
+        "sha256": "61240c2490cff9f44452e9e1cecd3bd06d33bc2cb9c12b28d8435a4db4eddee3"
+      },
+      {
+        "path": "inputs-final-after.json",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/inputs-final-after.json",
+        "bytes": 26204,
+        "sha256": "61240c2490cff9f44452e9e1cecd3bd06d33bc2cb9c12b28d8435a4db4eddee3"
+      },
+      {
+        "path": "changed-inputs.json",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/changed-inputs.json",
+        "bytes": 824,
+        "sha256": "399b6bc3f7611f874946f756bdc9a0b1053b5bd9d5276698c1ebf0710687fe99"
+      },
+      {
+        "path": "check-final.log",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/check-final.log",
+        "bytes": 156,
+        "sha256": "6593c9898542b6860ea4b7c90c30835756d8ebd2fdfccbf3839293898214f71f"
+      },
+      {
+        "path": "unit-verified.log",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/unit-verified.log",
+        "bytes": 40521,
+        "sha256": "caa146843ee6bf1487bba79849e6533589c8f40c586e0e3bd70a35e8b6950727"
+      },
+      {
+        "path": "support-attempt-1.log",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/support-attempt-1.log",
+        "bytes": 244180,
+        "sha256": "127fc95e3902e6a05766e82b707f5a701e113856a7fde167c59e363717ec9ea7"
+      },
+      {
+        "path": "focused-attempt-2.log",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/focused-attempt-2.log",
+        "bytes": 51970,
+        "sha256": "784a0a62e01074e97c2ca39ef5da53934732a5072838fcfad753835244b1c725"
+      },
+      {
+        "path": "focused-attempt-3.log",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/focused-attempt-3.log",
+        "bytes": 898,
+        "sha256": "f9a53fe270e89fef9ec47714f512f51ae46a0f37e3850661ee39c6d940f0bb97"
+      },
+      {
+        "path": "focused-attempt-4.log",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/focused-attempt-4.log",
+        "bytes": 11120,
+        "sha256": "90e0a70aa6404994e8f682618aeac7b56babfeef7a8dc791ba427c0e18e4387a"
+      },
+      {
+        "path": "drawing-attempt-5.log",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/drawing-attempt-5.log",
+        "bytes": 11780,
+        "sha256": "e9612c994ca17a1250bb1c9a07e515c069998ad0a7e4741826c442b8517fc092"
+      },
+      {
+        "path": "drawing-attempt-6.log",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/drawing-attempt-6.log",
+        "bytes": 6162,
+        "sha256": "67ef559b9e36edfcdfb074a32cfe327789fa03e12be3e0a462d4518037355267"
+      },
+      {
+        "path": "support-verified.log",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/support-verified.log",
+        "bytes": 18558,
+        "sha256": "e2e15e6b47bfd265c138cbf1eef19a085def9d63cabeb06cdb4e7ca029cd2f6b"
+      },
+      {
+        "path": "regressions-verified.log",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/regressions-verified.log",
+        "bytes": 11451,
+        "sha256": "ef74417653207919c22b099e31f67e7aaf8662e406d0e32ed756d183b884b5c8"
+      },
+      {
+        "path": "playground-build.log",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/playground-build.log",
+        "bytes": 1371,
+        "sha256": "68dd7e27c9090237fb0f07b1967814977a254e4948d3b84ac9629c3fd936e4ca"
+      },
+      {
+        "path": "bundle-size.log",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/bundle-size.log",
+        "bytes": 526,
+        "sha256": "f5a99dddee2093f5ec7e848b1351a6c8443022a5f1e1a007ee824290d7996626"
+      },
+      {
+        "path": "final-package.log",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/final-package.log",
+        "bytes": 1944,
+        "sha256": "b423f0784875fe72984788f5bd913fe5ad8fa08b3036c680cba9ed2fd5bc8165"
+      },
+      {
+        "path": "package-check.log",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/package-check.log",
+        "bytes": 75,
+        "sha256": "5ec519247d9699364178fe6b1324a3774abbb209e2fe7d2f92043914f7eace3d"
+      },
+      {
+        "path": "package-identity.json",
+        "source": ".artifacts/viewport-upgrades/approved-follow-up/package-identity.json",
+        "bytes": 861,
+        "sha256": "a807a4086490ddab697d54b8ab043b8d5c1d634451ae308fe0c8f866853ff667"
+      },
+      {
+        "path": "final-documentation-package.tgz",
+        "source": ".artifacts/ridgeline-map-0.1.0.tgz",
+        "bytes": 377649,
+        "sha256": "92b28abe835e82e546707f84e9edc728af241ade1826b246854ce464383c4f21"
+      },
+      {
+        "path": "packaged-2026-10-12T17-38-41.698Z-2efd53cc-7417-4726-90f3-f53b2a6e6f6f-producer.json",
+        "source": ".artifacts/browser-runs/packaged-2026-10-12T17-38-41.698Z-2efd53cc-7417-4726-90f3-f53b2a6e6f6f/.browser-run.json",
+        "bytes": 346,
+        "sha256": "91c25cfab380314528c6c61471e01365f5ff063cfc16d4fafca651c63aaf980d"
+      },
+      {
+        "path": "packaged-2026-10-12T17-43-35.613Z-5e759545-8393-40c5-856e-11850c2a74ae-producer.json",
+        "source": ".artifacts/browser-runs/packaged-2026-10-12T17-43-35.613Z-5e759545-8393-40c5-856e-11850c2a74ae/.browser-run.json",
+        "bytes": 609,
+        "sha256": "92284bae2e85ded543d077d184c0f387493e9660eea953db8a8f120d7b09afa8"
+      }
+    ]
+  }
+}

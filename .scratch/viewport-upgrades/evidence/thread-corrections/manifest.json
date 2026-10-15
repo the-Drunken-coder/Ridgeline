@@ -1,0 +1,352 @@
+{
+  "promotedAt": "2026-10-11T19:46:08.022Z",
+  "provenance": {
+    "spec": ".scratch/viewport-upgrades/spec.md",
+    "integrationOwner": "root",
+    "reviewed": {
+      "base": "cbef055b14fe218aa24611031c4ba1a9aa0ed540",
+      "head": "cbef055b14fe218aa24611031c4ba1a9aa0ed540",
+      "result": "Root combined review and independent follow-up review; no outstanding concrete Standards/Spec findings. All 182 handoff hashes verified at d1d09ba1353f0b2ac5d31b10f5e0f1a88cf442519cbd258a415a1048105279a3"
+    },
+    "localVerification": [
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted input digest 1305996ef45c4058170fd5543fb2e93576c2c5c17cca1d81b21e623b6b9cd310",
+        "command": "pnpm test:support --reporter=list,json",
+        "result": "51 passed, 17 each Chromium/Firefox/WebKit; no skipped, failed or retried cases"
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted input digest d1d09ba1353f0b2ac5d31b10f5e0f1a88cf442519cbd258a415a1048105279a3",
+        "command": "pnpm check; pnpm test",
+        "result": "Typechecks and ticket validation pass; 426 library/tooling and 5 control-lab tests pass"
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted input digest d1d09ba1353f0b2ac5d31b10f5e0f1a88cf442519cbd258a415a1048105279a3",
+        "command": "pnpm test:browser --grep '[Mm]odel|Reliability entity|Drawing upgrades touch|Incremental updates|Picker candidates stay stable|Airborne|airborne|Arrowheads|Arrow editing' --reporter=list,json",
+        "result": "50 packaged Chromium rendering/regression cases pass"
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted input digest d1d09ba1353f0b2ac5d31b10f5e0f1a88cf442519cbd258a415a1048105279a3",
+        "command": "pnpm test:support --grep 'Drawing upgrades holes|Drawing upgrades edge|Inspector label' --reporter=list,json",
+        "result": "9 passed after final arrow offset, three each in Chromium/Firefox/WebKit"
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted input digest d1d09ba1353f0b2ac5d31b10f5e0f1a88cf442519cbd258a415a1048105279a3",
+        "command": "Fresh pnpm --dir examples/starter install; pnpm --dir examples/starter build",
+        "result": "Own configuration passes, JS/declarations identical to retained archive 696a1a7d528a7f01b01e08c15e8b20acffa3c2943d8286e53ac821706325bfb3"
+      },
+      {
+        "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540 plus uncommitted input digest d1d09ba1353f0b2ac5d31b10f5e0f1a88cf442519cbd258a415a1048105279a3",
+        "command": "pnpm build:playground; pnpm measure; pnpm pack --pack-destination .artifacts; node .artifacts/viewport-upgrades/thread-corrections/check-packaged-links.mjs",
+        "result": "Production build passes; bundle comparison retained; 9 packaged Markdown files and 30 relative file/heading links pass; final JS/declarations match standalone-tested archive"
+      }
+    ],
+    "hostedVerification": "Excluded by user publishing constraint. No hosted checks or merge-readiness claim.",
+    "historical": [
+      "Earlier support results and failed attempts retain their original input pins. Prior consumer-owned-data and withdrawn-motion evidence remain unchanged."
+    ],
+    "remainingLimits": [
+      "Physical Android/iOS, pen, installed browsers, target GPU performance, manual VoiceOver/NVDA and long-session memory unverified.",
+      "Full Chromium suite, unchanged playground/control-lab browser journeys and measurement-tool suite not rerun for this follow-up.",
+      "Native geolocation one-shot request/fallback timer have no public cancellation API; late results ignored after removal.",
+      "Rectangle custom 3D/model/GPU queries retain conservative approximations."
+    ]
+  },
+  "reproduction": [
+    "pnpm install --frozen-lockfile",
+    "pnpm exec playwright install --with-deps chromium firefox webkit",
+    "pnpm check",
+    "pnpm test",
+    "pnpm test:support",
+    "pnpm test:browser --grep '[Mm]odel|Reliability entity|Drawing upgrades touch|Incremental updates|Picker candidates stay stable|Airborne|airborne|Arrowheads|Arrow editing'",
+    "pnpm test:support --grep 'Drawing upgrades holes|Drawing upgrades edge|Inspector label'",
+    "pnpm --dir examples/starter install",
+    "pnpm --dir examples/starter build",
+    "pnpm build:playground",
+    "pnpm measure"
+  ],
+  "files": [
+    {
+      "path": "review.md",
+      "source": ".artifacts/viewport-upgrades/thread-corrections/review.md",
+      "bytes": 2167,
+      "sha256": "08aebe12e7cf33d1ada67967eeee8f728386d882357e0f9ed3d27c4015f6955d"
+    },
+    {
+      "path": "summary.md",
+      "source": ".artifacts/viewport-upgrades/thread-corrections/summary.md",
+      "bytes": 3315,
+      "sha256": "3517dfe4e22dec4fff98d1b83757a9728954ea65d03fbeb8c5abafd1ec617acb"
+    },
+    {
+      "path": "environment.json",
+      "source": ".artifacts/viewport-upgrades/thread-corrections/environment.json",
+      "bytes": 7523,
+      "sha256": "9fb1475bf2f5a6d1cea0f7ef68f421218c1b1b7ce0f0f9831b0a2eae9aa000cf"
+    },
+    {
+      "path": "inputs-handoff.json",
+      "source": ".artifacts/viewport-upgrades/thread-corrections/inputs-handoff-after.json",
+      "bytes": 25710,
+      "sha256": "d0fde10a80fd3bb5ca4bd793d7f5269cf2998f60e2a3616cf4ca177f40f0debb"
+    },
+    {
+      "path": "drawing-desktop.png",
+      "source": ".artifacts/viewport-upgrades/thread-corrections/drawing-desktop.png",
+      "bytes": 61889,
+      "sha256": "4aac443b649cc974528f286560b0dc8ec605ae5eb0401f6531ad190c0d07d7b7"
+    },
+    {
+      "path": "drawing-narrow.png",
+      "source": ".artifacts/viewport-upgrades/thread-corrections/drawing-narrow.png",
+      "bytes": 64906,
+      "sha256": "eeb4f330ee2bab28db895612c637ea0837a960d3ee8a7fb6c4f1cf0eca0bff4c"
+    }
+  ],
+  "rawArchive": {
+    "path": "raw-reports.tar.gz",
+    "bytes": 925292,
+    "sha256": "352233c4eb95159cbdc65b2d0b5a32c294158aea5da195b3d289d2ee05d28899",
+    "members": [
+      {
+        "path": "check-handoff.log",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/check-handoff.log",
+        "bytes": 156,
+        "sha256": "6231c950add754332762574faa0a64a337fa0fe1e8f6f4c941be23ded529c305"
+      },
+      {
+        "path": "unit-handoff.log",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/unit-handoff.log",
+        "bytes": 39588,
+        "sha256": "2178664b3a00eb1fc1eccd70074628817cf4852fa0bd0eb68fabf92efdbf1ee7"
+      },
+      {
+        "path": "support-final.log",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/support-final.log",
+        "bytes": 12430,
+        "sha256": "5609626e6e0ee72ea824fc9c0ec859975fd06b6610cb9bbad7fd091745eb9798"
+      },
+      {
+        "path": "support-final-report.json",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/support-final-report.json",
+        "bytes": 532400,
+        "sha256": "8b457deaf9ba38f07bad49f615f023b2ac5d46bb5939768cf948353224282ea7"
+      },
+      {
+        "path": "rendering.log",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/rendering.log",
+        "bytes": 11415,
+        "sha256": "fbac7386c3f625aa058f5d550750860dac8d527fac11a8adc36f94f030bc974d"
+      },
+      {
+        "path": "rendering-report.json",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/rendering-report.json",
+        "bytes": 56516,
+        "sha256": "c77402672e605ba170688e0d6ec96a9fb6c0a3f109e50333966a7e953f4d320b"
+      },
+      {
+        "path": "drawing-support.log",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/drawing-support.log",
+        "bytes": 6262,
+        "sha256": "e6d8dfe70084b1b48e2a5312796786ceb77b35c0c4e8889f14764c4a18be6dd0"
+      },
+      {
+        "path": "drawing-support-report.json",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/drawing-support-report.json",
+        "bytes": 44500,
+        "sha256": "5065a294203a1c20d4818ccd74c96f7732d8b64bf4b1f955398728c5f9f2e747"
+      },
+      {
+        "path": "drawing-handoff.log",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/drawing-handoff.log",
+        "bytes": 9151,
+        "sha256": "a059078a0f1526507accf8f799add35653c02bfdd18d3ba916f5c8d0517e8d12"
+      },
+      {
+        "path": "starter-handoff.log",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/starter-handoff.log",
+        "bytes": 900,
+        "sha256": "bc4110e138410b91818754df6bd8bc7ebc102f5f046402a8876c96e4d2983f24"
+      },
+      {
+        "path": "starter-install.log",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/starter-install.log",
+        "bytes": 416,
+        "sha256": "965045d013af30ad77964a1f1027cb471627d4f3aff6239f3d77f19e5a736b5e"
+      },
+      {
+        "path": "starter-build.log",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/starter-build.log",
+        "bytes": 838,
+        "sha256": "68050dc1b4eb93504d21b442265aa1d691718851f51b1f9f712c5eb1d5022ad2"
+      },
+      {
+        "path": "build-playground.log",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/build-playground.log",
+        "bytes": 1371,
+        "sha256": "63c95d873938b2d61003cf743d6f6e6ce326ef1657173a83f85de3ac5b12d9c2"
+      },
+      {
+        "path": "bundle-size.log",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/bundle-size.log",
+        "bytes": 526,
+        "sha256": "900e071a20cfcf510bf398dc88c7843c4c8247692d581967f7d8336a24da095a"
+      },
+      {
+        "path": "bundle-size.json",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/bundle-size.json",
+        "bytes": 1108,
+        "sha256": "5515e2f17a823a30bcfb64d265d275ba345bde05df47284d1df86351d71812cb"
+      },
+      {
+        "path": "baseline-bundle.json",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/baseline-bundle.json",
+        "bytes": 758,
+        "sha256": "d2fd2136330662fcb71d71b53f8c68fecd9564fdaa8e5a7acf4bd2cd5b66d129"
+      },
+      {
+        "path": "pack-final.log",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/pack-final.log",
+        "bytes": 1944,
+        "sha256": "b423f0784875fe72984788f5bd913fe5ad8fa08b3036c680cba9ed2fd5bc8165"
+      },
+      {
+        "path": "packaged-links.json",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/packaged-links.json",
+        "bytes": 411,
+        "sha256": "1f6011c89c372e8b7719f757ecc5688c5d5236ef64c16924408323c9e1845093"
+      },
+      {
+        "path": "tickets-final.log",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/tickets-final.log",
+        "bytes": 68,
+        "sha256": "2f8288d00fd1867d0e15370103d4f5141e44bb4a2b55e516d39a57a469b9115b"
+      },
+      {
+        "path": "inputs-before.json",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/inputs-before.json",
+        "bytes": 25710,
+        "sha256": "23ce44801a7721795f3ccb5a17ef51bfb83642fffaccbbe6c82732d6546c4923"
+      },
+      {
+        "path": "inputs-final-before.json",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/inputs-final-before.json",
+        "bytes": 25710,
+        "sha256": "c04e36fad3e05ce35ef713994afc44f076cead10cc2522a1c8230df0d1c77034"
+      },
+      {
+        "path": "inputs-handoff-before.json",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/inputs-handoff-before.json",
+        "bytes": 25710,
+        "sha256": "0e8c39112bee67621180edc8cc8792b0a7cf275d8d4e8a5c469ac763bd41e865"
+      },
+      {
+        "path": "inputs-handoff-after.json",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/inputs-handoff-after.json",
+        "bytes": 25710,
+        "sha256": "d0fde10a80fd3bb5ca4bd793d7f5269cf2998f60e2a3616cf4ca177f40f0debb"
+      },
+      {
+        "path": "support-run.json",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/support-run.json",
+        "bytes": 527,
+        "sha256": "9ef9fdd7a110d97c60008650446268c09548ae90d2652620f5d915ace23f47c5"
+      },
+      {
+        "path": "rendering-run.json",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/rendering-run.json",
+        "bytes": 677,
+        "sha256": "572caae877101cb8cd70ca074a2500b8cae03e1bae5cb867db8fe74fbff02b65"
+      },
+      {
+        "path": "drawing-support-run.json",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/drawing-support-run.json",
+        "bytes": 613,
+        "sha256": "472fbd4af88bf8b6a41dae058d35f4912cd7e6323db8a7260cc15713e8886f17"
+      },
+      {
+        "path": "spec-snapshot.md",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/spec-snapshot.md",
+        "bytes": 13725,
+        "sha256": "f045a94f8a0bccc93ac51e90a599ad1c3bb83ab0e25cd2002a9e406634d19cad"
+      },
+      {
+        "path": "prior-closeout.md",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/prior-closeout.md",
+        "bytes": 9967,
+        "sha256": "ce4192b5866c25bb0bf971557dc814a939877e9bbd2c73cd8fd574d170f0fc82"
+      },
+      {
+        "path": "standalone-tested-package.tgz",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/standalone-tested-package.tgz",
+        "bytes": 372877,
+        "sha256": "696a1a7d528a7f01b01e08c15e8b20acffa3c2943d8286e53ac821706325bfb3"
+      },
+      {
+        "path": "support.log",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/support.log",
+        "bytes": 23812,
+        "sha256": "8966f5b31c80c6b325e0d04ac2023b866878ec775f805afdce0e3f0c574ce7d2"
+      },
+      {
+        "path": "support-report.json",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/support-report.json",
+        "bytes": 535748,
+        "sha256": "283cd8518b6026200a15a64a6534c2c6087fb81829f6090c873d32d636e96f81"
+      },
+      {
+        "path": "check-final.log",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/check-final.log",
+        "bytes": 359,
+        "sha256": "25f3c7558b9eace0e335cd9f25efcd2fe211a82a17e54e159e76a1eb23555fce"
+      },
+      {
+        "path": "focused-final.log",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/focused-final.log",
+        "bytes": 16769,
+        "sha256": "117574a21f22a66b1300eb70f5672442d79dc8e2d2683d7d6c6cfda79dc4b3ca"
+      },
+      {
+        "path": "focused-final-report.json",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/focused-final-report.json",
+        "bytes": 35510,
+        "sha256": "9bcd3f8c82b500bf46f5b4f41df8626a6b1f02c3e1ddad475f4e50490a09bac0"
+      },
+      {
+        "path": "focused-pixels.log",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/focused-pixels.log",
+        "bytes": 16278,
+        "sha256": "7d8d8b7260630959c1105e3595eef0e70d966a57e4779668d261d08655d9659c"
+      },
+      {
+        "path": "focused-pixels-report.json",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/focused-pixels-report.json",
+        "bytes": 21802,
+        "sha256": "cfd64113048f9cd0c42468bb6edd66fa623c6431910b4e5a9c662a4369003ebb"
+      },
+      {
+        "path": "styling-chromium.log",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/styling-chromium.log",
+        "bytes": 8724,
+        "sha256": "0d493d9f55497bd3f8394faecef4c02e0597df495bcc90c215314e28b871cd37"
+      },
+      {
+        "path": "styling-chromium-report.json",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/styling-chromium-report.json",
+        "bytes": 8283,
+        "sha256": "ca63211a65bdab04a4c1baaacd938fde309fc19e823cb2fcb65113ad22ceb5d2"
+      },
+      {
+        "path": "check-packaged-links.mjs",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/check-packaged-links.mjs",
+        "bytes": 2869,
+        "sha256": "35ffa46c59d82668f1a0e6b8d34411c40b1d5cf6cdbc0bbb5bad66231320a210"
+      },
+      {
+        "path": "check-links.mjs",
+        "source": ".artifacts/viewport-upgrades/thread-corrections/check-links.mjs",
+        "bytes": 2093,
+        "sha256": "3d4786729f749a2715566bfc4f5745e7a81e76ad239b4593abdcf290fe5746aa"
+      }
+    ]
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "capturedAt": "2026-10-11T08:27:04.433Z",
+  "revision": "cbef055b14fe218aa24611031c4ba1a9aa0ed540",
+  "runtimeInputDigest": "8ccbe6759d8f309c98902d8c115fceed111215cb16150d00004a2a2621c39b66",
+  "command": "PLAYWRIGHT_JSON_OUTPUT_FILE=.artifacts/viewport-upgrades/support-report.json pnpm test:support --grep 'Workflow controls|Adoption starter|Inspector label editing' --reporter=list,json",
+  "stats": {
+    "startTime": "2026-10-11T08:25:33.191Z",
+    "duration": 28321.639000000003,
+    "expected": 9,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "environments": [
+    {
+      "engine": "chromium",
+      "testCase": "Workflow controls expose coordinates preserve native ownership and release on teardown",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+      "platform": "Linux x86_64",
+      "touchPoints": 0,
+      "devicePixelRatio": 1,
+      "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "vendor": "Google Inc. (Google)",
+      "browserVersion": "153.0.8010.12"
+    },
+    {
+      "engine": "firefox",
+      "testCase": "Workflow controls expose coordinates preserve native ownership and release on teardown",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:155.0) Gecko/20100101 Firefox/155.0",
+      "platform": "Linux x86_64",
+      "touchPoints": 0,
+      "devicePixelRatio": 1,
+      "renderer": "llvmpipe, or similar",
+      "vendor": "Mesa",
+      "browserVersion": "155.0"
+    },
+    {
+      "engine": "webkit",
+      "testCase": "Workflow controls expose coordinates preserve native ownership and release on teardown",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6 Safari/605.1.15",
+      "platform": "Linux x86_64",
+      "touchPoints": 0,
+      "devicePixelRatio": 1,
+      "renderer": "Apple GPU",
+      "vendor": "Apple Inc.",
+      "browserVersion": "26.6"
+    }
+  ]
+}

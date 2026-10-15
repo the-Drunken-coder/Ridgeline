@@ -1,5 +1,7 @@
 # Viewport workflow upgrades
 
+Integration authorization, 2026-10-13: the user subsequently authorized five GitHub draft PRs and issue publication. That supersedes the original publication exclusion below. Package release, hosted deployment, merges and ready promotion remain excluded. See PRs #114–118 for exact current revisions and pending gates. Earlier local status paragraphs retain historical context.
+
 **Kind:** spec
 
 Published spec issue: [Viewport workflow upgrades, #105](https://github.com/the-Drunken-coder/Ridgeline/issues/105)

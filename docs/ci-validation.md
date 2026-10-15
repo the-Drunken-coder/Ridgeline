@@ -1,6 +1,6 @@
 # CI and nightly validation
 
-Every pull request and push to `main` runs the complete ordinary suite. Manual execution is also available for an authorized branch. There are no path filters. Independent jobs run type checking, module tests, packaged browser cases, playground browser cases, control-lab browser cases, consumer production builds, and model measurement verification. A failed job does not cancel its siblings. A newer run for the same pull request cancels the superseded run.
+Every pull request and push to `main` runs the complete ordinary suite. Manual execution is also available for an authorized branch. There are no path filters. Independent jobs run type checking, module tests, packaged browser cases, a focused Chromium/Firefox/WebKit support matrix, playground browser cases, control-lab browser cases, consumer production builds, and model measurement verification. A failed job does not cancel its siblings. A newer run for the same pull request cancels the superseded run.
 
 The `validate` job requires successful results from all required jobs. Failure, cancellation, missing results, and unexpected skips fail the gate. Browser retries remain disabled. CI uses four packaged-browser shards with one worker each to avoid competing software-WebGL workloads on a runner. Each shard builds and packs the exact checkout, installs it into a separate consumer, checks declarations, and builds that consumer before testing.
 
@@ -8,12 +8,12 @@ The `validate` job requires successful results from all required jobs. Failure, 
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm exec playwright install chromium
+pnpm exec playwright install --with-deps chromium firefox webkit
 pnpm validate
 pnpm test:browser -- --shard=1/4
 ```
 
-`pnpm validate` runs local checks sequentially, including `pnpm test:measurement` exactly once. CI distributes the same checks across jobs. `pnpm test` includes executable validation-automation tests as well as the library and control-lab module tests. All three browser suites use production consumer builds. The packaged suite retains a fresh page per case even when cases are distributed across shards. `pnpm test:playground:browser` exercises the playground's selection journey with deterministic basemap and DEM responses while retaining the real application and viewport.
+`pnpm validate` runs local checks sequentially, including `pnpm test:measurement` exactly once. CI distributes the same checks across jobs. `pnpm test` includes executable validation-automation tests as well as the library and control-lab module tests. All four browser suites use production consumer builds. The packaged suite retains a fresh page per case even when cases are distributed across shards. `pnpm test:support` exercises current public workflows and the starter across three engines. Its Linux Firefox project uses a virtual display for WebGL; the wrapper starts Xvfb when no display is available. The required `browser-support` job retains its JSON report and browser artifacts separately from the full Chromium shard reports. See [support checks](support.md) for coverage and device limits. `pnpm test:playground:browser` exercises the playground's selection journey with deterministic basemap and DEM responses while retaining the real application and viewport.
 
 The required measurement job runs the existing report, workload, and pixel checks, including the approved 40 CSS px floor, followed by the real packed-library instrumentation and ownership probe. That probe installs, typechecks, and builds a separate consumer. It verifies software correctness. The target-hardware and installed-browser matrix, performance acceptance, and measured model guideline remain in #80 and #91. See [the measurement guide](../tools/model-measurement/README.md).
 
@@ -32,6 +32,8 @@ This policy bounds disposable history; explicitly pinned failures remain until r
 The shard-report fixture reads machine-readable reports from explicit JSON files. If it fails, it retains its inputs, reports, and subprocess diagnostics under `.artifacts/validation/`; CI uploads them as `validation-fixture-failures`. Successful fixtures are removed.
 
 Keep useful coverage when runtime grows. Runs approaching fifteen minutes should prompt investigation of setup costs and case timings, followed by additional parallelism where warranted.
+
+Packaged consumer preparation requires the generated consumer install/build, a separate fresh starter install/build with its own unchanged configuration, and final archive file-inventory and Markdown file/heading-link checks. These stages run under the existing browser owner before either packaged Chromium or three-engine support execution. A successful generated consumer cannot hide a broken starter or packaged link.
 
 ## Browser reports
 
@@ -57,7 +59,7 @@ The [consumer journey audit](consumer-testing-audit.md) maps existing coverage a
 
 On 2026-09-29, GitHub reported this repository as private, with no existing rulesets or branch protection. The implementation configured and read back protection for `main` requiring `validate`, with strict status checks. Administrator bypass remains enabled. Repository visibility was not changed. Private-repository hosted runner usage still applies.
 
-Desktop Chromium with software WebGL is the verified browser target. These checks do not establish Firefox or WebKit support, physical-GPU behavior, touch interaction, complete accessibility, or long-session production memory guarantees. Dependency and browser installation need network access on a fresh machine.
+The full rendering suite uses desktop Chromium with software WebGL. The additional focused engine/input matrix and its current evidence are described in [support checks](support.md). These checks do not establish installed Safari/Chrome/Edge acceptance, physical-GPU performance, physical touch-device support, complete accessibility, or long-session production memory guarantees. Dependency and browser installation need network access on a fresh machine. Historical closeouts below describe the coverage at their recorded revisions.
 
 ## Current closeout record
 

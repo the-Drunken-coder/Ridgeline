@@ -26,6 +26,8 @@ p { margin: 8px 0; }
 .group-buttons button { flex: 1; padding-inline: 3px; }
 #selected-name { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
 #selected-name img { width: 24px; height: 24px; }
+.selected-list { flex-basis:100%; font-size:12px; font-weight:400; margin:4px 0 0; padding-left:18px; max-height:150px; overflow:auto; }
+#selected-name:has(.selected-list) { flex-wrap:wrap; }
 dl { display: grid; grid-template-columns: 34px minmax(0,1fr); gap: 8px; font-size: 12px; margin: 13px 0; }
 dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; }
 #selected-id { font-family: ui-monospace, monospace; }

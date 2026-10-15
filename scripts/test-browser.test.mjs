@@ -14,6 +14,7 @@ async function fixture(t) {
   assert.equal(spawnSync('git', ['init', '--quiet'], { cwd: root }).status, 0);
   await copyFile(new URL('./test-browser.mjs', import.meta.url), join(root, 'scripts/test-browser.mjs'));
   await copyFile(new URL('./browser-resources.mjs', import.meta.url), join(root, 'scripts/browser-resources.mjs'));
+  await copyFile(new URL('./validate-consumer.mjs', import.meta.url), join(root, 'scripts/validate-consumer.mjs'));
   await writeFile(join(root, 'capacity.mjs'), `import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 fs.statfsSync = () => {
@@ -49,7 +50,7 @@ if (process.env.INTERRUPT_BUILD) {
   setInterval(() => {}, 1000);
 }
 
-if (process.argv.includes('scripts/prepare-consumer.mjs')) fs.mkdirSync(path.join(root, '.artifacts/consumer'), { recursive: true });
+if (process.argv.includes('scripts/prepare-consumer.mjs')) fs.mkdirSync(path.join(root, '.artifacts/consumer/standalone/examples/starter'), { recursive: true });
 if (process.env.PAUSE_BUILD && process.cwd() === root && process.argv[2] === 'build') {
   console.log('build paused');
   const timer = setInterval(() => {
@@ -372,6 +373,23 @@ test('completed wrapper runs with an empty forwarded argument retain only the ne
   const browserCommands = commands.filter(args => args.includes('playwright'));
   assert.equal(browserCommands.length, 6);
   for (const args of browserCommands) assert.deepEqual(args.slice(-2), ['--grep', '']);
+});
+
+test('support runner forwards project and grep options after package-manager separators', async t => {
+  for (const prefix of [['--support', '--'], ['--', '--support', '--']]) {
+    await t.test(prefix.join(' '), async t => {
+      const f = await fixture(t);
+      f.args.push(...prefix, '--project=chromium', '--grep', 'Adoption starter');
+      const result = f.run({ DISPLAY: ':fixture' });
+      assert.ifError(result.error);
+      assert.equal(result.status, 0, result.stderr);
+      const commands = (await readFile(join(f.root, 'commands'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+      assert.deepEqual(commands.filter(args => args.includes('playwright')), [[
+        'exec', 'playwright', 'test', '--config', 'playwright.support.config.mjs',
+        '--project=chromium', '--grep', 'Adoption starter',
+      ]]);
+    });
+  }
 });
 
 test('a protected failed producer retains its lock until evidence is preserved and protection is resolved', async t => {

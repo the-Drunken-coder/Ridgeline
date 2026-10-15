@@ -1,6 +1,6 @@
 import { pathToFileURL } from 'node:url';
 
-export const requiredJobs = ['typecheck', 'module-tests', 'packaged-browser', 'control-browser', 'playground-browser', 'consumer-builds', 'browser-reports', 'model-measurement'];
+export const requiredJobs = ['typecheck', 'module-tests', 'packaged-browser', 'browser-support', 'control-browser', 'playground-browser', 'consumer-builds', 'browser-reports', 'model-measurement'];
 
 export function checkValidation(needs) {
   const failures = requiredJobs.filter(name => needs[name]?.result !== 'success');

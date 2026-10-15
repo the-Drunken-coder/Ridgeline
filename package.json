@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "A small interactive map viewport for TypeScript applications.",
-  "files": ["dist", "README.md", "docs/performance.md", "docs/viewport-tools.md"],
+  "files": ["dist", "README.md", "GLOSSARY.md", "docs/performance.md", "docs/viewport-tools.md", "docs/support.md", "docs/adr/*.md", "examples/starter/*.ts", "examples/starter/package.json", "examples/starter/tsconfig.json", "examples/starter/index.html", "examples/starter/pnpm-workspace.yaml", "examples/starter/README.md"],
   "types": "./dist/index.d.ts",
   "exports": {
     ".": { "types": "./dist/index.d.ts", "import": "./dist/ridgeline.js" },
@@ -22,9 +22,10 @@
     "check:tickets": "node scripts/check-tickets.mjs",
     "test": "node --import tsx --test tests/*.test.ts scripts/*.test.mjs && pnpm test:controls",
     "test:browser": "node scripts/test-browser.mjs",
+    "test:support": "node scripts/test-browser.mjs --support",
     "test:playground:browser": "node scripts/test-browser-app.mjs playground",
     "test:controls:browser": "node scripts/test-browser-app.mjs controls",
-    "validate": "pnpm check && pnpm test && pnpm test:browser && pnpm test:playground:browser && pnpm test:controls:browser && pnpm build:playground && pnpm build:controls && pnpm test:measurement",
+    "validate": "pnpm check && pnpm test && pnpm test:browser && pnpm test:support && pnpm test:playground:browser && pnpm test:controls:browser && pnpm build:playground && pnpm build:controls && pnpm test:measurement",
     "measure": "node scripts/bundle-size.mjs",
     "measure:models": "node scripts/measure-models.mjs",
     "test:measurement": "node scripts/test-measurement.mjs"

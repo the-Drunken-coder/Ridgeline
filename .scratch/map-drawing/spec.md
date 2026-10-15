@@ -1,5 +1,7 @@
 # Map drawing and editing
 
+Scope update, 2026-10-11: the user authorized [viewport workflow upgrades](../viewport-upgrades/spec.md), including edge snapping, exact segment length/bearing, polygon hole creation/editing and touch input. Those requirements supersede the initial deferrals below for this upgrade branch. The original approval and dated verification remain historical evidence.
+
 Status: ready-for-human
 
 Behavior design agreed through questions 1 through 21. The user selected mock A and authorized implementation. The implementation uses a labeled tool rail and fixed inspector with optional controls over a reusable drawing API.

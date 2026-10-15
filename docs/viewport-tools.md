@@ -175,4 +175,18 @@ if (segment) {
 
 `setSnapping(boolean)` controls the editor's master switch; `getSnapping()` reads it. `setEdgeSnapping(boolean)` / `getEdgeSnapping()` control the edge option. The inspector's Snapping and Include edges controls expose these switches. Disabling the master leaves the edge preference available for re-enabling it.
 
-Touch taps place points, handle drags edit, and two fingers navigate the map. A one-finger canvas drag does not pan during an active drawing draft. Use Finish and Cancel buttons; there is no double-tap completion. Starting multi-touch settles a partial handle edit and suppresses an accidental later tap. Cancellation, capture loss, native camera navigation and lost edit permission retire the active screen gesture while retaining valid draft changes as one undo action. Mouse navigation and keyboard handles remain available. Pen-specific placement and physical-device acceptance are not established.
+Touch taps place points, handle drags edit, and two fingers navigate the map. A one-finger canvas drag does not pan during an active drawing draft. Use Finish and Cancel buttons; there is no double-tap completion. Starting multi-touch settles a partial handle edit and suppresses an accidental later tap. Cancellation, capture loss, native camera navigation and lost edit permission retire the active screen gesture while retaining valid draft changes as one undo action. Mouse navigation and keyboard handles remain available. Pen-specific placement and physical-device acceptance are not established; consult the [support matrix](support.md).
+
+
+## Consumer-owned live updates
+
+Your application decides which positions and poses to display and when to update them. Send complete current features through `upsert`, and retire displayed features through `remove` or `clear`. Updates use the existing feature contract; no timestamp or trajectory schema is required. `upsert` replaces a feature by ID, so include all current properties, entity settings and attachments you want retained. The viewport validates and snapshots that display state and coalesces rendering updates.
+
+Source storage, networking, time selection, interpolation, historical samples, retention, replay controls and camera-follow policy belong to the application. Send a path as an ordinary LineString if you want one displayed. Send application-selected camera changes through `setCamera` or use the exposed MapLibre map. Feature updates do not move the camera or change selection by stable ID.
+
+The playground's moving-feature and airborne examples already drive movement from consumer code through these APIs. Drawing drafts and viewport snapshots remain display and interaction state; the application accepts drawing changes into its own authoritative storage.
+
+
+Drawing snapping uses ordinary ground GeoJSON vertices and edges. Entity-owned geometry and its 3D attachments remain outside that snapping policy. A consumer filter can reject eligible geometry; it does not make an entity attachment a ground target.
+
+Programmatic camera frames and live entity updates invalidate pending ground/snap resolution without ending a valid drawing gesture. Permission loss retires both mouse placement and touch contacts even if permission is repaired before release. Native handle cleanup does not require a mouseup to return to the original page. Snapping coordinates come from the retained published ground feature; the consumer filter still sees current accepted feature data.
