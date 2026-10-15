@@ -801,6 +801,103 @@ test("Editing properties with BigInt and cycles retains them through history and
   });
 });
 
+for (const shared of [false, true]) {
+  const kind = shared ? "shared" : "ordinary";
+  function bytesOf(feature: MapFeature | undefined) {
+    assert.ok(feature);
+    const bytes = feature.properties.bytes;
+    assert.ok(bytes instanceof Uint8Array);
+    return bytes;
+  }
+  function properties() {
+    const bytes = new Uint8Array(shared ? new SharedArrayBuffer(4) : new ArrayBuffer(4));
+    bytes[0] = 1;
+    return { bytes };
+  }
+  test(`Drawing ${kind} snapshots isolate factory properties`, async () => {
+    const input = properties();
+    const { editor, host, requests } = fixture({ createFeature: () => ({ id: "snapshot", properties: input }) });
+    try {
+      editor.start("line");
+      input.bytes[0] = 7;
+      assert.equal(bytesOf(editor.getState().draft?.feature)[0], 1);
+      editor.addPoint([0, 0]); editor.addPoint([1, 0]);
+      assert.equal(await editor.finish(), true);
+      assert.equal(bytesOf(requests[0]?.after)[0], 1);
+      assert.equal(bytesOf(host.getFeature("snapshot"))[0], 1);
+      assert.equal(input.bytes[0], 7);
+    } finally { editor.destroy(); }
+  });
+  test(`Drawing ${kind} snapshots isolate state reads through draft history`, () => {
+    const { editor, host } = fixture();
+    const accepted = { ...feature({ kind: "line", vertices: [[0, 0], [1, 0]] }), properties: properties() };
+    host.upsert([accepted]);
+    try {
+      editor.edit(accepted.id);
+      const initial = editor.getState();
+      bytesOf(initial.draft?.feature)[0] = 7;
+      bytesOf(initial.draft?.before)[0] = 8;
+      assert.equal(bytesOf(editor.getState().draft?.feature)[0], 1);
+      assert.equal(bytesOf(editor.getState().draft?.before)[0], 1);
+      editor.moveVertex(1, [2, 0]);
+      editor.beginGesture(); editor.moveVertex(1, [3, 0]); editor.endGesture();
+      editor.undo();
+      const undone = editor.getState();
+      assert.deepEqual(undone.draft?.shape, { kind: "line", vertices: [[0, 0], [2, 0]] });
+      bytesOf(undone.draft?.feature)[0] = 9;
+      editor.redo();
+      assert.deepEqual(editor.getState().draft?.shape, { kind: "line", vertices: [[0, 0], [3, 0]] });
+      assert.equal(bytesOf(editor.getState().draft?.feature)[0], 1);
+      assert.equal(bytesOf(editor.getState().draft?.before)[0], 1);
+      assert.equal(bytesOf(host.getFeature(accepted.id))[0], 1);
+    } finally { editor.destroy(); }
+  });
+  test(`Drawing ${kind} snapshots isolate permission callback mutations`, async () => {
+    const observed: Uint8Array[] = [];
+    const { editor, host, requests } = fixture({
+      createFeature: () => ({ id: "permission-snapshot", properties: properties() }),
+      canEdit(candidate) {
+        const bytes = bytesOf(candidate);
+        observed.push(bytes);
+        bytes[0] = 7;
+        return true;
+      },
+    });
+    try {
+      line(editor);
+      editor.refreshPermissions();
+      assert.ok(observed.length > 0);
+      assert.equal(bytesOf(editor.getState().draft?.feature)[0], 1);
+      for (const bytes of observed) bytes[0] = 9;
+      assert.equal(bytesOf(editor.getState().draft?.feature)[0], 1);
+      assert.equal(await editor.finish(), true);
+      assert.equal(bytesOf(requests[0]?.after)[0], 1);
+      assert.equal(bytesOf(host.getFeature("permission-snapshot"))[0], 1);
+    } finally { editor.destroy(); }
+  });
+  test(`Drawing ${kind} snapshots isolate submit arguments and accepted baselines`, async () => {
+    let request: DrawingChange | undefined;
+    const { editor, host } = fixture({ submit(change) {
+      request = change;
+      bytesOf(change.before)[0] = 7;
+      bytesOf(change.after)[0] = 9;
+      return { accepted: true };
+    } });
+    const accepted = { ...feature({ kind: "line", vertices: [[0, 0], [1, 0]] }), properties: properties() };
+    host.upsert([accepted]);
+    try {
+      editor.edit(accepted.id);
+      editor.moveVertex(1, [2, 0]);
+      assert.equal(await editor.finish(), true);
+      assert.equal(bytesOf(request?.before)[0], 7);
+      assert.equal(bytesOf(request?.after)[0], 9);
+      assert.equal(bytesOf(host.getFeature(accepted.id))[0], 1);
+      assert.equal(accepted.properties.bytes[0], 1);
+      assert.deepEqual(host.getFeature(accepted.id)?.geometry, { type: "LineString", coordinates: [[0, 0], [2, 0]] });
+    } finally { editor.destroy(); }
+  });
+}
+
 test("Edited geometry drops an imported bounding box that no longer contains it", async () => {
   const { editor, host, requests } = fixture();
   const before: MapFeature = {
