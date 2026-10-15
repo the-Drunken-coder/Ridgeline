@@ -4,7 +4,7 @@ import { browserCases } from './tests/browser-cases.ts';
 import { selectSupportCases, starterCases } from './tests/support-cases.ts';
 
 const names = [...selectSupportCases(browserCases), ...Object.values(starterCases)];
-const escaped = names.map(name => RegExp.escape(name));
+const escaped = names.map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 
 
 // Focused public workflows across engines; the full rendering/regression suite remains Chromium.
