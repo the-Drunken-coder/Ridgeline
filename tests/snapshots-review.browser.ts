@@ -24,6 +24,14 @@ function bytesOf(feature: MapFeature | undefined) {
   check(feature?.properties.bytes instanceof Uint8Array, 'Required snapshot bytes missing');
   return feature.properties.bytes;
 }
+function changeSnapshotBytes(feature: MapFeature, value: number) {
+  const bytes = bytesOf(feature);
+  bytes[0] = value;
+  if (feature.id === 'memory') {
+    check(feature.properties.memory instanceof WebAssembly.Memory, 'Required snapshot Memory missing');
+    new Uint8Array(feature.properties.memory.buffer)[bytes.byteOffset] = value;
+  }
+}
 function sharedBytes() {
   check(crossOriginIsolated && typeof SharedArrayBuffer !== 'undefined',
     'Shared snapshot cases require per-case COOP/COEP response headers');
@@ -102,17 +110,20 @@ export const snapshotReviewCases: readonly { name: string; run(context: Context)
   { name: 'Snapshot review isolates shared and ordinary buffers across public reads and callbacks', async run({ container, setCurrent, until }) {
     const shared = sharedBytes();
     const ordinary = new Uint8Array([1, 2, 3, 4]);
+    const memory = new WebAssembly.Memory({ initial: 1, maximum: 2, shared: true });
+    const memoryBytes = new Uint8Array(memory.buffer, 2, 4);
+    memoryBytes.set([1, 2, 3, 4]);
     const callbackInputs: MapFeature[] = [];
     const viewport = createViewport({ container, basemap, camera: { center: [0, 0], zoom: 14 }, logger: () => {},
       style(feature) {
         callbackInputs.push(feature);
-        bytesOf(feature)[0] = 23;
+        changeSnapshotBytes(feature, 23);
         return { radius: 6, color: '#216e5b' };
       },
       name(feature) {
         callbackInputs.push(feature);
-        bytesOf(feature)[0] = 31;
-        return feature.id;
+        changeSnapshotBytes(feature, 31);
+        return `Snapshot ${feature.id}`;
       },
     });
     setCurrent(viewport);
@@ -121,29 +132,47 @@ export const snapshotReviewCases: readonly { name: string; run(context: Context)
       let changes = 0;
       const off = viewport.on('datachange', () => { changes++; });
       try {
-        for (const [id, bytes] of [['shared', shared], ['ordinary', ordinary]] as const) {
-          const input = point(id, { bytes, repeated: bytes, buffer: bytes.buffer });
+        for (const [id, bytes, owner] of [['shared', shared, undefined], ['ordinary', ordinary, undefined],
+          ['memory', memoryBytes, memory]] as const) {
+          const input = point(id, { bytes, repeated: bytes, buffer: bytes.buffer,
+            ...(owner ? { memory: owner, repeatedMemory: owner } : {}) });
           viewport.upsert([input]);
           bytes[0] = 7;
           const snapshot = viewport.getFeature(id);
           check(snapshot && bytesOf(snapshot)[0] === 1, `${id} input changed accepted memory`);
           check(snapshot.properties.bytes === snapshot.properties.repeated && bytesOf(snapshot).buffer === snapshot.properties.buffer,
             `${id} snapshot lost view identity or backing aliases`);
-          check(viewport.getName(snapshot) === id, 'Name callback result lost');
+          if (owner) {
+            const copiedMemory = snapshot.properties.memory;
+            check(copiedMemory instanceof WebAssembly.Memory && copiedMemory === snapshot.properties.repeatedMemory,
+              'Shared Memory lost its supported type or repeated identity');
+            check(copiedMemory.buffer === snapshot.properties.buffer && new Uint8Array(copiedMemory.buffer)[2] === 1,
+              'Shared Memory lost its exposed backing alias or accepted bytes');
+          }
+          check(viewport.getName(snapshot) === `Snapshot ${id}`, 'Name callback result lost');
           check(viewport.getStyle(snapshot).radius === 6, 'Style callback result lost');
           check(bytesOf(snapshot)[0] === 1, `${id} callbacks changed their caller's snapshot`);
-          bytesOf(snapshot)[0] = 9;
+          changeSnapshotBytes(snapshot, 9);
           const listed = viewport.getFeatures().find(feature => feature.id === id);
           check(bytesOf(listed)[0] === 1, `${id} read changed accepted memory`);
-          bytesOf(listed)[0] = 11;
+          check(listed, 'Required listed snapshot missing');
+          changeSnapshotBytes(listed, 11);
           check(bytesOf(viewport.getFeature(id))[0] === 1, `${id} list exposed accepted memory`);
         }
-        await until(() => viewport.map.queryRenderedFeatures({ layers: ['rl:points'] }).length >= 2, 'snapshot features published');
-        check(callbackInputs.length >= 4, 'Required name and style callbacks were not reached');
-        for (const feature of callbackInputs) bytesOf(feature)[0] = 41;
+        await until(() => viewport.map.queryRenderedFeatures({ layers: ['rl:points'] }).length >= 3, 'snapshot features published');
+        check(callbackInputs.length >= 6, 'Required name and style callbacks were not reached');
+        for (const feature of callbackInputs) changeSnapshotBytes(feature, 41);
         check(bytesOf(viewport.getFeature('shared'))[0] === 1 && bytesOf(viewport.getFeature('ordinary'))[0] === 1,
           'Retained callback arguments changed accepted memory');
-        check(shared[0] === 7 && ordinary[0] === 7 && changes === 2, 'Snapshot reads or callbacks changed input memory or emitted datachange');
+        const retainedMemory = viewport.getFeature('memory')?.properties.memory;
+        check(retainedMemory instanceof WebAssembly.Memory && new Uint8Array(retainedMemory.buffer)[2] === 1 &&
+          bytesOf(viewport.getFeature('memory'))[0] === 1, 'Retained callback arguments changed accepted Memory storage');
+        check(memory.grow(1) === 1 && retainedMemory.buffer.byteLength === 65536,
+          'Input Memory growth changed a returned snapshot');
+        const afterGrowth = viewport.getFeature('memory')?.properties.memory;
+        check(afterGrowth instanceof WebAssembly.Memory && afterGrowth.buffer.byteLength === 65536,
+          'Input Memory growth changed accepted storage');
+        check(shared[0] === 7 && ordinary[0] === 7 && memoryBytes[0] === 7 && changes === 3, 'Snapshot reads or callbacks changed input memory or emitted datachange');
       } finally { off(); }
     } finally { viewport.destroy(); }
   } },

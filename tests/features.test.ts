@@ -72,6 +72,24 @@ test('data snapshots isolate callers and the last duplicate ID wins', () => {
   assert.equal(store.all().length, 0);
 });
 
+test('an invalid batch preserves an isolated accepted WebAssembly.Memory snapshot', () => {
+  const memory = new WebAssembly.Memory({ initial: 1, maximum: 2, shared: true });
+  new Uint8Array(memory.buffer)[0] = 7;
+  const store = new FeatureStore<{ memory: WebAssembly.Memory }>();
+  store.upsert([{ ...point('accepted'), properties: { memory } }]);
+  const replacement = new WebAssembly.Memory({ initial: 1, maximum: 2, shared: true });
+  new Uint8Array(replacement.buffer)[0] = 19;
+  assert.throws(() => store.upsert([
+    { ...point('accepted'), properties: { memory: replacement } },
+    { ...point('new'), properties: { memory: replacement } },
+    { ...point('invalid'), properties: { memory: replacement }, geometry: { type: 'Point', coordinates: [NaN, 0] } },
+  ]), { code: 'INVALID_FEATURE' });
+  new Uint8Array(memory.buffer)[0] = 9;
+  new Uint8Array(replacement.buffer)[0] = 23;
+  assert.deepEqual(store.ids(), ['accepted']);
+  assert.equal(new Uint8Array(store.get('accepted')!.properties.memory.buffer)[0], 7);
+});
+
 test('features missing geometry after cloning reject the complete batch', () => {
   class ComputedFeature {
     readonly type = 'Feature';

@@ -141,3 +141,118 @@ test('ordinary resizable buffer snapshots keep native view tracking and isolate 
   assert.equal(store.get('resizable')?.properties.buffer.byteLength, 16);
   assert.equal(store.get('resizable')?.properties.bytes[0], 7);
 });
+
+test('shared WebAssembly.Memory snapshots isolate hidden input and read storage', () => {
+  const memory = new WebAssembly.Memory({ initial: 1, maximum: 2, shared: true });
+  const bytes = new Uint8Array(memory.buffer);
+  bytes[0] = 7;
+  bytes[bytes.length - 1] = 13;
+  const store = new FeatureStore<{ memory: WebAssembly.Memory }>();
+  store.upsert([{ type: 'Feature', id: 'memory', properties: { memory },
+    geometry: { type: 'Point', coordinates: [0, 0] } }]);
+  bytes[0] = 9;
+  const snapshot = store.get('memory');
+  assert.ok(snapshot);
+  assert.ok(snapshot.properties.memory instanceof WebAssembly.Memory);
+  assert.ok(snapshot.properties.memory.buffer instanceof SharedArrayBuffer);
+  const output = new Uint8Array(snapshot.properties.memory.buffer);
+  assert.deepEqual([output[0], output[output.length - 1]], [7, 13]);
+  output[0] = 11;
+  const listed = store.all();
+  assert.equal(new Uint8Array(listed[0]!.properties.memory.buffer)[0], 7);
+  new Uint8Array(listed[0]!.properties.memory.buffer)[0] = 17;
+  assert.equal(new Uint8Array(store.get('memory')!.properties.memory.buffer)[0], 7);
+  assert.equal(bytes[0], 9);
+});
+
+for (const ownerFirst of [false, true]) {
+  test(`shared WebAssembly.Memory snapshots retain aliases with owner ${ownerFirst ? 'first' : 'last'}`, () => {
+    const memory = new WebAssembly.Memory({ initial: 1, maximum: 2, shared: true });
+    const buffer = memory.buffer;
+    const bytes = new Uint8Array(buffer, 8, 4);
+    bytes.set([1, 2, 3, 4]);
+    const properties = {
+      ...(ownerFirst ? { memory, buffer, bytes } : { bytes, buffer, memory }),
+      repeated: memory, repeatedBytes: bytes, data: new DataView(buffer, 9, 2),
+      map: new Map<unknown, unknown>(), set: new Set<unknown>(),
+      error: new Error('Memory cause'),
+    };
+    properties.map.set(memory, bytes);
+    properties.map.set(properties, memory);
+    properties.set.add(memory);
+    properties.set.add(properties);
+    properties.error.cause = { memory, error: properties.error };
+    const store = new FeatureStore<typeof properties>();
+    store.upsert([{ type: 'Feature', id: 'aliases', properties,
+      geometry: { type: 'Point', coordinates: [0, 0] } }]);
+    bytes[0] = 7;
+    const output = store.get('aliases')!.properties;
+    assert.ok(output.memory instanceof WebAssembly.Memory);
+    assert.notEqual(output.memory, memory);
+    assert.equal(output.memory, output.repeated);
+    assert.ok(output.memory.buffer === output.buffer, 'Memory and exposed buffer must alias');
+    assert.equal(output.bytes, output.repeatedBytes);
+    assert.ok(output.bytes.buffer === output.buffer, 'View and exposed buffer must alias');
+    assert.ok(output.data.buffer === output.buffer, 'DataView and exposed buffer must alias');
+    assert.deepEqual([output.bytes.byteOffset, output.bytes.length, output.data.byteOffset,
+      output.data.byteLength], [8, 4, 9, 2]);
+    assert.equal(output.map.get(output.memory), output.bytes);
+    assert.equal(output.map.get(output), output.memory);
+    assert.ok(output.set.has(output.memory) && output.set.has(output));
+    const cause = output.error.cause;
+    assert.ok(cause && typeof cause === 'object' && 'memory' in cause && 'error' in cause);
+    assert.equal(cause.memory, output.memory);
+    assert.equal(cause.error, output.error);
+    assert.deepEqual([...output.bytes], [1, 2, 3, 4]);
+    new Uint8Array(output.memory.buffer)[8] = 23;
+    output.data.setUint8(0, 29);
+    assert.deepEqual([...output.bytes], [23, 29, 3, 4]);
+    assert.deepEqual([...store.get('aliases')!.properties.bytes], [1, 2, 3, 4]);
+    assert.deepEqual([...bytes], [7, 2, 3, 4]);
+  });
+}
+
+test('shared WebAssembly.Memory owners nested in Map Set and Error are isolated', () => {
+  const memories = Array.from({ length: 3 }, () => new WebAssembly.Memory({ initial: 1, maximum: 2, shared: true }));
+  for (const memory of memories) new Uint8Array(memory.buffer)[0] = 7;
+  const properties = { map: new Map([[memories[0]!, 'key']]),
+    set: new Set([memories[1]!]), error: new Error('Hidden memory', { cause: memories[2]! }) };
+  const store = new FeatureStore<typeof properties>();
+  store.upsert([{ type: 'Feature', id: 'nested', properties,
+    geometry: { type: 'Point', coordinates: [0, 0] } }]);
+  for (const memory of memories) new Uint8Array(memory.buffer)[0] = 9;
+  const output = store.get('nested')!.properties;
+  for (const memory of [output.map.keys().next().value, ...output.set, output.error.cause]) {
+    assert.ok(memory instanceof WebAssembly.Memory);
+    assert.equal(new Uint8Array(memory.buffer)[0], 7);
+    new Uint8Array(memory.buffer)[0] = 11;
+  }
+  assert.deepEqual(memories.map(memory => new Uint8Array(memory.buffer)[0]), [9, 9, 9]);
+  const reread = store.get('nested')!.properties;
+  assert.equal(new Uint8Array(reread.map.keys().next().value!.buffer)[0], 7);
+  assert.equal(new Uint8Array([...reread.set][0]!.buffer)[0], 7);
+  assert.ok(reread.error.cause instanceof WebAssembly.Memory);
+  assert.equal(new Uint8Array(reread.error.cause.buffer)[0], 7);
+});
+
+test('shared WebAssembly.Memory snapshots fix growth at the current page extent', () => {
+  for (const pages of [0, 2]) {
+    const memory = new WebAssembly.Memory({ initial: 0, maximum: 3, shared: true });
+    memory.grow(pages);
+    const bytes = new Uint8Array(memory.buffer);
+    if (pages) bytes[bytes.length - 1] = 37;
+    const store = new FeatureStore<{ memory: WebAssembly.Memory }>();
+    store.upsert([{ type: 'Feature', id: 'extent', properties: { memory },
+      geometry: { type: 'Point', coordinates: [0, 0] } }]);
+    const output = store.get('extent')!.properties.memory;
+    assert.equal(output.buffer.byteLength, pages * 65536);
+    assert.equal(output.grow(0), pages);
+    assert.throws(() => output.grow(1), RangeError);
+    assert.equal(memory.grow(1), pages);
+    new Uint8Array(memory.buffer)[pages * 65536] = 41;
+    const reread = store.get('extent')!.properties.memory;
+    assert.equal(reread.buffer.byteLength, pages * 65536);
+    if (pages) assert.equal(new Uint8Array(reread.buffer)[pages * 65536 - 1], 37);
+    assert.equal(output.buffer.byteLength, pages * 65536);
+  }
+});

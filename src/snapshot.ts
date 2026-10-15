@@ -4,6 +4,37 @@ export function cloneSnapshot<T>(value: T): T {
   const objects = new WeakMap<object, object>();
   const buffers = new WeakMap<SharedArrayBuffer, SharedArrayBuffer>();
 
+  // Discover hidden owners before repairing a buffer or view that precedes its Memory.
+  const pending: unknown[] = [snapshot];
+  const visited = new WeakSet<object>();
+  while (pending.length) {
+    const current = pending.pop();
+    if (!current || typeof current !== 'object' || visited.has(current)) continue;
+    visited.add(current);
+    if (typeof WebAssembly !== 'undefined' && current instanceof WebAssembly.Memory) {
+      const buffer: unknown = current.buffer;
+      if (typeof SharedArrayBuffer !== 'undefined' && buffer instanceof SharedArrayBuffer) {
+        // Memory exposes no maximum. Retain the current pages as a fixed snapshot extent.
+        const pages = buffer.byteLength / 65536;
+        const copy = new WebAssembly.Memory({ initial: pages, maximum: pages, shared: true });
+        const backing: unknown = copy.buffer;
+        if (!(backing instanceof SharedArrayBuffer)) throw new TypeError('Invalid snapshot memory buffer.');
+        new Uint8Array(backing).set(new Uint8Array(buffer));
+        objects.set(current, copy);
+        buffers.set(buffer, backing);
+      }
+    } else if (current instanceof Map) {
+      for (const [key, entry] of current) pending.push(key, entry);
+    } else if (current instanceof Set) {
+      for (const entry of current) pending.push(entry);
+    } else if (!ArrayBuffer.isView(current)) {
+      for (const key of Object.getOwnPropertyNames(current)) {
+        const descriptor = Object.getOwnPropertyDescriptor(current, key);
+        if (descriptor && 'value' in descriptor) pending.push(descriptor.value);
+      }
+    }
+  }
+
   function copyBuffer(buffer: SharedArrayBuffer) {
     const previous = buffers.get(buffer);
     if (previous) return previous;
