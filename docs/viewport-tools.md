@@ -135,7 +135,7 @@ Modifiers at mouse release determine click intent. Releasing Shift before mouseu
 
 ## Drawing extensions
 
-The [drawing guide in README](../README.md#drawing-and-editing) covers submission, permissions, conflict and accepted-change ownership. The APIs below operate inside the same draft. They are available on `createDrawingSession` and `attachDrawing`, except screen snapping and touch gestures, which require the attached editor.
+The [drawing guide in README](../README.md#drawing-and-editing) covers submission, permissions, conflict and accepted-change ownership. The APIs below operate inside the same draft. They are available on `createDrawingSession` and `attachDrawing`, except active-segment feedback (`setActiveSegment`), screen snapping and touch gestures, which require the attached editor.
 
 ### Rings and holes
 
@@ -173,6 +173,6 @@ if (segment) {
 
 `snapping.vertices` defaults to `true`; `snapping.edges` defaults to `false`. Edge snapping targets visible eligible line/polygon segments, including holes, within 12 CSS pixels. Vertices win when an edge is at most 1 CSS pixel closer. `canSnap` filters both, Alt bypasses both, and a valid displayed ground target is required first. Edge targets follow the rendered segment under the current projection and terrain rather than a straight screen chord between endpoints. Ordinary GeoJSON retains its longitude span; saved drawings use their render-only unwrapped crossing. Snapping copies a position without linking features.
 
-`setSnapping(boolean)` controls the editor's master switch; `getSnapping()` reads it. `setEdgeSnapping(boolean)` / `getEdgeSnapping()` control the edge option. The inspector's Snap and Include edges controls expose these switches. Disabling the master leaves the edge preference available for re-enabling it.
+`setSnapping(boolean)` controls the editor's master switch; `getSnapping()` reads it. `setEdgeSnapping(boolean)` / `getEdgeSnapping()` control the edge option. The inspector's Snapping and Include edges controls expose these switches. Disabling the master leaves the edge preference available for re-enabling it.
 
 Touch taps place points, handle drags edit, and two fingers navigate the map. A one-finger canvas drag does not pan during an active drawing draft. Use Finish and Cancel buttons; there is no double-tap completion. Starting multi-touch settles a partial handle edit and suppresses an accidental later tap. Cancellation, capture loss, native camera navigation and lost edit permission retire the active screen gesture while retaining valid draft changes as one undo action. Mouse navigation and keyboard handles remain available. Pen-specific placement and physical-device acceptance are not established.
