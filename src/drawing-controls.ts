@@ -1,7 +1,7 @@
 import type { Properties, Viewport } from "./types";
 import type { DrawingEditor } from "./drawing";
-import type { DrawingStyle } from "./drawing-types";
-import { shapeHandles, shapeParameters } from "./drawing-shapes";
+import type { DrawingStyle, DrawingSegment } from "./drawing-types";
+import { shapeHandles, shapeParameters, shapeRings, validateShape } from "./drawing-shapes";
 
 export type DrawingControlsOptions = {
   tools: HTMLElement;
@@ -47,6 +47,7 @@ export function attachDrawingControls<P extends Properties>(
     renderTimer: ReturnType<typeof setTimeout> | undefined,
     releaseTimer: ReturnType<typeof setTimeout> | undefined;
   const abort = new AbortController();
+  let selectedRing = 0, selectedSegment = 0, selectedDraft: string | undefined;
   function draftActionAvailability(state: ReturnType<typeof editor.getState>) {
     return {
       Undo: !state.canUndo,
@@ -59,10 +60,21 @@ export function attachDrawingControls<P extends Properties>(
   function refreshDraftActions() {
     const state = editor.getState();
     if (!state.draft) return;
+    refreshDraftMessage(state);
     for (const [label, disabled] of Object.entries(draftActionAvailability(state))) {
       const button = panel.querySelector<HTMLButtonElement>(`button[data-field="action:${label}"]`);
       if (button) button.disabled = disabled;
     }
+  }
+  function refreshDraftMessage(state: ReturnType<typeof editor.getState>) {
+    const message = state.phase === "pending" ? "Waiting for application approval." : state.message ?? state.validation;
+    const current = panel.querySelector<HTMLParagraphElement>(".rl-drawing-note");
+    if (!message) { current?.remove(); return; }
+    const note = current ?? document.createElement("p");
+    note.className = "rl-drawing-note";
+    note.textContent = message;
+    note.setAttribute("role", state.phase === "pending" ? "status" : "alert");
+    if (!current) panel.append(note);
   }
   function scheduleRender() {
     if (renderTimer !== undefined || pointerPressed) return;
@@ -166,14 +178,20 @@ export function attachDrawingControls<P extends Properties>(
       units === "metric"
         ? `${(measure.length / 1000).toFixed(2)} km`
         : `${(measure.length / 1609.344).toFixed(2)} mi`;
-    return measure.area === undefined
-      ? `Length ${length}`
-      : `Area ${units === "metric" ? `${(measure.area / 1e6).toFixed(3)} km²` : `${(measure.area / 4046.8564224).toFixed(2)} acres`} · Edge ${length}`;
+    if (measure.area === undefined) return `Length ${length}`;
+    const shape = editor.getPreview();
+    const area = shape && validateShape(shape)
+      ? "unavailable"
+      : units === "metric"
+        ? `${(measure.area / 1e6).toFixed(3)} km²`
+        : `${(measure.area / 4046.8564224).toFixed(2)} acres`;
+    return `Area ${area} · Edge ${length}`;
   }
   function render() {
     if (disposed) return;
     const state = editor.getState(),
       draft = state.draft;
+    let activeSegment: DrawingSegment | undefined;
     const focused =
       document.activeElement instanceof HTMLElement &&
       (panel.contains(document.activeElement) || rail.contains(document.activeElement))
@@ -222,9 +240,7 @@ export function attachDrawingControls<P extends Properties>(
           action(
             "Edit drawing",
             () => editor.edit(feature.id),
-            Boolean(feature.entity) ||
-              (feature.geometry.type === "Polygon" &&
-                feature.geometry.coordinates.length > 1),
+            Boolean(feature.entity),
           ),
         );
       if (options.history)
@@ -271,6 +287,51 @@ export function attachDrawingControls<P extends Properties>(
       );
       const scale = units === "metric" ? 1 : 0.3048,
         suffix = units === "metric" ? "m" : "ft";
+      if (selectedDraft !== draft.feature.id) {
+        selectedDraft = draft.feature.id;
+        selectedRing = 0;
+        selectedSegment = 0;
+      }
+      if (shape.kind === "polygon") {
+        const rings = ["Boundary", ...(shape.holes ?? []).map((_, i) => `Hole ${i + 1}`)];
+        selectedRing = Math.min(selectedRing, rings.length - 1);
+        panel.append(select("Ring", rings[selectedRing]!, rings, value => {
+          selectedRing = rings.indexOf(value);
+          selectedSegment = 0;
+          render();
+        }, locked));
+        panel.append(row(
+          action("Add hole", () => {
+            editor.startHole();
+            selectedRing = editor.getState().draft?.placingRing ?? 0;
+            selectedSegment = 0;
+            render();
+          }, locked || Boolean(draft.placingRing) || Boolean(validateShape(shape))),
+          action("Delete hole", () => { editor.removeHole(selectedRing); selectedRing = 0; render(); }, locked || !selectedRing),
+        ));
+        const placingVertices = shapeRings(draft.shape)[draft.placingRing ?? 0];
+        const incompleteRing = !placingVertices || placingVertices.length < 3;
+        if (draft.placingRing)
+          panel.append(action("Finish hole", () => editor.finishRing(), locked || incompleteRing));
+        else if (draft.placing)
+          panel.append(action("Close boundary", () => editor.finishRing(), locked || incompleteRing));
+      } else selectedRing = 0;
+      const segments = editor.getSegments().filter(segment => segment.ring === selectedRing);
+      if (segments.length) {
+        selectedSegment = Math.min(selectedSegment, segments.length - 1);
+        const segment = segments[selectedSegment]!;
+        activeSegment = segment;
+        panel.append(select("Segment", String(selectedSegment + 1), segments.map((_, i) => String(i + 1)), value => {
+          selectedSegment = Number(value) - 1;
+          render();
+        }, locked));
+        panel.append(row(
+          text(`Distance (${suffix})`, String(Number((segment.length / scale).toFixed(3))), value =>
+            editor.setSegment(segment, { length: Number(value) * scale }), locked, "number"),
+          text("Bearing (°)", String(Number(segment.bearing.toFixed(3))), value =>
+            editor.setSegment(segment, { bearing: Number(value) }), locked, "number"),
+        ));
+      }
       const parameters = shapeParameters(shape);
       const parameterField = (parameter: (typeof parameters)[number]) =>
         text(
@@ -349,27 +410,24 @@ export function attachDrawingControls<P extends Properties>(
       );
       const snap = document.createElement("input");
       snap.type = "checkbox";
+      snap.dataset.field = "Snapping";
       snap.checked = editor.getSnapping();
       snap.disabled = locked;
-      snap.addEventListener("change", () => editor.setSnapping(snap.checked));
-      const snapLabel = field("Snap to vertices", snap);
+      snap.addEventListener("change", () => { editor.setSnapping(snap.checked); render(); });
+      const snapLabel = field("Snapping", snap);
       snapLabel.className = "rl-drawing-snap";
       panel.append(snapLabel);
+      const edgeSnap = document.createElement("input");
+      edgeSnap.type = "checkbox";
+      edgeSnap.dataset.field = "Include edges";
+      edgeSnap.checked = editor.getEdgeSnapping();
+      edgeSnap.disabled = locked || !editor.getSnapping();
+      edgeSnap.addEventListener("change", () => { editor.setEdgeSnapping(edgeSnap.checked); render(); });
+      const edgeLabel = field("Include edges", edgeSnap);
+      edgeLabel.className = "rl-drawing-snap";
+      panel.append(edgeLabel);
       panel.append(unitPicker);
-      const message =
-        state.phase === "pending"
-          ? "Waiting for application approval."
-          : (state.message ?? state.validation);
-      if (message) {
-        const note = document.createElement("p");
-        note.textContent = message;
-        note.className = "rl-drawing-note";
-        note.setAttribute(
-          "role",
-          state.phase === "pending" ? "status" : "alert",
-        );
-        panel.append(note);
-      }
+      refreshDraftMessage(state);
       if (
         state.phase === "conflict" &&
         draft.before &&
@@ -407,12 +465,13 @@ export function attachDrawingControls<P extends Properties>(
       const help = document.createElement("p");
       help.className = "rl-drawing-help";
       help.textContent = draft.placing
-        ? "Click to add points. Drag to pan or right-drag to rotate; release to resume placement."
+        ? "Click or tap to add points. Use two fingers to navigate on touch."
         : shapeHandles(draft.shape).some((handle) => handle.removable)
           ? "Drag handles to reshape. Use + to insert a vertex."
           : "Drag handles to move or reshape.";
       panel.append(help);
     }
+    editor.setActiveSegment(activeSegment);
     if (error) {
       const note = document.createElement("p");
       note.setAttribute("role", "alert");
@@ -498,6 +557,7 @@ export function attachDrawingControls<P extends Properties>(
     offSelection();
     offData();
     offDestroy();
+    editor.setActiveSegment(undefined);
     rail.remove();
     panel.remove();
   }

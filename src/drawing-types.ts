@@ -4,7 +4,8 @@ export type DrawingPosition = [longitude: number, latitude: number];
 export type DrawingTool = "line" | "polygon" | "rectangle" | "circle" | "arrow";
 export type DrawingShape =
   | { kind: "point"; position: DrawingPosition }
-  | { kind: "line" | "polygon" | "arrow"; vertices: DrawingPosition[] }
+  | { kind: "line" | "arrow"; vertices: DrawingPosition[] }
+  | { kind: "polygon"; vertices: DrawingPosition[]; holes?: DrawingPosition[][] }
   | { kind: "circle"; center: DrawingPosition; radius: number }
   | {
       kind: "rectangle";
@@ -20,6 +21,17 @@ export type DrawingStyle = {
   fillOpacity: number;
   dashed: boolean;
   label: string;
+};
+export type DrawingSegment = {
+  /** Zero is the exterior or line; positive values identify polygon holes. */
+  ring: number;
+  index: number;
+  start: DrawingPosition;
+  end: DrawingPosition;
+  /** Horizontal spherical distance in meters. */
+  length: number;
+  /** Initial bearing clockwise from true north, normalized to [0, 360). */
+  bearing: number;
 };
 /** Preserve this GeoJSON foreign member when saving a drawing. Geometry remains ordinary GeoJSON. */
 export type DrawingData = {
@@ -49,6 +61,8 @@ export type DrawingOptions<P extends Properties> = {
     operation: DrawingChange<P>["kind"],
   ) => boolean;
   canSnap?: (feature: MapFeature<P>) => boolean;
+  /** Vertex snapping stays enabled by default; edge snapping is opt-in. */
+  snapping?: { vertices?: boolean; edges?: boolean };
   tools?: readonly DrawingTool[];
   styleFields?: readonly (keyof DrawingStyle)[];
   defaults?: Partial<DrawingStyle>;
@@ -62,6 +76,8 @@ export type DrawingDraft<P extends Properties = Properties> = {
   style: DrawingStyle;
   placing: boolean;
   placed: number;
+  /** Positive values identify a polygon hole currently receiving points. */
+  placingRing?: number;
 };
 export type DrawingState<P extends Properties = Properties> = {
   phase: "idle" | "editing" | "pending" | "rejected" | "conflict" | "forbidden";

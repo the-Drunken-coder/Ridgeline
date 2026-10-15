@@ -9,6 +9,7 @@ import { modelPlacementCases } from './model-placement.browser';
 import { modelSwitchingCases } from './model-switching.browser';
 import { modelMaterialCases } from './model-materials.browser';
 import { workflowControlCases } from './workflow-controls.browser';
+import { workflowDrawingCases } from './workflow-drawing.browser';
 import { selectionWorkflowCases } from './workflow-selection.browser';
 import { createViewport, createDrawingSession, attachInteractions, attachDrawing, attachDrawingControls, shapeGeometry, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
@@ -29,6 +30,11 @@ declare global {
     browserClick?: (selector: string) => Promise<void>;
     cleanupBrowserCase?: () => void;
     browserMouse?: (action: 'down' | 'move' | 'up' | 'click', x: number, y: number) => Promise<void>;
+    browserReleaseMouseElsewhere?: () => Promise<void>;
+    drawingDirectionObservation?: { image: string; wings: number[]; handle: string | null };
+    browserCaptureMap?: () => Promise<string>;
+    browserWheel?: (deltaY: number) => Promise<void>;
+    browserTouch?: (action: 'start' | 'move' | 'end' | 'cancel', points: { id: number; x: number; y: number }[]) => Promise<void>;
     browserFill?: (selector: string, value: string) => Promise<void>;
   }
 }
@@ -118,7 +124,7 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
-  for (const test of [...modelFrameReviewCases, ...modelRecoveryCases, ...modelPickingCases, ...modelPresentationCases, ...modelPlacementCases, ...modelSwitchingCases, ...modelMaterialCases, ...modelRegistrationCases, ...workflowControlCases, ...selectionWorkflowCases]) {
+  for (const test of [...modelFrameReviewCases, ...modelRecoveryCases, ...modelPickingCases, ...modelPresentationCases, ...modelPlacementCases, ...modelSwitchingCases, ...modelMaterialCases, ...modelRegistrationCases, ...workflowControlCases, ...workflowDrawingCases, ...selectionWorkflowCases]) {
     await run(test.name, () => test.run({ container, setCurrent(viewport) {
       current = viewport;
       // Capture before cases intentionally destroy their viewport during lifecycle checks.
@@ -3164,14 +3170,16 @@ async function suite() {
       await window.browserMouse('move', x + 50, y);
       editor.refreshPermissions();
       check(editor.getState().phase === 'forbidden' && editor.getState().message?.includes('could not be checked'), 'Permission exception became ordinary denial');
-      check(handle.disabled && !!container.querySelector('.rl-ground-feedback[hidden]'), 'Failed check retained actionable handle or feedback');
+      const lockedHandle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]');
+      check(lockedHandle?.disabled && !!container.querySelector('.rl-ground-feedback[hidden]'), 'Failed check retained actionable current handle or feedback');
       await window.browserMouse('move', x + 70, y); await window.browserMouse('up', x + 70, y);
       check(JSON.stringify(editor.getState().draft) === retained, 'Permission failure changed retained draft');
       check(diagnostics.length === 1 && observed.length === 1 && diagnostics[0]?.cause === cause &&
         diagnostics[0]?.context.operation === 'drawing.canEdit' && diagnostics[0]?.context.featureId === original.id,
       'Permission failure lost cause/context or repeated reports');
       fail = false; editor.refreshPermissions();
-      handle.focus(); await browserKey('Control+z');
+      const recoveredHandle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]'); if (!recoveredHandle) throw new Error('Permission repair lost the current handle');
+      recoveredHandle.focus(); await browserKey('Control+z');
       check(JSON.stringify(editor.getState().draft?.shape) === initialShape, `Failure lost gesture undo: ${JSON.stringify(editor.getState())}`);
       await browserKey('Control+Shift+z');
       check(JSON.stringify(editor.getState().draft) === retained, 'Failure lost gesture redo');
@@ -3480,19 +3488,27 @@ async function suite() {
         geometry: { type: 'LineString', coordinates: [[0, 0], [.01, 0]] } };
       const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 13 }, features: [original], logger: () => {} });
       current = draw; await draw.ready;
+      const unrelated = point('permission-unrelated', .02);
       let armed = false, acted = false, afterCallback: string | undefined;
       const editor = attachDrawing(draw, { createFeature: () => ({ id: 'permission-camera-new', properties: {} }),
         canEdit: () => { if (armed) { armed = false; acted = true;
           if (invalidation === 'camera') draw.setCamera({ center: [.02, 0] }, { duration: 500 });
-          else draw.upsert([point('permission-moved-candidate', .02)]);
+          // A new off-target feature is unrelated to this resolved input.
+          else draw.upsert([unrelated]);
           queueMicrotask(() => { afterCallback = JSON.stringify(editor.getState().draft); }); } return true; },
         submit: () => ({ accepted: true }) });
       try {
         if (input === 'placement') { editor.start('line'); await pointer('click', draw.map.project([0, 0])); }
         else editor.edit(original.id);
         await until(() => draw.map.loaded(), 'permission camera input ready');
-        const retained = JSON.stringify(editor.getState().draft);
+        const retainedDraft = editor.getState().draft;
+        if (retainedDraft?.shape.kind !== 'line') throw new Error('Required permission fixture line missing');
+        const retainedFirst = retainedDraft.shape.vertices[0];
+        if (!retainedFirst) throw new Error('Required first vertex missing');
+        const retained = JSON.stringify(retainedDraft);
         const handle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]');
+        const expectedScreen = input === 'placement' ? draw.map.project([.005, 0]) : draw.map.project([.01, 0]);
+        if (input !== 'placement') expectedScreen.x += input === 'keyboard' ? 10 : 25;
         if (input === 'placement') {
           await pointer('move', draw.map.project([.005, 0]));
           armed = true;
@@ -3506,15 +3522,45 @@ async function suite() {
           await window.browserMouse('down', x, y); armed = true;
           await window.browserMouse('move', x + 25, y); await window.browserMouse('up', x + 25, y);
         }
-        check(acted && afterCallback === retained && JSON.stringify(editor.getState().draft) === retained,
-          `${invalidation}/${input} changed obsolete input: ${JSON.stringify({ acted, immediate: afterCallback === retained, retained, afterCallback, current: editor.getState().draft })}`);
+        const afterInput = JSON.stringify(editor.getState().draft);
+        check(acted, `${invalidation}/${input} did not reach its required permission callback`);
+        if (invalidation === 'camera') {
+          check(afterCallback === retained && afterInput === retained,
+            `${invalidation}/${input} changed obsolete input: ${JSON.stringify({ acted, immediate: afterCallback === retained, retained, afterCallback, current: editor.getState().draft })}`);
+        } else {
+          check(afterCallback !== undefined && afterCallback !== retained && afterInput !== retained && editor.getState().phase === 'editing',
+            `${input} discarded valid input or permission after unrelated publication`);
+          const shape = editor.getState().draft?.shape;
+          if (shape?.kind !== 'line') throw new Error(`${input} lost its line`);
+          const vertex = shape.vertices[1];
+          if (shape.vertices.length !== 2 || !vertex) throw new Error(`${input} did not edit exactly the intended vertex`);
+          check(JSON.stringify(shape.vertices[0]) === JSON.stringify(retainedFirst), `${input} moved another vertex`);
+          const actualScreen = draw.map.project(vertex);
+          // Native client coordinates round CSS pixels; the physical action
+          // independently specifies the endpoint within one CSS pixel per axis.
+          check(Math.hypot(actualScreen.x - expectedScreen.x, actualScreen.y - expectedScreen.y) < 1.5,
+            `${input} applied a different target: ${JSON.stringify({ expectedScreen, actualScreen })}`);
+          const retainedData = JSON.stringify(unrelated);
+          check(JSON.stringify(draw.getFeature(unrelated.id)) === retainedData, 'Input lost the consumer publication');
+          editor.undo(); check(JSON.stringify(editor.getState().draft) === retained, `${input} split unrelated-update undo history`);
+          check(JSON.stringify(draw.getFeature(unrelated.id)) === retainedData, 'Draft undo rolled back consumer data');
+          editor.redo(); check(JSON.stringify(editor.getState().draft) === afterInput, `${input} changed unrelated-update redo geometry`);
+          check(JSON.stringify(draw.getFeature(unrelated.id)) === retainedData, 'Draft redo changed consumer data');
+        }
         await until(() => !draw.map.isMoving(), 'permission camera animation settled');
-        if (input === 'placement') await pointer('click', draw.map.project([.02, 0]));
+        if (invalidation === 'camera') check(JSON.stringify(editor.getState().draft) === retained, 'Camera settlement applied abandoned input');
+        const beforeNext = JSON.stringify(editor.getState().draft);
+        if (input === 'placement') {
+          const next = draw.map.project([.025, .003]), candidate = draw.map.project([.02, 0]);
+          check(Math.hypot(next.x - candidate.x, next.y - candidate.y) > 12, 'Recovery contact must be outside the unrelated snap footprint');
+          await pointer('click', next);
+        }
         else {
           const recovered = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]')!;
           recovered.focus(); await browserKey('ArrowRight');
         }
-        check(JSON.stringify(editor.getState().draft) !== retained, `${input} failed to recover after camera movement`);
+        check(JSON.stringify(editor.getState().draft) !== beforeNext, `${invalidation}/${input} failed to recover for the next gesture`);
+        editor.undo(); check(JSON.stringify(editor.getState().draft) === beforeNext, `${invalidation}/${input} next gesture was not atomic`);
         check(JSON.stringify(draw.getFeature(original.id)) === JSON.stringify(original), 'Camera permission callback changed accepted data');
       } finally { editor.destroy(); draw.destroy(); }
     }
@@ -3669,8 +3715,10 @@ async function suite() {
       editor.start('line'); editor.addPoint([0, 0]); editor.addPoint([.01, 0]);
       if (!window.browserFill || !window.browserKey || !window.browserClick) throw new Error('Playwright input bridge required');
       await window.browserFill('#case25-inspector [data-field="Label"]', 'First label');
-      await window.browserKey('Tab');
-      check(document.activeElement?.getAttribute('data-field') === 'Stroke', 'Tab skipped the next inspector field');
+      for (const field of ['Segment', 'Distance (m)', 'Bearing (°)', 'Stroke']) {
+        await window.browserKey('Tab');
+        check(document.activeElement?.getAttribute('data-field') === field, `Tab skipped the ${field} inspector field`);
+      }
       await window.browserFill('#case25-inspector [data-field="Label"]', 'Final label');
       await window.browserClick('#case25-inspector [data-field="action:Finish"]');
       await until(() => Boolean(draw.getFeature('inspector-finish')), 'first Finish click accepted');
@@ -3851,11 +3899,14 @@ async function suite() {
       check(editor.getState().phase === 'forbidden', 'Revoked permission did not lock the draft');
       check(container.querySelector('.rl-ground-feedback')?.hasAttribute('hidden') === true,
         'Revoked permission retained drag feedback');
-      check(handle.disabled, 'Revoked permission left the handle enabled');
+      const lockedHandle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]');
+      if (!lockedHandle) throw new Error('Revoked permission lost the current handle');
+      check(lockedHandle.disabled, 'Revoked permission left the current handle enabled');
+      check(document.activeElement === draw.map.getCanvas(), 'Retiring a forbidden handle lost the keyboard fallback');
       const shape = editor.getState().draft?.shape;
       if (shape?.kind !== 'line') throw new Error('Revoked permission lost the line draft');
       const expected = draw.map.project(shape.vertices[1]!);
-      const lockedBox = handle.getBoundingClientRect();
+      const lockedBox = lockedHandle.getBoundingClientRect();
       check(Math.hypot(lockedBox.left + lockedBox.width / 2 - canvasBox.left - expected.x - markerOffset.x,
         lockedBox.top + lockedBox.height / 2 - canvasBox.top - expected.y - markerOffset.y) < 2,
       'Revoked permission left the handle away from its draft position');
@@ -3863,7 +3914,12 @@ async function suite() {
       check(JSON.stringify(editor.getState().draft?.shape) === moved, 'Drag changed after permission loss');
       permitted = true;
       editor.refreshPermissions();
-      check(!handle.disabled && editor.getState().phase === 'editing', 'Restored permission did not unlock the handle');
+      const restoredHandle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 2"]');
+      if (!restoredHandle) throw new Error('Permission recovery lost the current handle');
+      check(!restoredHandle.disabled && editor.getState().phase === 'editing', 'Restored permission did not unlock the current handle');
+      restoredHandle.focus(); await browserKey('ArrowRight');
+      check(JSON.stringify(editor.getState().draft?.shape) !== moved, 'Retiring native mouse state broke the next keyboard edit');
+      editor.undo(); check(JSON.stringify(editor.getState().draft?.shape) === moved, 'Recovered keyboard edit joined the interrupted drag');
     } finally { editor.destroy(); draw.destroy(); }
   });
   await run('Ordinary edits preserve dynamic styles, delete-only controls, and hover recovery', async () => {
@@ -4070,16 +4126,18 @@ async function suite() {
       const lastValid = JSON.stringify(editor.getState().draft?.shape);
       draw.configure({ elevation: { tiles: ['/missing-edit-dem.png'], encoding: 'custom', redFactor: 1,
         greenFactor: 0, blueFactor: 0, baseShift: 100, maxzoom: 0 } });
-      await until(() => !!container.querySelector('.rl-ground-unavailable:not([hidden])'),
-        'stationary drag reacts to unavailable terrain');
+      check(!container.querySelector('.rl-ground-crosshair:not([hidden]), .rl-ground-unavailable:not([hidden])'),
+        'Scene replacement retained obsolete gesture feedback');
       check(JSON.stringify(editor.getState().draft?.shape) === lastValid,
         'Terrain loss changed a stationary drag');
       await window.browserMouse('move', x + 80, y + 40);
-      await until(() => !!container.querySelector('.rl-ground-unavailable:not([hidden])'), 'invalid drag feedback');
+      check(!container.querySelector('.rl-ground-crosshair:not([hidden]), .rl-ground-unavailable:not([hidden])'), 'Retired drag revived feedback');
       check(JSON.stringify(editor.getState().draft?.shape) === lastValid, 'Invalid drag changed the last valid shape');
       await window.browserMouse('up', x + 80, y + 40);
-      handle.focus();
+      const currentHandle = container.querySelector<HTMLButtonElement>('[aria-label="Vertex 1"]'); if (!currentHandle) throw new Error('Scene replacement lost the current handle');
+      currentHandle.focus();
       await browserKey('Shift+ArrowRight');
+      await until(() => !!container.querySelector('.rl-ground-unavailable:not([hidden])'), 'new keyboard input resolves unavailable terrain');
       check(JSON.stringify(editor.getState().draft?.shape) === lastValid, 'Invalid large keyboard step changed the shape');
       editor.undo();
       check(JSON.stringify(editor.getState().draft?.shape) === JSON.stringify(beforeDrag),
@@ -4414,12 +4472,31 @@ async function suite() {
           const offPreview = editor.onPreview(() => { previews++; });
           try {
             release();
-            await until(() => {
+            let phase = 'native DEM readiness';
+            try {
+              // Software-rendered terrain can still be compiling after the
+              // held response settles. Separate readiness from the idle bound.
+              await until(() => draw.map.queryTerrainElevation([0, 0]) === 0, phase, 20_000);
+              phase = 'stationary preview and crosshair recovery';
+              await until(() => {
+                const preview = editor.getPreview();
+                return preview?.kind === 'line' && preview.vertices.length === 1 &&
+                  !!container.querySelector('.rl-ground-crosshair:not([hidden])');
+              }, phase);
+              phase = 'recovered renderer idle';
+              await until(() => idle, phase);
+              phase = 'consistent recovered state';
               const preview = editor.getPreview();
-              return idle && preview?.kind === 'line' && preview.vertices.length === 1 &&
+              check(idle && preview?.kind === 'line' && preview.vertices.length === 1 &&
                 draw.map.queryTerrainElevation([0, 0]) === 0 &&
-                !!container.querySelector('.rl-ground-crosshair:not([hidden])');
-            }, 'stationary target recovery and renderer idle');
+                !!container.querySelector('.rl-ground-crosshair:not([hidden])'),
+                'Recovered terrain, preview, crosshair and idle state do not agree');
+            } catch (cause) {
+              throw new Error(`Stationary recovery state: ${JSON.stringify({ phase, idle, renders, previews,
+                preview: editor.getPreview(), terrain: draw.map.queryTerrainElevation([0, 0]),
+                crosshair: !!container.querySelector('.rl-ground-crosshair:not([hidden])'),
+                moving: draw.map.isMoving(), loaded: draw.map.areTilesLoaded() })}`, { cause });
+            }
             check(renders > 0 && previews > 0, 'Terrain recovery did not publish a fresh preview');
             check(editor.getState().draft?.placed === 0, 'Terrain recovery placed a draft point');
             const settledRenders = renders, settledPreviews = previews;
@@ -4577,7 +4654,13 @@ async function suite() {
     context.fillStyle = 'rgb(200,0,0)'; context.fillRect(0, 0, 256, 256);
     const data = await (await fetch(dem.toDataURL())).arrayBuffer();
     const protocol = `ground-dateline-${crypto.randomUUID()}`;
-    addProtocol(protocol, async () => ({ data: data.slice(0) }));
+    let holdReload = false, reloadRequested = false;
+    let releaseReload = () => {};
+    const reloadGate = new Promise<void>(resolve => { releaseReload = resolve; });
+    addProtocol(protocol, async () => {
+      if (holdReload) { reloadRequested = true; await reloadGate; }
+      return { data: data.slice(0) };
+    });
     const known: [number, number] = [179.8, 0];
     try {
       const draw = createViewport({ container, basemap: style(), terrain: true,
@@ -4593,12 +4676,33 @@ async function suite() {
         for (const projection of ['flat', 'globe'] as const) {
           let firstLatitude: number | undefined;
           for (const exaggeration of [1, 2]) {
+            let liveUpdates = 0;
+            const liveTimer = projection === 'flat' && exaggeration === 2 ? setInterval(() => {
+              draw.upsert([point('unrelated-live', 170 + (++liveUpdates % 100) * .0001)]);
+            }, 16) : undefined;
+            try {
+            holdReload = projection === 'globe' && exaggeration === 1;
             draw.configure({ projection, exaggeration });
-            await until(() => draw.map.getProjection()?.type === (projection === 'flat' ? 'mercator' : 'globe') &&
-              draw.map.loaded() && Math.abs((draw.map.queryTerrainElevation(known) ?? NaN) - 100 * exaggeration) < 1,
-              `${projection} terrain at exaggeration ${exaggeration}`);
             const screen = { x: 320, y: 180 };
             await pointer('move', screen);
+            type TerrainReadinessObservation = ReturnType<typeof readiness>;
+            const readiness = () => ({ projection: draw.map.getProjection()?.type,
+              terrainLoaded: draw.map.isSourceLoaded('rl:terrain'), elevation: draw.map.queryTerrainElevation(known),
+              terrain: draw.map.getTerrain(), center: draw.map.getCenter().toArray(), moving: draw.map.isMoving(),
+              loaded: draw.map.loaded(), liveUpdates, reloadRequested, preview: editor.getPreview(),
+              crosshair: !!container.querySelector('.rl-ground-crosshair:not([hidden])') });
+            let observed: TerrainReadinessObservation = readiness();
+            try {
+              await until(() => {
+                observed = readiness();
+                return (!liveTimer || observed.liveUpdates >= 2) && (!holdReload || observed.reloadRequested) &&
+                  observed.projection === (projection === 'flat' ? 'mercator' : 'globe') &&
+                  observed.terrain?.exaggeration === exaggeration && observed.preview?.kind === 'line' && observed.crosshair &&
+                  Math.abs((observed.elevation ?? NaN) - 100 * exaggeration) < 1;
+              }, `${projection} terrain at exaggeration ${exaggeration}`);
+            } catch (cause) {
+              throw new Error(`Date-line terrain readiness: ${JSON.stringify({ expected: { projection, exaggeration, elevation: 100 * exaggeration }, observed })}`, { cause });
+            }
             await until(() => !!container.querySelector('.rl-ground-crosshair:not([hidden])'),
               `${projection} ground target at exaggeration ${exaggeration}`);
             const shape = editor.getPreview();
@@ -4610,12 +4714,18 @@ async function suite() {
             if (firstLatitude === undefined) firstLatitude = placed[1];
             else check(Math.abs(placed[1] - firstLatitude) < .002,
               `${projection} uniform terrain shifted geographic placement under exaggeration: ${firstLatitude}, ${placed[1]}`);
+            if (holdReload) {
+              check(!observed.terrainLoaded, 'Globe target did not exercise a pending DEM reload');
+              holdReload = false;
+              releaseReload();
+            }
+            } finally { clearInterval(liveTimer); }
           }
         }
         await pointer('click', { x: 320, y: 180 });
         check(editor.getState().draft?.placed === 1, 'Date-line scene did not place the current target');
       } finally { editor.destroy(); draw.destroy(); }
-    } finally { removeProtocol(protocol); }
+    } finally { releaseReload(); removeProtocol(protocol); }
   });
   await run('Stationary target resumes after permission and submission changes', async () => {
     const draw = createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, logger: () => {} });
