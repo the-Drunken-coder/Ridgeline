@@ -527,9 +527,10 @@ export function attachDrawingControls<P extends Properties>(
           (event.metaKey || event.ctrlKey) &&
           event.key.toLowerCase() === "z"
         ) {
+          const state = editor.getState();
+          if (!state.draft && !options.history) return;
           event.preventDefault();
           event.stopPropagation();
-          const state = editor.getState();
           if (state.draft) {
             if (event.shiftKey && state.canRedo) editor.redo();
             else if (!event.shiftKey && state.canUndo) editor.undo();

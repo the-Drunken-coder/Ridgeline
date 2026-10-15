@@ -1150,10 +1150,7 @@ export function attachDrawing<P extends Properties>(
   let offDestroy = () => {};
   function destroy() {
     if (disposed) return;
-    session.destroy();
     disposed = true;
-    drawingInternals.setEditing(null);
-    attached.delete(viewport.map);
     off();
     offPrepared();
     offSceneChange();
@@ -1183,14 +1180,26 @@ export function attachDrawing<P extends Properties>(
     ownsNavigationCursor = false;
     map.getCanvas().classList.remove("rl-drawing-active");
     map.getCanvas().removeEventListener("mouseleave", onLeave);
-    feedback?.destroy();
-    for (const item of markers.values()) item.marker.remove();
+    if (active && restoreDoubleClick) map.doubleClickZoom.enable();
+    const failures: unknown[] = [];
+    for (const cleanup of [
+      () => drawingInternals.setEditing(null),
+      () => feedback?.destroy(),
+      ...[...markers.values()].map(item => () => item.marker.remove()),
+      ...[...layers].reverse().map(layer => () => {
+        if (map.getLayer(layer)) map.removeLayer(layer);
+      }),
+      () => draftArrowheads.remove(),
+      () => segmentArrowheads.remove(),
+      () => { if (map.getSource(SOURCE)) map.removeSource(SOURCE); },
+    ]) {
+      try { cleanup(); } catch (cause) { failures.push(cause); }
+    }
     markers.clear();
-    for (const layer of [...layers].reverse())
-      if (map.getLayer(layer)) map.removeLayer(layer);
-    draftArrowheads.remove();
-    segmentArrowheads.remove();
-    if (map.getSource(SOURCE)) map.removeSource(SOURCE);
+    attached.delete(viewport.map);
+    // Releasing the session can synchronously mount a new editor on this map.
+    try { session.destroy(); } catch (cause) { failures.push(cause); }
+    if (failures.length) throw failures[0];
   }
   offDestroy = viewport.on("destroy", destroy);
   offPrepared = drawingInternals.onPrepared(prepare);
