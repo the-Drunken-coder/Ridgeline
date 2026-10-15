@@ -11,6 +11,7 @@ import { modelMaterialCases } from './model-materials.browser';
 import { workflowControlCases } from './workflow-controls.browser';
 import { workflowDrawingCases } from './workflow-drawing.browser';
 import { selectionWorkflowCases } from './workflow-selection.browser';
+import { snapshotReviewCases } from './snapshots-review.browser';
 import { createViewport, createDrawingSession, attachInteractions, attachDrawing, attachDrawingControls, shapeGeometry, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
 import { MercatorCoordinate, GeoJSONSource, ErrorEvent as MapErrorEvent, setWorkerUrl, addProtocol, removeProtocol } from 'maplibre-gl';
@@ -124,7 +125,7 @@ async function untilPixel(viewport: Viewport, coordinates: [number, number], vis
   }
 }
 async function suite() {
-  for (const test of [...modelFrameReviewCases, ...modelRecoveryCases, ...modelPickingCases, ...modelPresentationCases, ...modelPlacementCases, ...modelSwitchingCases, ...modelMaterialCases, ...modelRegistrationCases, ...workflowControlCases, ...workflowDrawingCases, ...selectionWorkflowCases]) {
+  for (const test of [...snapshotReviewCases, ...modelFrameReviewCases, ...modelRecoveryCases, ...modelPickingCases, ...modelPresentationCases, ...modelPlacementCases, ...modelSwitchingCases, ...modelMaterialCases, ...modelRegistrationCases, ...workflowControlCases, ...workflowDrawingCases, ...selectionWorkflowCases]) {
     await run(test.name, () => test.run({ container, setCurrent(viewport) {
       current = viewport;
       // Capture before cases intentionally destroy their viewport during lifecycle checks.

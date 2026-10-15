@@ -9,6 +9,7 @@ await copyFile('tests/browser.ts', `${directory}/main.ts`);
 await copyFile('tests/browser-cases.ts', `${directory}/browser-cases.ts`);
 await copyFile('tests/browser-observation.ts', `${directory}/browser-observation.ts`);
 await copyFile('tests/browser-idle.ts', `${directory}/browser-idle.ts`);
+await copyFile('tests/snapshots-review.browser.ts', `${directory}/snapshots-review.browser.ts`);
 await copyFile('tests/model-frame-review.browser.ts', `${directory}/model-frame-review.browser.ts`);
 await copyFile('tests/model-recovery.browser.ts', `${directory}/model-recovery.browser.ts`);
 await copyFile('tests/model-picking.browser.ts', `${directory}/model-picking.browser.ts`);

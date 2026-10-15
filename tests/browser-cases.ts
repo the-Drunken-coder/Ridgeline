@@ -1,5 +1,9 @@
 // Playwright registers cases before loading the browser app, so names also live in this manifest.
 export const browserCases = [
+  'Snapshot review rejects invalid retained geometry atomically and keys by the cloned ID',
+  'Snapshot review validates initial and updated model settings on the retained candidate',
+  'Snapshot review isolates shared and ordinary buffers across public reads and callbacks',
+  'Snapshot review drawing state permissions history and submission isolate shared memory',
   'Model style failures retain the last complete pose until successful recovery',
   'Model diagnostics preserve entity computation through selection and preview callbacks',
   'Model frame callbacks publish only current placement and appearance',

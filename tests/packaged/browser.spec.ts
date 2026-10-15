@@ -22,6 +22,15 @@ const source = { revision: git('rev-parse', 'HEAD').trim(), status: git('status'
 
 function registerCase(name: string) {
   test(name, async ({ page }, testInfo) => {
+    if (name === 'Snapshot review isolates shared and ordinary buffers across public reads and callbacks' ||
+      name === 'Snapshot review drawing state permissions history and submission isolate shared memory') {
+      await page.route('**/*', async route => {
+        const response = await route.fetch();
+        await route.fulfill({ response, headers: { ...response.headers(),
+          'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'require-corp',
+        } });
+      });
+    }
     await page.addInitScript(context => { Reflect.set(window, 'browserEvidenceContext', context); }, { ...source, testCase: name });
     if (name === 'Reliability drawing restores rejected handle edits on a third visible world copy' ||
       name === 'Reliability drawing preserves rejected handle edits after camera turns and reversal')
