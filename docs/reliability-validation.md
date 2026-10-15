@@ -50,3 +50,17 @@ Integration record for issues #15 through #20, #22, and #25, dated 2026-09-28. T
 Additional integration journeys now cover coherent arrow editing/publication/restoration, obsolete camera preparation across movement and kind changes, and exaggeration/picking with completed output. Browser cases run independently through the #30 manifest against the packed package. Controlled failure injection remains limited to existing dependency interfaces; input-sensitive cases use browser input. Window blur is explicitly injected after a native pointer press; pointer capture loss uses browser capture/release and native movement.
 
 Environment limits: desktop Chromium with software WebGL does not establish physical-GPU, other-browser, touch, or long-session production memory guarantees.
+
+## Review regressions, 2026-10-15
+
+The codebase review added focused regressions and packed-consumer journeys for nine further defects:
+
+- [Snapshot cases](../tests/snapshots-review.browser.ts) cover exact retained-value validation, atomic model-setting validation, and shared-memory isolation through reads, callbacks and drawing. [Snapshot module tests](../tests/snapshots.test.ts) exercise cycles, aliases and buffer views.
+- [Drawing cases](../tests/drawing-review.browser.ts) cover changes during edit opening, nested teardown with a working replacement editor, application Undo while idle, and draft/history shortcut ownership.
+- [Rendering cases](../tests/rendering-review.browser.ts) cover CSS sizes across canvas ratios, invisible hits after draw failure, and model recovery after cumulative allocation rejection. [Ground-area coverage](../tests/ground-area-review.browser.ts) uses real 256-pixel raster decoding at fixed zoom 12 beyond the 512-tile cache, checks visible picking, and observes five quiet seconds. [Sampler tests](../tests/elevation-sampler.test.ts) include competing 100 km circles, missing data, retry and requirement changes.
+
+The marker comparison uses the same packed-consumer fixture with browser DPR 2, map pixel ratio 1 and a requested radius of 6 CSS pixels. The visible fill changes from 24 to 12 CSS pixels.
+
+| Before | After |
+| --- | --- |
+| ![Marker fill is twice its requested size](images/review-marker-before.png) | ![Marker fill matches its requested size](images/review-marker-after.png) |
