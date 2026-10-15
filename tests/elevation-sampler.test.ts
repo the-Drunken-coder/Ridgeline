@@ -479,9 +479,6 @@ test('100 km ground zones finish at fixed zoom 12 with competing areas and remai
       }
       assert.equal(requests.length, completedRequests, 'Completion must not fetch maximum bounds or evicted probes');
       assert.equal(changes, completedChanges);
-      console.log(JSON.stringify({ groundProgress: { requests: requests.length, uniqueTiles: new Set(requests).size,
-        circles: results.map(result => result.primitives.filter(p => p.mode === 'triangles').reduce((n, p) => n + p.vertices.length / 3, 0)) } }));
-
       elevation.retry();
       assert.equal(elevation.sampling(features[0]!.id)(6, 46), null, 'Retry retires finite progress for evicted terrain');
       await drain();
