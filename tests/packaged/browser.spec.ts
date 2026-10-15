@@ -142,8 +142,9 @@ function registerCase(name: string) {
 }
 
 for (const name of browserCases) {
-  if (name === 'Model pixel observation aligns visible picking across canvas ratios and rejects absent models') {
-    test.describe('Model observation at browser DPR 2', () => {
+  if (name === 'Model pixel observation aligns visible picking across canvas ratios and rejects absent models' ||
+      name === 'Attachment markers and wireframes keep CSS size across map pixel ratios') {
+    test.describe('Pixel observation at browser DPR 2', () => {
       test.use({ deviceScaleFactor: 2 });
       test.describe.configure({ timeout: 90_000 });
       registerCase(name);
