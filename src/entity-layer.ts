@@ -3,6 +3,8 @@ import type { CustomLayerInterface, CustomRenderMethodInput, Map as GLMap } from
 import type { GeoPoint } from './entity-geometry';
 import { EntityProjection, entityProjectionShader, entityVertex } from './entity-projection';
 import type { ProjectionOrigin, ScreenPoint } from './entity-projection';
+import { circleIntersectsRectangle, clipToRectangle, expandRectangle } from './screen-rectangle';
+import type { ScreenRectangle } from './screen-rectangle';
 
 export type Primitive = {
   entityId: string;
@@ -309,6 +311,33 @@ void main(){if(u_point){float radius=distance(gl_PointCoord,vec2(.5));if(radius>
           }
         }
       }
+    }
+    return hits.sort((a, b) => a.depth - b.depth);
+  }
+  query(rectangle: ScreenRectangle) {
+    const hits: { entityId: string; attachmentId?: string; depth: number }[] = [];
+    if (this.failed || !this.projection) return hits;
+    for (const draw of this.draws) {
+      if (draw.color[3] <= 0 || draw.mode === 'points' && this.hiddenPoints.has(draw.entityId) || draw.mode === 'lines' && !draw.attachmentId) continue;
+      let depth: number | undefined;
+      if (draw.mode === 'points') {
+        const point = this.project(draw.vertices[0]!, draw.origin);
+        if (point && circleIntersectsRectangle(point, (draw.size ?? 10) / 2, rectangle)) depth = point.depth;
+      } else if (draw.mode === 'lines') {
+        const expanded = expandRectangle(rectangle, (draw.size ?? 1) / 2);
+        for (let i = 0; i < draw.vertices.length; i += 2) {
+          const segment = this.clippedSegment(draw.vertices[i]!, draw.vertices[i + 1]!, draw.origin);
+          const clipped = segment && clipToRectangle(segment, expanded);
+          if (clipped?.length) { depth = Math.min(...clipped.map(point => point.depth)); break; }
+        }
+      } else {
+        for (let i = 0; i < draw.vertices.length; i += 3) {
+          const polygon = this.clippedTriangle(draw.vertices.slice(i, i + 3), draw.origin);
+          const clipped = clipToRectangle(polygon, rectangle);
+          if (clipped.length) { depth = Math.min(...clipped.map(point => point.depth)); break; }
+        }
+      }
+      if (depth !== undefined) hits.push({ entityId: draw.entityId, ...(draw.attachmentId ? { attachmentId: draw.attachmentId } : {}), depth });
     }
     return hits.sort((a, b) => a.depth - b.depth);
   }
