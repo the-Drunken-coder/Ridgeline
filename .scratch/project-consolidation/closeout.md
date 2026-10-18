@@ -16,6 +16,10 @@ The [plan](plan.md) owns this execution scope. GitHub Issues retain ticket statu
 The runtime revision contains all source changes and factual README and support corrections.
 Consolidation planning and handoff documents were untracked during its local run and are outside the package file allowlist.
 Subsequent closeout edits must identify any changed packaged documentation separately from this tested runtime.
+The documentation follow-up is `358bb9a172c67a17fffe97f7a94cb36a4fb35788`.
+Its fresh package, starter builds, archive inventory and links, and synchronous-remount browser case passed.
+All 60 shipped files under `dist/` match the tested runtime archive byte for byte.
+The documentation package SHA-256 is `2b63d5e739986a48eae8460ccbbd2417ed2c389801a961bd56fbbf55c580bb6f`.
 
 ## Changes and ownership
 
@@ -54,6 +58,8 @@ This workspace exposes no physical GPU.
 | Focused packaged browser histories | Same source, 19 cases | VERIFIED |
 | Final `pnpm validate` | `89a68852e890a1f859302dc8ff69ec3935afe890` with only untracked consolidation documents | INCONCLUSIVE, terminated by SIGTERM with exit 143 |
 | Resumed unfinished validation stages | Same unchanged runtime revision | VERIFIED, exit 0 |
+| Documentation package and remount case | `358bb9a172c67a17fffe97f7a94cb36a4fb35788`, one packaged browser case | VERIFIED |
+| Built runtime comparison | All 60 `dist/` files from the tested and documentation packages | VERIFIED, byte-identical |
 
 The baseline passed 498 Node tests, five control-lab state tests, 257 packaged browser cases, 144 support cases, six playground cases, five control-lab browser cases, both application builds, and seven measurement verification tests.
 Its package SHA-256 is `702afb4d60de827e5618b6f6f37742ecdac5ac7e356c6c3446c2c022f0a445c9`.
@@ -79,9 +85,34 @@ The reviewed source hashes match the committed runtime files.
 Comment review found no deletions or suppressions requiring action.
 It retained the two-line comment explaining the verified external MapLibre lifetime constraint.
 
-The local decision trail is `.audit/project-consolidation.tsv`.
-Generated logs, contexts, package archives, and browser observations remain in ignored output until selected evidence is promoted.
+The independent decision-trail audit required more precise recovery evidence and safer Mac collection instructions.
+The append-only trail now retains the failed process scan and labels the disappeared process's identity as an inference.
+The Mac handoff separates command sessions and pins each completed per-case measurement before the next invocation.
+It records complete coverage across retained indexes rather than treating an individual case as a complete matrix.
+The final audit found no remaining material flags. Its verdict is static and establishes no Mac pass.
+
+## Retained evidence
+
+The [evidence bundle](evidence/final/README.md) retains the [verification summary](evidence/final/summary.md), [review and dispatch record](evidence/final/review.md), and [revision and hash manifest](evidence/final/manifest.json).
+Its compressed raw archive holds 56 original reports, contexts, package archives, review results, and the decision-trail snapshot.
+That snapshot includes the final audit disposition. The local `.audit/project-consolidation.tsv` continues append-only with curation and delivery checks.
+Producer output remains ignored, and selected browser runs remain pinned.
+
+The existing promotion workflow completed a dry run and publication with these commands.
+
+```sh
+node scripts/promote-evidence.mjs .artifacts/project-consolidation-promotion.json --dry-run
+node scripts/promote-evidence.mjs .artifacts/project-consolidation-promotion.json
+```
+
+Promotion verified all selected bytes and six curated links without rerunning runtime checks.
+The parent independently checked every archived member against both its manifest hash and producer bytes.
+The retained runtime and documentation archives also passed the 60-file comparison again after promotion.
+The raw archive SHA-256 is `da7559b79fe568b2543db0bfce28020c9ffafd1c708dddcda84df886db10bade`.
+The source and check pins remain those recorded above. Final handoff and evidence edits are outside the package file allowlist.
 Hosted verification is unavailable because no PR or hosted run was requested.
+
+## Deferred acceptance
 
 - [#80](https://github.com/the-Drunken-coder/Ridgeline/issues/80) remains open for the M1 Pro and desktop discrete-GPU matrix and installed browsers.
 - The user has a Mac agent available later. Its chip, browsers, and ability to observe Safari and VoiceOver remain unverified. Use the [Mac handoff](mac-acceptance.md).

@@ -187,6 +187,8 @@ The post-change aggregate command received SIGTERM during the playground suite.
 Completed prefix checks were retained, and the entire playground suite plus later stages passed sequentially at unchanged source.
 This is complete stage coverage, not a completed post-change aggregate run.
 The [closeout](closeout.md) records revisions, results, review, and remaining limits.
+The [retained evidence](evidence/final/README.md) records the local checks and individual review results at their exercised revisions.
 The [Mac handoff](mac-acceptance.md) prepares deferred device collection.
+Use its command-session and per-case retention instructions for the Mac collection without reducing the approved matrix.
 The user has only a Mac available, with its chip still unverified, and no desktop discrete-GPU fixture.
 Hardware acceptance, the measured advisory, manual accessibility checks, and the historical sensor approval gap remain open.

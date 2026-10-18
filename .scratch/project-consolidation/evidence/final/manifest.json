@@ -1,0 +1,414 @@
+{
+  "promotedAt": "2026-10-18T23:29:52.322Z",
+  "provenance": {
+    "spec": ".scratch/project-consolidation/plan.md",
+    "integrationOwner": "root",
+    "reviewed": {
+      "base": "482d16433a91f6cdf7dc67d57a3763d84d59abce",
+      "head": "89a68852e890a1f859302dc8ff69ec3935afe890",
+      "result": "Claude Opus 5.5 independently reviewed the complete runtime source diff with no actionable correctness findings. Parent verified both reviewed source hashes against the committed files. Comment review found no actionable deletions or suppressions. Final independent handoff audit found no material flags after documented corrections. Static verdicts establish no hardware pass."
+    },
+    "localVerification": [
+      {
+        "revision": "482d16433a91f6cdf7dc67d57a3763d84d59abce with only untracked consolidation documents outside package inputs",
+        "command": "pnpm validate",
+        "result": "VERIFIED, exit 0. Full unchanged baseline and all original stages passed."
+      },
+      {
+        "revision": "89a68852e890a1f859302dc8ff69ec3935afe890 with only untracked consolidation documents outside package inputs",
+        "command": "pnpm validate",
+        "result": "INCONCLUSIVE aggregate, SIGTERM exit 143 during playground. Cause unconfirmed. Type/module, 257 packaged and 144 support cases completed successfully. Original log and partial traces retained."
+      },
+      {
+        "revision": "89a68852e890a1f859302dc8ff69ec3935afe890",
+        "command": "pnpm test:playground:browser && pnpm test:controls:browser && pnpm build:playground && pnpm build:controls && pnpm test:measurement",
+        "result": "VERIFIED, exit 0, sequentially after safe recovery at unchanged source. Entire playground suite and every subsequent original stage passed. All original stage coverage verified across the completed prefix and resumed execution. No completed post-change aggregate claimed."
+      },
+      {
+        "revision": "358bb9a172c67a17fffe97f7a94cb36a4fb35788",
+        "command": "pnpm test:browser -- --grep 'Viewport destruction preserves synchronous listener remounts'",
+        "result": "VERIFIED, exit 0. Fresh consumer and starter installs/builds, final archive inventory and 27 package links, and one remount case passed."
+      },
+      {
+        "revision": "358bb9a172c67a17fffe97f7a94cb36a4fb35788",
+        "command": "Compare every package/dist/ member from the retained runtime and documentation archives by actual bytes and SHA-256.",
+        "result": "VERIFIED. All 60 built runtime files are byte-identical. Comparison and both archives retained."
+      }
+    ],
+    "hostedVerification": "Unavailable. No PR or hosted validation workflow was requested or used as evidence. Safe branch publication follows curation; it establishes delivery only.",
+    "historical": [],
+    "remainingLimits": [
+      "Post-change aggregate was interrupted. The source of SIGTERM remains unconfirmed; completed stage coverage is recorded separately.",
+      "No physical GPU is exposed in this Linux workspace. Mac chip and installed-browser collection remain unverified; the user has a Mac agent available later.",
+      "Desktop discrete-GPU fixture unavailable. Existing #80 and dependent #91 hardware and model production acceptance remain open.",
+      "Playwright Firefox is a managed build; Playwright WebKit is not installed Safari. Installed-browser, VoiceOver, NVDA, and physical touch evidence remain unverified.",
+      "Historical sensor requirement approval gap is scoped to retained spec and PR description and remains unresolved. Current defaults and public controls were preserved.",
+      "Nested native rendering above depth one and cleanup faults during an active native render remain inspection-only histories.",
+      "Final changes after the documentation package pin concern only consolidation documents and evidence outside the package file allowlist."
+    ]
+  },
+  "reproduction": [
+    "pnpm install --frozen-lockfile",
+    "pnpm exec playwright install --with-deps chromium firefox webkit",
+    "pnpm validate",
+    "pnpm test:playground:browser\npnpm test:controls:browser\npnpm build:playground\npnpm build:controls\npnpm test:measurement",
+    "pnpm test:browser -- --grep 'Viewport destruction preserves synchronous listener remounts'"
+  ],
+  "files": [
+    {
+      "path": "summary.md",
+      "source": ".artifacts/project-consolidation-closeout/summary.md",
+      "bytes": 3076,
+      "sha256": "07b107d95b49ef3d5998bc108b4d1495444b8f80de482b07dfcb787c594d0e49"
+    },
+    {
+      "path": "review.md",
+      "source": ".artifacts/project-consolidation-closeout/review.md",
+      "bytes": 5747,
+      "sha256": "6fb22b87f79c210ec44d6efabf96c0a4a9aab7a9a2e0011c78714a61571346f7"
+    }
+  ],
+  "rawArchive": {
+    "path": "raw-reports.tar.gz",
+    "bytes": 1805273,
+    "sha256": "da7559b79fe568b2543db0bfce28020c9ffafd1c708dddcda84df886db10bade",
+    "members": [
+      {
+        "path": "baseline-context.json",
+        "source": ".artifacts/project-consolidation-closeout/baseline-context.json",
+        "bytes": 281,
+        "sha256": "a486030c94e85cb7c1b80af83e97933ae2e6d3c3ca6f19816b9c8207cda57bbd"
+      },
+      {
+        "path": "baseline-measurement-1.stderr.log",
+        "source": ".artifacts/project-consolidation-closeout/baseline-measurement-1.stderr.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "baseline-measurement-1.stdout.log",
+        "source": ".artifacts/project-consolidation-closeout/baseline-measurement-1.stdout.log",
+        "bytes": 747,
+        "sha256": "aaee9c4781a64add7260b33985eb9320aa7aa9d455650277251d83a854293e7b"
+      },
+      {
+        "path": "baseline-measurement-2.stderr.log",
+        "source": ".artifacts/project-consolidation-closeout/baseline-measurement-2.stderr.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "baseline-measurement-2.stdout.log",
+        "source": ".artifacts/project-consolidation-closeout/baseline-measurement-2.stdout.log",
+        "bytes": 222,
+        "sha256": "829ec37b3a5c410dd23464ca96ec1e45cca6d0e8b7aabd4f2bbf0e6c6eec7014"
+      },
+      {
+        "path": "baseline-measurement-context.json",
+        "source": ".artifacts/project-consolidation-closeout/baseline-measurement-context.json",
+        "bytes": 1204,
+        "sha256": "04356ac870f5886fb49ba60d4fa5438415159197d0a44b5be95fac9fb6b376ed"
+      },
+      {
+        "path": "baseline-model-idle-observations.json",
+        "source": ".artifacts/project-consolidation-closeout/baseline-model-idle-observations.json",
+        "bytes": 38151,
+        "sha256": "dbe64ab53ec345286ea338c40a939ec703db026534794b35af68af02c433c4f7"
+      },
+      {
+        "path": "baseline-package.sha256",
+        "source": ".artifacts/project-consolidation-closeout/baseline-package.sha256",
+        "bytes": 87,
+        "sha256": "4fe35b2f870dcc5d580fb89a10c4e6703b95f182ae165fc023aec44a098ea29f"
+      },
+      {
+        "path": "baseline-package.tgz",
+        "source": ".artifacts/project-consolidation-closeout/baseline-package.tgz",
+        "bytes": 395556,
+        "sha256": "702afb4d60de827e5618b6f6f37742ecdac5ac7e356c6c3446c2c022f0a445c9"
+      },
+      {
+        "path": "baseline-result.json",
+        "source": ".artifacts/project-consolidation-closeout/baseline-result.json",
+        "bytes": 526,
+        "sha256": "6018fbea0bf4e64f230b23c5ae9f0aa66e083bf91768bbc5ebaa7df5bb582528"
+      },
+      {
+        "path": "baseline-validate.log",
+        "source": ".artifacts/project-consolidation-closeout/baseline-validate.log",
+        "bytes": 123375,
+        "sha256": "45ad7e4aac9ce6d20a28adbeb9f4a6ceeebd631ad8140484b1344881325d0345"
+      },
+      {
+        "path": "browser-versions.json",
+        "source": ".artifacts/project-consolidation-closeout/browser-versions.json",
+        "bytes": 417,
+        "sha256": "4cd6668775dd908aa894fb4f38d46b25bd7cd55bebdde8144caf69801466f583"
+      },
+      {
+        "path": "check-local-links.mjs",
+        "source": ".artifacts/project-consolidation-closeout/check-local-links.mjs",
+        "bytes": 2136,
+        "sha256": "7698a5cb9826720e4f4c35c19d158ddc0696d03ec72313b575450f17a8e647d1"
+      },
+      {
+        "path": "code-review-original.txt",
+        "source": ".artifacts/project-consolidation-closeout/code-review-original.txt",
+        "bytes": 4064,
+        "sha256": "0fe3a1d35a1800448af924a0334a1804914a86491d38bfceee9ef2e2adab456f"
+      },
+      {
+        "path": "comment-review-original.txt",
+        "source": ".artifacts/project-consolidation-closeout/comment-review-original.txt",
+        "bytes": 527,
+        "sha256": "f6748ff86efec157801538a2de714884a717297881740476cec6c3c447c221bf"
+      },
+      {
+        "path": "decision-trail.tsv",
+        "source": ".artifacts/project-consolidation-closeout/decision-trail.tsv",
+        "bytes": 12821,
+        "sha256": "0ba8284f4c447e6fe83fa684eabaeda568b033a7bdfb129721bfc37d0531c546"
+      },
+      {
+        "path": "design-claude-original.txt",
+        "source": ".artifacts/project-consolidation-closeout/design-claude-original.txt",
+        "bytes": 6614,
+        "sha256": "dc6e409f300d0b05b85b2ebd2691b5ca519e2570a4f467e6f02b879bddb7805d"
+      },
+      {
+        "path": "design-codex-original.txt",
+        "source": ".artifacts/project-consolidation-closeout/design-codex-original.txt",
+        "bytes": 6421,
+        "sha256": "06f4152811d57ac676640fa695bde1521ec74516ff2c20d3b20172ceb00fa90d"
+      },
+      {
+        "path": "design-judge-original.txt",
+        "source": ".artifacts/project-consolidation-closeout/design-judge-original.txt",
+        "bytes": 4137,
+        "sha256": "2e4bd3998be879c4bb69e34d72b9319611f9b3f2121cc88016cfec03e8cb8a14"
+      },
+      {
+        "path": "design-synthesis.txt",
+        "source": ".artifacts/project-consolidation-closeout/design-synthesis.txt",
+        "bytes": 4650,
+        "sha256": "e76f9c243abbcf36d978660cbbed2ebc1fb0f5d71365e1d89755023c1643ad88"
+      },
+      {
+        "path": "documentation-context.json",
+        "source": ".artifacts/project-consolidation-closeout/documentation-context.json",
+        "bytes": 292,
+        "sha256": "df5fb0940a0d31b06c9be4269454100a9d8d0b7cfb72920eef7c7ddff926d338"
+      },
+      {
+        "path": "documentation-package.tgz",
+        "source": ".artifacts/project-consolidation-closeout/documentation-package.tgz",
+        "bytes": 396395,
+        "sha256": "2b63d5e739986a48eae8460ccbbd2417ed2c389801a961bd56fbbf55c580bb6f"
+      },
+      {
+        "path": "environment.json",
+        "source": ".artifacts/project-consolidation-closeout/environment.json",
+        "bytes": 632,
+        "sha256": "9b632d8ce789c0a86a3c37336bc9e2eccad827096830a2d85be17f465d454374"
+      },
+      {
+        "path": "final-context.json",
+        "source": ".artifacts/project-consolidation-closeout/final-context.json",
+        "bytes": 626,
+        "sha256": "fd485b69ed6e2625214f051fb2f2d339bc2ec4ce2fc7f0f87e01ec657b143600"
+      },
+      {
+        "path": "final-interruption.json",
+        "source": ".artifacts/project-consolidation-closeout/final-interruption.json",
+        "bytes": 543,
+        "sha256": "27076e1ef4b800eaae0f75bd460a121bea56c139d614a4cf2d2032b8323c541d"
+      },
+      {
+        "path": "final-measurement-1.stderr.log",
+        "source": ".artifacts/project-consolidation-closeout/final-measurement-1.stderr.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "final-measurement-1.stdout.log",
+        "source": ".artifacts/project-consolidation-closeout/final-measurement-1.stdout.log",
+        "bytes": 748,
+        "sha256": "7db3a8101b60a5c3c16312f6042e0dd373debb9ad37a0fc9d1678073b7311ec6"
+      },
+      {
+        "path": "final-measurement-2.stderr.log",
+        "source": ".artifacts/project-consolidation-closeout/final-measurement-2.stderr.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "final-measurement-2.stdout.log",
+        "source": ".artifacts/project-consolidation-closeout/final-measurement-2.stdout.log",
+        "bytes": 223,
+        "sha256": "945251e13bbef99eef287ae6d12d75f5438464bf2c99caa3f7d947299588e3f8"
+      },
+      {
+        "path": "final-measurement-context.json",
+        "source": ".artifacts/project-consolidation-closeout/final-measurement-context.json",
+        "bytes": 1204,
+        "sha256": "7c48afe2bfd647691d36236fa2ccc109dbd7e158a8e69edd6cc792929c13bee1"
+      },
+      {
+        "path": "final-model-idle-observations.json",
+        "source": ".artifacts/project-consolidation-closeout/final-model-idle-observations.json",
+        "bytes": 37052,
+        "sha256": "8635bab73533090e2a4f1fb5f6290ec35e3b5f3bd3e64f3351879a4978357c59"
+      },
+      {
+        "path": "final-resume-context.json",
+        "source": ".artifacts/project-consolidation-closeout/final-resume-context.json",
+        "bytes": 629,
+        "sha256": "56d6fca01110be14901a06fadadee71f6079044e4d9a54c16281d8aa4b8cd84a"
+      },
+      {
+        "path": "final-resume.log",
+        "source": ".artifacts/project-consolidation-closeout/final-resume.log",
+        "bytes": 7750,
+        "sha256": "d5856f44a2ff3101512e9d0c63f1061baf27fa7402e606012c954d906fe69aa8"
+      },
+      {
+        "path": "final-stages-result.json",
+        "source": ".artifacts/project-consolidation-closeout/final-stages-result.json",
+        "bytes": 696,
+        "sha256": "6e5d1c34ed95f6787cc8d886347a3f907b7d3eeb95b0e858698badf9dbdf9fc7"
+      },
+      {
+        "path": "final-validate-interrupted.log",
+        "source": ".artifacts/project-consolidation-closeout/final-validate-interrupted.log",
+        "bytes": 117848,
+        "sha256": "cb64c1c0ae04d650ef9202d42ef4a5333583dfcfa53b61ae2aab6cf13658c274"
+      },
+      {
+        "path": "focused-browser.log",
+        "source": ".artifacts/project-consolidation-closeout/focused-browser.log",
+        "bytes": 8657,
+        "sha256": "63908d57271d9a5bfefc66c63a63fd6172f65df46be167c4032d502be8164bee"
+      },
+      {
+        "path": "interrupted-playground-output.tar.gz",
+        "source": ".artifacts/project-consolidation-closeout/interrupted-playground-output.tar.gz",
+        "bytes": 504903,
+        "sha256": "a8c9d6c081e9859e64d44c88cfd3e9b1cead416351d2e0ba70f789e27f4771ed"
+      },
+      {
+        "path": "interruption-observation-window.json",
+        "source": ".artifacts/project-consolidation-closeout/interruption-observation-window.json",
+        "bytes": 417,
+        "sha256": "293c93da69431712cf062499eeac7ca33cb257d9177d2cc64978a898f76af97d"
+      },
+      {
+        "path": "measurement-package-provenance.json",
+        "source": ".artifacts/project-consolidation-closeout/measurement-package-provenance.json",
+        "bytes": 506,
+        "sha256": "0ad2899c583419cbf3191620b20343532a02e6561432e3a8dce3e9ecefac7bf3"
+      },
+      {
+        "path": "model-asset-credits.html",
+        "source": ".artifacts/project-consolidation-closeout/model-asset-credits.html",
+        "bytes": 1106,
+        "sha256": "c2700b7c3ffc607ccbf4a2e539cc98e0f7dd36716a4fc825b850db955cfbc5c6"
+      },
+      {
+        "path": "model-asset-license.txt",
+        "source": ".artifacts/project-consolidation-closeout/model-asset-license.txt",
+        "bytes": 687,
+        "sha256": "7c9263e8c136e010b78d13b655c73b9661a78201feb3b1a3d0efef8828487242"
+      },
+      {
+        "path": "model-asset-sources.json",
+        "source": ".artifacts/project-consolidation-closeout/model-asset-sources.json",
+        "bytes": 1477,
+        "sha256": "8d484b5e5ab4dad5694a71c4d6c8e576f7f40f4ba6bd504d46bde3a624207ab0"
+      },
+      {
+        "path": "model-case-ids.txt",
+        "source": ".artifacts/project-consolidation-closeout/model-case-ids.txt",
+        "bytes": 1848,
+        "sha256": "20a063a4adff457e3d1611acbe4bc004a2c5700b17cee7230814071b7f2ee244"
+      },
+      {
+        "path": "original-airborne-spec.md",
+        "source": ".artifacts/project-consolidation-closeout/original-airborne-spec.md",
+        "bytes": 8444,
+        "sha256": "060f1ffac999a93c4e652ebd43760b589267cfb222c749313dfde4c680ee1dae"
+      },
+      {
+        "path": "packaged-documentation.log",
+        "source": ".artifacts/project-consolidation-closeout/packaged-documentation.log",
+        "bytes": 6075,
+        "sha256": "3d711a0e8b6ca01f2cd83ebe6fd2336126288e748ff2d6877dd00d36959928aa"
+      },
+      {
+        "path": "recovery-command-timeline.json",
+        "source": ".artifacts/project-consolidation-closeout/recovery-command-timeline.json",
+        "bytes": 8514,
+        "sha256": "2e6b357aa46249df5cdf7171bd1f3ee85892b7768838bb0b80c7b6364bd1f8af"
+      },
+      {
+        "path": "reviewed-source-hashes.json",
+        "source": ".artifacts/project-consolidation-closeout/reviewed-source-hashes.json",
+        "bytes": 191,
+        "sha256": "633c314a1741809b2b6fd9f2c01ac0b76b0f6d5c96b9bc0a2b9503053ba49bb1"
+      },
+      {
+        "path": "runtime-equality.json",
+        "source": ".artifacts/project-consolidation-closeout/runtime-equality.json",
+        "bytes": 6824,
+        "sha256": "365a10352b400d786837a8d54c2c8eea7da1787e15c8e57961c91112eb91b07b"
+      },
+      {
+        "path": "runtime-package.tgz",
+        "source": ".artifacts/project-consolidation-closeout/runtime-package.tgz",
+        "bytes": 396142,
+        "sha256": "6497e6016c4a0d1b25cc7f843a38464c0f1138045be0668e3c42f1f4912a208e"
+      },
+      {
+        "path": "runtime-pin.json",
+        "source": ".artifacts/project-consolidation-closeout/runtime-pin.json",
+        "bytes": 334,
+        "sha256": "543b316b7d0d3916c5851618cebbd620b8d3781e64d019da339481acb723dd0f"
+      },
+      {
+        "path": "sensor-pr8-context.json",
+        "source": ".artifacts/project-consolidation-closeout/sensor-pr8-context.json",
+        "bytes": 1972,
+        "sha256": "03c0bc3c51277266443498330bb2e1dbe7167991bf85aca9bbb736ad65d3bcc0"
+      },
+      {
+        "path": "tracker-status.json",
+        "source": ".artifacts/project-consolidation-closeout/tracker-status.json",
+        "bytes": 1033,
+        "sha256": "4b7ca3b1db2e19871c7f9c051a071be233196e899aaae4c0fb1d6efeb941b5f1"
+      },
+      {
+        "path": "trail-review-round1-original.txt",
+        "source": ".artifacts/project-consolidation-closeout/trail-review-round1-original.txt",
+        "bytes": 3531,
+        "sha256": "1ac3064861f387fcd0f526a8e643039486f06dc16498554b21bf4dac56e709fe"
+      },
+      {
+        "path": "trail-review-round2-original.txt",
+        "source": ".artifacts/project-consolidation-closeout/trail-review-round2-original.txt",
+        "bytes": 3912,
+        "sha256": "678a326d31238ad825fcd572e664c063f98b7a7510d4dcd99e5ee17141f6f252"
+      },
+      {
+        "path": "trail-review-round3-original.txt",
+        "source": ".artifacts/project-consolidation-closeout/trail-review-round3-original.txt",
+        "bytes": 3050,
+        "sha256": "95a02640de709cdf7a824fb0539143953f49ba6c9096cbd592b9adb4125145de"
+      },
+      {
+        "path": "worker-check-timeline.json",
+        "source": ".artifacts/project-consolidation-closeout/worker-check-timeline.json",
+        "bytes": 20301,
+        "sha256": "95599dbf3820f591d41b6771b4d75c5da84b89ab38334c663dfe641801de169b"
+      }
+    ]
+  }
+}
