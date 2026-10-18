@@ -1,0 +1,93 @@
+# Consolidation verification record
+
+Local implementation and all required validation stages are VERIFIED.
+The post-change aggregate command was interrupted. Its unfinished stages passed in a sequential rerun at unchanged source.
+Hardware acceptance and the historical sensor approval gap remain open.
+The [plan](plan.md) owns this execution scope. GitHub Issues retain ticket status.
+
+## Code and delivery
+
+- Baseline and original main are `482d16433a91f6cdf7dc67d57a3763d84d59abce`.
+- The documentation amendment is `dac8c75`.
+- The runtime revision for final local validation and Mac collection is `89a68852e890a1f859302dc8ff69ec3935afe890`.
+- The delivery branch is `t3/assess-project-alignment`.
+- No pull request, merge, deployment command, recurring schedule, or tracker write was performed.
+
+The runtime revision contains all source changes and factual README and support corrections.
+Consolidation planning and handoff documents were untracked during its local run and are outside the package file allowlist.
+Subsequent closeout edits must identify any changed packaged documentation separately from this tested runtime.
+
+## Changes and ownership
+
+`src/maplibre-lifecycle.ts` owns captured MapLibre hooks, render depth, pending native removal, early container retirement, and hook restoration.
+`createViewport` keeps logical destruction, event order, independent owner cleanup, reporting, and first-error selection.
+The helper has two operations and no public package export.
+The viewport no longer holds or mutates the native hook state.
+Both private hooks and the MapLibre 6.11.0 pin remain in use under ADR-0002.
+
+The separate removal call always executes before selecting the first error.
+A proposed short-circuit assignment was rejected because an earlier cleanup error would skip native release.
+The selected closure omits redundant removal and retirement statuses.
+No model, scene, picking, publication, recovery, or idle scheduling owner moved.
+No new public API, dependency, or performance claim was added.
+
+The [existing sensor spec](../airborne-entities/spec.md#requirement-reconciliation-2026-10-18) now records the original terrain and independent-control promises, the compatibility changes disclosed in PR #8, and current appearance recipes.
+Current defaults remain unchanged.
+Explicit historical user approval for those changes is absent from the retained spec and PR description.
+That provenance gap remains unresolved.
+
+The README now treats closed issue #50 as dated macOS evidence.
+The support guide now records PRs #114 through #118 as merged historical work.
+Neither correction expands browser or runtime support promises.
+
+## Executed verification
+
+The environment is Linux x64 with Node 24.21.0, pnpm 11.0.9, and Playwright 1.63.0.
+Installed test engines report Chromium 153.0.8010.12, Firefox 155.0, and WebKit 26.6.
+This workspace exposes no physical GPU.
+
+| Check | Exercised input | Result |
+| --- | --- | --- |
+| Baseline `pnpm validate` | `482d16433a91f6cdf7dc67d57a3763d84d59abce` with only untracked consolidation documents | VERIFIED |
+| Post-change `pnpm check` | Reviewed source later committed at `89a6885` | VERIFIED |
+| Entity scene and layer module tests | Same source, 21 tests | VERIFIED |
+| Focused packaged browser histories | Same source, 19 cases | VERIFIED |
+| Final `pnpm validate` | `89a68852e890a1f859302dc8ff69ec3935afe890` with only untracked consolidation documents | INCONCLUSIVE, terminated by SIGTERM with exit 143 |
+| Resumed unfinished validation stages | Same unchanged runtime revision | VERIFIED, exit 0 |
+
+The baseline passed 498 Node tests, five control-lab state tests, 257 packaged browser cases, 144 support cases, six playground cases, five control-lab browser cases, both application builds, and seven measurement verification tests.
+Its package SHA-256 is `702afb4d60de827e5618b6f6f37742ecdac5ac7e356c6c3446c2c022f0a445c9`.
+
+The final aggregate completed type checks, module tests, all 257 packaged cases, and all 144 support cases before termination during the playground suite.
+The source of SIGTERM is unconfirmed. No assertion failure was reported before the interruption.
+The original log and partial output were preserved.
+The parent stopped the owned orphaned preview, verified that its processes were no longer active, then released the lock according to the CI validation guide.
+The entire playground suite and all later validation stages passed sequentially at the unchanged runtime revision.
+This record does not claim a completed post-change aggregate command.
+All original validation stages passed across those two executions, with the same counts as the baseline.
+The tested runtime package SHA-256 is `6497e6016c4a0d1b25cc7f843a38464c0f1138045be0668e3c42f1f4912a208e`.
+
+The focused run covered synchronous remounts, callback destruction, cleanup failures, all four context phases, initialization, late terrain completion, model registration invalidation, completed-frame picking, context recovery, and full quiet-period observations.
+No new tests or private-hook mocks were needed.
+Nested native render depth above one and cleanup faults during an active render remain inspection-only histories, as in the baseline.
+
+## Review and remaining acceptance
+
+Two independent sketches were compared and judged by Grok 4.7.
+Claude Opus 5.5 found no actionable correctness issue in the complete source diff.
+The reviewed source hashes match the committed runtime files.
+Comment review found no deletions or suppressions requiring action.
+It retained the two-line comment explaining the verified external MapLibre lifetime constraint.
+
+The local decision trail is `.audit/project-consolidation.tsv`.
+Generated logs, contexts, package archives, and browser observations remain in ignored output until selected evidence is promoted.
+Hosted verification is unavailable because no PR or hosted run was requested.
+
+- [#80](https://github.com/the-Drunken-coder/Ridgeline/issues/80) remains open for the M1 Pro and desktop discrete-GPU matrix and installed browsers.
+- The user has a Mac agent available later. Its chip, browsers, and ability to observe Safari and VoiceOver remain unverified. Use the [Mac handoff](mac-acceptance.md).
+- No desktop discrete-GPU fixture is available. Its browser and performance requirements remain INCONCLUSIVE.
+- [#91](https://github.com/the-Drunken-coder/Ridgeline/issues/91) remains dependent on measured #80 evidence. No invented model limit or advisory was added. Prerequisite #90 is closed.
+- Physical touch and manual NVDA remain unverified. VoiceOver requires actual observable Mac output.
+- Any change to the original sensor default or removed global visibility control requires a separate compatibility decision before implementation.
+
+The entire consolidation and model production acceptance are not complete while these obligations remain open.
