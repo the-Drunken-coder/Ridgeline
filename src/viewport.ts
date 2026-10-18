@@ -6,6 +6,7 @@ import { rectangleBounds, screenRectangle } from './screen-rectangle';
 import { ModelVisibility } from './model-visibility';
 import { shapeGeometry } from './drawing-shapes';
 import { createArrowheads } from './arrowheads';
+import { createMapLibreLifecycle } from './maplibre-lifecycle';
 import { Map as GLMap, GPUInitializationError } from 'maplibre-gl';
 import type { ExpressionSpecification, LayerSpecification, MapMouseEvent, ErrorEvent as GLErrorEvent } from 'maplibre-gl';
 import { createReporter, RidgelineError } from './errors';
@@ -140,19 +141,11 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     diagnostic(error);
     throw error;
   }
-  // MapLibre keeps using its style and tiles after a custom layer callback.
-  // Retire those resources at the end of that native call, while logical
-  // disposal and removal of this viewport's DOM remain synchronous.
-  let nativeRenderDepth = 0, removeAfterRender = false;
-  const nativeRender = map._render, cleanupContainer = map._cleanupContainer;
-  map._render = function (time) {
-    nativeRenderDepth++;
-    try { return nativeRender.call(this, time); }
-    finally {
-      nativeRenderDepth--;
-      if (!nativeRenderDepth && removeAfterRender) { removeAfterRender = false; removeMap(); }
-    }
-  };
+  const nativeLifetime = createMapLibreLifecycle(map, () => {
+    const decorationFailure = disposeOwner('destroy.arrowheads', () => arrowheads.remove());
+    const nativeFailure = disposeOwner('destroy.map', () => map.remove());
+    return decorationFailure ?? nativeFailure;
+  });
   function disposeOwner(operation: string, dispose: () => void): RidgelineError | undefined {
     try { dispose(); }
     catch (cause) {
@@ -163,12 +156,6 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       report(error);
       return error;
     }
-  }
-  function removeMap() {
-    const decorationFailure = disposeOwner('destroy.arrowheads', () => arrowheads.remove());
-    const nativeFailure = disposeOwner('destroy.map', () => map.remove());
-    map._render = nativeRender; map._cleanupContainer = cleanupContainer;
-    return decorationFailure ?? nativeFailure;
   }
   const modelVisibility = new ModelVisibility(map);
   const modelLabels = new ModelLabels(map, ids => publication.update(ids.flatMap(id => { const feature = store.get(id); return feature ? [feature] : []; })));
@@ -799,8 +786,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       };
       // Destroy listeners may synchronously mount a new viewport in this same
       // container. Retire only our DOM before giving them that ownership.
-      map._cleanupContainer = () => {};
-      retire('destroy.container', () => cleanupContainer.call(map));
+      retire('destroy.container', nativeLifetime.retireContainer);
       emit('destroy', undefined);
       retire('destroy.publication', () => publication.destroy());
       if (!readySettled) { readySettled = true; rejectReady(new RidgelineError('DESTROYED', 'Viewport was destroyed before initialization completed.', { operation: 'initialize', recoverable: false })); }
@@ -812,8 +798,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       retire('destroy.measurement', () => measurement.destroy());
       preparedListeners.clear(); sceneListeners.clear(); drawingInternals.delete(map);
       map.getCanvas().removeEventListener('mouseleave', onLeave);
-      if (nativeRenderDepth) removeAfterRender = true;
-      else { const nativeFailure = removeMap(); failure ??= nativeFailure; }
+      const nativeFailure = nativeLifetime.requestRemoval();
+      failure ??= nativeFailure;
       icons.clear(); selected.clear(); publishedFeatures.clear(); publishedStyles.clear(); pendingStyles.clear(); publishedMarkerKeys.clear(); availableMarkers.clear();
       retire('destroy.features', () => store.remove(store.ids()));
       for (const set of Object.values(listeners)) set.clear();
