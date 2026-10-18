@@ -44,3 +44,35 @@ The camera volume and wireframe respect the finite range and the camera rays. Wi
 Terrain visibility is an approximation bounded by the cached terrain representation and GPU mask resolution. Small obstructions can be missed. Building obstruction and survey-grade analysis are outside scope. The validation workload of 1,000 points with 100 ms movement input and 10 camera entities is a target for exercising the feature, not a capacity promise.
 
 Verification covers altitude references, range and FOV, ridge blocking when terrain visibility is enabled, skyward and missing-terrain cases, below-terrain placement, independent display controls, projection and exaggeration independence, attachment picking, and removal cleanup. Performance claims require a separately described, repeatable measurement.
+
+## Requirement reconciliation, 2026-10-18
+
+This amendment records the current API and the provenance of two requirement differences.
+It preserves the earlier text and current runtime defaults.
+
+The [original approved requirements](https://github.com/the-Drunken-coder/Ridgeline/blob/7698e957a38bfd2330f648358455082d692c1295/.scratch/airborne-entities/spec.md#altitude-and-attachments) explicitly rejected a flat-plane footprint approximation and required terrain intersection and hill obstruction.
+Its [display controls](https://github.com/the-Drunken-coder/Ridgeline/blob/7698e957a38bfd2330f648358455082d692c1295/.scratch/airborne-entities/spec.md#display-controls) also required independent visibility controls for camera volumes, ground footprints, zones, and ground-position guide lines.
+
+[PR #8](https://github.com/the-Drunken-coder/Ridgeline/pull/8), merged on 2026-09-26, disclosed the compatibility changes.
+Terrain obstruction became opt-in through `terrainVisibility`.
+The rewrite removed `volumeColor` and `entityVisibility.volumes` in favor of the current color, volume appearance, and grouped footprint controls.
+The retained spec and PR description do not establish explicit user approval for those requirement changes.
+That historical approval gap remains unresolved.
+
+The implemented modes have distinct meanings.
+The default projected quadrilateral is a visual overlay draped over displayed terrain.
+It does not classify hill obstruction.
+Enabling `terrainVisibility` uses the finite sensor frustum and cached physical terrain to estimate visible and blocked ground.
+Unknown terrain remains withheld, and the approximation limits above still apply.
+
+The current API provides the following display controls.
+
+- `entityVisibility.footprints` is the shared global gate for camera volumes, wireframes, and ground overlays.
+- With that gate enabled, `volumeOpacity: 0` and `wireframe: false` hide a camera's volume and wireframe.
+- With that gate enabled, `fillOpacity: 0`, `blockedOpacity: 0`, and `outline: false` hide its ground overlay.
+- `entityVisibility.zones` and `entityVisibility.groundLines` remain independent global controls.
+
+The per-camera appearance recipes can independently hide the two camera representations.
+They do not restore the removed global volume switch or independently stop terrain computation and resource preparation.
+No new API or behavior change is part of this factual reconciliation.
+Any correction of the original terrain default or global-control promise requires a separate compatibility decision and public-consumer acceptance criteria.

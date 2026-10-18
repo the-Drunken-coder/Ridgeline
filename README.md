@@ -40,7 +40,7 @@ SIDC Kit is a playground-only development dependency, loaded when that scenario 
 
 Use Node 22.12+ and pnpm 11.
 
-Node 24 is the reference runtime for required CI. Module regressions run on Ubuntu and macOS; browser and rendering jobs remain on Ubuntu. [Issue #50](https://github.com/the-Drunken-coder/Ridgeline/issues/50) requires separate current-main macOS validation on Node 24 and focused Node 25.9 checks for temporary-path overlap and rejected-drawing keyboard input. The documented minimum remains Node 22.12+. Focused Node 25.9 checks do not certify every newer runtime.
+Node 24 is the reference runtime for required CI. Module regressions run on Ubuntu and macOS; browser and rendering jobs remain on Ubuntu. [Issue #50](https://github.com/the-Drunken-coder/Ridgeline/issues/50) closed on 2026-10-03 after macOS Node 24 validation and focused Node 25.9 checks for temporary-path overlap and rejected-drawing keyboard input. That evidence applies to its recorded revisions. The documented minimum remains Node 22.12+. Focused Node 25.9 checks do not certify every newer runtime.
 
 ```sh
 pnpm install
@@ -179,6 +179,8 @@ A camera draws a four-sided directional overlay. Its corner rays project onto th
 GPU visibility uses cached terrain and an asynchronous terrain-draped mask. Movement updates the GPU camera state, and only completed masks are published. Visible and blocked colors and opacities remain independent. Missing terrain is withheld. The result is an approximate visibility estimate bounded by cached terrain and mask resolution; small occluders can be missed and no finer elevation data is fetched. WebGL2 floating-point color targets are required, and renderer failures report a diagnostic rather than silently falling back to CPU visibility.
 
 Camera appearance supports `volumeOpacity`, `wireframe`, and `wireframeWidth`. The shaded four-sided volume follows the actual camera rays to a shared maximum-range cap; terrain depth hides portions beneath the ground. GPU coverage is clipped by that finite volume. Completed coverage and its matching wireframe publish together. Wireframes use cached terrain intersections and screen-space triangles so their edges stop at hills and remain visible across WebGL implementations. `outline` enables visible/blocked region borders in the GPU mask. Borders use each region's configured color at full opacity while interiors retain their independent fill opacities. Internal border width is measured in mask texels; the native footprint outline and wireframe widths use screen pixels.
+
+With `entityVisibility.footprints: true`, set a camera's `volumeOpacity: 0` and `wireframe: false` to hide its volume, or `fillOpacity: 0`, `blockedOpacity: 0`, and `outline: false` to hide its ground overlay. These per-camera appearance settings do not provide separate global visibility switches or stop terrain computation. The [sensor contract](https://github.com/the-Drunken-coder/Ridgeline/blob/482d16433a91f6cdf7dc67d57a3763d84d59abce/.scratch/airborne-entities/spec.md#current-contract) describes the projected overlay and optional terrain-aware coverage modes.
 
 `getEntityState(id)` returns placement, physical altitude and ground height, coverage availability, computation timing, and footprint triangle count. Subscribe to `entitychange` for updated IDs. Missing altitude uses a ground marker unless `groundIfNoAltitude: false`; explicit zero remains a supplied altitude. Missing terrain or below-terrain placement withholds dependent airborne geometry without rewriting the supplied altitude.
 
