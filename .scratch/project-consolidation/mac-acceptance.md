@@ -29,13 +29,34 @@ If the Mac differs, collect clearly labeled supplemental evidence and leave the 
 sw_vers
 sysctl -n hw.model
 sysctl -n machdep.cpu.brand_string
+system_profiler SPDisplaysDataType | awk '/Chipset Model:|Total Number of Cores:|VRAM|Metal Support:|Resolution:|Refresh Rate:/'
 ```
+
+If the profiler omits refresh rate, read the actual display setting in System Settings.
+Record an unavailable observation rather than assuming 60 Hz.
 
 Use Node 24 and pnpm 11 for the reference run.
 Install dependencies using `pnpm install --frozen-lockfile`.
 Install the test engines using `pnpm exec playwright install chromium firefox webkit`.
-Run `pnpm validate` before hardware collection.
-Retain their outputs and setup failures with the exercised revision.
+Run the original validation stages in order before hardware collection.
+Start each line below in a separate agent command session and wait for it to finish before starting the next.
+
+```sh
+pnpm check
+pnpm test
+pnpm test:browser
+pnpm test:support
+pnpm test:playground:browser
+pnpm test:controls:browser
+pnpm build:playground
+pnpm build:controls
+pnpm test:measurement
+```
+
+Retain each stage's output, exit result, and setup failures with the exercised revision.
+The Linux aggregate was observed terminated about 28 minutes after it started. The cause of SIGTERM remains unconfirmed.
+Separate sessions avoid depending on one session surviving the whole validation sequence.
+Report stage results separately. Claim an aggregate pass only if that aggregate command actually completed.
 These repository checks remain separate from installed-browser and physical-GPU acceptance.
 If a command is interrupted, preserve its output and follow the [CI validation recovery policy](../../docs/ci-validation.md) before another shared-output run.
 Record an interrupted aggregate separately from any subsequently completed stages.
@@ -47,16 +68,37 @@ Run one hardware collection command at a time.
 
 ## Measure Chrome and Firefox through automation
 
-Run the existing consumer with the actual metadata files.
+List the existing canonical case IDs.
 
 ```sh
-pnpm measure:models --hardware --browser chrome --metadata machine-chrome.json --matrix
-pnpm measure:models --hardware --browser firefox --metadata machine-firefox.json --matrix
+node --import tsx --input-type=module <<'NODE'
+import { matrix, caseId } from './tools/model-measurement/workload.ts';
+console.log(matrix().map(caseId).join('\n'));
+NODE
 ```
+
+Collect every listed case, one CLI invocation per separate agent command session.
+Use the actual metadata files. The following commands demonstrate one case.
+
+```sh
+pnpm measure:models --hardware --browser chrome --metadata machine-chrome.json --case original-mixed-flat-dpr1
+pnpm measure:models --hardware --browser firefox --metadata machine-firefox.json --case original-mixed-flat-dpr1
+```
+
+After each invocation finishes, create `.pin` in the exact run directory printed under `Raw reports and screenshots`.
+Do this before starting the next invocation. The runner otherwise keeps only three completed, unpinned measurement runs.
+Failed cases can omit that printed path. Their run directories are automatically pinned.
+Keep those pins until successful evidence promotion has been reviewed, following the [pin and release rules](../../docs/evidence-promotion.md#protect-the-selected-inputs).
+Preserve every per-case report and index.
+Each per-case `index.json` correctly has `completeMatrix: false`.
+Record coverage across the retained indexes and compare their case IDs with all 72 canonical IDs for each automated browser build.
+The existing CLI keeps its full warmup, repeated runs, camera modes, and instrumentation comparison for a selected case.
+Use `--matrix` only from an owned persistent terminal that can survive the entire collection.
 
 The Chrome command selects the installed Chrome channel.
 The Firefox command launches Playwright-managed Firefox.
 Identify that build explicitly in its metadata and retain its results separately from installed Firefox acceptance.
+If installed Firefox is collected manually, managed Firefox automation is optional supplemental evidence.
 For separately installed Firefox, use `--serve` and the case-selection and JSON-download workflow described below.
 Mark installed Firefox unavailable if the agent cannot collect that evidence.
 
@@ -72,6 +114,7 @@ Use the approved acceptance thresholds rather than choosing new limits from a co
 pnpm measure:models --serve
 ```
 
+Keep this server in an owned persistent terminal for the manual collection.
 Open the printed URL in installed Safari.
 Use the consumer's case selector, actual machine metadata, paired runs, and JSON download workflow.
 Collect the required matrix through that workflow and retain its raw JSON and PNG snapshots.
@@ -93,7 +136,7 @@ If the existing runner cannot reach a required installed-browser history, record
 
 ## Check Mac interactions and accessibility
 
-Run `pnpm test:support` for the existing engine and input workflows.
+Use the completed `pnpm test:support` stage for the existing engine and input workflows.
 Use the support guide's manual keyboard, focus, zoom, and VoiceOver sequence in installed Safari.
 Record the actual input sequence, observed focus, announcements, failures, screenshots, and short recordings.
 If VoiceOver output cannot be observed, mark that check unavailable.
