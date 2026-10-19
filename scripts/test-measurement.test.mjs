@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { spawnSync } from 'node:child_process';
-import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -49,7 +49,7 @@ test('failed measurement retains producer bytes and distinguishes PR head from t
   assert.equal(runs.length, 1);
   const run = join(artifacts, runs[0]);
   const context = JSON.parse(await readFile(join(run, 'context.json'), 'utf8'));
-  assert.equal(context.checkout, f.root);
+  assert.equal(context.checkout, await realpath(f.root));
   assert.equal(context.revision, f.revision);
   assert.equal(context.prHeadRevision, 'pr-head-fixture');
   assert.equal(context.workflowRevision, 'hosted-merge-fixture');

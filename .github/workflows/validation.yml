@@ -29,8 +29,12 @@ jobs:
       - run: pnpm check
 
   module-tests:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -44,7 +48,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: validation-fixture-failures
+          name: validation-fixture-failures-${{ matrix.os }}
           path: .artifacts/validation/
           include-hidden-files: true
           if-no-files-found: ignore

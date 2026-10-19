@@ -2,7 +2,11 @@
 
 Every pull request and push to `main` runs the complete ordinary suite. Manual execution is also available for an authorized branch. There are no path filters. Independent jobs run type checking, module tests, packaged browser cases, a focused Chromium/Firefox/WebKit support matrix, playground browser cases, control-lab browser cases, consumer production builds, and model measurement verification. A failed job does not cancel its siblings. A newer run for the same pull request cancels the superseded run.
 
-The `validate` job requires successful results from all required jobs. Failure, cancellation, missing results, and unexpected skips fail the gate. Browser retries remain disabled. CI uses four packaged-browser shards with one worker each to avoid competing software-WebGL workloads on a runner. Each shard builds and packs the exact checkout, installs it into a separate consumer, checks declarations, and builds that consumer before testing.
+The `module-tests` job runs `pnpm test` on Node 24 with an OS matrix of `ubuntu-latest` and `macos-latest`. Each runner owns its checkout and generated fixtures. Matrix fail-fast is disabled so either OS can report failures without cancelling the other. All other ordinary jobs, including browser and rendering verification, remain on Ubuntu.
+
+The `validate` job requires successful results from all required jobs, including both module-test OS results. Failure, cancellation, missing results, and unexpected skips fail the gate. Browser retries remain disabled. CI uses four packaged-browser shards with one worker each to avoid competing software-WebGL workloads on a runner. Each shard builds and packs the exact checkout, installs it into a separate consumer, checks declarations, and builds that consumer before testing.
+
+Hosted `macos-latest` module regressions do not replace the approved M1 Pro performance fixture. Manual hardware, installed-browser and VoiceOver acceptance remain separate, including the evidence requirements in #50, #80 and #91.
 
 ## Local checks
 
@@ -29,7 +33,7 @@ Generated history keeps the newest three completed, unpinned records per suite i
 
 This policy bounds disposable history; explicitly pinned failures remain until released. It does not delete `.artifacts/validation/`, curated `.scratch/` evidence, source, permanent fixtures, or external caches. Intermediate experiments belong in ignored output; [closeout evidence promotion](evidence-promotion.md) verifies retained files and archive hashes before publication. The promotion manifest records revision and check claims.
 
-The shard-report fixture reads machine-readable reports from explicit JSON files. If it fails, it retains its inputs, reports, and subprocess diagnostics under `.artifacts/validation/`; CI uploads them as `validation-fixture-failures`. Successful fixtures are removed.
+The shard-report fixture reads machine-readable reports from explicit JSON files. If it fails, it retains its inputs, reports, and subprocess diagnostics under `.artifacts/validation/`; CI uploads them as `validation-fixture-failures-${{ matrix.os }}`. Successful fixtures are removed.
 
 Keep useful coverage when runtime grows. Runs approaching fifteen minutes should prompt investigation of setup costs and case timings, followed by additional parallelism where warranted.
 

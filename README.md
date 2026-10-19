@@ -40,7 +40,7 @@ SIDC Kit is a playground-only development dependency, loaded when that scenario 
 
 Use Node 22.12+ and pnpm 11.
 
-Node 24 is the reference runtime for required Ubuntu CI. macOS is supported for local validation using manual evidence; it is not an additional required CI job. [Issue #50](https://github.com/the-Drunken-coder/Ridgeline/issues/50) requires current-main macOS validation on Node 24 and focused Node 25.9 checks for temporary-path overlap and rejected-drawing keyboard input. The documented minimum remains Node 22.12+. Focused Node 25.9 checks do not certify every newer runtime.
+Node 24 is the reference runtime for required CI. Module regressions run on Ubuntu and macOS; browser and rendering jobs remain on Ubuntu. [Issue #50](https://github.com/the-Drunken-coder/Ridgeline/issues/50) requires separate current-main macOS validation on Node 24 and focused Node 25.9 checks for temporary-path overlap and rejected-drawing keyboard input. The documented minimum remains Node 22.12+. Focused Node 25.9 checks do not certify every newer runtime.
 
 ```sh
 pnpm install
@@ -356,6 +356,8 @@ The default map assets need internet access, but no API key, account, or applica
 Recoverable tile failures leave the rest of the map usable. The elevation-unavailable scenario deliberately requests invalid local tiles and lets you retry the default provider. A basemap that fails to load can leave an empty base; the feature model and selection remain retained for a subsequent successful style change.
 
 ## Verification
+
+Every pull request runs `pnpm test` on Node 24 with hosted `ubuntu-latest` and `macos-latest` runners. Both OS results are required by `validate`. The hosted macOS runner does not replace the approved M1 Pro performance fixture or separate manual hardware and VoiceOver acceptance.
 
 Focused Node tests cover replacement semantics, atomic invalid batches, snapshot ownership, geometry validation, diagnostics, hillshade options, coordinates. Install the browsers once, then run the suites:
 
