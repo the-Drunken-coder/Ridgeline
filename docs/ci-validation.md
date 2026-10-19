@@ -10,7 +10,9 @@ Hosted `macos-latest` module regressions do not replace the approved M1 Pro perf
 
 ## Informational CPU comparison
 
-`.github/workflows/cpu-performance.yml` runs for every pull request without path filters. It compares the exact PR base SHA with the tested candidate commit, which can be GitHub's PR merge commit. The requested PR head is recorded separately. One `ubuntu-latest` runner uses Node 24 and pnpm 11.0.9. A detached base worktree under `RUNNER_TEMP` and the candidate each receive their own frozen dependency install. Checkout credentials are not persisted, repository permissions are read-only, and the workflow writes no API comments. The existing `validate` gate is unchanged.
+`.github/workflows/cpu-performance.yml` runs when a pull request is opened, reopened or synchronized, without path filters. A newer CPU run for the same PR cancels the superseded CPU run, independently of validation runs. It compares the exact PR base SHA with GitHub's PR merge commit checked out at `github.sha`. Before dependency installs or base-worktree creation, it verifies that HEAD equals the candidate SHA and that HEAD's first parent equals the base SHA. An inconsistent base/candidate pair fails setup before timing. See [GitHub's pull-request event semantics](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request). The requested PR head is recorded separately.
+
+One `ubuntu-latest` runner uses Node 24 and pnpm 11.0.9. A detached base worktree under `RUNNER_TEMP` and the candidate each receive their own frozen dependency install. Checkout credentials are not persisted, repository permissions are read-only, and the workflow writes no API comments. The existing `validate` gate is unchanged.
 
 Run the candidate's comparator locally after installing both checkouts:
 
@@ -63,7 +65,7 @@ Generated history keeps the newest three completed, unpinned records per suite i
 
 This policy bounds disposable history; explicitly pinned failures remain until released. It does not delete `.artifacts/validation/`, curated `.scratch/` evidence, source, permanent fixtures, or external caches. Intermediate experiments belong in ignored output; [closeout evidence promotion](evidence-promotion.md) verifies retained files and archive hashes before publication. The promotion manifest records revision and check claims.
 
-The shard-report fixture reads machine-readable reports from explicit JSON files. If it fails, it retains its inputs, reports, and subprocess diagnostics under `.artifacts/validation/`; CI uploads them as `validation-fixture-failures-${{ matrix.os }}`. Successful fixtures are removed.
+The shard-report fixture reads machine-readable reports from explicit JSON files. If it fails, it retains its inputs, reports, and subprocess diagnostics under `.artifacts/validation/`; CI uploads them as `validation-fixture-failures-ubuntu-latest` or `validation-fixture-failures-macos-latest`. Successful fixtures are removed.
 
 Keep useful coverage when runtime grows. Runs approaching fifteen minutes should prompt investigation of setup costs and case timings, followed by additional parallelism where warranted.
 

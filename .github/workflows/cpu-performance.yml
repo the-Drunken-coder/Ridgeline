@@ -6,6 +6,10 @@ name: CPU performance
 permissions:
   contents: read
 
+concurrency:
+  group: cpu-performance-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   compare:
     runs-on: ubuntu-latest
@@ -26,7 +30,7 @@ jobs:
           mkdir -p .artifacts/cpu-ci/setup
           touch .artifacts/cpu-ci/setup/.pin
           node -e 'require("node:fs").writeFileSync(".artifacts/cpu-ci/setup/context.json", JSON.stringify({base:process.env.CPU_BASE_SHA,candidate:process.env.CPU_CANDIDATE_SHA,prHead:process.env.CPU_PR_HEAD_SHA,node:process.version,runner:process.env.RUNNER_NAME,imageOS:process.env.ImageOS,imageVersion:process.env.ImageVersion},null,2))'
-          echo 'Informational CPU microbenchmarks did not complete. Inspect setup logs and any partial comparison report. No FPS, production, or Mac acceptance claim.' > .artifacts/cpu-ci/setup/summary.md
+          echo 'If no comparison summary is available, inspect setup logs and any partial comparison report. No FPS, production, or Mac acceptance claim.' > .artifacts/cpu-ci/setup/summary.md
       - uses: pnpm/action-setup@v4
         with:
           version: 11.0.9
@@ -40,6 +44,7 @@ jobs:
           [[ "$CPU_BASE_SHA" =~ ^[a-f0-9]{40}$ ]]
           [[ "$CPU_CANDIDATE_SHA" =~ ^[a-f0-9]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$CPU_CANDIDATE_SHA"
+          test "$(git rev-parse HEAD^1)" = "$CPU_BASE_SHA"
           git worktree add --detach "$RUNNER_TEMP/cpu-base" "$CPU_BASE_SHA" 2>&1 | tee .artifacts/cpu-ci/setup/worktree.log
           pnpm install --frozen-lockfile 2>&1 | tee .artifacts/cpu-ci/setup/candidate-install.log
           pnpm --dir "$RUNNER_TEMP/cpu-base" install --frozen-lockfile 2>&1 | tee .artifacts/cpu-ci/setup/base-install.log
