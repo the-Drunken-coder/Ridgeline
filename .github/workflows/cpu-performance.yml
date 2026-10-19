@@ -1,0 +1,66 @@
+name: CPU performance
+
+'on':
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CPU_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      CPU_CANDIDATE_SHA: ${{ github.sha }}
+      CPU_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Start evidence record
+        shell: bash
+        run: |
+          mkdir -p .artifacts/cpu-ci/setup
+          touch .artifacts/cpu-ci/setup/.pin
+          node -e 'require("node:fs").writeFileSync(".artifacts/cpu-ci/setup/context.json", JSON.stringify({base:process.env.CPU_BASE_SHA,candidate:process.env.CPU_CANDIDATE_SHA,prHead:process.env.CPU_PR_HEAD_SHA,node:process.version,runner:process.env.RUNNER_NAME,imageOS:process.env.ImageOS,imageVersion:process.env.ImageVersion},null,2))'
+          echo 'Informational CPU microbenchmarks did not complete. Inspect setup logs and any partial comparison report. No FPS, production, or Mac acceptance claim.' > .artifacts/cpu-ci/setup/summary.md
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.9
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - name: Prepare exact base and isolated dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CPU_BASE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$CPU_CANDIDATE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$CPU_CANDIDATE_SHA"
+          git worktree add --detach "$RUNNER_TEMP/cpu-base" "$CPU_BASE_SHA" 2>&1 | tee .artifacts/cpu-ci/setup/worktree.log
+          pnpm install --frozen-lockfile 2>&1 | tee .artifacts/cpu-ci/setup/candidate-install.log
+          pnpm --dir "$RUNNER_TEMP/cpu-base" install --frozen-lockfile 2>&1 | tee .artifacts/cpu-ci/setup/base-install.log
+      - name: Compare CPU kernels
+        shell: bash
+        run: node scripts/compare-cpu.mjs --base "$RUNNER_TEMP/cpu-base" --candidate "$GITHUB_WORKSPACE" --out "$GITHUB_WORKSPACE/.artifacts/cpu-ci/comparison"
+      - name: Publish execution summary
+        if: always()
+        shell: bash
+        run: |
+          if test -f .artifacts/cpu-ci/comparison/summary.md; then
+            cat .artifacts/cpu-ci/comparison/summary.md >> "$GITHUB_STEP_SUMMARY"
+          elif test -f .artifacts/cpu-ci/setup/summary.md; then
+            cat .artifacts/cpu-ci/setup/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'CPU comparison setup did not complete. No timing or acceptance result is available.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cpu-performance
+          path: .artifacts/cpu-ci/
+          include-hidden-files: true
+          if-no-files-found: warn
