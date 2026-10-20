@@ -74,6 +74,7 @@ export function parseSample(value: unknown): SamplePayload {
 }
 
 function mutateSnapshot(feature: SnapshotFeature) {
+  if (feature.geometry.type === 'Point') feature.geometry.coordinates.fill(-1);
   feature.geometry = { type: 'Point', coordinates: [0, 0] };
   feature.properties.nested.batch = -1;
   feature.properties.nested.values.fill(-1);

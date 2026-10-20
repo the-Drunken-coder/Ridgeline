@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -9,6 +10,7 @@ import { acceptSample, renderSummary, runChild, summarize } from './compare-cpu.
 import { operations, settings, workloads } from './cpu-workloads.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
+const loader = createRequire(import.meta.url).resolve('tsx');
 const hash = 'a'.repeat(64);
 const payload = () => ({ workload: 'glb-parse', elapsedMs: 40, operations: 40,
   work: { batches: 40, triangles: 400, vertices: 1200 }, inputSha256: hash, definitionSha256: hash, outputSha256: hash });
@@ -19,6 +21,52 @@ async function directory(t) {
   t.after(() => rm(path, { force: true, recursive: true }));
   return path;
 }
+
+test('feature worker accepts owned snapshots and rejects shared geometry and coordinates', async t => {
+  const sourceRoot = await directory(t);
+  await mkdir(join(sourceRoot, 'src'));
+  await writeFile(join(sourceRoot, 'package.json'), '{"type":"module"}');
+  const run = source => spawnSync(process.execPath,
+    ['--import', loader, 'scripts/cpu-workloads.ts', source, join(root, 'playground/public/entity-models'), 'feature-snapshot'],
+    { cwd: root, encoding: 'utf8', timeout: 30_000 });
+  const owned = run(root);
+  assert.ifError(owned.error);
+  assert.equal(owned.status, 0, owned.stdout + owned.stderr);
+  assert.equal(JSON.parse(owned.stdout).workload, 'feature-snapshot');
+  for (const boundary of ['input', 'all', 'get']) for (const alias of ['geometry', 'coordinates']) {
+    await t.test(`${boundary} shares ${alias}`, async () => {
+      await writeFile(join(sourceRoot, 'src/features.ts'), `
+        const boundary = ${JSON.stringify(boundary)};
+        const alias = ${JSON.stringify(alias)};
+        function copy(feature, shared) {
+          const snapshot = structuredClone(feature);
+          if (shared && alias === 'geometry') snapshot.geometry = feature.geometry;
+          if (shared && alias === 'coordinates') snapshot.geometry.coordinates = feature.geometry.coordinates;
+          return snapshot;
+        }
+        export class FeatureStore {
+          features = new Map();
+          upsert(batch) {
+            const snapshots = batch.map(feature => copy(feature, boundary === 'input'));
+            for (const feature of snapshots) this.features.set(feature.id, feature);
+            return structuredClone(snapshots);
+          }
+          all() { return [...this.features.values()].map(feature => copy(feature, boundary === 'all')); }
+          get(id) {
+            const feature = this.features.get(id);
+            return feature && copy(feature, boundary === 'get');
+          }
+          ids() { return [...this.features.keys()]; }
+        }
+      `);
+      const result = run(sourceRoot);
+      assert.ifError(result.error);
+      assert.equal(result.status, 1, result.stdout + result.stderr);
+      assert.match(result.stderr, boundary === 'input' ? /Store aliases input/ : /Store aliases returned snapshots/);
+      assert.equal(result.stdout, '');
+    });
+  }
+});
 
 test('child protocol rejects missing, malformed, zero and incompatible samples', () => {
   const reference = acceptSample(payload(), expected);
