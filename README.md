@@ -40,7 +40,7 @@ SIDC Kit is a playground-only development dependency, loaded when that scenario 
 
 Use Node 22.12+ and pnpm 11.
 
-Node 24 is the reference runtime for required Ubuntu CI. macOS is supported for local validation using manual evidence; it is not an additional required CI job. [Issue #50](https://github.com/the-Drunken-coder/Ridgeline/issues/50) requires current-main macOS validation on Node 24 and focused Node 25.9 checks for temporary-path overlap and rejected-drawing keyboard input. The documented minimum remains Node 22.12+. Focused Node 25.9 checks do not certify every newer runtime.
+Node 24 is the reference runtime for required CI. Module regressions run on Ubuntu and macOS; browser and rendering jobs remain on Ubuntu. [Issue #50](https://github.com/the-Drunken-coder/Ridgeline/issues/50) requires separate current-main macOS validation on Node 24 and focused Node 25.9 checks for temporary-path overlap and rejected-drawing keyboard input. The documented minimum remains Node 22.12+. Focused Node 25.9 checks do not certify every newer runtime.
 
 ```sh
 pnpm install
@@ -356,6 +356,16 @@ The default map assets need internet access, but no API key, account, or applica
 Recoverable tile failures leave the rest of the map usable. The elevation-unavailable scenario deliberately requests invalid local tiles and lets you retry the default provider. A basemap that fails to load can leave an empty base; the feature model and selection remain retained for a subsequent successful style change.
 
 ## Verification
+
+Every pull request runs `pnpm test` on Node 24 with hosted `ubuntu-latest` and `macos-latest` runners. Both OS results are required by `validate`. The hosted macOS runner does not replace the approved M1 Pro performance fixture or separate manual hardware and VoiceOver acceptance.
+
+The separate [CPU comparison workflow](https://github.com/the-Drunken-coder/Ridgeline/blob/6f054a67b26bb476c2c7b5f19128047e141d250a/docs/ci-validation.md#informational-cpu-comparison) compares the exact PR base and tested candidate on one Ubuntu runner. Its GLB parsing and feature snapshot microbenchmarks report informational timing deltas. They do not establish FPS, production readiness, or Mac acceptance. Run a functional same-revision comparison with a fresh output path:
+
+```sh
+node scripts/compare-cpu.mjs --base . --candidate . --out ".artifacts/cpu-ci/local-$(date +%Y%m%dT%H%M%S)-$$"
+```
+
+Both source checkouts need their own frozen dependency install for a cross-revision comparison. Raw samples and partial failures remain pinned in the selected output directory. Same-revision execution verifies the comparator, not a speedup.
 
 Focused Node tests cover replacement semantics, atomic invalid batches, snapshot ownership, geometry validation, diagnostics, hillshade options, coordinates. Install the browsers once, then run the suites:
 

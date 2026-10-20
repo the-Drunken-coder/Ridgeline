@@ -2,7 +2,43 @@
 
 Every pull request and push to `main` runs the complete ordinary suite. Manual execution is also available for an authorized branch. There are no path filters. Independent jobs run type checking, module tests, packaged browser cases, a focused Chromium/Firefox/WebKit support matrix, playground browser cases, control-lab browser cases, consumer production builds, and model measurement verification. A failed job does not cancel its siblings. A newer run for the same pull request cancels the superseded run.
 
-The `validate` job requires successful results from all required jobs. Failure, cancellation, missing results, and unexpected skips fail the gate. Browser retries remain disabled. CI uses four packaged-browser shards with one worker each to avoid competing software-WebGL workloads on a runner. Each shard builds and packs the exact checkout, installs it into a separate consumer, checks declarations, and builds that consumer before testing.
+The `module-tests` job runs `pnpm test` on Node 24 with an OS matrix of `ubuntu-latest` and `macos-latest`. Each runner owns its checkout and generated fixtures. Matrix fail-fast is disabled so either OS can report failures without cancelling the other. All other ordinary jobs, including browser and rendering verification, remain on Ubuntu.
+
+The `validate` job requires successful results from all required jobs, including both module-test OS results. Failure, cancellation, missing results, and unexpected skips fail the gate. Browser retries remain disabled. CI uses four packaged-browser shards with one worker each to avoid competing software-WebGL workloads on a runner. Each shard builds and packs the exact checkout, installs it into a separate consumer, checks declarations, and builds that consumer before testing.
+
+Hosted `macos-latest` module regressions do not replace the approved M1 Pro performance fixture. Manual hardware, installed-browser and VoiceOver acceptance remain separate, including the evidence requirements in #50, #80 and #91.
+
+## Informational CPU comparison
+
+`.github/workflows/cpu-performance.yml` runs when a pull request is opened, reopened or synchronized, without path filters. A newer CPU run for the same PR cancels the superseded CPU run, independently of validation runs. It compares the exact PR base SHA with GitHub's PR merge commit checked out at `github.sha`. Before dependency installs or base-worktree creation, it verifies that HEAD equals the candidate SHA and that HEAD's first parent equals the base SHA. An inconsistent base/candidate pair fails setup before timing. See [GitHub's pull-request event semantics](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request). The requested PR head is recorded separately.
+
+One `ubuntu-latest` runner uses Node 24 and pnpm 11.0.9. A detached base worktree under `RUNNER_TEMP` and the candidate each receive their own frozen dependency install. Checkout credentials are not persisted, repository permissions are read-only, and the workflow writes no API comments. The existing `validate` gate is unchanged.
+
+Run the candidate's comparator locally after installing both checkouts:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm --dir /path/to/base install --frozen-lockfile
+node scripts/compare-cpu.mjs --base /path/to/base --candidate . --out ".artifacts/cpu-ci/local-$(date +%Y%m%dT%H%M%S)-$$"
+```
+
+Use `--base . --candidate .` for a functional same-revision check. Run the script from the candidate checkout. `--out` must name a new directory. The comparator creates `.pin` immediately and never overwrites an existing directory. It leaves evidence selected until you deliberately release or remove it.
+
+The candidate owns one shared workload definition and the four licensed original drone, tank, plane and boat GLB byte sets. Each fresh child preloads these bytes and deterministic feature batches before timing. The two fixed workloads run 40 GLB parses or 20 upsert batches of 1,000 moving points with nested properties and typed-array payloads. Three untimed warmup runs precede each timed sample. Six timed pairs per workload alternate base/candidate and candidate/base order. All children use one absolute candidate-owned `tsx` loader, with source imports rooted at the selected checkout and dependencies resolved there.
+
+Timers enclose synchronous kernel operations and output retention only. They exclude process startup, module imports, input preparation, validation, hashing and reporting. Outputs remain live for count, essential model-invariant, replacement and snapshot-ownership checks after timing. Identical input and definition hashes, work counts and output digests are required across sides and samples. A semantic difference fails comparison execution and requires investigation before timings can be compared.
+
+`report.json` retains physical checkout roots, actual revisions, dirty status, tracked-diff and untracked-file hashes, lockfile and dependency versions, comparator/definition/settings/fixture hashes, Node/OS/CPU/runner-image context, load averages, commands, execution order and raw samples. Each child's stdout and stderr are saved immediately. The parent owns the exact child, terminates it on timeout, waits for exit and preserves the initiating failure. Missing modules, malformed/empty/zero output, mismatched work or hashes, child errors, timeouts and incomplete pairs fail execution. Fresh partial reports retain completed samples on failure. CLI usage errors exit 2, comparison failures exit 1, and complete reports exit 0.
+
+`summary.md` reports median and min/max milliseconds per operation and the candidate median's percentage delta from the base. Timing deltas never fail execution and declare no winner. These are informational CPU microbenchmarks pending noise calibration, with elapsed spans that can include scheduling delays. They do not measure browser image decoding, GPU work, frame rate, end-to-end update latency or production capacity. Actions always attempts to retain setup logs, raw/partial comparison evidence and an execution summary. No hosted run of this new workflow is claimed by local verification.
+
+### Mac acceptance remains incomplete
+
+The separate 2026-10-18 report exercised runtime `89a68852e890a1f859302dc8ff69ec3935afe890`. It is historical evidence, not validation of this CI revision. It recorded failures in Node, packaged/support browser checks and installed Chrome histories. The path assertion correction and CPU comparison do not repair or relabel the historical packaged/support/Chrome failures.
+
+No qualified timed hardware case was established because timed native/compositor captures were blank despite populated final draw buffers. The full M1 Pro and installed-browser matrix remains open, including original/normalized/4×/16× geometry, materials/appearance, flat/globe and pixel-ratio axes. Largest-asset parsing against the 50 ms trigger remains unverified. This Node GLB workload cannot close that target-browser requirement.
+
+Remaining evidence also includes full installed Safari model histories, installed release Firefox, actual VoiceOver speech/captions, specified pending/conflict/forbidden/resource-error announcements, appearance transitions, exact 390 CSS px layout, coarse-pointer and physical-touch checks, Windows/NVDA, and the desktop discrete-GPU browser fixture. The measured triangle guideline and advisory policy remain pending. Track status and dependencies in [#32](https://github.com/the-Drunken-coder/Ridgeline/issues/32), [#50](https://github.com/the-Drunken-coder/Ridgeline/issues/50), [#80](https://github.com/the-Drunken-coder/Ridgeline/issues/80) and [#91](https://github.com/the-Drunken-coder/Ridgeline/issues/91).
 
 ## Local checks
 
@@ -29,7 +65,7 @@ Generated history keeps the newest three completed, unpinned records per suite i
 
 This policy bounds disposable history; explicitly pinned failures remain until released. It does not delete `.artifacts/validation/`, curated `.scratch/` evidence, source, permanent fixtures, or external caches. Intermediate experiments belong in ignored output; [closeout evidence promotion](evidence-promotion.md) verifies retained files and archive hashes before publication. The promotion manifest records revision and check claims.
 
-The shard-report fixture reads machine-readable reports from explicit JSON files. If it fails, it retains its inputs, reports, and subprocess diagnostics under `.artifacts/validation/`; CI uploads them as `validation-fixture-failures`. Successful fixtures are removed.
+The shard-report fixture reads machine-readable reports from explicit JSON files. If it fails, it retains its inputs, reports, and subprocess diagnostics under `.artifacts/validation/`; CI uploads them as `validation-fixture-failures-ubuntu-latest` or `validation-fixture-failures-macos-latest`. Successful fixtures are removed.
 
 Keep useful coverage when runtime grows. Runs approaching fifteen minutes should prompt investigation of setup costs and case timings, followed by additional parallelism where warranted.
 
