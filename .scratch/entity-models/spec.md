@@ -204,6 +204,7 @@ The GitHub ticket statuses are unchanged by this document amendment.
 
 Public behavior, registration and diagnostic contracts, software correctness histories, hosted module CI on both operating systems, and available packaged browser/measurement checks remain applicable.
 Separate manual accessibility, physical-touch, and Windows/NVDA coverage remain unverified.
+VoiceOver on Safari remains an unverified accessibility limitation, not a blocking Mac acceptance assignment. No manual accessibility run is assigned by this reconciliation.
 The [historical sensor-compatibility decision](../airborne-entities/spec.md#requirement-reconciliation-2026-10-18) is separate and remains unresolved.
 
 ## Out of scope

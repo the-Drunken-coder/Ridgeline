@@ -26,15 +26,41 @@ Current main's [historical Mac report](../../docs/ci-validation.md#historical-ma
 The path assertion fix already landed. No claim is made that it repaired the reported browser failures.
 Those failures remain recorded; no qualifying complete hardware matrix was established and no fresh Mac result is claimed here.
 Separate manual accessibility, physical-touch, and Windows/NVDA coverage remain unverified.
+VoiceOver on Safari remains an unverified accessibility limitation, not a blocking Mac acceptance assignment. No manual accessibility run is assigned here.
+
+The administrative tracker handoff is to record the existing user waiver on #80 and remove its hardware dependency from #91, while retaining historical failures and marking the guideline/advisory unproduced.
+The waiver decision is already made; this is not another product decision or request for hardware work.
+No issue comment, closure, or status update was performed in this preparation.
 
 The [sensor-compatibility decision](../airborne-entities/spec.md#requirement-reconciliation-2026-10-18) remains unresolved.
 The original requirements called for terrain obstruction and independent global display controls; the current API makes terrain obstruction opt-in and groups camera geometry under the footprint gate.
 The retained approval gap was not resolved by this waiver. Deciding whether to retain that contract or restore the original promises needs a separate compatibility decision.
 This reconciliation changes neither sensor defaults nor public APIs.
 
-Current checks will use available type/module validation and focused real packaged-consumer histories.
-The runtime and historical evidence will be compared directly with the preserved branch.
-Earlier full-suite results below remain pinned historical evidence, not a fresh pass for this reconciliation.
+Fresh Linux checks passed at `33d76eaeb88f2ded9a8297a95eb9972e9f0cc7c6` with a clean tracked worktree.
+`pnpm check` and `pnpm test` passed, including 511 Node tests and five control-lab tests.
+The focused packaged run passed 13 teardown, remount, cleanup-failure, context-phase, model-frame, recovery, and picking histories.
+It also built and installed fresh consumer and starter packages and verified 77 package files and 28 package-document links.
+All 60 built `dist/` files match the previously reviewed runtime archive byte for byte.
+The fresh package SHA-256 is recorded with the validation results.
+
+Direct comparisons verify the complete production source and airborne amendment equal the original branch, all five historical evidence files are byte-identical, and the historical plan/closeout/handoff bodies remain intact.
+Current main's workflows, CI scripts, tests, package configuration, and lockfile are unchanged.
+The local document check passed 123 links across 13 documents.
+No full `pnpm validate`, fresh hosted run, or hardware collection was performed for this reconciliation.
+Earlier full-suite results below remain pinned historical evidence, not a fresh aggregate pass.
+
+The [reconciliation evidence](evidence/reconciliation-2026-10-21/README.md) retains the fresh package, both command logs, validation context, rerunnable verifier, and original review reports.
+Its [manifest](evidence/reconciliation-2026-10-21/manifest.json) records 19 raw members and the exercised revision.
+The fresh package SHA-256 is `300c2ece2410327ccdfd6dbed5f54b119a937c3a296369e61c0fc20c9cb07d19`.
+The promoted raw archive SHA-256 is `6122ed4a20ebb31044181bc6c7fa9c2a217bf85855d150d1d1e223eef617ebf0`.
+The existing promotion tool passed dry-run and actual verification. The parent independently checked all member hashes and reran the verifier from the extracted archive successfully.
+The reproduction instructions include fetching the preserved original branch before verification in a fresh clone.
+
+The [independent review and dispatch record](evidence/reconciliation-2026-10-21/review.md) found no material defects or source-comment flags.
+The accepted follow-up made the package comparison reproducible and clarified VoiceOver and tracker status.
+The final reviewer executed the verifier with exit 0. No additional source or shipped documentation changed after the exercised revision.
+The local trail continues append-only in `.audit/project-consolidation.tsv`; its dated excerpt is retained with the evidence.
 
 ## Historical verification record, 2026-10-18
 

@@ -1,0 +1,180 @@
+{
+  "promotedAt": "2026-10-21T02:23:16.386Z",
+  "provenance": {
+    "spec": ".scratch/project-consolidation/plan.md",
+    "integrationOwner": "root",
+    "reviewed": {
+      "base": "e197fe92138ed90576e1804bc2ed72e9278fd97d",
+      "head": "33d76eaeb88f2ded9a8297a95eb9972e9f0cc7c6",
+      "result": "Independent Claude Opus5.5 reconciliation and comment review found no material defects or source-comment flags. Follow-up ran the saved artifact verifier successfully and accepted the current uncommitted VoiceOver/closeout clarifications. Original source and five historical evidence files remain byte-identical."
+    },
+    "localVerification": [
+      {
+        "revision": "33d76eaeb88f2ded9a8297a95eb9972e9f0cc7c6",
+        "command": "pnpm check && pnpm test",
+        "result": "VERIFIED exit0,511 Node tests and5 control-lab tests. Clean tracked inputs before execution."
+      },
+      {
+        "revision": "33d76eaeb88f2ded9a8297a95eb9972e9f0cc7c6",
+        "command": "pnpm test:browser -- --grep 'Viewport destruction|Model frame callbacks|Model style failures|models rebuild current presentation|model frames recover|Attachment picking follows|Models cull'",
+        "result": "VERIFIED exit0,13 actual cases. Fresh consumer and starter install/build;77 package files,9 Markdown files and28 package links."
+      },
+      {
+        "revision": "33d76eaeb88f2ded9a8297a95eb9972e9f0cc7c6 with uncommitted checkout-only VoiceOver and closeout clarifications; all tested package inputs unchanged",
+        "command": "python3 .audit/project-consolidation/reconciliation/verify-reconciliation.py --evidence-dir .artifacts/project-consolidation-reconciliation",
+        "result": "VERIFIED by parent and independent reviewer. Actual retained logs and archives derive511/5/13/77/9/28 counts; all60 dist members byte-identical to original tracked runtime. Original branch/history and main CI remain preserved."
+      }
+    ],
+    "hostedVerification": "Not performed for this reconciliation. No Ridgeline PR or hosted run requested. Required macOS/Ubuntu module workflow is preserved, not waived.",
+    "historical": [],
+    "remainingLimits": [
+      "Remaining Mac and desktop-GPU matrix is WAIVED / NOT PERFORMED and nonblocking, never passed. Earlier partial Mac failures are preserved, not repaired.",
+      "Historical sensor compatibility and missing approval remain separate and unresolved; current behavior preserved.",
+      "No measured model guideline or cost advisory exists. No FPS/capacity or target-browser parse timing claim.",
+      "Manual accessibility including VoiceOver/Safari, physical touch and Windows/NVDA remain unverified. No manual run assigned here.",
+      "No fresh full aggregate or hosted validation. Previous full-suite evidence stays historical.",
+      "Live80/91 remain OPEN; exact administrative waiver handoff is prepared, no tracker write performed."
+    ]
+  },
+  "reproduction": [
+    "git fetch origin t3/assess-project-alignment",
+    "mkdir -p .artifacts/reconciliation-recheck\ntar -xzf .scratch/project-consolidation/evidence/reconciliation-2026-10-21/raw-reports.tar.gz -C .artifacts/reconciliation-recheck\npython3 .artifacts/reconciliation-recheck/verify-reconciliation.py --evidence-dir .artifacts/reconciliation-recheck",
+    "pnpm check\npnpm test",
+    "pnpm test:browser -- --grep 'Viewport destruction|Model frame callbacks|Model style failures|models rebuild current presentation|model frames recover|Attachment picking follows|Models cull'"
+  ],
+  "files": [
+    {
+      "path": "summary.md",
+      "source": ".artifacts/project-consolidation-reconciliation/summary.md",
+      "bytes": 2012,
+      "sha256": "5268578b8f2269112dcd88b78b07537e33303a389836c13627f533094ee89d1d"
+    },
+    {
+      "path": "review.md",
+      "source": ".artifacts/project-consolidation-reconciliation/review.md",
+      "bytes": 2359,
+      "sha256": "562e2dffda68ad47742ea16e27e33438d0056051074b1a83e6e8b1e518d35adc"
+    }
+  ],
+  "rawArchive": {
+    "path": "raw-reports.tar.gz",
+    "bytes": 432810,
+    "sha256": "6122ed4a20ebb31044181bc6c7fa9c2a217bf85855d150d1d1e223eef617ebf0",
+    "members": [
+      {
+        "path": "browser-run.json",
+        "source": ".artifacts/project-consolidation-reconciliation/browser-run.json",
+        "bytes": 680,
+        "sha256": "45e3cfea66436bbf7fe431f5436504673f0fbef5f75920b2570ecb693ddd1f76"
+      },
+      {
+        "path": "check-links.mjs",
+        "source": ".artifacts/project-consolidation-reconciliation/check-links.mjs",
+        "bytes": 2453,
+        "sha256": "0dc89ca5a4e73cd37ab713ff1d1e7892faf1a64dc51ce4dd804475c3ddfbb4ae"
+      },
+      {
+        "path": "decision-trail-excerpt.tsv",
+        "source": ".artifacts/project-consolidation-reconciliation/decision-trail-excerpt.tsv",
+        "bytes": 5927,
+        "sha256": "818b68dac11fd6a49bab7d56503870f388d4a2bb345eb0971a10a74424a4a0b5"
+      },
+      {
+        "path": "explainer-original.txt",
+        "source": ".artifacts/project-consolidation-reconciliation/explainer-original.txt",
+        "bytes": 4093,
+        "sha256": "4236805efb91cb14a4a74057c11b538e33a1acde90081535ec621c198ba300ee"
+      },
+      {
+        "path": "focused-browser.log",
+        "source": ".artifacts/project-consolidation-reconciliation/focused-browser.log",
+        "bytes": 7689,
+        "sha256": "65e88cf13ca01fc1f47d917d743fb2e0dee4b7ad4cdf3ea34301a6bc4bfc08fb"
+      },
+      {
+        "path": "issue-50.json",
+        "source": ".artifacts/project-consolidation-reconciliation/issue-50.json",
+        "bytes": 212,
+        "sha256": "cac167ef7d79ddd03ffc24d420f332a511f749ede836087f2b9c4b03f039e525"
+      },
+      {
+        "path": "issue-80.json",
+        "source": ".artifacts/project-consolidation-reconciliation/issue-80.json",
+        "bytes": 4547,
+        "sha256": "3d54aa276f20553029c888c7ea4635577c2a683d1c06e1b3611c99cdf5524413"
+      },
+      {
+        "path": "issue-91.json",
+        "source": ".artifacts/project-consolidation-reconciliation/issue-91.json",
+        "bytes": 6479,
+        "sha256": "57d71236ecdd84356992a9366875276688eb9ebf4487087e0f98ada93d0fa074"
+      },
+      {
+        "path": "local-links.json",
+        "source": ".artifacts/project-consolidation-reconciliation/local-links.json",
+        "bytes": 67,
+        "sha256": "37f9054af887371056521a40b2700fe971ffb7c3e845aec58496284f365674fc"
+      },
+      {
+        "path": "main-changes.txt",
+        "source": ".artifacts/project-consolidation-reconciliation/main-changes.txt",
+        "bytes": 234,
+        "sha256": "67e4aee864b5134ddbc72c876b6ff4c3f03d80f931eb3152a6b6d201d0e3a52b"
+      },
+      {
+        "path": "module-validation.log",
+        "source": ".artifacts/project-consolidation-reconciliation/module-validation.log",
+        "bytes": 47544,
+        "sha256": "f7c44434ccb7b4e87f442ab8e2a7d998b0aa76aac84745c24b73557d2fd56b47"
+      },
+      {
+        "path": "results.json",
+        "source": ".artifacts/project-consolidation-reconciliation/results.json",
+        "bytes": 544,
+        "sha256": "2a00d12bddbff690f8378f6ea464cde4a43bbf8b5fdb51de30d10518d120f58a"
+      },
+      {
+        "path": "review-round1-original.txt",
+        "source": ".artifacts/project-consolidation-reconciliation/review-round1-original.txt",
+        "bytes": 4431,
+        "sha256": "450476e7b89add311d795a96b0e86a6bb707e9b775aa042ea901f7c58f82c14f"
+      },
+      {
+        "path": "review-round2-original.txt",
+        "source": ".artifacts/project-consolidation-reconciliation/review-round2-original.txt",
+        "bytes": 2637,
+        "sha256": "d0ae7c1ff2ead0374880f847eb32996f0e5682a3afbe0aeed30d117b498c0937"
+      },
+      {
+        "path": "review-verifier.stdout.json",
+        "source": ".artifacts/project-consolidation-reconciliation/review-verifier.stdout.json",
+        "bytes": 1754,
+        "sha256": "25c09ccb1b4ae5eb73ea88e46fcfbff579c74dc37f1ebb4ec3347e91cfc5934a"
+      },
+      {
+        "path": "tested-package.tgz",
+        "source": ".artifacts/project-consolidation-reconciliation/tested-package.tgz",
+        "bytes": 397000,
+        "sha256": "300c2ece2410327ccdfd6dbed5f54b119a937c3a296369e61c0fc20c9cb07d19"
+      },
+      {
+        "path": "validation-context.json",
+        "source": ".artifacts/project-consolidation-reconciliation/validation-context.json",
+        "bytes": 328,
+        "sha256": "4bcc0710353ed8c0784b21e0446768ed66f879e661498cf3f8f81d69e8d60837"
+      },
+      {
+        "path": "verification.json",
+        "source": ".artifacts/project-consolidation-reconciliation/verification.json",
+        "bytes": 1754,
+        "sha256": "25c09ccb1b4ae5eb73ea88e46fcfbff579c74dc37f1ebb4ec3347e91cfc5934a"
+      },
+      {
+        "path": "verify-reconciliation.py",
+        "source": ".artifacts/project-consolidation-reconciliation/verify-reconciliation.py",
+        "bytes": 4896,
+        "sha256": "9775f5d3c06a70154bba52070fb26f64a6ffa817bbd432a17804c3896b6d54e8"
+      }
+    ]
+  }
+}
