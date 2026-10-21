@@ -6,7 +6,7 @@ The `module-tests` job runs `pnpm test` on Node 24 with an OS matrix of `ubuntu-
 
 The `validate` job requires successful results from all required jobs, including both module-test OS results. Failure, cancellation, missing results, and unexpected skips fail the gate. Browser retries remain disabled. CI uses four packaged-browser shards with one worker each to avoid competing software-WebGL workloads on a runner. Each shard builds and packs the exact checkout, installs it into a separate consumer, checks declarations, and builds that consumer before testing.
 
-Hosted `macos-latest` module regressions do not replace the approved M1 Pro performance fixture. Manual hardware, installed-browser and VoiceOver acceptance remain separate, including the evidence requirements in #50, #80 and #91.
+Hosted `macos-latest` module regressions remain required. Further Mac and desktop-GPU acceptance is WAIVED / NOT PERFORMED under the [2026-10-21 acceptance amendment](../.scratch/entity-models/spec.md#acceptance-amendment-2026-10-21). That hardware work no longer blocks readiness. The waiver establishes no hardware or installed-browser pass; manual accessibility remains unverified. Closed issue #50 retains its historical evidence.
 
 ## Informational CPU comparison
 
@@ -32,7 +32,9 @@ Timers enclose synchronous kernel operations and output retention only. They exc
 
 `summary.md` reports median and min/max milliseconds per operation and the candidate median's percentage delta from the base. Timing deltas never fail execution and declare no winner. These are informational CPU microbenchmarks pending noise calibration, with elapsed spans that can include scheduling delays. They do not measure browser image decoding, GPU work, frame rate, end-to-end update latency or production capacity. Actions always attempts to retain setup logs, raw/partial comparison evidence and an execution summary. No hosted run of this new workflow is claimed by local verification.
 
-### Mac acceptance remains incomplete
+### Historical Mac acceptance report, 2026-10-18
+
+The [2026-10-21 amendment](../.scratch/entity-models/spec.md#acceptance-amendment-2026-10-21) waives further target-device collection and removes that acceptance gate. The following report remains historical, including its failures. No remaining hardware matrix is claimed passed.
 
 The separate 2026-10-18 report exercised runtime `89a68852e890a1f859302dc8ff69ec3935afe890`. It is historical evidence, not validation of this CI revision. It recorded failures in Node, packaged/support browser checks and installed Chrome histories. The path assertion correction and CPU comparison do not repair or relabel the historical packaged/support/Chrome failures.
 
@@ -51,7 +53,7 @@ pnpm test:browser -- --shard=1/4
 
 `pnpm validate` runs local checks sequentially, including `pnpm test:measurement` exactly once. CI distributes the same checks across jobs. `pnpm test` includes executable validation-automation tests as well as the library and control-lab module tests. All four browser suites use production consumer builds. The packaged suite retains a fresh page per case even when cases are distributed across shards. `pnpm test:support` exercises current public workflows and the starter across three engines. Its Linux Firefox project uses a virtual display for WebGL; the wrapper starts Xvfb when no display is available. The required `browser-support` job retains its JSON report and browser artifacts separately from the full Chromium shard reports. See [support checks](support.md) for coverage and device limits. `pnpm test:playground:browser` exercises the playground's selection journey with deterministic basemap and DEM responses while retaining the real application and viewport.
 
-The required measurement job runs the existing report, workload, and pixel checks, including the approved 40 CSS px floor, followed by the real packed-library instrumentation and ownership probe. That probe installs, typechecks, and builds a separate consumer. It verifies software correctness. The target-hardware and installed-browser matrix, performance acceptance, and measured model guideline remain in #80 and #91. See [the measurement guide](../tools/model-measurement/README.md).
+The required measurement job runs the existing report, workload, and pixel checks, including the approved 40 CSS px floor, followed by the real packed-library instrumentation and ownership probe. That probe installs, typechecks, and builds a separate consumer. It verifies software correctness. The #80 target-device matrix is waived and not performed; the dependent #91 measured guideline and advisory remain unproduced rather than blocking this work. See [the acceptance amendment](../.scratch/entity-models/spec.md#acceptance-amendment-2026-10-21) and [measurement guide](../tools/model-measurement/README.md).
 
 Measurement verification keeps raw command output and a command/revision record under `.artifacts/validation/model-measurement/`. CI retains these records and measurement producer output on failure. The record distinguishes the requested PR head from the actual checked-out commit, and identifies dirty local inputs. Successful historical runs do not verify later changes.
 

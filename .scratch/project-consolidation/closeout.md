@@ -1,5 +1,43 @@
 # Consolidation verification record
 
+## Reconciliation, 2026-10-21
+
+The user requested reconciliation with current main and waived further Mac and desktop-GPU acceptance as disproportionate.
+Fetched main is `e197fe92138ed90576e1804bc2ed72e9278fd97d`.
+The original pushed branch remains preserved at `0a9cf2e827a0b1a68928f86ae35f67d8314cbd2c`.
+The prepared branch is `t3/reconcile-project-alignment`, based directly on that main revision.
+No Ridgeline PR, merge, deployment, hardware run, or hardware schedule is part of this work.
+
+| Area | What current main contains | Prepared scope |
+| --- | --- | --- |
+| macOS CI | Required Ubuntu/macOS module jobs and the canonical temporary-path assertion fix from #121 | Retained unchanged |
+| CPU comparison | Informational paired comparisons, baseline ancestry and geometry-alias checks | Retained unchanged, no performance result claimed |
+| Native teardown | Original inline implementation, identical production source tree to the old consolidation base | Carry the previously reviewed two-file extraction without new runtime logic |
+| Sensor and support documentation | Original spec/support blobs and newer CI README text | Carry factual reconciliation while preserving current CI policy |
+| Consolidation history | None of the four original branch commits landed | Preserve the plan, closeout, historical handoff, and all five evidence files |
+| Device acceptance | Historical Mac failures and an incomplete hardware gate | Record the user-authorized waiver and retire the hardware assignment |
+
+The remaining target-device matrix is **WAIVED / NOT PERFORMED**, never passed, under the [canonical acceptance amendment](../entity-models/spec.md#acceptance-amendment-2026-10-21).
+It no longer blocks this work. The dependent measured guideline and advisory remain unproduced; no threshold was invented.
+GitHub #80 and #91 remain open as observed. This amendment changes the acceptance requirement, not their live tracker status.
+The old [Mac handoff](mac-acceptance.md) is retained as history and must not be executed as a pending assignment.
+
+Current main's [historical Mac report](../../docs/ci-validation.md#historical-mac-acceptance-report-2026-10-18) records Node, packaged/support, and installed Chrome failures.
+The path assertion fix already landed. No claim is made that it repaired the reported browser failures.
+Those failures remain recorded; no qualifying complete hardware matrix was established and no fresh Mac result is claimed here.
+Separate manual accessibility, physical-touch, and Windows/NVDA coverage remain unverified.
+
+The [sensor-compatibility decision](../airborne-entities/spec.md#requirement-reconciliation-2026-10-18) remains unresolved.
+The original requirements called for terrain obstruction and independent global display controls; the current API makes terrain obstruction opt-in and groups camera geometry under the footprint gate.
+The retained approval gap was not resolved by this waiver. Deciding whether to retain that contract or restore the original promises needs a separate compatibility decision.
+This reconciliation changes neither sensor defaults nor public APIs.
+
+Current checks will use available type/module validation and focused real packaged-consumer histories.
+The runtime and historical evidence will be compared directly with the preserved branch.
+Earlier full-suite results below remain pinned historical evidence, not a fresh pass for this reconciliation.
+
+## Historical verification record, 2026-10-18
+
 Local implementation and all required validation stages are VERIFIED.
 The post-change aggregate command was interrupted. Its unfinished stages passed in a sequential rerun at unchanged source.
 Hardware acceptance and the historical sensor approval gap remain open.

@@ -1,5 +1,7 @@
 # Collect the Mac acceptance evidence
 
+> Superseded on 2026-10-21. The user waived further Mac and desktop-GPU acceptance as disproportionate. The remaining work is WAIVED / NOT PERFORMED, never passed. No Mac agent or user testing is required. Do not execute the historical assignment below. See the [acceptance amendment](../entity-models/spec.md#acceptance-amendment-2026-10-21) and [reconciliation](closeout.md#reconciliation-2026-10-21).
+
 Use this handoff when the user's Mac agent starts the deferred device checks.
 The user has a Mac available and no desktop discrete-GPU fixture.
 The Mac's chip and operating system remain unverified.

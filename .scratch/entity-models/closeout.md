@@ -2,6 +2,12 @@
 
 Spec: [Approved requirements](spec.md), imported unchanged from `21805ecb7543098f8c9820c476725654e20b31ec`. Parent [#81](https://github.com/the-Drunken-coder/Ridgeline/issues/81) remains open and unchanged. Root is the integration and verification owner.
 
+## Acceptance disposition, 2026-10-21
+
+The user waived further Mac and desktop-GPU acceptance as disproportionate. The remaining matrix is WAIVED / NOT PERFORMED, never passed, and no longer blocks readiness.
+The [spec amendment](spec.md#acceptance-amendment-2026-10-21) records the authority, unproduced guideline/advisory, and unchanged software requirements.
+The earlier records below retain their original results, hardware gaps, and failures. None is relabeled by the waiver.
+
 ## PR #92 browser setup and pixel waits, 2026-10-05
 
 [Run 37276142175](https://github.com/the-Drunken-coder/Ridgeline/actions/runs/37276142175) exercised PR head `25f60332aef851da794581f55ca3c1430464b28a` at merge checkout `f46eb56ec84311ae541a0af356a1061eb36ba99f`. All 187 packed workflows and four playground workflows pass. The remaining playground test times out while creating its browser context, before any navigation or test-body timeout setting. The model suite now sets its existing 240-second budget before fixtures run. Its two longer workflows retain their 600-second body budgets.

@@ -359,7 +359,7 @@ Recoverable tile failures leave the rest of the map usable. The elevation-unavai
 
 ## Verification
 
-Every pull request runs `pnpm test` on Node 24 with hosted `ubuntu-latest` and `macos-latest` runners. Both OS results are required by `validate`. The hosted macOS runner does not replace the approved M1 Pro performance fixture or separate manual hardware and VoiceOver acceptance.
+Every pull request runs `pnpm test` on Node 24 with hosted `ubuntu-latest` and `macos-latest` runners. Both OS results are required by `validate`. The user waived further Mac and desktop-GPU acceptance on 2026-10-21. That work is waived and not performed, never passed. Hosted module checks remain required; [support limits](docs/support.md#physical-hardware-and-installed-browsers) remain explicit.
 
 The separate [CPU comparison workflow](https://github.com/the-Drunken-coder/Ridgeline/blob/6f054a67b26bb476c2c7b5f19128047e141d250a/docs/ci-validation.md#informational-cpu-comparison) compares the exact PR base and tested candidate on one Ubuntu runner. Its GLB parsing and feature snapshot microbenchmarks report informational timing deltas. They do not establish FPS, production readiness, or Mac acceptance. Run a functional same-revision comparison with a fresh output path:
 

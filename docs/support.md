@@ -50,14 +50,10 @@ These checks establish specific interactions. They do not claim WCAG certificati
 
 ## Physical hardware and installed browsers
 
-This workspace has no physical GPU or touch device. Hardware performance and installed-browser acceptance remain outstanding. Use the existing repository measurement consumer to obtain comparable evidence:
+On 2026-10-21, the user waived further Mac and desktop-GPU acceptance as disproportionate to this project. The remaining target-hardware and installed-browser matrix is **WAIVED / NOT PERFORMED** and no longer blocks consolidation or model readiness. It is never a passed check. No hardware collection or user testing is required by this waiver.
 
-```sh
-pnpm measure:models --hardware --browser chrome --metadata machine.json --matrix
-pnpm measure:models --hardware --browser firefox --metadata machine.json --matrix
-pnpm measure:models --serve
-```
+Earlier partial Mac attempts and their reported failures remain historical evidence. The waiver does not repair those failures or certify installed Safari, release Firefox, physical GPUs, frame-rate targets, or a model-capacity limit. No measured triangle guideline or cost advisory was produced. Required hosted module tests and available software browser/measurement verification remain in place.
 
-Use the last command for installed Safari on a Mac. Hardware metadata identifies exact device, OS, GPU, driver/backend, browser/version and display refresh rate. The measurement runner rejects known software renderers and requires warmup and repeated foreground runs. The repository's `tools/model-measurement/README.md` defines workloads, frame/update targets, unavailable GPU-timer handling and raw report retention. A software smoke run cannot close target-hardware acceptance.
+The repository's `tools/model-measurement/README.md` retains the optional measurement tooling. Separate manual accessibility and physical-touch coverage remain unverified and are not established by software checks or this waiver.
 
 On actual Android and iOS devices, also perform drawing tap/drag, two-finger pan/zoom, cancellation, numeric hole editing and keyboard navigation. Keep failure traces and screenshots together with the source/archive hashes. Do not replace a failed device result with a passing engine-emulation result.

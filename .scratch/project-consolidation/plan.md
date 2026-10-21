@@ -1,5 +1,15 @@
 # Consolidate Ridgeline without changing its direction
 
+## Current scope, 2026-10-21
+
+The user waived further Mac and desktop-GPU acceptance as disproportionate. That work is WAIVED / NOT PERFORMED and no longer blocks consolidation.
+The [canonical acceptance amendment](../entity-models/spec.md#acceptance-amendment-2026-10-21) supersedes the hardware and measurement-dependent readiness instructions retained below.
+The [Mac handoff](mac-acceptance.md) is historical and must not be executed as a pending assignment.
+The [reconciliation record](closeout.md#reconciliation-2026-10-21) identifies what current main contains and the prepared remaining scope.
+The historical sensor-compatibility decision remains separate and unresolved. Current sensor defaults and controls remain unchanged.
+
+## Original plan, 2026-10-18
+
 Keep Ridgeline reusable for consuming applications and make its existing capabilities easier to maintain and verify.
 Complete the local work in small units, then finish the existing hardware acceptance work when the required machines are available.
 This is an execution plan, not a replacement feature spec or a second issue tracker.

@@ -1,6 +1,6 @@
 # Entity models and representation switching
 
-Status: Approved for implementation on 2026-10-04. Implemented and locally verified as recorded in [closeout](closeout.md). Production acceptance, target-hardware measurements and the triangle guideline remain pending.
+Status: Approved for implementation on 2026-10-04. Implemented and locally verified as recorded in [closeout](closeout.md). Further Mac and desktop-GPU acceptance is WAIVED / NOT PERFORMED under the [2026-10-21 amendment](#acceptance-amendment-2026-10-21). No measured triangle guideline or cost advisory has been produced.
 
 Source: [Entity models and representation switching](https://github.com/the-Drunken-coder/Ridgeline/issues/71). The user approved all seven final recommendations in the live discussion on 2026-10-04. Earlier architecture and appearance decisions are indexed by that map. This file is the canonical implementation requirement source.
 
@@ -150,6 +150,8 @@ Ground vehicles follow the sampled local slope as rigid models. Keep their geogr
 
 ## Verification and readiness
 
+The hardware matrix and measurement-dependent readiness clauses below preserve the original approved scope. The [2026-10-21 amendment](#acceptance-amendment-2026-10-21) supersedes those blocking requirements. Software correctness requirements remain applicable.
+
 Target desktop stable Chrome, Edge, Firefox and Safari, recording exact browser/OS versions. Safari is verified on macOS; software WebKit is not a substitute for Safari hardware evidence. Mobile and touch are outside this implementation. Model rendering needs the agreed WebGL capabilities; unsupported capability reports a diagnostic and leaves eligible entities as Icons. GPU timer-query availability is optional: record its absence rather than treating missing timing as zero.
 
 Implementation may proceed before hardware evidence. Production readiness requires the following measurements on the actual integrated production revision, not just the throwaway prototype. The hardware gap and triangle guideline are tracked in [Measure model performance and correctness on target browsers](https://github.com/the-Drunken-coder/Ridgeline/issues/80). The planning map can publish this spec before that gate passes.
@@ -186,6 +188,23 @@ Derive the per-model triangle guideline from passing original/4×/16× workloads
 - Re-measure the parser/renderer and net production bundle delta. The earlier 11.13 KiB gzip chunk sum is dated prototype evidence, not the new package size.
 
 Save raw samples, settings, screenshots, short recordings and failures with revision-pinned links. Software WebGL remains a smoke check. The previous Apple M1 Pro preview disconnected before model rendering, so it supplies no hardware performance evidence. No per-model triangle guideline currently exists.
+
+## Acceptance amendment, 2026-10-21
+
+The user explicitly waived the Mac and desktop-GPU acceptance work as disproportionate to this project in the [coordinating conversation](t3-thread://v1/c9184cd0-5a0d-48dd-a925-38b0c1373370).
+The remaining target-device matrix, including its installed-browser measurements and device correctness collection, is **WAIVED / NOT PERFORMED**.
+It no longer blocks consolidation or model readiness. No agent or user hardware collection is required or scheduled.
+Earlier partial Mac attempts and reported failures remain historical results; this waiver neither repairs them nor converts them into passes.
+
+The measurement-dependent triangle/material guideline and too-heavy advisory under [#91](https://github.com/the-Drunken-coder/Ridgeline/issues/91) remain unproduced.
+Their dependency on the waived [#80](https://github.com/the-Drunken-coder/Ridgeline/issues/80) matrix no longer blocks this work.
+Do not invent a model limit, claim the 60 fps targets passed, or treat informational CPU comparisons as target-browser parse or GPU evidence.
+The original acceptance matrix and rationale remain above as history.
+The GitHub ticket statuses are unchanged by this document amendment.
+
+Public behavior, registration and diagnostic contracts, software correctness histories, hosted module CI on both operating systems, and available packaged browser/measurement checks remain applicable.
+Separate manual accessibility, physical-touch, and Windows/NVDA coverage remain unverified.
+The [historical sensor-compatibility decision](../airborne-entities/spec.md#requirement-reconciliation-2026-10-18) is separate and remains unresolved.
 
 ## Out of scope
 

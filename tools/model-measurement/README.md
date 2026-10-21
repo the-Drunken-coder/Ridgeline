@@ -1,6 +1,6 @@
 # Entity-model measurements
 
-This is a dedicated consumer of the packed production library. It keeps measurement controls out of the playground and adds no public library export. Root is the integration owner for #90. Target-browser support, performance acceptance and the triangle/material guideline remain #80/#91.
+This is a dedicated consumer of the packed production library. It keeps measurement controls out of the playground and adds no public library export. Root is the integration owner for #90. Further Mac and desktop-GPU acceptance under #80 is WAIVED / NOT PERFORMED, as recorded in the [2026-10-21 amendment](../../.scratch/entity-models/spec.md#acceptance-amendment-2026-10-21). The dependent #91 guideline and advisory remain unproduced. The software verification command remains required; hardware commands below describe retained optional tooling, not an acceptance assignment.
 
 Run from the repository root:
 
@@ -37,7 +37,7 @@ A hardware metadata file requires these fields:
 
 Hardware mode requires at least 10 seconds of warmup after assets and terrain/native sources are ready, then three 30-second runs per camera mode. It launches a headed browser without software-rendering flags and rejects known software renderers. `--browser` accepts `chromium`, installed `chrome`, installed `edge`, or `firefox`. Record the actual browser reported in the raw report; Playwright Chromium does not establish Chrome support. Missing or failed GPU timers do not invalidate CPU/frame observations and never become zero GPU cost.
 
-For native Safari, run `--serve` on the Mac and open the printed URL in installed Safari. The same built consumer provides case selection, machine metadata, paired off/on execution and a JSON download containing raw observations and PNG snapshots. Playwright WebKit is not Safari acceptance. Keep the tab foregrounded, prevent sleep, and keep the fixed 1280 × 720 CSS canvas visible. Select pixel ratio 1 or 2 in the case; physical canvas size and actual browser DPR are recorded separately. Collect the specified M1/discrete-GPU/browser matrix in #80, rather than treating one machine or the smoke sweep as complete hardware coverage.
+For optional native Safari measurement, `--serve` exposes the consumer to installed Safari. The same built consumer provides case selection, machine metadata, paired off/on execution and a JSON download containing raw observations and PNG snapshots. Playwright WebKit is not Safari acceptance. Comparable measurements need a foreground tab, disabled sleep, and a visible 1280 × 720 CSS canvas. Pixel ratios 1 and 2 are selectable; physical canvas size and actual browser DPR are recorded separately. The original #80 matrix is retained as historical scope. It is waived, and no collection is required.
 
 ## Workload and evidence
 
