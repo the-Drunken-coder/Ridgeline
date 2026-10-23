@@ -3,6 +3,14 @@ import type { ExpressionSpecification } from 'maplibre-gl';
 import { modelAppearance } from './model-settings';
 import type { FeatureHighlight, FeatureStyle, LabelStyle, SymbolAnchor } from './types';
 
+export const nativeDefaults = {
+  color: '#216e5b', radius: 6, lineWidth: 3, fillOpacity: .2,
+  selectedFillOpacity: .45, selectedLineWidth: 5, hoverRadius: 12, hoverColor: '#db6a20',
+  circleStrokeColor: '#ffffff', circleStrokeWidth: 2, selectedCircleStrokeWidth: 4,
+  dashArray: [3, 2], iconSize: 1, iconRotation: 0, iconAnchor: 'center', iconRotationAlignment: 'viewport',
+  labelFont: ['Noto Sans Regular'], labelSize: 12, labelAnchor: 'top', labelColor: '#203b32', labelHaloColor: '#ffffff', labelHaloWidth: 1.5,
+};
+
 const anchors: readonly SymbolAnchor[] = ['center', 'left', 'right', 'top', 'bottom', 'top-left', 'top-right', 'bottom-left', 'bottom-right'];
 function number(value: number | undefined, name: string, minimum = 0, maximum = Infinity, strict = false) {
   if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value) || (strict ? value <= minimum : value < minimum) || value > maximum))
@@ -76,14 +84,14 @@ export function featureStyle(style: FeatureStyle): FeatureStyle {
 export function styleProperties(style: FeatureStyle) {
   const labels = style.labelStyle;
   const properties: Record<string, string | number | boolean | readonly number[] | readonly string[]> = {
-    _rl_color: style.color ?? '#216e5b', _rl_fill: style.fillColor ?? style.color ?? '#216e5b', _rl_radius: style.radius ?? 6,
-    _rl_width: style.lineWidth ?? 3, _rl_opacity: style.fillOpacity ?? .2,
-    _rl_dashed: Boolean(style.dashArray || style.dashed), _rl_dash: JSON.stringify(style.dashArray ?? [3, 2]),
-    _rl_icon_size: style.iconSize ?? 1, _rl_icon_rotation: style.iconRotation ?? 0, _rl_icon_anchor: style.iconAnchor ?? 'center',
-    _rl_icon_alignment: style.iconRotationAlignment ?? 'viewport',
-    _rl_label_font: labels?.font ?? ['Noto Sans Regular'], _rl_label_font_key: JSON.stringify(labels?.font ?? ['Noto Sans Regular']),
-    _rl_label_size: labels?.size ?? 12, _rl_label_anchor: labels?.anchor ?? 'top',
-    _rl_label_color: labels?.color ?? '#203b32', _rl_label_halo_color: labels?.haloColor ?? '#ffffff', _rl_label_halo_width: labels?.haloWidth ?? 1.5,
+    _rl_color: style.color ?? nativeDefaults.color, _rl_fill: style.fillColor ?? style.color ?? nativeDefaults.color, _rl_radius: style.radius ?? nativeDefaults.radius,
+    _rl_width: style.lineWidth ?? nativeDefaults.lineWidth, _rl_opacity: style.fillOpacity ?? nativeDefaults.fillOpacity,
+    _rl_dashed: Boolean(style.dashArray || style.dashed), _rl_dash: JSON.stringify(style.dashArray ?? nativeDefaults.dashArray),
+    _rl_icon_size: style.iconSize ?? nativeDefaults.iconSize, _rl_icon_rotation: style.iconRotation ?? nativeDefaults.iconRotation, _rl_icon_anchor: style.iconAnchor ?? nativeDefaults.iconAnchor,
+    _rl_icon_alignment: style.iconRotationAlignment ?? nativeDefaults.iconRotationAlignment,
+    _rl_label_font: labels?.font ?? [...nativeDefaults.labelFont], _rl_label_font_key: JSON.stringify(labels?.font ?? nativeDefaults.labelFont),
+    _rl_label_size: labels?.size ?? nativeDefaults.labelSize, _rl_label_anchor: labels?.anchor ?? nativeDefaults.labelAnchor,
+    _rl_label_color: labels?.color ?? nativeDefaults.labelColor, _rl_label_halo_color: labels?.haloColor ?? nativeDefaults.labelHaloColor, _rl_label_halo_width: labels?.haloWidth ?? nativeDefaults.labelHaloWidth,
   };
   for (const state of ['selected', 'hover'] as const) {
     const appearance = style[state];
@@ -121,11 +129,49 @@ export function resolveHighlight(style: FeatureStyle | undefined, selected: bool
   } };
 }
 
+export const nativeExpressions = {
+  fillColor: highlightExpression('fillColor', ['get', '_rl_fill']),
+  fillOpacity: highlightExpression('fillOpacity', ['get', '_rl_opacity'], nativeDefaults.selectedFillOpacity),
+  lineColor: highlightExpression('color', ['get', '_rl_color'], undefined, nativeDefaults.hoverColor),
+  lineWidth: highlightExpression('lineWidth', ['get', '_rl_width'], ['max', nativeDefaults.selectedLineWidth, ['get', '_rl_width']]),
+  circleRadius: highlightExpression('radius', ['get', '_rl_radius'], undefined, ['max', nativeDefaults.hoverRadius, ['get', '_rl_radius']]),
+  circleColor: highlightExpression('color', ['get', '_rl_color']),
+  circleStrokeWidth: ['case', ['all', ['boolean', ['feature-state', 'selected'], false], ['!=', ['get', '_rl_selected_enabled'], false]],
+    nativeDefaults.selectedCircleStrokeWidth, nativeDefaults.circleStrokeWidth],
+  circleStrokeColor: ['case', ['all', ['boolean', ['feature-state', 'selected'], false], ['==', ['get', '_rl_selected_enabled'], false]], nativeDefaults.circleStrokeColor,
+    ['all', ['boolean', ['feature-state', 'hover'], false], ['!=', ['get', '_rl_hover_enabled'], false]], nativeDefaults.hoverColor, nativeDefaults.circleStrokeColor],
+  iconOpacity: highlightExpression('iconOpacity', 1),
+  labelColor: highlightExpression('labelColor', ['get', '_rl_label_color']),
+} satisfies Record<string, ExpressionSpecification>;
+
+/** Native feedback keeps each representation's defaults and explicit field overrides. */
+export function resolveNativeAppearance(style: FeatureStyle | undefined, selected: boolean, hovered: boolean) {
+  const feedback = resolveHighlight(style, selected, hovered), appearance = feedback.appearance;
+  const color = style?.color ?? nativeDefaults.color, width = style?.lineWidth ?? nativeDefaults.lineWidth, radius = style?.radius ?? nativeDefaults.radius;
+  return {
+    fillColor: appearance.fillColor ?? style?.fillColor ?? color,
+    fillOpacity: appearance.fillOpacity ?? (feedback.selected ? nativeDefaults.selectedFillOpacity : style?.fillOpacity ?? nativeDefaults.fillOpacity),
+    lineColor: appearance.color ?? (feedback.hovered ? nativeDefaults.hoverColor : color),
+    lineWidth: appearance.lineWidth ?? (feedback.selected ? Math.max(nativeDefaults.selectedLineWidth, width) : width),
+    circleRadius: appearance.radius ?? (feedback.hovered ? Math.max(nativeDefaults.hoverRadius, radius) : radius),
+    circleColor: appearance.color ?? color,
+    circleStrokeWidth: feedback.selected ? nativeDefaults.selectedCircleStrokeWidth : nativeDefaults.circleStrokeWidth,
+    circleStrokeColor: feedback.hovered ? nativeDefaults.hoverColor : nativeDefaults.circleStrokeColor,
+    iconOpacity: appearance.iconOpacity ?? 1,
+    labelColor: appearance.labelColor ?? style?.labelStyle?.color ?? nativeDefaults.labelColor,
+  };
+}
+
+export function nativeVisibility(style: FeatureStyle | undefined, selected: boolean, hovered: boolean) {
+  const appearance = resolveNativeAppearance(style, selected, hovered);
+  return { icon: appearance.iconOpacity !== 0, fill: appearance.fillOpacity !== 0 && Color.parse(appearance.fillColor)?.a !== 0 };
+}
+
 export function dashExpression(styles: Iterable<FeatureStyle>): ExpressionSpecification {
-  return arrayExpression('_rl_dash', [...styles].flatMap(style => style.dashArray ? [style.dashArray] : []), [3, 2]);
+  return arrayExpression('_rl_dash', [...styles].flatMap(style => style.dashArray ? [style.dashArray] : []), nativeDefaults.dashArray);
 }
 export function fontExpression(styles: Iterable<FeatureStyle>): ExpressionSpecification {
-  return arrayExpression('_rl_label_font_key', [...styles].flatMap(style => style.labelStyle?.font ? [style.labelStyle.font] : []), ['Noto Sans Regular']);
+  return arrayExpression('_rl_label_font_key', [...styles].flatMap(style => style.labelStyle?.font ? [style.labelStyle.font] : []), nativeDefaults.labelFont);
 }
 function arrayExpression(property: string, arrays: Iterable<readonly number[] | readonly string[]>, fallback: readonly number[] | readonly string[]): ExpressionSpecification {
   const patterns = new Map<string, readonly number[] | readonly string[]>();

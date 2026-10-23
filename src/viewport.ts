@@ -1,7 +1,8 @@
-import { Color } from '@maplibre/maplibre-gl-style-spec';
 import { ModelMeasurement } from './model-measurement';
 import { ModelLabels } from './model-labels';
-import { dashExpression, featureStyle, fontExpression, highlightExpression, resolveHighlight, styleProperties } from './feature-style';
+import { dashExpression, featureStyle, fontExpression, nativeDefaults, nativeExpressions, nativeVisibility, resolveNativeAppearance, styleProperties } from './feature-style';
+import { NativeDisplayBook } from './native-presentation';
+import type { NativeRecord } from './native-presentation';
 import { rectangleBounds, screenRectangle } from './screen-rectangle';
 import { ModelVisibility } from './model-visibility';
 import { shapeGeometry } from './drawing-shapes';
@@ -50,11 +51,7 @@ export const DEFAULT_ELEVATION = {
 /** Creates one viewport. Data may precede ready; destroy tolerates partial setup and repeated calls. */
 export function createViewport<P extends Properties = Properties>(options: ViewportOptions<P>): Viewport<P> {
   const store = new FeatureStore<P>();
-  const publishedArrows = new Map<string, MapFeature<P>>();
-  const publishedFeatures = new Map<string, MapFeature<P>>();
-  const preparedStyles = new WeakMap<MapFeature<P>, FeatureStyle>();
-  const publishedStyles = new Map<string, FeatureStyle>();
-  const pendingStyles = new Map<string, FeatureStyle>();
+  const native = new NativeDisplayBook<P>();
   let styleArraysQueued = false;
   let dashSignature = '';
   let fontSignature = '';
@@ -172,8 +169,6 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   }
   const modelVisibility = new ModelVisibility(map);
   const modelLabels = new ModelLabels(map, ids => publication.update(ids.flatMap(id => { const feature = store.get(id); return feature ? [feature] : []; })));
-  const preparedMarkerKeys = new WeakMap<MapFeature<P>, string>();
-  const publishedMarkerKeys = new Map<string, string>();
   let nativeSource: unknown;
   let availableMarkers = new Map<string, string>();
   let frameMarkers: Map<string, string> | undefined;
@@ -197,7 +192,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (source !== nativeSource) { nativeSource = source; availableMarkers.clear(); }
       const key = markerKey(feature, style);
       if (availableMarkers.get(feature.id) === key) return true;
-      if (publishedMarkerKeys.get(feature.id) === key && map.isSourceLoaded(SOURCE)) {
+      if (native.get(feature.id)?.markerKey === key && map.isSourceLoaded(SOURCE)) {
         availableMarkers.set(feature.id, key); return true;
       }
       frameMarkers ??= new Map(map.querySourceFeatures(SOURCE).flatMap(item =>
@@ -217,29 +212,13 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   });
   const arrowheads = createArrowheads(map, 'rl:arrows', 'rl:arrowheads');
   const publication = createFeaturePublication({ store, target: mapLibreFeaturePublication(map), render: rendered, sourceId: sourceFeatureId, diagnostic,
-    published: (id, feature) => {
-      if (feature) publishedFeatures.set(id, feature); else publishedFeatures.delete(id);
-      const style = feature && preparedStyles.get(feature);
-      if (style) publishedStyles.set(id, style); else publishedStyles.delete(id);
-      pendingStyles.delete(id); refreshStyleArrays();
-      const marker = feature && preparedMarkerKeys.get(feature);
-      if (marker) publishedMarkerKeys.set(id, marker); else publishedMarkerKeys.delete(id);
-      const wasArrow = publishedArrows.has(id);
-      if (feature?.drawing?.shape.kind === 'arrow') publishedArrows.set(id, feature);
-      else publishedArrows.delete(id);
-      if (wasArrow || publishedArrows.has(id)) syncArrows();
+    published: (id, record) => {
+      const wasArrow = isPublishedArrow(id);
+      native.commit(id, record); refreshStyleArrays();
+      if (wasArrow || isPublishedArrow(id)) syncArrows();
       synchronizeState(id);
     },
-    restored: features => {
-      publishedFeatures.clear();
-      for (const feature of features) publishedFeatures.set(feature.id, feature);
-      publishedStyles.clear(); pendingStyles.clear();
-      for (const feature of features) { const style = preparedStyles.get(feature); if (style) publishedStyles.set(feature.id, style); }
-      publishedMarkerKeys.clear();
-      for (const feature of features) { const key = preparedMarkerKeys.get(feature); if (key) publishedMarkerKeys.set(feature.id, key); }
-      publishedArrows.clear();
-      for (const feature of features) if (feature.drawing?.shape.kind === 'arrow') publishedArrows.set(feature.id, feature);
-    },
+    restored: records => native.replace(records),
   });
   entities.set(store.all());
   const timer = setTimeout(() => {
@@ -279,7 +258,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     queueMicrotask(() => {
       styleArraysQueued = false;
       if (destroyed || !prepared) return;
-      const styles = [...publishedStyles.values(), ...pendingStyles.values()];
+      const styles = [...native.styles()];
       const expression = dashExpression(styles), signature = JSON.stringify(expression);
       if (map.getLayer('rl:dashed') && signature !== dashSignature) { map.setPaintProperty('rl:dashed', 'line-dasharray', expression); dashSignature = signature; }
       const fonts = fontExpression(styles), fontKey = JSON.stringify(fonts);
@@ -289,19 +268,20 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   function markerKey(feature: MapFeature<P>, style: FeatureStyle) {
     const marker = entities.marker(feature);
     return JSON.stringify([marker.position ?? feature.geometry.coordinates, marker.visible, marker.ground, marker.offset,
-      style.icon && icons.has(style.icon) ? style.icon : '', style.color ?? '#216e5b', style.radius ?? 6,
-      style.iconSize ?? 1, style.iconRotation ?? 0, style.iconRotationAlignment ?? 'viewport', style.iconAnchor ?? 'center']);
+      style.icon && icons.has(style.icon) ? style.icon : '', style.color ?? nativeDefaults.color, style.radius ?? nativeDefaults.radius,
+      style.iconSize ?? nativeDefaults.iconSize, style.iconRotation ?? nativeDefaults.iconRotation,
+      style.iconRotationAlignment ?? nativeDefaults.iconRotationAlignment, style.iconAnchor ?? nativeDefaults.iconAnchor]);
   }
-  function rendered(feature: MapFeature<P>): MapFeature {
+  function rendered(feature: MapFeature<P>): { source: MapFeature; record: NativeRecord<P> } {
     const generation = sceneGeneration;
     const style = getStyle(feature);
     // Publication owns replacement/removal checks for this ID. Unrelated data
     // or selection changes do not invalidate its successfully prepared style.
     if (destroyed || generation !== sceneGeneration) throw new Error('Feature presentation was superseded during styling.');
-    preparedStyles.set(feature, style); pendingStyles.set(feature.id, style); refreshStyleArrays();
     const marker = entities.marker(feature), key = feature.entity ? markerKey(feature, style) : undefined;
-    if (key) preparedMarkerKeys.set(feature, key);
-    return {
+    const record: NativeRecord<P> = { feature, style, markerKey: key };
+    native.stage(record); refreshStyleArrays();
+    return { record, source: {
       type: 'Feature', id: feature.id,
       geometry: feature.drawing ? shapeGeometry(feature.drawing.shape, true)
         : marker.position ? { type: 'Point', coordinates: marker.position } : feature.geometry,
@@ -313,7 +293,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         _rl_label: style.label ?? '',
         _rl_hidden: !marker.visible, _rl_airborne: !marker.ground, _rl_height: marker.offset,
       },
-    };
+    } };
   }
   function synchronizeState(id: string) {
     if (prepared && map.getSource(SOURCE) && store.has(id)) map.setFeatureState({ source: SOURCE, id: sourceFeatureId(id) }, { selected: selected.has(id), hover: previewId === id, editing: editingId === id });
@@ -359,11 +339,11 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
 
   function syncArrows() {
     if (!prepared || destroyed) return;
-    arrowheads.show([...publishedArrows.values()].filter(feature => feature.id !== editingId), feature => {
-      const style = publishedStyles.get(feature.id);
-      const highlight = resolveHighlight(style, selected.has(feature.id), previewId === feature.id);
-      return highlight.appearance.color ?? (highlight.hovered ? '#db6a20' : undefined) ?? style?.color ?? feature.drawing?.style.color ?? '#216e5b';
-    });
+    arrowheads.show(native.arrows().filter(feature => feature.id !== editingId), feature =>
+      resolveNativeAppearance(native.get(feature.id)?.style, selected.has(feature.id), previewId === feature.id).lineColor);
+  }
+  function isPublishedArrow(id: string) {
+    return native.get(id)?.feature.drawing?.shape.kind === 'arrow';
   }
 
   function notifyDrawingListener(listener: () => void, operation: 'style' | 'configure' | 'contextLost') {
@@ -389,36 +369,35 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (!current()) return;
       const layers: LayerSpecification[] = [
         { id: 'rl:fill', type: 'fill', source: SOURCE, filter: ['==', '$type', 'Polygon'], paint: {
-          'fill-color': highlightExpression('fillColor', ['get', '_rl_fill']),
-          'fill-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, highlightExpression('fillOpacity', ['get', '_rl_opacity'], .45)] } },
+          'fill-color': nativeExpressions.fillColor,
+          'fill-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, nativeExpressions.fillOpacity] } },
         { id: 'rl:line', type: 'line', source: SOURCE, filter: ['all', ['in', '$type', 'LineString', 'Polygon'], ['!=', '_rl_dashed', true]], paint: {
           'line-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1],
-          'line-color': highlightExpression('color', ['get', '_rl_color'], undefined, '#db6a20'),
-          'line-width': highlightExpression('lineWidth', ['get', '_rl_width'], ['max', 5, ['get', '_rl_width']]) } },
+          'line-color': nativeExpressions.lineColor,
+          'line-width': nativeExpressions.lineWidth } },
         { id: 'rl:dashed', type: 'line', source: SOURCE, filter: ['all', ['in', '$type', 'LineString', 'Polygon'], ['==', '_rl_dashed', true]], paint: {
           'line-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, 1],
-          'line-color': highlightExpression('color', ['get', '_rl_color'], undefined, '#db6a20'),
-          'line-width': highlightExpression('lineWidth', ['get', '_rl_width'], ['max', 5, ['get', '_rl_width']]),
-          'line-dasharray': dashExpression([...publishedStyles.values(), ...pendingStyles.values()]) } },
+          'line-color': nativeExpressions.lineColor,
+          'line-width': nativeExpressions.lineWidth,
+          'line-dasharray': dashExpression(native.styles()) } },
         { id: 'rl:points', type: 'circle', source: SOURCE, filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_airborne', true], ['!=', '_rl_hidden', true]], paint: {
           'circle-opacity': ['case', ['any', ['boolean', ['feature-state', 'editing'], false], ['boolean', ['feature-state', 'model'], false]], 0, 1],
           'circle-stroke-opacity': ['case', ['any', ['boolean', ['feature-state', 'editing'], false], ['boolean', ['feature-state', 'model'], false]], 0, 1],
-          'circle-radius': highlightExpression('radius', ['get', '_rl_radius'], undefined, ['max', 12, ['get', '_rl_radius']]),
-          'circle-color': highlightExpression('color', ['get', '_rl_color']),
-          'circle-stroke-width': ['case', ['all', ['boolean', ['feature-state', 'selected'], false], ['!=', ['get', '_rl_selected_enabled'], false]], 4, 2],
-          'circle-stroke-color': ['case', ['all', ['boolean', ['feature-state', 'selected'], false], ['==', ['get', '_rl_selected_enabled'], false]], '#ffffff',
-            ['all', ['boolean', ['feature-state', 'hover'], false], ['!=', ['get', '_rl_hover_enabled'], false]], '#db6a20', '#ffffff'] } },
+          'circle-radius': nativeExpressions.circleRadius,
+          'circle-color': nativeExpressions.circleColor,
+          'circle-stroke-width': nativeExpressions.circleStrokeWidth,
+          'circle-stroke-color': nativeExpressions.circleStrokeColor } },
         ...(['viewport', 'map'] as const).map((alignment): LayerSpecification => ({ id: alignment === 'map' ? 'rl:map-icons' : 'rl:icons', type: 'symbol', source: SOURCE,
           filter: ['all', ['==', '$type', 'Point'], ['!=', '_rl_icon', ''], ['!=', '_rl_hidden', true], ['==', '_rl_icon_alignment', alignment]], layout: {
           'icon-image': ['get', '_rl_icon'], 'icon-size': ['get', '_rl_icon_size'], 'icon-rotate': ['get', '_rl_icon_rotation'],
           'icon-anchor': ['get', '_rl_icon_anchor'], 'icon-rotation-alignment': alignment,
           'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-height-offset': ['get', '_rl_height'] }, paint: {
-          'icon-opacity': ['case', ['any', ['boolean', ['feature-state', 'editing'], false], ['boolean', ['feature-state', 'model'], false]], 0, highlightExpression('iconOpacity', 1)] } })),
+          'icon-opacity': ['case', ['any', ['boolean', ['feature-state', 'editing'], false], ['boolean', ['feature-state', 'model'], false]], 0, nativeExpressions.iconOpacity] } })),
         { id: 'rl:labels', type: 'symbol', source: SOURCE, filter: ['!=', '_rl_hidden', true], layout: {
-          'symbol-sort-key': labelPriority(), 'text-field': ['get', '_rl_label'], 'text-font': fontExpression([...publishedStyles.values(), ...pendingStyles.values()]), 'text-size': ['get', '_rl_label_size'],
+          'symbol-sort-key': labelPriority(), 'text-field': ['get', '_rl_label'], 'text-font': fontExpression(native.styles()), 'text-size': ['get', '_rl_label_size'],
           'text-offset': ['get', '_rl_label_offset'], 'text-anchor': ['get', '_rl_label_anchor'], 'symbol-height-offset': ['get', '_rl_height'] }, paint: {
           'text-opacity': ['case', ['boolean', ['feature-state', 'editing'], false], 0, ['==', ['coalesce', ['get', '_rl_label_stamp'], ''], ['coalesce', ['feature-state', 'labelStamp'], '']], 1, 0],
-          'text-color': highlightExpression('labelColor', ['get', '_rl_label_color']), 'text-halo-color': ['get', '_rl_label_halo_color'], 'text-halo-width': ['get', '_rl_label_halo_width'] } },
+          'text-color': nativeExpressions.labelColor, 'text-halo-color': ['get', '_rl_label_halo_color'], 'text-halo-width': ['get', '_rl_label_halo_width'] } },
       ];
       for (const layer of layers) { if (!current()) return; if (!map.getLayer(layer.id)) map.addLayer(layer); }
       dashSignature = ''; fontSignature = ''; refreshStyleArrays();
@@ -452,12 +431,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     if (hit.layer.id === 'rl:labels' && !modelLabels.acceptsHit(id, hit.properties?._rl_label_stamp)) return undefined;
     const representation = entities.getState(id)?.representation;
     if ((hit.layer.id === 'rl:points' || hit.layer.id === 'rl:icons' || hit.layer.id === 'rl:map-icons') && (representation === 'model' || representation === 'withheld')) return undefined;
-    const style = publishedStyles.get(id), highlight = resolveHighlight(style, selected.has(id), previewId === id);
-    const iconOpacity = highlight.appearance.iconOpacity ?? 1;
-    const fillOpacity = highlight.appearance.fillOpacity ?? (highlight.selected ? .45 : style?.fillOpacity ?? .2);
-    const fillColor = highlight.appearance.fillColor ?? style?.fillColor ?? style?.color ?? '#216e5b';
-    if ((hit.layer.id === 'rl:icons' || hit.layer.id === 'rl:map-icons') && iconOpacity === 0
-      || hit.layer.id === 'rl:fill' && (fillOpacity === 0 || Color.parse(fillColor)?.a === 0)) return undefined;
+    const visible = nativeVisibility(native.get(id)?.style, selected.has(id), previewId === id);
+    if ((hit.layer.id === 'rl:icons' || hit.layer.id === 'rl:map-icons') && !visible.icon
+      || hit.layer.id === 'rl:fill' && !visible.fill) return undefined;
     return id;
   }
   function interaction(event: Pick<Interaction<P>, 'point' | 'lngLat' | 'originalEvent'>, tolerance: number): Interaction<P> {
@@ -642,7 +618,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       publication.update([], removed);
       for (const id of removed) { selected.delete(id); if (editingId === id) editingId = null; if (previewId === id) previewId = null; if (prepared) map.removeFeatureState({ source: SOURCE, id: sourceFeatureId(id) }); }
       if (removed.length) { modelVisibility.invalidate(); modelLabels.invalidate(); }
-      for (const id of removed) { availableMarkers.delete(id); publishedMarkerKeys.delete(id); }
+      for (const id of removed) { availableMarkers.delete(id); native.withdrawMarker(id); }
       if (removed.length) entities.selection([...selected]);
       if (removed.length) refreshLabelPriority();
       emit('datachange', { ids: [], removed });
@@ -706,7 +682,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       entities.selection([...selected]);
       if (previous.size !== selected.size || [...previous].some(id => !selected.has(id))) refreshLabelPriority();
       for (const id of new Set([...previous, ...selected])) synchronizeState(id);
-      if ([...previous, ...selected].some(id => publishedArrows.has(id))) syncArrows();
+      if ([...previous, ...selected].some(isPublishedArrow)) syncArrows();
       emit('selectionchange', { ids: [...selected] });
     },
     getSelection: () => [...selected],
@@ -715,7 +691,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       const previous = previewId; previewId = id && store.has(id) ? id : null;
       entities.preview(previewId);
       if (previous) synchronizeState(previous); if (previewId) synchronizeState(previewId);
-      if (publishedArrows.has(previous ?? '') || publishedArrows.has(previewId ?? '')) syncArrows();
+      if (isPublishedArrow(previous ?? '') || isPublishedArrow(previewId ?? '')) syncArrows();
     },
     requestSelection(ids, attachments = []) {
       assertActive(); if (interactionOwner) return;
@@ -814,7 +790,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       map.getCanvas().removeEventListener('mouseleave', onLeave);
       if (nativeRenderDepth) removeAfterRender = true;
       else { const nativeFailure = removeMap(); failure ??= nativeFailure; }
-      icons.clear(); selected.clear(); publishedFeatures.clear(); publishedStyles.clear(); pendingStyles.clear(); publishedMarkerKeys.clear(); availableMarkers.clear();
+      icons.clear(); selected.clear(); native.replace([]); availableMarkers.clear();
       retire('destroy.features', () => store.remove(store.ids()));
       for (const set of Object.values(listeners)) set.clear();
       hoverNotified.clear();
@@ -822,7 +798,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     },
   };
   drawingInternals.set(map, {
-    getDisplayedFeature: id => publishedFeatures.get(id),
+    getDisplayedFeature: id => native.get(id)?.feature,
     isQueryReady: () => prepared && !contextLost && !destroyed,
     dispatchClick,
     reportTargetError(cause) {
@@ -835,7 +811,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       editingId = id;
       if (previous) synchronizeState(previous);
       if (id) synchronizeState(id);
-      if (publishedArrows.has(previous ?? '') || publishedArrows.has(id ?? '')) syncArrows();
+      if (isPublishedArrow(previous ?? '') || isPublishedArrow(id ?? '')) syncArrows();
     },
     onPrepared(listener) {
       if (destroyed) return () => {};
