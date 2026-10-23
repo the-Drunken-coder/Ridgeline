@@ -1,7 +1,7 @@
 import { createViewport, attachInteractions, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
 import type { ImageSource } from 'maplibre-gl';
-import { style, point, check, pointer, browserClick, untilPixel } from './helpers';
+import { style, point, check, pointer, browserKey, untilPixel } from './helpers';
 import { withBaseViewport } from './base-viewport';
 import type { BrowserCaseModule } from './context';
 
@@ -173,7 +173,10 @@ export const viewportLifecycleCases = {
         abandoned.destroy();
         await pointer('click', viewport.map.project([0, 0]));
         check(Boolean(container.querySelector('.rl-picker')), 'Replacement did not open its picker');
-        await browserClick('[data-feature-id="queued"]');
+        const choice = container.querySelector<HTMLButtonElement>('[data-feature-id="queued"]');
+        if (!choice) throw new Error('Replacement queued choice is absent');
+        choice.focus();
+        await browserKey('Enter');
         check(viewport.getSelection()[0] === 'queued', 'Replacement did not accept a real picker choice');
         check(container.querySelectorAll('canvas').length === 1 && container.querySelector('canvas') === canvas,
           'Old destruction removed or duplicated the replacement canvas');
