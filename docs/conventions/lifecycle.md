@@ -11,6 +11,8 @@ Read when changing ownership, callbacks, asynchronous work, deduplication, failu
 
 When reviewing changed callback behavior, attempt relevant histories through the existing interface: a callback reads state or refreshes permissions, replaces or destroys the owner, changes data, or starts camera movement before returning successfully. Verify both the abandoned action and the replacement's ability to proceed. Apply the [interaction standards](interactions.md) to actions derived from screen input.
 
+[Viewport attachments](../../src/viewport-attachments.ts) share typed view invalidation from the viewport. Drawing and selection tools own their responses to each reason. Feature-data changes remain separate so live updates can refresh an active rectangle without cancelling it. Drawing retains native navigation intent to distinguish a user zoom from a programmatic camera change.
+
 ## Failures and recovery
 
 - Use the existing `RidgelineError` and diagnostic mechanisms for library failures, preserving operation context and causes. Honor documented recovery behavior; avoid silent fallback or unbounded automatic retry.
