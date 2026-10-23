@@ -3,18 +3,17 @@ import type { MapFeature, ModelAppearance, Viewport } from '@ridgeline/map';
 import { materialGlb } from './model-material-fixtures';
 import type { MaterialPanel } from './model-material-fixtures';
 
-type Context = { container: HTMLDivElement; setCurrent(viewport: Viewport): void;
-  until(predicate: () => boolean, description: string, timeout?: number): Promise<void> };
+import type { BrowserCaseContext as Context, BrowserCaseModule } from './context';
 const check = (value: unknown, message: string) => { if (!value) throw new Error(message); };
 const feature = (id: string, longitude = 0): MapFeature => ({ type: 'Feature', id, properties: {},
   geometry: { type: 'Point', coordinates: [longitude, 0] }, entity: { heading: 0,
     model: { id: 'material', minimumSizePixels: 0 }, altitude: { meters: 20, reference: 'ground' } } });
 function create(context: Context, features = [feature('instance')], appearances = new Map<string, ModelAppearance>(), errors: RidgelineError[] = []) {
-  const viewport = createViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
+  const viewport = context.own(createViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
     { id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
     camera: { center: [0, 0], zoom: 19, pitch: 0, bearing: 0 }, features, elevationSampler: { sample: () => 0 },
-    style: feature => ({ color: '#00ffff', modelAppearance: appearances.get(feature.id) }), logger: () => {}, onError: error => errors.push(error) });
-  context.setCurrent(viewport); return viewport;
+    style: feature => ({ color: '#00ffff', modelAppearance: appearances.get(feature.id) }), logger: () => {}, onError: error => errors.push(error) }));
+  return viewport;
 }
 type Pixels = { bytes: Uint8Array; width: number; height: number };
 async function pixels(viewport: Viewport): Promise<Pixels> {
@@ -49,8 +48,9 @@ async function failure(promise: Promise<void>, code: string) {
   try { await promise; } catch (error) { check(error instanceof RidgelineError && error.code === code, `Expected ${code}, received ${String(error)}`); return; }
   throw new Error(`Expected ${code} rejection`);
 }
-export const modelMaterialCases: readonly { name: string; run(context: Context): Promise<void> }[] = [
-  { name: 'Embedded PNG and JPEG preserve original and independent assigned appearances', async run(context) {
+
+export const modelMaterialCases = {
+  "Embedded PNG and JPEG preserve original and independent assigned appearances": async (context) => {
     const appearances = new Map<string, ModelAppearance>([['first', { mode: 'color', color: 'rgba(255, 0, 255, .2)' }], ['second', { mode: 'original' }]]);
     const viewport = create(context, [feature('first', -.0002), feature('second', .0002)], appearances);
     try {
@@ -76,8 +76,8 @@ export const modelMaterialCases: readonly { name: string; run(context: Context):
       await viewport.registerModel('material', { bytes: materialGlb(), metersPerUnit: 10 });
       check(count(await pixels(viewport), magenta, 'left') > 100, 'Generic style.color replaced the magenta model fallback');
     } finally { viewport.destroy(); }
-  } },
-  { name: 'Model alpha modes unlit emission and double sided materials render their supported appearance', async run(context) {
+  },
+  "Model alpha modes unlit emission and double sided materials render their supported appearance": async (context) => {
     const appearances = new Map<string, ModelAppearance>([['instance', { mode: 'color', color: '#ff00ff' }]]);
     const viewport = create(context, undefined, appearances);
     const load = async (panel: MaterialPanel) => {
@@ -119,8 +119,8 @@ export const modelMaterialCases: readonly { name: string; run(context: Context):
       check(count(await pixels(viewport), (r, g, b) => r > 110 && r < 145 && g < 10 && b > 110 && b < 145) > opaque * .8,
         'Translucent material did not draw after the opaque surface behind it');
     } finally { viewport.destroy(); }
-  } },
-  { name: 'Shared model images retain independent texture samplers and UV transforms', async run(context) {
+  },
+  "Shared model images retain independent texture samplers and UV transforms": async (context) => {
     const viewport = create(context, undefined, new Map([['instance', { mode: 'original' }]]));
     try {
       await viewport.ready;
@@ -149,8 +149,8 @@ export const modelMaterialCases: readonly { name: string; run(context: Context):
       check(count(transformed, (r, g, b) => r > 240 && g > 240 && b < 10, 'left') > repeatingRed * 3,
         'Texture transform offset and rotation did not select the yellow quadrant');
     } finally { viewport.destroy(); }
-  } },
-  { name: 'Model decoding cancellation and failed replacement release owned resources', async run(context) {
+  },
+  "Model decoding cancellation and failed replacement release owned resources": async (context) => {
     const errors: RidgelineError[] = [], viewport = create(context, undefined, undefined, errors);
     const nativeDecode = globalThis.createImageBitmap;
     try {
@@ -245,5 +245,5 @@ export const modelMaterialCases: readonly { name: string; run(context: Context):
         }
       }
     } finally { globalThis.createImageBitmap = nativeDecode; viewport.destroy(); }
-  } },
-];
+  },
+} satisfies BrowserCaseModule;

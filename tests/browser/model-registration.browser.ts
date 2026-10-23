@@ -2,8 +2,7 @@ import { createViewport, RidgelineError } from '@ridgeline/map';
 import type { MapFeature, Viewport } from '@ridgeline/map';
 import { encodeGlb, solidGlb } from './model-fixtures';
 
-type Context = { container: HTMLDivElement; setCurrent(viewport: Viewport): void;
-  until(predicate: () => boolean, description: string, timeout?: number): Promise<void> };
+import type { BrowserCaseContext as Context, BrowserCaseModule } from './context';
 const check = (value: unknown, message: string) => { if (!value) throw new Error(message); };
 const feature = (id: string, longitude = 0): MapFeature => ({ type: 'Feature', id, properties: {},
   geometry: { type: 'Point', coordinates: [longitude, 0] }, entity: { heading: 0,
@@ -17,10 +16,10 @@ function topFaceGlb() {
   }, new Uint8Array(positions.buffer));
 }
 function create(context: Context, features: MapFeature[] = [], onError: (error: RidgelineError) => void = () => {}) {
-  const viewport = createViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
+  const viewport = context.own(createViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
     { id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
-    camera: { center: [0, 0], zoom: 19, pitch: 0, bearing: 0 }, features, elevationSampler: { sample: () => 0 }, logger: () => {}, onError });
-  context.setCurrent(viewport); return viewport;
+    camera: { center: [0, 0], zoom: 19, pitch: 0, bearing: 0 }, features, elevationSampler: { sample: () => 0 }, logger: () => {}, onError }));
+  return viewport;
 }
 async function failure(promise: Promise<void>, code: string) {
   try { await promise; } catch (error) { check(error instanceof RidgelineError && error.code === code, `Expected ${code}, received ${String(error)}`); return; }
@@ -46,8 +45,9 @@ async function magentaPixels(viewport: Viewport, side?: 'left' | 'right') {
     viewport.map.triggerRepaint();
   });
 }
-export const modelRegistrationCases: readonly { name: string; run(context: Context): Promise<void> }[] = [
-  { name: 'Shared solid models register replace and remove through the public viewport', async run(context) {
+
+export const modelRegistrationCases = {
+  "Shared solid models register replace and remove through the public viewport": async (context) => {
     const viewport = create(context, [feature('first', -.0004), feature('second', .0004)]);
     try {
       const bytes = solidGlb(), definition = { bytes, metersPerUnit: 10 };
@@ -87,8 +87,8 @@ export const modelRegistrationCases: readonly { name: string; run(context: Conte
       await viewport.registerModel('box', { bytes: topFaceGlb(), metersPerUnit: 10 });
       check(await magentaPixels(viewport, 'right') > 100, 'Single-sided upward face was culled after the authored-axis turn');
     } finally { viewport.destroy(); }
-  } },
-  { name: 'Model registration waits cancels and isolates allocation failures', async run(context) {
+  },
+  "Model registration waits cancels and isolates allocation failures": async (context) => {
     const errors: RidgelineError[] = [], viewport = create(context, [feature('instance')], error => errors.push(error));
     try {
       const cancelled = viewport.registerModel('pending', { bytes: solidGlb() });
@@ -120,8 +120,8 @@ export const modelRegistrationCases: readonly { name: string; run(context: Conte
       check(await magentaPixels(viewport) > 100, 'Allocation failure hid the previous working model');
       check(errors.some(error => error.code === 'MODEL_LOAD_FAILED' && error.context.modelId === 'box'), 'Failure diagnostic omitted model ID');
     } finally { viewport.destroy(); }
-  } },
-  { name: 'Model callbacks cannot restore removed registrations or destroyed viewports', async run(context) {
+  },
+  "Model callbacks cannot restore removed registrations or destroyed viewports": async (context) => {
     const viewport = create(context, [feature('instance')]);
     try {
       await viewport.ready;
@@ -146,5 +146,5 @@ export const modelRegistrationCases: readonly { name: string; run(context: Conte
       await failure(cancelled.registerModel('broken', { bytes: new ArrayBuffer(0) }), 'MODEL_UNSUPPORTED');
       check(!staleDiagnostic, 'Destroyed viewport emitted a later diagnostic callback');
     } finally { cancelled.destroy(); }
-  } },
-];
+  },
+} satisfies BrowserCaseModule;

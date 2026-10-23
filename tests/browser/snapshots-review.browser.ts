@@ -2,11 +2,7 @@ import { createDrawingSession, createViewport, RidgelineError } from '@ridgeline
 import type { DrawingChange, MapFeature, Properties, Viewport } from '@ridgeline/map';
 import type { StyleSpecification } from 'maplibre-gl';
 
-type Context = {
-  container: HTMLElement;
-  setCurrent(viewport: Viewport): void;
-  until(predicate: () => boolean, description: string): Promise<void>;
-};
+import type { BrowserCaseContext as Context, BrowserCaseModule } from './context';
 const basemap: StyleSpecification = { version: 8, sources: {}, layers: [
   { id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } },
 ] };
@@ -40,18 +36,19 @@ function sharedBytes() {
   return bytes;
 }
 
-export const snapshotReviewCases: readonly { name: string; run(context: Context): Promise<void> }[] = [
-  { name: 'Snapshot review rejects invalid retained geometry atomically and keys by the cloned ID', async run({ container, setCurrent }) {
+
+export const snapshotReviewCases = {
+  "Snapshot review rejects invalid retained geometry atomically and keys by the cloned ID": async ({ container, own }) => {
     class ComputedFeature {
       readonly type = 'Feature';
       readonly id = 'computed';
       readonly properties = {};
       get geometry(): MapFeature['geometry'] { return { type: 'Point', coordinates: [0, 0] }; }
     }
-    rejected(() => createViewport({ container, basemap, features: [new ComputedFeature()], logger: () => {} }), 'INITIALIZATION_FAILED');
+    rejected(() => own(createViewport({ container, basemap, features: [new ComputedFeature()], logger: () => {} })), 'INITIALIZATION_FAILED');
     check(container.querySelectorAll('canvas').length === 0, 'Invalid initial snapshot created a renderer');
-    const viewport = createViewport({ container, basemap, features: [point('accepted', { revision: 1 })], logger: () => {} });
-    setCurrent(viewport);
+    const viewport = own(createViewport({ container, basemap, features: [point('accepted', { revision: 1 })], logger: () => {} }));
+
     try {
       await viewport.ready;
       viewport.setSelection(['accepted']);
@@ -75,10 +72,10 @@ export const snapshotReviewCases: readonly { name: string; run(context: Context)
         check(viewport.getFeatures().length === 2 && changes === 1, 'Valid own getter feature did not publish once');
       } finally { off(); }
     } finally { viewport.destroy(); }
-  } },
-  { name: 'Snapshot review validates initial and updated model settings on the retained candidate', async run({ container, setCurrent }) {
+  },
+  "Snapshot review validates initial and updated model settings on the retained candidate": async ({ container, own }) => {
     const invalid: MapFeature = { ...point('invalid'), entity: { model: { id: 'asset', switchDistanceMeters: 1 } } };
-    rejected(() => createViewport({ container, basemap, features: [invalid], logger: () => {} }), 'INITIALIZATION_FAILED');
+    rejected(() => own(createViewport({ container, basemap, features: [invalid], logger: () => {} })), 'INITIALIZATION_FAILED');
     check(container.querySelectorAll('canvas').length === 0, 'Invalid initial model settings created a renderer');
     function candidate(id: string) {
       let reads = 0;
@@ -88,8 +85,8 @@ export const snapshotReviewCases: readonly { name: string; run(context: Context)
       return { feature, reads: () => reads };
     }
     const initial = candidate('initial');
-    const viewport = createViewport({ container, basemap, features: [initial.feature], logger: () => {} });
-    setCurrent(viewport);
+    const viewport = own(createViewport({ container, basemap, features: [initial.feature], logger: () => {} }));
+
     try {
       await viewport.ready;
       check(initial.reads() === 1 && viewport.getFeature('initial')?.entity?.model?.switchDistanceMeters === 1000,
@@ -106,15 +103,15 @@ export const snapshotReviewCases: readonly { name: string; run(context: Context)
         check(viewport.getFeature('initial')?.entity?.model?.switchDistanceMeters === 1000, 'Invalid settings replaced an accepted model');
       } finally { off(); }
     } finally { viewport.destroy(); }
-  } },
-  { name: 'Snapshot review isolates shared and ordinary buffers across public reads and callbacks', async run({ container, setCurrent, until }) {
+  },
+  "Snapshot review isolates shared and ordinary buffers across public reads and callbacks": async ({ container, own, until }) => {
     const shared = sharedBytes();
     const ordinary = new Uint8Array([1, 2, 3, 4]);
     const memory = new WebAssembly.Memory({ initial: 1, maximum: 2, shared: true });
     const memoryBytes = new Uint8Array(memory.buffer, 2, 4);
     memoryBytes.set([1, 2, 3, 4]);
     const callbackInputs: MapFeature[] = [];
-    const viewport = createViewport({ container, basemap, camera: { center: [0, 0], zoom: 14 }, logger: () => {},
+    const viewport = own(createViewport({ container, basemap, camera: { center: [0, 0], zoom: 14 }, logger: () => {},
       style(feature) {
         callbackInputs.push(feature);
         changeSnapshotBytes(feature, 23);
@@ -125,8 +122,8 @@ export const snapshotReviewCases: readonly { name: string; run(context: Context)
         changeSnapshotBytes(feature, 31);
         return `Snapshot ${feature.id}`;
       },
-    });
-    setCurrent(viewport);
+    }));
+
     try {
       await viewport.ready;
       let changes = 0;
@@ -175,11 +172,11 @@ export const snapshotReviewCases: readonly { name: string; run(context: Context)
         check(shared[0] === 7 && ordinary[0] === 7 && memoryBytes[0] === 7 && changes === 3, 'Snapshot reads or callbacks changed input memory or emitted datachange');
       } finally { off(); }
     } finally { viewport.destroy(); }
-  } },
-  { name: 'Snapshot review drawing state permissions history and submission isolate shared memory', async run({ container, setCurrent }) {
+  },
+  "Snapshot review drawing state permissions history and submission isolate shared memory": async ({ container, own }) => {
     const bytes = sharedBytes();
-    const viewport = createViewport({ container, basemap, logger: () => {} });
-    setCurrent(viewport);
+    const viewport = own(createViewport({ container, basemap, logger: () => {} }));
+
     const requests: DrawingChange[] = [], permissions: MapFeature[] = [];
     const editor = createDrawingSession(viewport, {
       createFeature: () => ({ id: 'drawing', properties: { bytes } }),
@@ -217,5 +214,5 @@ export const snapshotReviewCases: readonly { name: string; run(context: Context)
         'Submit snapshots changed accepted properties or geometry');
       check(bytes[0] === 7 && accepted?.drawing?.version === 1, 'Shared snapshots changed factory memory or drawing metadata');
     } finally { editor.destroy(); viewport.destroy(); }
-  } },
-];
+  },
+} satisfies BrowserCaseModule;

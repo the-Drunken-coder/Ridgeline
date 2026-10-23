@@ -6,8 +6,7 @@ import { solidGlb } from './model-fixtures';
 import { materialGlb } from './model-material-fixtures';
 import { captureMapPixels } from './browser-observation';
 
-type Context = { container: HTMLDivElement; setCurrent(viewport: Viewport): void;
-  until(predicate: () => boolean, description: string, timeout?: number): Promise<void> };
+import type { BrowserCaseContext as Context, BrowserCaseModule } from './context';
 const check = (value: unknown, message: string) => { if (!value) throw new Error(message); };
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const basemap = (color = '#ffffff'): StyleSpecification => ({ version: 8, sources: {}, layers: [
@@ -16,10 +15,10 @@ const feature = (id = 'instance', longitude = 0, modelId = 'material'): MapFeatu
   geometry: { type: 'Point', coordinates: [longitude, 0] }, entity: { heading: 0,
     model: { id: modelId, minimumSizePixels: 0 }, altitude: { meters: 20, reference: 'ground' } } });
 function create(context: Context, features = [feature()], appearances = new Map<string, ModelAppearance>(), onError: (error: RidgelineError) => void = () => {}) {
-  const viewport = createViewport({ container: context.container, basemap: basemap(),
+  const viewport = context.own(createViewport({ container: context.container, basemap: basemap(),
     camera: { center: [0, 0], zoom: 19, pitch: 0, bearing: 0 }, features, elevationSampler: { sample: () => 0 },
-    style: feature => ({ color: '#00ffff', modelAppearance: appearances.get(feature.id) }), logger: () => {}, onError });
-  context.setCurrent(viewport); return viewport;
+    style: feature => ({ color: '#00ffff', modelAppearance: appearances.get(feature.id) }), logger: () => {}, onError }));
+  return viewport;
 }
 function context(viewport: Viewport) {
   const gl = viewport.map.getCanvas().getContext('webgl2');
@@ -71,8 +70,9 @@ function holdImages() {
   return { held, stop() { globalThis.createImageBitmap = original; }, release() { for (const image of held) image.release(); } };
 }
 
-export const modelRecoveryCases: readonly { name: string; run(context: Context): Promise<void> }[] = [
-  { name: 'models retain resources through basemap replacement', async run(test) {
+
+export const modelRecoveryCases = {
+  "models retain resources through basemap replacement": async (test) => {
     const errors: RidgelineError[] = [];
     const viewport = create(test, [feature('first', -.0002), feature('second', .0002)], undefined, error => errors.push(error));
     let feedbackAllocations = 0;
@@ -122,8 +122,8 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
       viewport.remove(['first']);
       check(count(await capture(viewport), 'magenta', 'right') > 100, 'Removing one entity disposed its shared registration');
     } finally { globalThis.createImageBitmap = original; viewport.destroy(); }
-  } },
-  { name: 'models rebuild current presentation after real context loss', async run(test) {
+  },
+  "models rebuild current presentation after real context loss": async (test) => {
     const appearances = new Map<string, ModelAppearance>([['solid', { mode: 'color', color: 'red' }]]);
     const textured = feature('textured', -.0002);
     if (textured.entity) textured.entity.attachments = [{ id: 'area', type: 'circle', radius: 18, color: '#00ff00' }];
@@ -179,8 +179,8 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
       await pause(5000); viewport.map.off('render', rendered);
       check(frames === 0, `Restored scene scheduled ${frames} frames during five idle seconds`);
     } finally { viewport.destroy(); }
-  } },
-  { name: 'model recovery cancels stale native image completions', async run(test) {
+  },
+  "model recovery cancels stale native image completions": async (test) => {
     const errors: RidgelineError[] = [], viewport = create(test, undefined, undefined, error => errors.push(error));
     const triggerRepaint = viewport.map.triggerRepaint;
     let destroyed = false, staleRepaints = 0;
@@ -218,8 +218,8 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
       }
       check(!errors.some(error => error.code === 'MODEL_LOAD_FAILED'), 'Intentional restore cancellation emitted an asset failure');
     } finally { viewport.destroy(); }
-  } },
-  { name: 'model recovery reports allocation failure and retries explicitly', async run(test) {
+  },
+  "model recovery reports allocation failure and retries explicitly": async (test) => {
     const resident = feature();
     if (resident.entity) resident.entity.attachments = [{ id: 'area', type: 'circle', radius: 18, color: '#00ff00' }];
     const unrelated: MapFeature = { type: 'Feature', id: 'unrelated', properties: {}, geometry: { type: 'Point', coordinates: [.00035, 0] } };
@@ -346,8 +346,8 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
         await pause(100);
       } finally { gl.createTexture = createTexture; gl.deleteTexture = deleteTexture; gl.texImage2D = texImage2D; }
     } finally { globalThis.createImageBitmap = nativeDecode; cancelled.destroy(); }
-  } },
-  { name: 'model frames recover from consumer prerender mutations', async run(test) {
+  },
+  "model frames recover from consumer prerender mutations": async (test) => {
     const viewport = create(test);
     try {
       await viewport.ready;
@@ -394,5 +394,5 @@ export const modelRecoveryCases: readonly { name: string; run(context: Context):
         mutate = transition.action; viewport.map.triggerRepaint(); await next;
       }
     } finally { viewport.destroy(); }
-  } },
-];
+  },
+} satisfies BrowserCaseModule;

@@ -3,8 +3,7 @@ import type { MapFeature, Viewport } from '@ridgeline/map';
 import type { CustomRenderMethodInput } from 'maplibre-gl';
 import { axisModelGlb, groundModelGlb, planarTerrain } from './model-placement-fixtures';
 
-type Context = { container: HTMLDivElement; setCurrent(viewport: Viewport): void;
-  until(predicate: () => boolean, description: string, timeout?: number): Promise<void> };
+import type { BrowserCaseContext as Context, BrowserCaseModule } from './context';
 type Vec3 = [number, number, number];
 type Pixels = { count: number; x: number; y: number; left: number; right: number; top: number; bottom: number };
 const check = (value: unknown, message: string) => { if (!value) throw new Error(message); };
@@ -98,12 +97,13 @@ function rasterBounds(viewport: Viewport, points: { x: number; y: number }[]) {
   return bounds;
 }
 
-export const modelPlacementCases: readonly { name: string; run(context: Context): Promise<void> }[] = [
-  { name: 'Model heading pitch roll and authored offset preserve physical axes', async run(context) {
-    const viewport = createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 18, pitch: 60, bearing: 0 },
+
+export const modelPlacementCases = {
+  "Model heading pitch roll and authored offset preserve physical axes": async (context) => {
+    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 18, pitch: 60, bearing: 0 },
       elevationSampler: { sample: () => 0 }, entityModels: { switchDistanceMeters: 1e9, deadZoneMeters: 0, minimumSizePixels: 0 },
-      style: () => ({ radius: 0, color: '#fff', modelAppearance: { mode: 'original' } }), logger: () => {} });
-    context.setCurrent(viewport);
+      style: () => ({ radius: 0, color: '#fff', modelAppearance: { mode: 'original' } }), logger: () => {} }));
+
     try {
       await viewport.ready; const frame = reference(viewport), unit = 6, diagonal = unit * Math.sqrt(3) / 2;
       await viewport.registerModel('asset', { bytes: axisModelGlb(), metersPerUnit: 2 });
@@ -159,12 +159,12 @@ export const modelPlacementCases: readonly { name: string; run(context: Context)
       const hidden = await pixels(viewport);
       check(hidden.red.count + hidden.green.count + hidden.blue.count === 0, 'The model rendered through the planet');
     } finally { viewport.destroy(); }
-  } },
-  { name: 'Ground models follow planar terrain at real and enlarged size', async run(context) {
-    const terrain = planarTerrain(), viewport = createViewport({ container: context.container, basemap, terrain: true, elevation: terrain.elevation,
+  },
+  "Ground models follow planar terrain at real and enlarged size": async (context) => {
+    const terrain = planarTerrain(), viewport = context.own(createViewport({ container: context.container, basemap, terrain: true, elevation: terrain.elevation,
       elevationSampler: { sample: terrain.sample }, camera: { center: terrain.location, zoom: 18, pitch: 60, bearing: 23 },
-      style: () => ({ radius: 0, color: '#fff', modelAppearance: { mode: 'color', color: '#ff0000' } }), logger: () => {} });
-    context.setCurrent(viewport);
+      style: () => ({ radius: 0, color: '#fff', modelAppearance: { mode: 'color', color: '#ff0000' } }), logger: () => {} }));
+
     try {
       await viewport.ready; const frame = reference(viewport); await viewport.registerModel('asset', { bytes: groundModelGlb() });
       const normalize = (v: Vec3): Vec3 => { const length = Math.hypot(...v); return [v[0] / length, v[1] / length, v[2] / length]; };
@@ -206,16 +206,16 @@ export const modelPlacementCases: readonly { name: string; run(context: Context)
       for (const side of ['left', 'right', 'top', 'bottom'] as const)
         check(Math.abs(physical.blue[side] - enlarged.blue[side]) <= .5, `Model enlargement moved the physical attachment ${side}`);
     } finally { viewport.destroy(); }
-  } },
-  { name: 'Model placement recovers from unknown terrain without moving entities', async run(context) {
+  },
+  "Model placement recovers from unknown terrain without moving entities": async (context) => {
     const terrain = planarTerrain(0, 0), known = new Map<string, number>();
     const requests: { positions: readonly [number, number][]; signal: AbortSignal; done: boolean; resolve(): void }[] = [];
-    const viewport = createViewport({ container: context.container, basemap, terrain: true, elevation: terrain.elevation,
+    const viewport = context.own(createViewport({ container: context.container, basemap, terrain: true, elevation: terrain.elevation,
       camera: { center: terrain.location, zoom: 18, pitch: 45, bearing: 0 },
       elevationSampler: { sample: (lng, lat) => known.get(`${lng},${lat}`) ?? null,
         prepare: (positions, signal) => new Promise<void>(resolve => requests.push({ positions, signal, done: false, resolve })) },
-      style: () => ({ color: '#00ff00', radius: 6, modelAppearance: { mode: 'color', color: '#ff0000' } }), logger: () => {} });
-    context.setCurrent(viewport);
+      style: () => ({ color: '#00ff00', radius: 6, modelAppearance: { mode: 'color', color: '#ff0000' } }), logger: () => {} }));
+
     const complete = () => { for (const request of requests) if (!request.done) { request.done = true;
       for (const point of request.positions) known.set(point.join(','), 100); request.resolve(); } };
     try {
@@ -247,5 +247,5 @@ export const modelPlacementCases: readonly { name: string; run(context: Context)
       await new Promise(resolve => setTimeout(resolve, 5000)); viewport.map.off('render', count);
       check(rendered === 0, 'Placement recovery left a render loop');
     } finally { complete(); viewport.destroy(); }
-  } },
-];
+  },
+} satisfies BrowserCaseModule;

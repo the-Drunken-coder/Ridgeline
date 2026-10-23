@@ -2,7 +2,7 @@
 
 Integration record for issues #15 through #20, #22, and #25, dated 2026-09-28. The checkpoints preserve the testing foundation, consumer reliability corrections, terrain/camera ownership, and drawing ownership.
 
-`browser` means [tests/browser.ts](../tests/browser.ts), registered in the independent [case manifest](../tests/browser-cases.ts). Other filenames are under `tests/`. Each audit case below is covered by an executable regression; supporting module tests complement the packaged workflows.
+`browser` means [tests/browser/main.ts](../tests/browser/main.ts), registered in the Node-safe [case catalog](../tests/browser/catalog.ts). Browser case modules live under `tests/browser/`. Other filenames are under `tests/`. Each audit case below is covered by an executable regression; supporting module tests complement the packaged workflows.
 
 | Audit ID | Implemented regression coverage |
 | --- | --- |
@@ -55,9 +55,9 @@ Environment limits: desktop Chromium with software WebGL does not establish phys
 
 The codebase review added focused regressions and packed-consumer journeys for nine further defects:
 
-- [Snapshot cases](../tests/snapshots-review.browser.ts) cover exact retained-value validation, atomic model-setting validation, and shared-memory isolation through reads, callbacks and drawing. [Snapshot module tests](../tests/snapshots.test.ts) exercise cycles, aliases and buffer views.
-- [Drawing cases](../tests/drawing-review.browser.ts) cover changes during edit opening, nested teardown with a working replacement editor, application Undo while idle, and draft/history shortcut ownership.
-- [Rendering cases](../tests/rendering-review.browser.ts) cover CSS sizes across canvas ratios, invisible hits after draw failure, and model recovery after cumulative allocation rejection. [Ground-area coverage](../tests/ground-area-review.browser.ts) uses real 256-pixel raster decoding at fixed zoom 12 beyond the 512-tile cache, checks visible picking, and observes five quiet seconds. [Sampler tests](../tests/elevation-sampler.test.ts) include competing 100 km circles, missing data, retry and requirement changes.
+- [Snapshot cases](../tests/browser/snapshots-review.browser.ts) cover exact retained-value validation, atomic model-setting validation, and shared-memory isolation through reads, callbacks and drawing. [Snapshot module tests](../tests/snapshots.test.ts) exercise cycles, aliases and buffer views.
+- [Drawing cases](../tests/browser/drawing-review.browser.ts) cover changes during edit opening, nested teardown with a working replacement editor, application Undo while idle, and draft/history shortcut ownership.
+- [Rendering cases](../tests/browser/rendering-review.browser.ts) cover CSS sizes across canvas ratios, invisible hits after draw failure, and model recovery after cumulative allocation rejection. [Ground-area coverage](../tests/browser/ground-area-review.browser.ts) uses real 256-pixel raster decoding at fixed zoom 12 beyond the 512-tile cache, checks visible picking, and observes five quiet seconds. [Sampler tests](../tests/elevation-sampler.test.ts) include competing 100 km circles, missing data, retry and requirement changes.
 
 The marker comparison uses the same packed-consumer fixture with browser DPR 2, map pixel ratio 1 and a requested radius of 6 CSS pixels. The visible fill changes from 24 to 12 CSS pixels.
 

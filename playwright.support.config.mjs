@@ -1,9 +1,8 @@
 import { defineConfig } from 'playwright/test';
 import packaged from './playwright.packaged.config.mjs';
-import { browserCases } from './tests/browser-cases.ts';
-import { selectSupportCases, starterCases } from './tests/support-cases.ts';
+import { supportCases, starterCases } from './tests/browser/catalog.ts';
 
-const names = [...selectSupportCases(browserCases), ...Object.values(starterCases)];
+const names = [...supportCases, ...Object.values(starterCases)];
 const escaped = names.map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 
 

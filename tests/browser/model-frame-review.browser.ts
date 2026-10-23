@@ -5,21 +5,20 @@ import { solidGlb } from './model-fixtures';
 import { axisModelGlb } from './model-placement-fixtures';
 import { IdleObservationFailure, observeIdle } from './browser-idle';
 
-type Context = { container: HTMLDivElement; setCurrent(viewport: Viewport): void;
-  until(predicate: () => boolean, description: string, timeout?: number): Promise<void> };
+import type { BrowserCaseContext as Context, BrowserCaseModule } from './context';
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const entity = (id = 'model', color = '#ff0000'): MapFeature => ({ type: 'Feature', id,
   properties: { color }, geometry: { type: 'Point', coordinates: [0,0] },
   entity: { heading: 0, altitude: { meters: 30, reference: 'sea-level' }, model: { id: 'asset', minimumSizePixels: 80 } } });
 function create(context: Context, features: MapFeature[], options: Partial<Pick<ViewportOptions<Properties>, 'style' | 'onError' | 'elevationSampler'>> = {}) {
-  const viewport = createViewport({ container: context.container, features, elevationSampler: { sample: () => 0 },
+  const viewport = context.own(createViewport({ container: context.container, features, elevationSampler: { sample: () => 0 },
     basemap: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
     camera: { center: [0,0], zoom: 17, pitch: 35, bearing: 0 },
     entityModels: { switchDistanceMeters: 1e7, deadZoneMeters: 0, minimumSizePixels: 80 },
     style: feature => ({ radius: 0, modelAppearance: { mode: 'color', color: String(feature.properties.color) } }),
-    ...options, logger: () => {} });
-  context.setCurrent(viewport);
+    ...options, logger: () => {} }));
+
   const canvas = viewport.map.getCanvas(); canvas.dataset.ridgelineMeasure = 'true';
   const measures: PerformanceEntry[] = [];
   const observer = new PerformanceObserver(list => measures.push(...list.getEntries())); observer.observe({ type: 'measure' });
@@ -92,8 +91,9 @@ function frame(viewport: Viewport, change: () => void = () => viewport.map.trigg
   });
 }
 async function click(x: number, y: number) { check(window.drawingPointer, 'Actual pointer bridge unavailable'); await window.drawingPointer('click', x, y); }
-export const modelFrameReviewCases: readonly { name: string; run(context: Context): Promise<void> }[] = [
-  { name: 'Model style failures retain the last complete pose until successful recovery', async run(context) {
+
+export const modelFrameReviewCases = {
+  "Model style failures retain the last complete pose until successful recovery": async (context) => {
     const original = entity(), other = entity('other', '#00ff00');
     original.entity!.model!.switchDistanceMeters = 1000;
     original.entity!.attachments = [{ id: 'physical', type: 'sphere', radius: 8, color: '#0000ff' }];
@@ -154,8 +154,8 @@ export const modelFrameReviewCases: readonly { name: string; run(context: Contex
       await click(anchor.x, anchor.y);
       check(!hits.at(-1)?.includes(original.id), 'Recovered model retained an obsolete pick box');
     } finally { f.destroy(); }
-  } },
-  { name: 'Model diagnostics preserve entity computation through selection and preview callbacks', async run(context) {
+  },
+  "Model diagnostics preserve entity computation through selection and preview callbacks": async (context) => {
     for (const action of ['unchanged-selection', 'preview', 'other-selection'] as const) {
       const feature = entity(), other = entity('other', '#00ff00');
       feature.entity!.model!.id = 'missing';
@@ -200,8 +200,8 @@ export const modelFrameReviewCases: readonly { name: string; run(context: Contex
       check(retained.red.length > 50 && viewport.getEntityState(original.id)?.representation === 'model',
         'A discarded preparation reset the restored model choice inside the dead zone');
     } finally { f.destroy(); }
-  } },
-  { name: 'Model frame callbacks publish only current placement and appearance', async run(context) {
+  },
+  "Model frame callbacks publish only current placement and appearance": async (context) => {
     const old = entity(), other = entity('other', '#00ff00'); other.geometry = { type: 'Point', coordinates: [-.0009,0] };
     other.entity!.model!.minimumSizePixels = 35;
     const latest = entity('model', '#0000ff'); latest.geometry = { type: 'Point', coordinates: [.00025,.0001] };
@@ -257,9 +257,9 @@ export const modelFrameReviewCases: readonly { name: string; run(context: Contex
         let rejected = false;
         try { viewport.upsert([old]); } catch (error) { rejected = error instanceof RidgelineError && error.code === 'DESTROYED'; }
         retiredSynchronously = rejected && !context.container.querySelector('canvas');
-        replacement = createViewport({ container: context.container,
-          basemap: { version: 8, sources: {}, layers: [{ id: 'new-background', type: 'background', paint: { 'background-color': '#ffffff' } }] }, logger: () => {} });
-        context.setCurrent(replacement);
+        replacement = context.own(createViewport({ container: context.container,
+          basemap: { version: 8, sources: {}, layers: [{ id: 'new-background', type: 'background', paint: { 'background-color': '#ffffff' } }] }, logger: () => {} }));
+
       }; viewport.upsert([old]); };
       viewport.map.triggerRepaint(); await context.until(() => destroyed, 'destroy from computation callback');
       check(replacement, 'Synchronous remount was not created');
@@ -271,8 +271,8 @@ export const modelFrameReviewCases: readonly { name: string; run(context: Contex
       } finally { replacement.destroy(); }
       check(!context.container.querySelector('canvas'), 'Ordinary destruction must remove DOM synchronously');
     } finally { f.destroy(); }
-  } },
-  { name: 'Models cull off-screen bodies after enlargement and recover on camera motion', async run(context) {
+  },
+  "Models cull off-screen bodies after enlargement and recover on camera motion": async (context) => {
     const visible = entity('visible', '#ff0000'); delete visible.entity!.altitude; visible.entity!.model!.minimumSizePixels = 40;
     const outside = entity('outside', '#0000ff'); delete outside.entity!.altitude; outside.entity!.model!.minimumSizePixels = 80;
     outside.geometry = { type: 'Point', coordinates: [.01,0] };
@@ -311,8 +311,8 @@ export const modelFrameReviewCases: readonly { name: string; run(context: Contex
       await new Promise<void>(resolve => { viewport.map.once('idle', () => resolve()); viewport.map.triggerRepaint(); });
       await observeIdle(viewport, 'Culling after camera re-entry').assertQuiet();
     } finally { f.destroy(); }
-  } },
-  { name: 'Model idle observation records delayed publication and stays quiet after stationary recovery', async run(context) {
+  },
+  "Model idle observation records delayed publication and stays quiet after stationary recovery": async (context) => {
     let held = false, preparations = 0;
     let release = () => {};
     let pending = Promise.resolve();
@@ -371,8 +371,8 @@ export const modelFrameReviewCases: readonly { name: string; run(context: Contex
       }
       check(rejected, 'A stopped observation claimed quiet after its elapsed budget');
     } finally { if (releaseTimer) clearTimeout(releaseTimer); held = false; release(); delayed?.stop(); f.destroy(); }
-  } },
-  { name: 'Viewport destruction preserves synchronous listener remounts', async run(context) {
+  },
+  "Viewport destruction preserves synchronous listener remounts": async (context) => {
     const failures: string[] = [];
     for (const activeRender of [false,true]) {
       const f = create(context, [entity()]), { viewport } = f;
@@ -381,9 +381,9 @@ export const modelFrameReviewCases: readonly { name: string; run(context: Contex
         await viewport.ready; await viewport.registerModel('asset', { bytes: solidGlb() }); await frame(viewport);
         viewport.on('destroy', () => {
           emptyInListener = !context.container.querySelector('canvas');
-          replacement = createViewport({ container: context.container, logger: () => {},
-            basemap: { version: 8, sources: {}, layers: [{ id: 'replacement', type: 'background', paint: { 'background-color': '#ffffff' } }] } });
-          context.setCurrent(replacement);
+          replacement = context.own(createViewport({ container: context.container, logger: () => {},
+            basemap: { version: 8, sources: {}, layers: [{ id: 'replacement', type: 'background', paint: { 'background-color': '#ffffff' } }] } }));
+
         });
         if (activeRender) {
           let armed = true;
@@ -403,5 +403,5 @@ export const modelFrameReviewCases: readonly { name: string; run(context: Contex
       } finally { replacement?.destroy(); f.destroy(); }
     }
     check(failures.length === 0, failures.join('; '));
-  } },
-];
+  },
+} satisfies BrowserCaseModule;

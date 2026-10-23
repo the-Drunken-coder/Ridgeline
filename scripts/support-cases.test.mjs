@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { selectSupportCases, supportCases } from '../tests/support-cases.ts';
+import { supportCases } from '../tests/browser/catalog.ts';
+import { createCaseRegistry } from '../tests/browser/registry.ts';
 
 test('Support discovery refuses a renamed required workflow', () => {
-  const renamed = supportCases.map((name, index) => index === 0 ? 'Renamed workflow' : name);
-  assert.throws(() => selectSupportCases(renamed), /Required support workflows are not registered/);
-  assert.deepEqual(selectSupportCases([...supportCases, 'Unrelated regression']), supportCases);
+  for (const title of supportCases) {
+    assert.throws(() => createCaseRegistry([title], [{ 'Renamed workflow': async () => {} }]), /Unknown browser case binding/);
+    assert.throws(() => createCaseRegistry([title], []), /Missing browser case bindings/);
+  }
 });

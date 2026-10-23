@@ -4,17 +4,16 @@ import { captureMapPixels, pixelToCss, waitForVisible } from './browser-observat
 import type { PixelImage } from './browser-observation';
 import { encodeGlb, solidGlb } from './model-fixtures';
 
-type Context = { container: HTMLDivElement; setCurrent(viewport: Viewport): void;
-  until(predicate: () => boolean, description: string, timeout?: number): Promise<void> };
+import type { BrowserCaseContext as Context, BrowserCaseModule } from './context';
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 const airborne = (id = 'target'): MapFeature & { entity: NonNullable<MapFeature['entity']> } => ({ type: 'Feature', id, properties: {},
   geometry: { type: 'Point', coordinates: [0, 0] }, entity: { altitude: { reference: 'sea-level', meters: 100 } } });
 function create(context: Context, errors: RidgelineError[] = []) {
-  const viewport = createViewport({ container: context.container,
+  const viewport = context.own(createViewport({ container: context.container,
     basemap: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
     camera: { center: [0, 0], zoom: 17, pitch: 0 }, elevationSampler: { sample: () => 0 },
-    style: () => ({ color: '#00ff00', radius: 10 }), onError: error => errors.push(error), logger: () => {} });
-  context.setCurrent(viewport); return viewport;
+    style: () => ({ color: '#00ff00', radius: 10 }), onError: error => errors.push(error), logger: () => {} }));
+  return viewport;
 }
 function bounds(image: PixelImage, color: 'green' | 'blue' | 'magenta') {
   let left = image.width, right = -1, top = image.height, bottom = -1, count = 0;
@@ -74,8 +73,9 @@ async function allocationFailure(viewport: Viewport) {
   throw new Error('Cumulative allocation unexpectedly registered');
 }
 
-export const renderingReviewCases: readonly { name: string; run(context: Context): Promise<void> }[] = [
-  { name: 'Attachment markers and wireframes keep CSS size across map pixel ratios', async run(context) {
+
+export const renderingReviewCases = {
+  "Attachment markers and wireframes keep CSS size across map pixel ratios": async (context) => {
     check(devicePixelRatio === 2, 'This case requires browser deviceScaleFactor 2');
     const errors: RidgelineError[] = [], viewport = create(context, errors), feature = airborne();
     feature.entity.attachments = [{ id: 'camera', type: 'camera', range: 150, bearing: 0, elevation: -45,
@@ -98,8 +98,8 @@ export const renderingReviewCases: readonly { name: string; run(context: Context
       }
       check(errors.length === 0, `Unexpected rendering diagnostics ${errors.map(error => error.message)}`);
     } finally { viewport.destroy(); }
-  } },
-  { name: 'Attachment picking follows successful frames and clears on native draw failure', async run(context) {
+  },
+  "Attachment picking follows successful frames and clears on native draw failure": async (context) => {
     const errors: RidgelineError[] = [], viewport = create(context, errors);
     const addLayer = viewport.map.addLayer;
     let fail = false, injected = 0, wrapped = false;
@@ -148,8 +148,8 @@ export const renderingReviewCases: readonly { name: string; run(context: Context
       fail = false; viewport.retryUpdates(); await visible(viewport, 'blue'); await click(center());
       check(clicks.at(-1)?.includes('body'), 'Second explicit retry did not recover picking');
     } finally { viewport.map.addLayer = addLayer; viewport.destroy(); }
-  } },
-  { name: 'Model allocation rejection preserves public registration and recovers', async run(context) {
+  },
+  "Model allocation rejection preserves public registration and recovers": async (context) => {
     const errors: RidgelineError[] = [], viewport = create(context, errors), feature = airborne();
     feature.entity = { ...feature.entity, heading: 0, model: { id: 'bounded' } };
     try {
@@ -173,5 +173,5 @@ export const renderingReviewCases: readonly { name: string; run(context: Context
       viewport.on('click', event => clicks.push(event.features.map(feature => feature.id)));
       await click(recovered.center); check(clicks.at(-1)?.includes('target'), 'Recovered public model was not selectable');
     } finally { viewport.destroy(); }
-  } },
-];
+  },
+} satisfies BrowserCaseModule;

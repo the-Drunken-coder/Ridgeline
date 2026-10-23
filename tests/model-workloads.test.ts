@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { createModelWorkloads, writeModelWorkloads } from '../scripts/model-workloads';
 import { parseGlb } from '../src/model-glb';
-import { encodeGlb } from './model-fixtures';
-import { materialGlb } from './model-material-fixtures';
+import { encodeGlb } from './browser/model-fixtures';
+import { materialGlb } from './browser/model-material-fixtures';
 
 function triangle() {
   const positions = new Float32Array([0, 0, 0, 2, 0, 0, 0, 2, 0]);

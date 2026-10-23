@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ModelRegistry } from '../src/models';
 import { RidgelineError } from '../src/errors';
-import { encodeGlb, solidGlb } from './model-fixtures';
+import { encodeGlb, solidGlb } from './browser/model-fixtures';
 import { DEFAULT_ENTITY_MODELS, modelSettings } from '../src/model-settings';
 
 test('model defaults remain immutable and undefined overrides inherit accepted settings', () => {
@@ -232,7 +232,7 @@ test('a renderer change aborts its asynchronous attempt and installs only the re
 });
 
 test('shared registration snapshots bytes and atomically retains the working asset after a failed replacement', async () => {
-  const { solidGlb } = await import('./model-fixtures');
+  const { solidGlb } = await import('./browser/model-fixtures');
   const disposed: object[] = [];
   const registry = new ModelRegistry({ changed: () => {}, diagnostic: () => {} });
   const bytes = solidGlb();
@@ -255,7 +255,7 @@ test('shared registration snapshots bytes and atomically retains the working ass
 });
 
 test('reentrant removal during upload disposes the uninstalled result and cancels the promise', async () => {
-  const { solidGlb } = await import('./model-fixtures');
+  const { solidGlb } = await import('./browser/model-fixtures');
   let disposed = 0;
   const registry = new ModelRegistry({ changed: () => {}, diagnostic: () => {} });
   registry.renderer({ upload: () => { registry.unregister('shared'); return { dispose: () => disposed++ }; } });
@@ -279,7 +279,7 @@ test('renderer readiness failure rejects queued registrations with their own mod
 });
 
 test('only the newest pending registration uploads and destruction cancels pending work', async () => {
-  const { solidGlb } = await import('./model-fixtures');
+  const { solidGlb } = await import('./browser/model-fixtures');
   let uploads = 0, disposals = 0;
   const errors: RidgelineError[] = [];
   const registry = new ModelRegistry({ changed: () => {}, diagnostic: error => errors.push(error) });
@@ -300,7 +300,7 @@ test('only the newest pending registration uploads and destruction cancels pendi
 });
 
 test('invalid registration settings preserve a working revision and use scoped errors', async () => {
-  const { solidGlb } = await import('./model-fixtures');
+  const { solidGlb } = await import('./browser/model-fixtures');
   const errors: RidgelineError[] = [];
   const registry = new ModelRegistry({ changed: () => {}, diagnostic: error => errors.push(error) });
   registry.renderer({ upload: () => ({ dispose() {} }) });

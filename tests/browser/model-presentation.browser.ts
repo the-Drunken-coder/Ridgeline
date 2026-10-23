@@ -4,8 +4,7 @@ import { GeoJSONSource } from 'maplibre-gl';
 import { materialGlb } from './model-material-fixtures';
 import { groundModelGlb } from './model-placement-fixtures';
 
-type Context = { container: HTMLDivElement; setCurrent(viewport: Viewport): void;
-  until(predicate: () => boolean, description: string, timeout?: number): Promise<void> };
+import type { BrowserCaseContext as Context, BrowserCaseModule } from './context';
 const check = (value: unknown, message: string) => { if (!value) throw new Error(message); };
 type Pixels = { bytes: Uint8Array; width: number; height: number; ratio: number };
 async function idle(viewport: Viewport) {
@@ -47,14 +46,15 @@ const orange = (r: number, g: number, b: number) => r > 220 && g > 100 && g < 19
 const feature = (floor = 0, altitude: number | null = 20): MapFeature => ({ type: 'Feature', id: 'instance', properties: {},
   geometry: { type: 'Point', coordinates: [0, 0] }, entity: { heading: 0,
     model: { id: 'body', minimumSizePixels: floor }, ...(altitude === null ? {} : { altitude: { meters: altitude, reference: 'ground' as const } }) } });
-export const modelPresentationCases: readonly { name: string; run(context: Context): Promise<void> }[] = [
-  { name: 'Model feedback preserves appearance and follows model altitude', async run(context) {
+
+export const modelPresentationCases = {
+  "Model feedback preserves appearance and follows model altitude": async (context) => {
     let appearance: ModelAppearance | undefined;
-    const viewport = createViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
+    const viewport = context.own(createViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
       { id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
       camera: { center: [0, 0], zoom: 18, pitch: 0 }, features: [feature()], elevationSampler: { sample: () => 0 },
-      style: () => ({ modelAppearance: appearance }), logger: () => {} });
-    context.setCurrent(viewport);
+      style: () => ({ modelAppearance: appearance }), logger: () => {} }));
+
     const interactions = attachInteractions(viewport, { picker: false });
     try {
       await viewport.ready;
@@ -114,15 +114,15 @@ export const modelPresentationCases: readonly { name: string; run(context: Conte
         check(new Uint8Array(bytes).every((value, index) => value === original[index]), 'Feedback modified the source GLB');
       }
     } finally { interactions.destroy(); viewport.destroy(); }
-  } },
-  { name: 'Model labels wait for current collision layout beyond enlarged bounds', async run(context) {
+  },
+  "Model labels wait for current collision layout beyond enlarged bounds": async (context) => {
     let label = '';
-    const glyphs = new URL('./fixtures/noto-sans/0-255.pbf', import.meta.url).href + '?fontstack={fontstack}&range={range}';
+    const glyphs = new URL('../fixtures/noto-sans/0-255.pbf', import.meta.url).href + '?fontstack={fontstack}&range={range}';
     const basemap = { version: 8 as const, glyphs, sources: {}, layers: [
       { id: 'background', type: 'background' as const, paint: { 'background-color': '#ffffff' } }] };
-    const viewport = createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 17, pitch: 0 },
-      elevationSampler: { sample: () => 0 }, style: () => ({ label, radius: 0, modelAppearance: { mode: 'color', color: '#ff0000' } }), logger: () => {} });
-    context.setCurrent(viewport);
+    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 17, pitch: 0 },
+      elevationSampler: { sample: () => 0 }, style: () => ({ label, radius: 0, modelAppearance: { mode: 'color', color: '#ff0000' } }), logger: () => {} }));
+
     try {
       await viewport.ready; await viewport.registerModel('body', { bytes: groundModelGlb() });
       viewport.upsert([feature(90, null)]); await idle(viewport);
@@ -189,14 +189,14 @@ export const modelPresentationCases: readonly { name: string; run(context: Conte
       check(viewport.map.querySourceFeatures('rl:features').every(hit => JSON.stringify(hit.properties?._rl_label_font) === JSON.stringify(['Noto Sans Regular'])),
         'Model labels changed the default font contract');
     } finally { viewport.destroy(); }
-  } },
-  { name: 'Model enlargement preserves physical attachments and quiet presentation', async run(context) {
-    const viewport = createViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
+  },
+  "Model enlargement preserves physical attachments and quiet presentation": async (context) => {
+    const viewport = context.own(createViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
       { id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
       camera: { center: [0, 0], zoom: 18, pitch: 55, bearing: 27 }, elevationSampler: { sample: () => 0 },
       entityVisibility: { footprints: true, zones: true, groundLines: true },
-      style: () => ({ color: '#00ff00', modelAppearance: { mode: 'color', color: '#ff0000' } }), logger: () => {} });
-    context.setCurrent(viewport);
+      style: () => ({ color: '#00ff00', modelAppearance: { mode: 'color', color: '#ff0000' } }), logger: () => {} }));
+
     try {
       await viewport.ready; await viewport.registerModel('body', { bytes: groundModelGlb() });
       for (const attachment of [
@@ -253,5 +253,5 @@ export const modelPresentationCases: readonly { name: string; run(context: Conte
       await new Promise(resolve => setTimeout(resolve, 5000)); viewport.map.off('render', count);
       check(renders === 0, `Static selected model scheduled ${renders} idle frames`);
     } finally { viewport.destroy(); }
-  } },
-];
+  },
+} satisfies BrowserCaseModule;

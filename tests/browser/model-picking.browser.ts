@@ -5,8 +5,7 @@ import { solidGlb } from './model-fixtures';
 import { axisModelGlb, planarTerrain } from './model-placement-fixtures';
 import { captureMapPixels, pixelToCss, waitForVisible } from './browser-observation';
 
-type Context = { container: HTMLDivElement; setCurrent(viewport: Viewport): void;
-  until(predicate: () => boolean, description: string, timeout?: number): Promise<void> };
+import type { BrowserCaseContext as Context, BrowserCaseModule } from './context';
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 async function pointer(action: 'move' | 'click', x: number, y: number) {
   check(window.drawingPointer, 'Real pointer bridge unavailable'); await window.drawingPointer(action, x, y);
@@ -16,12 +15,12 @@ function entity(id = 'model'): MapFeature {
     entity: { heading: 0, altitude: { meters: 30, reference: 'ground' }, model: { id: 'asset', minimumSizePixels: 120 } } };
 }
 function create(context: Context, features = [entity()], sample: () => number | null = () => 0) {
-  const viewport = createViewport({ container: context.container, features, elevationSampler: { sample },
+  const viewport = context.own(createViewport({ container: context.container, features, elevationSampler: { sample },
     basemap: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
     camera: { center: [0, 0], zoom: 17, pitch: 0, bearing: 0 },
     entityModels: { switchDistanceMeters: 1e7, deadZoneMeters: 0, minimumSizePixels: 120 },
-    style: feature => ({ radius: 6, color: '#0000ff', icon: feature.id === 'ordinary' ? 'ordinary-icon' : 'entity-icon' }), logger: () => {} });
-  context.setCurrent(viewport);
+    style: feature => ({ radius: 6, color: '#0000ff', icon: feature.id === 'ordinary' ? 'ordinary-icon' : 'entity-icon' }), logger: () => {} }));
+
   const bytes = new Uint8ClampedArray(12 * 12 * 4);
   for (let i = 0; i < bytes.length; i += 4) { bytes[i + 2] = 255; bytes[i + 3] = 255; }
   viewport.registerIcon('entity-icon', { image: new ImageData(bytes, 12, 12) });
@@ -55,8 +54,9 @@ async function colors(viewport: Viewport, timeout = 8000) {
   return { colored, center: [...pixels.slice(index, index + 3)], magenta };
 }
 async function key(value: string) { check(window.browserKey, 'Real keyboard bridge unavailable'); await window.browserKey(value); }
-export const modelPickingCases: readonly { name: string; run(context: Context): Promise<void> }[] = [
-  { name: 'Model pixel observation aligns visible picking across canvas ratios and rejects absent models', async run(context) {
+
+export const modelPickingCases = {
+  "Model pixel observation aligns visible picking across canvas ratios and rejects absent models": async (context) => {
     check(devicePixelRatio === 2, 'This fixture must exercise browser DPR 2 independently of the map ratio');
     const located = entity(); located.geometry = { type: 'Point', coordinates: [.0002, .00015] };
     located.entity!.attachments = [{ id: 'zone', type: 'polygon', vertices: [[-50,-50],[50,-50],[50,50],[-50,50]] }];
@@ -83,8 +83,8 @@ export const modelPickingCases: readonly { name: string; run(context: Context): 
         check(absent.magenta.count === 0, 'Transparent background or unrelated attachment pixels counted as a model');
       }
     } finally { viewport.destroy(); }
-  } },
-  { name: 'Model picking uses drawn boxes and returns original entity and attachment hits', async run(context) {
+  },
+  "Model picking uses drawn boxes and returns original entity and attachment hits": async (context) => {
     const viewport = create(context), clicks: Interaction<Record<string, unknown>>[] = [];
     viewport.on('click', value => { clicks.push(value); });
     try {
@@ -103,8 +103,8 @@ export const modelPickingCases: readonly { name: string; run(context: Context): 
       const count = clicks.length, release = viewport.acquireInteraction('test-tool');
       await pointer('click', x + 25, y + 25); check(clicks.length === count, 'Interaction lease leaked model click'); release();
     } finally { viewport.destroy(); }
-  } },
-  { name: 'Model picking clips terrain near-plane and displayed world copies', async run(context) {
+  },
+  "Model picking clips terrain near-plane and displayed world copies": async (context) => {
     const viewport = create(context), clicks: Interaction<Record<string, unknown>>[] = [];
     viewport.on('click', value => { clicks.push(value); });
     try {
@@ -148,8 +148,8 @@ export const modelPickingCases: readonly { name: string; run(context: Context): 
       await pointer('click', x + 25, y + 25);
       check(clicks.at(-1)?.features.length === 0, 'Box behind known native terrain was picked');
     } finally { viewport.destroy(); }
-  } },
-  { name: 'Model overlap picker preserves choices focus and consumer selection', async run(context) {
+  },
+  "Model overlap picker preserves choices focus and consumer selection": async (context) => {
     const far = entity('far'), near = entity('near'); near.entity!.altitude = { meters:80, reference:'ground' };
     const ordinary: MapFeature = { type:'Feature', id:'ordinary', properties:{name:'Ordinary icon'}, geometry:{type:'Point',coordinates:[0,0]} };
     const viewport = create(context, [far,near,ordinary]), clicks: Interaction<Record<string, unknown>>[] = [], requests:string[][] = [];
@@ -187,8 +187,8 @@ export const modelPickingCases: readonly { name: string; run(context: Context): 
       const requestedBefore=requests.length; await key('Enter');
       check(disposedViewport && requests.length===requestedBefore && !context.container.querySelector('.rl-ui'), 'Destroyed picker emitted a stale selection or remounted content'); cancelling.destroy();
     } finally { ui.destroy(); viewport.destroy(); }
-  } },
-  { name: 'Model hover follows a stationary pointer and cancels stale callbacks', async run(context) {
+  },
+  "Model hover follows a stationary pointer and cancels stale callbacks": async (context) => {
     let ground: number | null = 0;
     const viewport = create(context, [entity()], () => ground), hovers:string[] = [];
     viewport.on('hover', value => { hovers.push(value.features[0]?.id ?? ''); });
@@ -231,5 +231,5 @@ export const modelPickingCases: readonly { name: string; run(context: Context): 
       await context.until(()=>context.container.querySelector('.rl-tooltip')?.textContent==='Newest','replacement hover shows latest content');
       check(replacementCallbacks===1 && replacedNames.join(',')==='Newest','Replacement repeated its initiating callback or emitted stale follow-up hover'); replace(); replacementObserver(); latestUI.destroy();
     } finally { ui.destroy(); viewport.destroy(); }
-  } },
-];
+  },
+} satisfies BrowserCaseModule;

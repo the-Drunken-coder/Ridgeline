@@ -1,0 +1,49 @@
+{
+  "Snapshot review isolates shared and ordinary buffers across public reads and callbacks": {
+    "crossOriginIsolated": true
+  },
+  "Snapshot review drawing state permissions history and submission isolate shared memory": {
+    "crossOriginIsolated": true
+  },
+  "Attachment markers and wireframes keep CSS size across map pixel ratios": {
+    "pixelObservation": {
+      "deviceScaleFactor": 2,
+      "describe": "Pixel observation at browser DPR 2",
+      "timeout": 90000
+    }
+  },
+  "Model pixel observation aligns visible picking across canvas ratios and rejects absent models": {
+    "pixelObservation": {
+      "deviceScaleFactor": 2,
+      "describe": "Pixel observation at browser DPR 2",
+      "timeout": 90000
+    }
+  },
+  "Drawing upgrades touch and keyboard handle callbacks preserve current targets through mutation admission": {
+    "touch": true
+  },
+  "Drawing upgrades touch callbacks preserve current targets and reject obsolete input": {
+    "touch": true
+  },
+  "Drawing upgrades touch preserves valid snapping and rejects obsolete release targets": {
+    "touch": true
+  },
+  "Drawing upgrades touch taps handles cancellation and two finger navigation use native input": {
+    "touch": true
+  },
+  "Drawing upgrades touch survives live updates with atomic drag history": {
+    "touch": true
+  },
+  "Reliability drawing restores rejected handle edits on a third visible world copy": {
+    "viewport": {
+      "width": 2000,
+      "height": 720
+    }
+  },
+  "Reliability drawing preserves rejected handle edits after camera turns and reversal": {
+    "viewport": {
+      "width": 2000,
+      "height": 720
+    }
+  }
+}

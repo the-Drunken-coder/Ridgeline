@@ -6,11 +6,7 @@ import { captureMapPixels, pixelToCss, waitForVisible } from './browser-observat
 
 
 
-type Context = {
-  container: HTMLElement;
-  setCurrent(viewport: Viewport): void;
-  until(predicate: () => boolean, description: string): Promise<void>;
-};
+import type { BrowserCaseContext as Context, BrowserCaseModule } from './context';
 const style: StyleSpecification = { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] };
 function check(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
@@ -31,14 +27,15 @@ function controls(viewport: Viewport, editor: ReturnType<typeof attachDrawing>) 
   return () => { attachment.destroy(); tools.remove(); inspector.remove(); };
 }
 
-export const workflowDrawingCases: readonly { name: string; run(context: Context): Promise<void> }[] = [
-  { name: 'Drawing upgrades touch and keyboard handle callbacks preserve current targets through mutation admission', async run({ container, setCurrent, until }) {
+
+export const workflowDrawingCases = {
+  "Drawing upgrades touch and keyboard handle callbacks preserve current targets through mutation admission": async ({ container, own, until }) => {
     for (const input of ['keyboard', 'touch-drag'] as const)
     for (const callback of ['canEdit', 'canSnap', 'diagnostic'] as const)
     for (const action of ['control', 'candidate', 'data'] as const) {
-      const viewport = createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 16 }, logger: () => {},
-        features: [{ type: 'Feature', id: 'handle-snap', properties: {}, geometry: { type: 'Point', coordinates: [0, 0] } }] });
-      setCurrent(viewport); await viewport.ready;
+      const viewport = own(createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 16 }, logger: () => {},
+        features: [{ type: 'Feature', id: 'handle-snap', properties: {}, geometry: { type: 'Point', coordinates: [0, 0] } }] }));
+      await viewport.ready;
       await until(() => viewport.map.queryRenderedFeatures({ layers: ['rl:points'] }).length > 0, 'handle snap feature published');
       let armed = false, finalPermission = false, reportPending = false, invoked = 0, callbackActive = false, resolution = 0, retiredResolution = -1, triggerResolution = -1;
       const changes: { position: [number, number]; callbackActive: boolean; resolution: number }[] = [];
@@ -124,14 +121,14 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
         editor.undo(); check(JSON.stringify(editor.getState().draft!.shape) === before, 'Next handle gesture was not atomic');
       } finally { off(); editor.destroy(); viewport.destroy(); }
     }
-  } },
-  { name: 'Drawing upgrades touch callbacks preserve current targets and reject obsolete input', async run({ container, setCurrent, until }) {
+  },
+  "Drawing upgrades touch callbacks preserve current targets and reject obsolete input": async ({ container, own, until }) => {
     for (const callback of ['canSnap', 'canEdit', 'diagnostic'] as const)
     for (const action of ['control', 'candidate', 'policy', 'camera', 'scene', 'replacement', 'data', 'deny'] as const) {
       if (callback === 'diagnostic' && action === 'deny') continue;
-      const viewport = createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 16 }, logger: () => {},
-        features: [{ type: 'Feature', id: 'snap', properties: {}, geometry: { type: 'Point', coordinates: [0, 0] } }] });
-      setCurrent(viewport); await viewport.ready;
+      const viewport = own(createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 16 }, logger: () => {},
+        features: [{ type: 'Feature', id: 'snap', properties: {}, geometry: { type: 'Point', coordinates: [0, 0] } }] }));
+      await viewport.ready;
       await until(() => viewport.map.queryRenderedFeatures({ layers: ['rl:points'] }).length > 0, 'snap feature published');
       let armed = false, finalPermission = false, reportPending = false, invoked = 0, denied = false;
       viewport.map.getCanvasContainer().addEventListener('touchend', () => { armed = true; }, { capture: true, once: true });
@@ -201,13 +198,13 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
         editor.undo(); check(editor.getState().draft?.placed === expected - 1, `${action} next gesture was not atomic`);
       } finally { offDiagnostic(); editor.destroy(); viewport.destroy(); }
     }
-  } },
-  { name: 'Drawing upgrades touch preserves valid snapping and rejects obsolete release targets', async run({ container, setCurrent, until }) {
+  },
+  "Drawing upgrades touch preserves valid snapping and rejects obsolete release targets": async ({ container, own, until }) => {
     for (const action of ["control", "data", "candidate", "policy", "camera", "replacement"] as const) {
       const update = action === "data";
-      const viewport = createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 16 }, logger: () => {},
-        features: [{ type: 'Feature', id: 'snap', properties: {}, geometry: { type: 'Point', coordinates: [0, 0] } }] });
-      setCurrent(viewport); await viewport.ready;
+      const viewport = own(createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 16 }, logger: () => {},
+        features: [{ type: 'Feature', id: 'snap', properties: {}, geometry: { type: 'Point', coordinates: [0, 0] } }] }));
+      await viewport.ready;
       await until(() => viewport.map.queryRenderedFeatures({ layers: ['rl:points'] }).length > 0, 'snap feature published');
       let armed = false, invoked = 0;
       viewport.map.getCanvasContainer().addEventListener('touchend', () => { armed = true; }, { capture: true, once: true });
@@ -239,11 +236,10 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
         editor.undo(); check(editor.getState().draft?.placed === 0, 'Release created multiple undo entries');
       } finally { editor.destroy(); viewport.destroy(); }
     }
-  } },
-
-  { name: 'Drawing upgrades invalid hole can close for correction while submission remains blocked', async run({ container, setCurrent }) {
-    const viewport = createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 13 }, logger: () => {} });
-    setCurrent(viewport); await viewport.ready; let submitted = 0; const submissionCount = () => submitted;
+  },
+  "Drawing upgrades invalid hole can close for correction while submission remains blocked": async ({ container, own }) => {
+    const viewport = own(createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 13 }, logger: () => {} }));
+    await viewport.ready; let submitted = 0; const submissionCount = () => submitted;
     const editor = attachDrawing(viewport, { createFeature: () => ({ id: 'correct-hole', properties: {} }), submit: () => { submitted++; return { accepted: true }; } });
     const dispose = controls(viewport, editor);
     try {
@@ -261,11 +257,11 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
       check(!editor.getState().validation, 'Correction did not restore valid geometry');
       await click('[data-field="action:Finish"]'); check(submissionCount() === 1, 'Corrected hole did not submit once');
     } finally { dispose(); editor.destroy(); viewport.destroy(); }
-  } },
-  { name: 'Drawing upgrades edge snapping chooses the nearest edge while retaining vertex preference', async run({ container, setCurrent, until }) {
+  },
+  "Drawing upgrades edge snapping chooses the nearest edge while retaining vertex preference": async ({ container, own, until }) => {
     for (const vertex of [false, true]) {
-      const viewport = createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 16 }, logger: () => {} });
-      setCurrent(viewport); await viewport.ready;
+      const viewport = own(createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 16 }, logger: () => {} }));
+      await viewport.ready;
       const center = viewport.map.project([0, 0]);
       const line = (id: string, offset: number) => ({ type: 'Feature', id, properties: {}, geometry: { type: 'LineString', coordinates: [
         viewport.map.unproject([center.x + offset, center.y - 70]).toArray(), viewport.map.unproject([center.x + offset, center.y + 70]).toArray()] } } satisfies MapFeature);
@@ -283,13 +279,13 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
         check(typeof expected === 'number' && Math.abs(shape.vertices[0]![0] - expected) < 1e-7, `${vertex ? 'Vertex preference' : 'Nearest edge'} chose longitude ${shape.vertices[0]![0]} instead of ${expected}`);
       } finally { editor.destroy(); viewport.destroy(); }
     }
-  } },
-  { name: 'Drawing upgrades native zoom transfers a handle gesture while programmatic zoom preserves it', async run({ container, setCurrent, until }) {
+  },
+  "Drawing upgrades native zoom transfers a handle gesture while programmatic zoom preserves it": async ({ container, own, until }) => {
     const modes = ['keyboard-handle', 'keyboard-canvas', 'wheel', 'native-control', 'canvas-pan', 'canvas-rotate', 'canvas-pitch',
       'disabled-handle', 'disabled-canvas', 'prevented-key', 'control-key', 'form-key', 'programmatic', 'consumer-control'] as const;
     for (const mode of modes) {
-      const viewport = createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 15 }, logger: () => {} });
-      setCurrent(viewport); await viewport.ready;
+      const viewport = own(createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 15 }, logger: () => {} }));
+      await viewport.ready;
       viewport.map.addControl(new NavigationControl());
       const form = document.createElement('input'), consumerControl = document.createElement('button');
       form.type = 'number'; form.value = '10'; consumerControl.textContent = 'Consumer camera';
@@ -370,13 +366,10 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
         editor.redo(); check(JSON.stringify(editor.getState().draft!.shape) === afterHandleKey, `${mode} handle command lost exact redo`);
       } finally { await mouse('up', 1, 1); editor.destroy(); viewport.destroy(); form.remove(); consumerControl.remove(); }
     }
-  } },
-
-  {
-    name: 'Drawing upgrades holes and exact segments save reload and retain draft history',
-    async run({ container, setCurrent, until }) {
-      const viewport = createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 13 }, logger: () => {} });
-      setCurrent(viewport); await viewport.ready;
+  },
+  "Drawing upgrades holes and exact segments save reload and retain draft history": async ({ container, own, until }) => {
+      const viewport = own(createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 13 }, logger: () => {} }));
+      await viewport.ready;
       const editor = attachDrawing(viewport, { createFeature: () => ({ id: 'polygon-with-hole', properties: {} }), submit: () => ({ accepted: true }) });
       const disposeControls = controls(viewport, editor);
       try {
@@ -568,13 +561,10 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
         check(JSON.stringify(viewport.getFeature(saved.id)) === JSON.stringify(saved), 'Draft cancellation changed accepted data');
       } finally { disposeControls(); editor.destroy(); viewport.destroy(); }
     },
-  },
-  {
-    name: 'Drawing upgrades edge snapping is opt in respects Alt filters and callback scene changes',
-    async run({ container, setCurrent, until }) {
+  "Drawing upgrades edge snapping is opt in respects Alt filters and callback scene changes": async ({ container, own, until }) => {
       const edge: MapFeature = { type: 'Feature', id: 'edge', properties: {}, geometry: { type: 'LineString', coordinates: [[-.02, 0], [.02, 0]] } };
-      const viewport = createViewport({ container, basemap: style, camera: { center: [0, .004], zoom: 13 }, features: [edge], logger: () => {} });
-      setCurrent(viewport); await viewport.ready;
+      const viewport = own(createViewport({ container, basemap: style, camera: { center: [0, .004], zoom: 13 }, features: [edge], logger: () => {} }));
+      await viewport.ready;
       await until(() => viewport.map.queryRenderedFeatures({ layers: ['rl:line'] }).length > 0, 'eligible edge rendered');
       let failFilter = false, moveCamera = false, insidePlacementClick = false, changedDuringClick = false;
       const editor = attachDrawing(viewport, { createFeature: () => ({ id: 'new-line', properties: {} }), submit: () => ({ accepted: true }),
@@ -650,12 +640,9 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
         check(Math.abs(Math.abs(end()[0]) - 180) < 1e-5 && Math.abs(end()[1]) < 1e-9, 'Date-line edge snapped to a different world copy');
       } finally { editor.destroy(); viewport.destroy(); }
     },
-  },
-  {
-    name: 'Drawing upgrades touch taps handles cancellation and two finger navigation use native input',
-    async run({ container, setCurrent, until }) {
-      const viewport = createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 13 }, logger: () => {} });
-      setCurrent(viewport); await viewport.ready;
+  "Drawing upgrades touch taps handles cancellation and two finger navigation use native input": async ({ container, own, until }) => {
+      const viewport = own(createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 13 }, logger: () => {} }));
+      await viewport.ready;
       let allowed = true;
       const editor = attachDrawing(viewport, { createFeature: () => ({ id: 'touch-line', properties: {} }), submit: () => ({ accepted: true }), canEdit: () => allowed });
       try {
@@ -852,13 +839,10 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
         await keyboardMove();
       } finally { editor.destroy(); viewport.destroy(); }
     },
-  },
-  {
-    name: 'Drawing upgrades touch survives live updates with atomic drag history',
-    async run({ container, setCurrent, until }) {
-      const viewport = createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 13 }, logger: () => {}, elevationSampler: { sample: () => 0 }, entityVisibility: { footprints: false, zones: false, groundLines: false },
-        features: [{ type: 'Feature', id: 'live', entity: { altitude: { meters: 100, reference: 'ground' } }, geometry: { type: 'Point', coordinates: [.01, .01] }, properties: {} }] });
-      setCurrent(viewport); await viewport.ready;
+  "Drawing upgrades touch survives live updates with atomic drag history": async ({ container, own, until }) => {
+      const viewport = own(createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 13 }, logger: () => {}, elevationSampler: { sample: () => 0 }, entityVisibility: { footprints: false, zones: false, groundLines: false },
+        features: [{ type: 'Feature', id: 'live', entity: { altitude: { meters: 100, reference: 'ground' } }, geometry: { type: 'Point', coordinates: [.01, .01] }, properties: {} }] }));
+      await viewport.ready;
       const editor = attachDrawing(viewport, { createFeature: () => ({ id: 'touch-line', properties: {} }), submit: () => ({ accepted: true }) });
       let n = 0;
       const timer = setInterval(() => viewport.upsert([{ type: 'Feature', id: 'live', entity: { altitude: { meters: 100, reference: 'ground' } }, geometry: { type: 'Point', coordinates: [.01 + (++n % 10) * 1e-5, .01] }, properties: {} }]), 33);
@@ -908,10 +892,8 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
         editor.redo(); check(JSON.stringify(editor.getState().draft!.shape) === complete, 'Live touch drag redo lost completed geometry');
       } finally { clearInterval(timer); editor.destroy(); viewport.destroy(); }
     },
-  },
-
-  { name: 'Drawing upgrades snapping toggles retain native keyboard focus', async run({ container, setCurrent, until }) {
-    const viewport = createViewport({ container, basemap: style, logger: () => {} }); setCurrent(viewport);
+  "Drawing upgrades snapping toggles retain native keyboard focus": async ({ container, own, until }) => {
+    const viewport = own(createViewport({ container, basemap: style, logger: () => {} }));
     const editor = attachDrawing(viewport, { createFeature: () => ({ id: 'line', properties: {} }), submit: () => ({ accepted: true }) });
     const tools = document.createElement("div"), inspector = document.createElement("div");
     document.body.append(tools, inspector);
@@ -926,9 +908,9 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
       await window.browserKey('Tab'); await window.browserKey('Space');
       check(document.activeElement instanceof HTMLInputElement && document.activeElement.checked && editor.getEdgeSnapping(), 'Edge snapping rerender lost usable keyboard focus');
     } finally { controls.destroy(); tools.remove(); inspector.remove(); editor.destroy(); viewport.destroy(); }
-  } },
-  { name: 'Drawing upgrades mouse gesture ownership survives live updates and retires on blur', async run({ container, setCurrent, until }) {
-    const viewport = createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 15 }, logger: () => {} }); setCurrent(viewport);
+  },
+  "Drawing upgrades mouse gesture ownership survives live updates and retires on blur": async ({ container, own, until }) => {
+    const viewport = own(createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 15 }, logger: () => {} }));
     const editor = attachDrawing(viewport, { createFeature: () => ({ id: 'line', properties: {} }), submit: () => ({ accepted: true }) });
     try {
       await viewport.ready; editor.start('line'); editor.addPoint([-.003, 0]); editor.addPoint([.003, 0]); editor.setSnapping(false);
@@ -966,10 +948,9 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
       editor.undo(); check(JSON.stringify(editor.getState().draft!.shape) === live, 'Recovery drag did not keep its own atomic history');
       editor.redo(); check(JSON.stringify(editor.getState().draft!.shape) === recovered, 'Recovery drag redo failed');
     } finally { editor.destroy(); viewport.destroy(); }
-  } },
-
-  { name: 'Drawing upgrades numeric validation updates while keyboard focus stays in the field', async run({ container, setCurrent, until }) {
-    const viewport = createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 15 }, logger: () => {} }); setCurrent(viewport);
+  },
+  "Drawing upgrades numeric validation updates while keyboard focus stays in the field": async ({ container, own, until }) => {
+    const viewport = own(createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 15 }, logger: () => {} }));
     const editor = attachDrawing(viewport, { createFeature: () => ({ id: 'polygon', properties: {} }), submit: () => ({ accepted: true }) });
     const tools = document.createElement('div'), inspector = document.createElement('div'); document.body.append(tools, inspector);
     const controls = attachDrawingControls(viewport, editor, { tools, inspector });
@@ -993,14 +974,13 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
       await window.browserClick('[data-field="action:Undo"]');
       check(!editor.getState().validation && !inspector.querySelector('.rl-drawing-note'), 'Numeric undo left stale validation');
     } finally { controls.destroy(); tools.remove(); inspector.remove(); editor.destroy(); viewport.destroy(); }
-  } },
-
-  { name: 'Drawing upgrades snapping uses retained displayed geometry after rejected updates', async run({ container, setCurrent, until }) {
+  },
+  "Drawing upgrades snapping uses retained displayed geometry after rejected updates": async ({ container, own, until }) => {
     let fail = false; const diagnostics: string[] = [];
     const line: MapFeature = { type: 'Feature', id: 'edge', properties: {}, geometry: { type: 'LineString', coordinates: [[-.01, 0], [.01, 0]] } };
-    const viewport = createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 13 }, features: [line], logger: () => {},
-      style: feature => { if (fail && feature.id === 'edge') throw new Error('Retain the drawn edge'); return {}; }, onError: error => diagnostics.push(error.code) });
-    setCurrent(viewport);
+    const viewport = own(createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 13 }, features: [line], logger: () => {},
+      style: feature => { if (fail && feature.id === 'edge') throw new Error('Retain the drawn edge'); return {}; }, onError: error => diagnostics.push(error.code) }));
+
     const editor = attachDrawing(viewport, { createFeature: () => ({ id: 'draft', properties: {} }), submit: () => ({ accepted: true }), snapping: { edges: true, vertices: false } });
     try {
       await viewport.ready;
@@ -1017,10 +997,10 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
       const shape = editor.getState().draft!.shape; check(shape.kind === 'line' && Math.abs(shape.vertices[1]![1]) < 1e-8, 'Snapping used an undisplayed accepted edge');
       const accepted = viewport.getFeature('edge'); check(accepted?.geometry.type === 'LineString' && accepted.geometry.coordinates[0]?.[1] === .0005, 'Displayed-target snapping overwrote authoritative data');
     } finally { editor.destroy(); viewport.destroy(); }
-  } },
-  { name: 'Drawing upgrades permission interruption preserves a reentrant replacement editor', async run({ container, setCurrent, until }) {
+  },
+  "Drawing upgrades permission interruption preserves a reentrant replacement editor": async ({ container, own, until }) => {
     const accepted: MapFeature = { type: 'Feature', id: 'accepted', properties: {}, geometry: { type: 'LineString', coordinates: [[-.003, .002], [.003, .002]] } };
-    const viewport = createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 15 }, features: [accepted], logger: () => {} }); setCurrent(viewport);
+    const viewport = own(createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 15 }, features: [accepted], logger: () => {} }));
     let allowed = true, armed = false, replacementAllowed = true;
     const editor = attachDrawing(viewport, { createFeature: () => ({ id: 'draft', properties: {} }), submit: () => ({ accepted: true }), canEdit: () => allowed });
     let replacement: ReturnType<typeof attachDrawing> | undefined;
@@ -1067,5 +1047,5 @@ export const workflowDrawingCases: readonly { name: string; run(context: Context
       check(!container.querySelector('.rl-drawing-handle'), 'Cancelled draft retained its native handles');
       await window.browserMouse('up', cancelX + 25, cancelY + 10);
     } finally { replacement?.destroy(); editor.destroy(); viewport.destroy(); }
-  } },
-];
+  },
+} satisfies BrowserCaseModule;

@@ -1,4 +1,4 @@
-import { voteVertex, voteFragment, boundaryFragment, coverageVertex, SENSOR_SIZE, regionStyleFragment, smoothRegionFragment, coverageFragment } from '../src/gpu-camera-shaders';
+import { voteVertex, voteFragment, boundaryFragment, coverageVertex, SENSOR_SIZE, regionStyleFragment, smoothRegionFragment, coverageFragment } from '../../src/gpu-camera-shaders';
 
 /** Run the production vote pass with controlled nine-location terrain classifications. */
 export function checkGpuVote() {

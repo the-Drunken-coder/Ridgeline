@@ -3,8 +3,7 @@ import type { MapFeature, RidgelineError, Viewport } from '@ridgeline/map';
 import { observeIdle } from './browser-idle';
 import { captureMapPixels, cssToPixel, waitForVisible } from './browser-observation';
 
-type Context = { container: HTMLDivElement; setCurrent(viewport: Viewport): void;
-  until(predicate: () => boolean, description: string, timeout?: number): Promise<void> };
+import type { BrowserCaseContext as Context, BrowserCaseModule } from './context';
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 
 async function flatDem() {
@@ -16,8 +15,9 @@ async function flatDem() {
   return blob;
 }
 
-export const groundAreaReviewCases: readonly { name: string; run(context: Context): Promise<void> }[] = [
-  { name: 'Large ground areas complete through the raster viewport and stay quiet after eviction', async run(context) {
+
+export const groundAreaReviewCases = {
+  "Large ground areas complete through the raster viewport and stay quiet after eviction": async (context) => {
     const blob = await flatDem(), prefix = 'https://ground-area-review.test/dem/';
     const fetch = globalThis.fetch, tiles = new Set<string>(), zooms = new Set<string>();
     let requests = 0;
@@ -32,12 +32,12 @@ export const groundAreaReviewCases: readonly { name: string; run(context: Contex
     const errors: RidgelineError[] = [], clicks: { entityId: string; attachmentId: string }[][] = [];
     let viewport: Viewport | undefined;
     try {
-      viewport = createViewport({ container: context.container,
+      viewport = context.own(createViewport({ container: context.container,
         basemap: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
         camera: { center: [6, 46], zoom: 12, pitch: 0 }, terrain: false, hillshade: false,
         elevation: { tiles: [`${prefix}{z}/{x}/{y}.png`], encoding: 'terrarium', minzoom: 12, maxzoom: 12, tileSize: 256 },
-        style: () => ({ color: '#ff0000', radius: 6 }), onError: error => errors.push(error), logger: () => {} });
-      context.setCurrent(viewport);
+        style: () => ({ color: '#ff0000', radius: 6 }), onError: error => errors.push(error), logger: () => {} }));
+
       const map = viewport;
       map.on('click', event => clicks.push(event.attachments));
       await map.ready;
@@ -85,5 +85,5 @@ export const groundAreaReviewCases: readonly { name: string; run(context: Contex
         state: viewport?.getEntityState('large-ground'), errors: errors.map(error => error.message) });
       try { viewport?.destroy(); } finally { globalThis.fetch = fetch; }
     }
-  } },
-];
+  },
+} satisfies BrowserCaseModule;

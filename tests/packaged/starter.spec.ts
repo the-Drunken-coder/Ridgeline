@@ -1,4 +1,4 @@
-import { starterCases } from '../support-cases.ts';
+import { starterCases } from '../browser/catalog.ts';
 import { expect, test } from 'playwright/test';
 
 test(starterCases.save, async ({ page }, testInfo) => {

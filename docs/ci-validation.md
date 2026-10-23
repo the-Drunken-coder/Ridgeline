@@ -71,6 +71,8 @@ Keep useful coverage when runtime grows. Runs approaching fifteen minutes should
 
 Packaged consumer preparation requires the generated consumer install/build, a separate fresh starter install/build with its own unchanged configuration, and final archive file-inventory and Markdown file/heading-link checks. These stages run under the existing browser owner before either packaged Chromium or three-engine support execution. A successful generated consumer cannot hide a broken starter or packaged link.
 
+The import-free [browser catalog](../tests/browser/catalog.ts) owns ordered case titles, support membership and browser setup metadata. Playwright discovery reads that catalog without loading browser implementations. Preparation copies [the browser fixture directory](../tests/browser/) as one unit, with the production shader copy remaining a focused exception. Capability modules bind the titles independently; the registry rejects missing, duplicate, unknown or reordered bindings. Only the selected case runs setup, and its fixture owns cleanup for every viewport it creates, including replacements.
+
 ## Browser reports
 
 Each packaged shard uploads `blob-packaged-N` and `results-packaged-N`. The control lab uploads `blob-control`; the playground uploads `blob-playground`. Failure screenshots and traces use separate `failures-packaged-N`, `failures-control`, and `failures-playground` artifacts. The `browser-reports` job combines available blobs into the downloadable `browser-report` HTML artifact even if a shard fails. It also compares Playwright discovery against all four execution reports, rejecting omitted, duplicated, skipped, or retried cases. The report job is required by `validate`.

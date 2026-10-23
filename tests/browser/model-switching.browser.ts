@@ -3,18 +3,17 @@ import type { ElevationSampler, MapFeature, Viewport } from '@ridgeline/map';
 import type { CustomLayerInterface } from 'maplibre-gl';
 import { solidGlb } from './model-fixtures';
 
-type Context = { container: HTMLDivElement; setCurrent(viewport: Viewport): void;
-  until(predicate: () => boolean, description: string, timeout?: number): Promise<void> };
+import type { BrowserCaseContext as Context, BrowserCaseModule } from './context';
 const check = (value: unknown, message: string) => { if (!value) throw new Error(message); };
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const feature = (modelId = 'box'): MapFeature => ({ type: 'Feature', id: 'entity', properties: {},
   geometry: { type: 'Point', coordinates: [0, 0] }, entity: { heading: 0, model: { id: modelId, minimumSizePixels: 40 } } });
 function create(context: Context, sampler: ElevationSampler = { sample: () => 0 }, errors: RidgelineError[] = [], icon = false) {
-  const viewport = createViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
+  const viewport = context.own(createViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
     { id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
     camera: { center: [0, 0], zoom: 14, pitch: 0, bearing: 0 }, features: [feature()], elevationSampler: sampler,
-    style: () => ({ color: '#0000ff', radius: icon ? 0 : 8, icon: icon ? 'blue-model-icon' : undefined }), logger: () => {}, onError: error => errors.push(error) });
-  context.setCurrent(viewport); return viewport;
+    style: () => ({ color: '#0000ff', radius: icon ? 0 : 8, icon: icon ? 'blue-model-icon' : undefined }), logger: () => {}, onError: error => errors.push(error) }));
+  return viewport;
 }
 function distance(viewport: Viewport) { return viewport.map._camera.transform.getCameraAltitude(); }
 function move(viewport: Viewport, meters: number) {
@@ -56,8 +55,9 @@ async function ready(context: Context, viewport: Viewport, meters: number) {
   await viewport.registerModel('box', { bytes: solidGlb() });
   await pause(80);
 }
-export const modelSwitchingCases: readonly { name: string; run(context: Context): Promise<void> }[] = [
-  { name: 'Model switching publishes one representation through distance and settings histories', async run(context) {
+
+export const modelSwitchingCases = {
+  "Model switching publishes one representation through distance and settings histories": async (context) => {
     const viewport = create(context);
     try {
       await ready(context, viewport, 2000);
@@ -148,8 +148,8 @@ export const modelSwitchingCases: readonly { name: string; run(context: Context)
         }
       } finally { airborne.destroy(); }
     }
-  } },
-  { name: 'Model switching preserves choices through temporary terrain and asset readiness', async run(context) {
+  },
+  "Model switching preserves choices through temporary terrain and asset readiness": async (context) => {
     let known = true, finish: (() => void) | undefined;
     const sampler: ElevationSampler = { sample: () => known ? 0 : null,
       prepare: () => new Promise<void>(resolve => { finish = () => { known = true; resolve(); }; }) };
@@ -234,8 +234,8 @@ export const modelSwitchingCases: readonly { name: string; run(context: Context)
         footprint.map.querySourceFeatures('rl:features').some(item => item.properties._rl_feature_id === 'entity'), 'reintroduced entity reaches native publication');
       only(await frame(footprint), 'icon', 'reintroduced entity owns native pixels');
     } finally { footprint.destroy(); }
-  } },
-  { name: 'Model switching preflights failures and rejects reentrant stale frames', async run(context) {
+  },
+  "Model switching preflights failures and rejects reentrant stale frames": async (context) => {
     let onSample: (() => void) | undefined;
     const sampler: ElevationSampler = { sample: () => { const action = onSample; onSample = undefined; action?.(); return 0; } };
     const errors: RidgelineError[] = [], viewport = create(context, sampler, errors);
@@ -314,8 +314,8 @@ export const modelSwitchingCases: readonly { name: string; run(context: Context)
       await pause(50);
       check(cancelled && rejected && followups === 0, 'Destroyed registration callback retained later render work');
     } finally { disposed.destroy(); }
-  } },
-  { name: 'Model size floors use the rendered projected box and settle without idle frames', async run(context) {
+  },
+  "Model size floors use the rendered projected box and settle without idle frames": async (context) => {
     const viewport = create(context);
     try {
       await ready(context, viewport, 1800);
@@ -333,5 +333,5 @@ export const modelSwitchingCases: readonly { name: string; run(context: Context)
       viewport.map.on('render', count); await pause(5000); viewport.map.off('render', count);
       check(frames === 0, `Settled models rendered ${frames} idle frames`);
     } finally { viewport.destroy(); }
-  } },
-];
+  },
+} satisfies BrowserCaseModule;

@@ -4,11 +4,7 @@ import { NavigationControl } from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
 import { captureMapPixels, pixelToCss, waitForVisible } from './browser-observation';
 
-type Context = {
-  container: HTMLElement;
-  setCurrent(viewport: Viewport): void;
-  until(predicate: () => boolean, description: string): Promise<void>;
-};
+import type { BrowserCaseContext as Context, BrowserCaseModule } from './context';
 const basemap: StyleSpecification = { version: 8, sources: {}, layers: [
   { id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } },
 ] };
@@ -53,8 +49,9 @@ function shortcutCounts() {
   return { captured, application, destroy() { document.removeEventListener('keydown', capture, true); document.removeEventListener('keydown', bubble); } };
 }
 
-export const drawingReviewCases: readonly { name: string; run(context: Context): Promise<void> }[] = [
-  { name: 'Drawing review opening callbacks preserve conflicts and restart the latest accepted baseline', async run({ container, setCurrent }) {
+
+export const drawingReviewCases = {
+  "Drawing review opening callbacks preserve conflicts and restart the latest accepted baseline": async ({ container, own }) => {
     for (const callback of ['style', 'interaction'] as const)
     for (const update of ['update', 'remove', 'unrelated'] as const) {
       const before = line('opening', 1), latest = line('opening', 2);
@@ -64,12 +61,12 @@ export const drawingReviewCases: readonly { name: string; run(context: Context):
         if (update === 'remove') viewport.remove([before.id]);
         else viewport.upsert([update === 'update' ? latest : { ...latest, id: 'other' }]);
       };
-      const viewport = createViewport({ container, basemap, camera: { center: [0, 0], zoom: 16 },
+      const viewport = own(createViewport({ container, basemap, camera: { center: [0, 0], zoom: 16 },
         features: [before], logger: () => {}, style: feature => {
           if (armed && callback === 'style' && feature.id === before.id) publish();
           return { color: '#216e5b' };
-        } });
-      setCurrent(viewport); await viewport.ready;
+        } }));
+      await viewport.ready;
       const editor = attachDrawing<Properties>(viewport, { createFeature: () => ({ id: 'unused', properties: {} }),
         submit: () => { submitted++; return { accepted: true }; } });
       const off = viewport.on('interactionchange', ({ owner }) => { if (armed && callback === 'interaction' && owner === 'drawing') publish(); });
@@ -100,12 +97,12 @@ export const drawingReviewCases: readonly { name: string; run(context: Context):
         check(viewport.getInteractionOwner() === null, 'Completed opening retained its lease');
       } finally { off(); editor.destroy(); viewport.destroy(); }
     }
-  } },
-  { name: 'Drawing review nested destroy preserves replacement resources handles navigation and registration', async run({ container, setCurrent, until }) {
+  },
+  "Drawing review nested destroy preserves replacement resources handles navigation and registration": async ({ container, own, until }) => {
     const originalFeature = arrow('original', -.0008), replacementFeature = arrow('replacement', .0008);
-    const viewport = createViewport({ container, basemap, camera: { center: [0, 0], zoom: 16 },
-      features: [originalFeature, replacementFeature], logger: () => {} });
-    setCurrent(viewport); await viewport.ready;
+    const viewport = own(createViewport({ container, basemap, camera: { center: [0, 0], zoom: 16 },
+      features: [originalFeature, replacementFeature], logger: () => {} }));
+    await viewport.ready;
     viewport.map.addControl(new NavigationControl({ showCompass: false }), 'top-left');
     const options: DrawingOptions<Properties> = { createFeature: () => ({ id: 'unused', properties: {} }), submit: () => ({ accepted: true }) };
     const original = attachDrawing(viewport, options);
@@ -181,10 +178,10 @@ export const drawingReviewCases: readonly { name: string; run(context: Context):
       const disabled = attachDrawing(viewport, options); disabled.start('line'); disabled.destroy();
       check(!viewport.map.doubleClickZoom.isEnabled(), 'Teardown enabled double-click navigation disabled by the consumer');
     } finally { off(); replacement?.destroy(); original.destroy(); viewport.destroy(); }
-  } },
-  { name: 'Drawing review idle toolbar Undo and Redo reach application shortcuts once', async run({ container, setCurrent }) {
-    const viewport = createViewport({ container, basemap, logger: () => {} });
-    setCurrent(viewport); await viewport.ready;
+  },
+  "Drawing review idle toolbar Undo and Redo reach application shortcuts once": async ({ container, own }) => {
+    const viewport = own(createViewport({ container, basemap, logger: () => {} }));
+    await viewport.ready;
     const editor = attachDrawing(viewport, { createFeature: () => ({ id: 'idle', properties: {} }), submit: () => ({ accepted: true }) });
     const controls = mountControls(viewport, editor), shortcuts = shortcutCounts();
     try {
@@ -198,10 +195,10 @@ export const drawingReviewCases: readonly { name: string; run(context: Context):
       check(JSON.stringify(shortcuts.application) === '[false,true,false,true]' && shortcuts.captured.length === 4, 'Outside-toolbar shortcut control did not reach the application once per key');
       check(editor.getState().phase === 'idle' && viewport.getInteractionOwner() === null, 'Idle shortcuts opened a draft or interaction lease');
     } finally { shortcuts.destroy(); controls.destroy(); editor.destroy(); viewport.destroy(); }
-  } },
-  { name: 'Drawing review nested draft and supplied history shortcuts perform exactly one owned action', async run({ container, setCurrent }) {
-    const viewport = createViewport({ container, basemap, camera: { center: [0, 0], zoom: 14 }, logger: () => {} });
-    setCurrent(viewport); await viewport.ready;
+  },
+  "Drawing review nested draft and supplied history shortcuts perform exactly one owned action": async ({ container, own }) => {
+    const viewport = own(createViewport({ container, basemap, camera: { center: [0, 0], zoom: 14 }, logger: () => {} }));
+    await viewport.ready;
     let settle: ((decision: DrawingDecision) => void) | undefined;
     const editor = attachDrawing(viewport, { createFeature: () => ({ id: 'shortcuts', properties: {} }),
       submit: () => new Promise<DrawingDecision>(resolve => { settle = resolve; }) });
@@ -258,5 +255,5 @@ export const drawingReviewCases: readonly { name: string; run(context: Context):
       settle?.({ accepted: false, reason: 'Test cleanup' }); if (pending) await pending;
       off(); shortcuts.destroy(); controls.destroy(); editor.destroy(); viewport.destroy();
     }
-  } },
-];
+  },
+} satisfies BrowserCaseModule;
