@@ -192,7 +192,7 @@ export function mountAirborneInspector(
     render();
   }, { signal: controller.signal });
   const offState = viewport.on('entitychange', render);
-  const offSelection = viewport.on('selectionrequest', () => queueMicrotask(render));
+  const offSelection = viewport.on('selectionchange', render);
   render();
-  return { render, destroy() { controller.abort(); offState(); offSelection(); container.replaceChildren(); } };
+  return { destroy() { controller.abort(); offState(); offSelection(); container.replaceChildren(); } };
 }
