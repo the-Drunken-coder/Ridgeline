@@ -1174,6 +1174,40 @@ test("Rejection retains draft; unrelated updates leave it intact; accepted edit 
     retain: true,
   });
 });
+for (const reason of [
+  "Server refused the drawing.",
+  "Editing permission could not be checked. Your draft is preserved.",
+]) {
+  test(`Permission refresh retains consumer rejection: ${reason}`, async () => {
+    let failed = false;
+    const { editor, host } = fixture({
+      canEdit: () => { if (failed) throw new Error("Permission service unavailable"); return true; },
+      submit: () => ({ accepted: false, reason }),
+    });
+    line(editor);
+    editor.setStyle({ label: "Retained" });
+    assert.equal(await editor.finish(), false);
+    const rejected = editor.getState();
+    assert.equal(rejected.phase, "rejected");
+    assert.equal(rejected.message, reason);
+    editor.refreshPermissions();
+    assert.equal(editor.getState().phase, "rejected");
+    assert.deepEqual(editor.getState(), rejected);
+    failed = true; editor.refreshPermissions();
+    assert.equal(editor.getState().phase, "forbidden");
+    assert.deepEqual(editor.getState().draft, rejected.draft);
+    failed = false; editor.refreshPermissions();
+    assert.deepEqual(editor.getState(), rejected);
+    assert.equal(host.getFeature("new"), undefined);
+    editor.undo();
+    assert.equal(editor.getState().draft?.style.label, "");
+    assert.equal(editor.getState().phase, "editing");
+    editor.redo();
+    assert.deepEqual(editor.getState().draft, rejected.draft);
+    editor.destroy();
+  });
+}
+
 test("External update during submission aborts and cannot overwrite the newer feature", async () => {
   let decide: (v: DrawingDecision) => void = () => {},
     signal: AbortSignal | undefined;
