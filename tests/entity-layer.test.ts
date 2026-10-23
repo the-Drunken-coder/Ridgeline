@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { CustomRenderMethodInput, Map as GLMap } from 'maplibre-gl';
 import { EntityLayer } from '../src/entity-layer';
-import type { Primitive } from '../src/entity-layer';
+import type { AirbornePrimitive } from '../src/entity-primitives';
 
 for (const mode of ['triangles', 'lines'] as const) {
   for (const globe of [false, true]) {
@@ -26,7 +26,7 @@ for (const mode of ['triangles', 'lines'] as const) {
       Object.defineProperty(globalThis, 'devicePixelRatio', { configurable: true, value: 1 });
       try {
         layer.onAdd(map, gl);
-        const primitives: Primitive[] = [
+        const primitives: AirbornePrimitive[] = [
           { entityId: 'volume', mode: 'points', vertices: [[0, 0, 1_000_000]], color: [0, 0, 1, 1] },
           { entityId: 'volume', attachmentId: 'face', mode, color: [1, 0, 0, 1],
             vertices: mode === 'lines' ? [[-2, 0, 1_000_000], [2, 0, 1_000_000]]
@@ -223,9 +223,9 @@ function completedFrameFixture(report: (error: unknown, layer: EntityLayer) => v
     fail(value: boolean) { fail = value; },
     render(variant = 'flat') { layer.render(gl, { ...input, shaderData: { ...input.shaderData, variantName: variant } }); } };
 }
-const face: Primitive = { entityId: 'old', attachmentId: 'face', mode: 'triangles', color: [1, 0, 0, 1],
+const face: AirbornePrimitive = { entityId: 'old', attachmentId: 'face', mode: 'triangles', color: [1, 0, 0, 1],
   vertices: [[-20, -20, 100], [20, -20, 100], [0, 20, 100]] };
-const point: Primitive = { entityId: 'new', mode: 'points', color: [0, 1, 0, 1], size: 20, vertices: [[36, 0, 100]] };
+const point: AirbornePrimitive = { entityId: 'new', mode: 'points', color: [0, 1, 0, 1], size: 20, vertices: [[36, 0, 100]] };
 const center = { minX: 498, minY: 498, maxX: 502, maxY: 502 };
 
 test('set retains the last completed geometry projection and vertical scale until a successful render', () => {
@@ -285,7 +285,7 @@ for (const afterSuccess of [false, true]) {
 
 test('completed point suppression follows the model-coordinated draw and transparent geometry has no hits', () => {
   const f = completedFrameFixture();
-  const marker: Primitive = { ...point, vertices: [[0, 0, 100]] };
+  const marker: AirbornePrimitive = { ...point, vertices: [[0, 0, 100]] };
   try {
     f.layer.set([marker, { ...face, color: [1, 0, 0, 0] }], 1);
     f.render();

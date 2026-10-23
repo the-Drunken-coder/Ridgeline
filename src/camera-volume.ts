@@ -3,7 +3,7 @@ import { cameraFootprint, cameraGroundCornerOffsets, cameraRay, localFrame } fro
 import type { GeoPoint, Vec3 } from './entity-geometry';
 import type { CameraAttachment } from './types';
 import type { CameraTerrain } from './gpu-camera-terrain';
-import type { Primitive } from './entity-layer';
+import type { AirbornePrimitive, EntityGeometry } from './entity-primitives';
 import { parseColor } from './color';
 
 export const cameraDefaults = {
@@ -25,21 +25,12 @@ export function plainCameraPrimitives(
   origin: GeoPoint,
   ground: number,
   camera: CameraAttachment,
-): { geometry: Primitive[]; footprintTriangles: number } {
+): { geometry: EntityGeometry; footprintTriangles: number } {
+  const geometry: EntityGeometry = { ground: [], airborne: [] };
   const footprint = cameraFootprint(origin, camera, ground);
-  if (!footprint.length) return { geometry: [], footprintTriangles: 0 };
+  if (!footprint.length) return { geometry, footprintTriangles: 0 };
 
   const rgba = parseColor(camera.color ?? cameraDefaults.plainColor, 1);
-  const geometry: Primitive[] = [];
-  const add = (
-    vertices: GeoPoint[],
-    mode: Primitive['mode'],
-    color: Primitive['color'],
-    surface = false,
-    size?: number,
-  ) => {
-    if (vertices.length) geometry.push({ entityId, attachmentId: camera.id, mode, vertices, color, size, surface });
-  };
 
   if ((camera.volumeOpacity ?? 0) > 0 || camera.wireframe) {
     const local = localFrame(origin);
@@ -53,21 +44,20 @@ export function plainCameraPrimitives(
       rays.push(origin, a, a, b);
     });
     if ((camera.volumeOpacity ?? 0) > 0)
-      add(faces, 'triangles', [rgba[0], rgba[1], rgba[2], camera.volumeOpacity!]);
+      geometry.airborne.push({ entityId, attachmentId: camera.id, mode: 'triangles', vertices: faces,
+        color: [rgba[0], rgba[1], rgba[2], camera.volumeOpacity!] });
     if (camera.wireframe)
-      add(rays, 'lines', parseColor(cameraDefaults.wireframeColor, 1), false,
-        camera.wireframeWidth ?? cameraDefaults.wireframeWidth);
+      geometry.airborne.push({ entityId, attachmentId: camera.id, mode: 'lines', vertices: rays,
+        color: parseColor(cameraDefaults.wireframeColor, 1), size: camera.wireframeWidth ?? cameraDefaults.wireframeWidth });
   }
 
-  add(footprint, 'polygon', [rgba[0], rgba[1], rgba[2], camera.fillOpacity ?? cameraDefaults.fillOpacity], true);
+  geometry.ground.push({ entityId, attachmentId: camera.id, mode: 'polygon', vertices: footprint,
+    color: [rgba[0], rgba[1], rgba[2], camera.fillOpacity ?? cameraDefaults.fillOpacity] });
   if (camera.outline ?? cameraDefaults.outline)
-    add(
-      footprint.flatMap((point, index) => [point, footprint[(index + 1) % footprint.length]!]),
-      'lines',
-      [rgba[0], rgba[1], rgba[2], cameraDefaults.outlineAlpha],
-      true,
-      camera.outlineWidth ?? cameraDefaults.outlineWidth,
-    );
+    geometry.ground.push({ entityId, attachmentId: camera.id, mode: 'lines',
+      vertices: footprint.flatMap((point, index) => [point, footprint[(index + 1) % footprint.length]!]),
+      color: [rgba[0], rgba[1], rgba[2], cameraDefaults.outlineAlpha],
+      size: camera.outlineWidth ?? cameraDefaults.outlineWidth });
   return { geometry, footprintTriangles: 2 };
 }
 
@@ -78,13 +68,13 @@ export function terrainCameraPrimitives(
   camera: CameraAttachment,
   volume: CameraVolume,
   terrain: CameraTerrain,
-): Primitive[] {
+): AirbornePrimitive[] {
   const faces: GeoPoint[] = [];
   volume.corners.forEach((a, index) => {
     const b = volume.corners[(index + 1) % 4]!;
     faces.push(origin, a, b);
   });
-  const geometry: Primitive[] = [];
+  const geometry: AirbornePrimitive[] = [];
   if ((camera.volumeOpacity ?? 0) > 0)
     geometry.push({
       entityId,

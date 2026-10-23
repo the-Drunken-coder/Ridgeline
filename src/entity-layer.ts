@@ -1,26 +1,13 @@
 import { MercatorCoordinate, Point } from 'maplibre-gl';
 import type { CustomLayerInterface, CustomRenderMethodInput, Map as GLMap } from 'maplibre-gl';
 import type { GeoPoint } from './entity-geometry';
+import type { AirbornePrimitive } from './entity-primitives';
 import { EntityProjection, entityProjectionShader, entityVertex } from './entity-projection';
 import type { ProjectionOrigin, ScreenPoint } from './entity-projection';
 import { circleIntersectsRectangle, clipToRectangle, expandRectangle } from './screen-rectangle';
 import type { ScreenRectangle } from './screen-rectangle';
 
-export type Primitive = {
-  entityId: string;
-  attachmentId?: string;
-  mode: 'triangles' | 'lines' | 'points' | 'polygon';
-  /** Heights are raw meters in the elevation source's datum. */
-  vertices: GeoPoint[];
-  color: [number, number, number, number];
-  size?: number;
-  /** Hollow marker stroke's inner diameter as a fraction of its outer diameter. */
-  innerRadius?: number;
-  surface?: boolean;
-  /** Fallback dot parts can change feedback without recomputing physical attachments. */
-  marker?: 'fill' | 'stroke';
-};
-type Draw = Primitive & { first: number; count: number; origin: ProjectionOrigin };
+type Draw = AirbornePrimitive & { first: number; count: number; origin: ProjectionOrigin };
 type CompletedEntityFrame = {
   draws: Draw[];
   projection: EntityProjection;
@@ -50,7 +37,7 @@ export class EntityLayer implements CustomLayerInterface {
   private hiddenPoints: ReadonlySet<string> = new Set();
   constructor(private report: (cause: unknown) => void) {}
   suppressPoints(ids: ReadonlySet<string>) { this.hiddenPoints = ids; }
-  set(primitives: Primitive[], verticalScale: number) {
+  set(primitives: readonly AirbornePrimitive[], verticalScale: number) {
     this.verticalScale = verticalScale;
     const origins = new Map<string, [number, number]>();
     for (const primitive of primitives) {
@@ -168,9 +155,9 @@ export class EntityLayer implements CustomLayerInterface {
         gl.uniform1f(uniform('u_line_width'), draw.size ?? 1);
         gl.uniform1f(uniform('u_point_size'), (draw.size ?? 10) * pointScale);
         gl.uniform1i(uniform('u_point'), draw.mode === 'points' ? 1 : 0);
-        gl.uniform1f(uniform('u_inner_radius'), draw.innerRadius ?? 0);
+        gl.uniform1f(uniform('u_inner_radius'), draw.mode === 'points' ? draw.innerRadius ?? 0 : 0);
         gl.drawArrays(
-          draw.mode === 'triangles' || draw.mode === 'lines' ? gl.TRIANGLES : gl.POINTS,
+          draw.mode === 'points' ? gl.POINTS : gl.TRIANGLES,
           draw.first,
           draw.count,
         );

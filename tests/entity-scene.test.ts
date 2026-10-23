@@ -6,7 +6,7 @@ import type { Map as GLMap } from 'maplibre-gl';
 import { EntityScene, DEFAULT_ENTITY_VISIBILITY } from '../src/entities';
 import type { RidgelineError } from '../src/errors';
 import type { FeatureStyle, MapConfiguration, MapFeature } from '../src/types';
-import type { Primitive } from '../src/entity-layer';
+import type { AirbornePrimitive } from '../src/entity-primitives';
 
 const configuration: MapConfiguration = {
   basemap: { version: 8, sources: {}, layers: [] }, projection: 'flat', terrain: false,
@@ -181,6 +181,35 @@ test('a required sampling failure removes completed camera coverage while retain
   } finally { f.destroy(); }
 });
 
+test('a sampling callback that changes the scene before throwing cannot invalidate retained preparation', () => {
+  let armed = false, interrupted = false;
+  const f = sceneFixture(async () => {}, undefined, () => {
+    if (armed) {
+      armed = false;
+      interrupted = true;
+      f.scene.selection(['aircraft']);
+      throw new Error('Superseded sampling failed');
+    }
+    return 0;
+  });
+  try {
+    f.scene.set([entity()]);
+    f.frame();
+    const previous = f.scene.getState('aircraft');
+    assert.equal(previous?.coverage, 'ready');
+    f.scene.set([entity(1)]);
+    armed = true;
+    f.frame();
+    assert.ok(interrupted, 'Sampling must reach the reentrant scene change');
+    assert.deepEqual(f.scene.getState('aircraft'), previous);
+    assert.deepEqual(f.scene.marker(entity(1)).position, [0, 0]);
+    assert.deepEqual(f.diagnostics, [], 'A discarded computation must not fail the retained presentation');
+    f.frame();
+    assert.equal(f.scene.getState('aircraft')?.coverage, 'ready');
+    assert.deepEqual(f.scene.marker(entity(1)).position, [1, 0]);
+  } finally { f.destroy(); }
+});
+
 test('selection and preview retain prepared feedback without changing physical attachments', () => {
   let broken = false;
   const f = sceneFixture(async () => {}, () => {
@@ -188,7 +217,7 @@ test('selection and preview retain prepared feedback without changing physical a
     return { color: '#123456', radius: 7, selected: { color: '#2468ac', radius: 11 },
       hover: { color: '#789abc', radius: 9 } };
   });
-  let published: Primitive[] = [];
+  let published: readonly AirbornePrimitive[] = [];
   const publish = f.scene.layer.set.bind(f.scene.layer);
   f.scene.layer.set = (primitives, scale) => { published = structuredClone(primitives); publish(primitives, scale); };
   const aircraft: MapFeature = { ...entity(), entity: { ...entity().entity,
@@ -196,17 +225,17 @@ test('selection and preview retain prepared feedback without changing physical a
   try {
     f.scene.set([aircraft]);
     f.frame();
-    const physical = published.filter(primitive => !primitive.marker);
+    const physical = published.filter(primitive => primitive.mode !== 'points' || !primitive.marker);
     const ground = f.groundFeatures();
     assert.ok(physical.length > 0, 'Physical airborne attachment must be published');
     assert.ok(ground.length > 0, 'Ground attachment source must be published');
     const source = structuredClone(aircraft);
     function assertFeedback(size: number, rgb: [number, number, number]) {
-      const fill = published.find(primitive => primitive.marker === 'fill');
+      const fill = published.find(primitive => primitive.mode === 'points' && primitive.marker === 'fill');
       assert.ok(fill, 'Airborne fallback dot must be published');
       assert.equal(fill.size, size);
       assert.deepEqual(fill.color, [...rgb.map(channel => channel / 255), 1]);
-      assert.deepEqual(published.filter(primitive => !primitive.marker), physical);
+      assert.deepEqual(published.filter(primitive => primitive.mode !== 'points' || !primitive.marker), physical);
       assert.deepEqual(f.groundFeatures(), ground);
       assert.deepEqual(aircraft, source);
       assert.deepEqual(f.diagnostics, [], 'Feedback must not call a now-failing style accessor');

@@ -1,7 +1,7 @@
 import { MercatorCoordinate } from 'maplibre-gl';
 import type { CustomLayerInterface, ImageSource, Map as GLMap } from 'maplibre-gl';
 import type { CameraAttachment } from './types';
-import type { Primitive } from './entity-layer';
+import type { AirbornePrimitive } from './entity-primitives';
 import { cameraDefaults } from './camera-volume';
 import type { CameraVolume } from './camera-volume';
 import type { GeoPoint } from './entity-geometry';
@@ -20,7 +20,7 @@ export type GpuCamera = {
   origin: GeoPoint;
   terrain: CameraTerrain;
   volume: CameraVolume;
-  geometry: Primitive[];
+  geometry: AirbornePrimitive[];
 };
 type Camera = {
   value: GpuCamera;
