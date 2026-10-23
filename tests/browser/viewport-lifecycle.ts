@@ -1,7 +1,8 @@
 import { createViewport, attachInteractions, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
 import type { ImageSource } from 'maplibre-gl';
-import { style, point, check, pointer, untilPixel } from './helpers';
+import { style, point, check, pointer, browserClick, untilPixel } from './helpers';
+import { withBaseViewport } from './base-viewport';
 import type { BrowserCaseModule } from './context';
 
 
@@ -164,6 +165,21 @@ export const viewportLifecycleCases = {
     abandoned.destroy(); abandoned.destroy();
     await abandoned.ready.then(() => { throw new Error('Expected canceled readiness'); }, error => check(error instanceof RidgelineError && error.code === 'DESTROYED', 'Structured cancellation'));
     check(!container.querySelector('canvas,.rl-ui'), 'Old canvas or overlay remains');
+    await withBaseViewport(caseContext, async ({ viewport }) => {
+      const canvas = viewport.map.getCanvas();
+      const ui = attachInteractions(viewport);
+      const off = viewport.on('selectionrequest', event => viewport.setSelection(event.ids));
+      try {
+        abandoned.destroy();
+        await pointer('click', viewport.map.project([0, 0]));
+        check(Boolean(container.querySelector('.rl-picker')), 'Replacement did not open its picker');
+        await browserClick('[data-feature-id="queued"]');
+        check(viewport.getSelection()[0] === 'queued', 'Replacement did not accept a real picker choice');
+        check(container.querySelectorAll('canvas').length === 1 && container.querySelector('canvas') === canvas,
+          'Old destruction removed or duplicated the replacement canvas');
+        check(container.querySelectorAll('.rl-ui').length === 1, 'Old destruction left obsolete interaction UI');
+      } finally { off(); ui.destroy(); }
+    });
   },
   "Late terrain preparation cannot affect a replacement viewport": async caseContext => {
     const { own, container, until } = caseContext;
