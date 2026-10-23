@@ -404,7 +404,7 @@ export class EntityScene<P extends Properties> {
       this.options.diagnostic(cause instanceof RidgelineError && cause.code === 'INVALID_FEATURE' && cause.context.operation === 'style'
         ? cause : new RidgelineError('CALLBACK_FAILED', 'An entity style callback threw.',
           { operation: 'style', recoverable: true, featureId: feature.id }, cause));
-      current();
+      // Failed styling is settled. Reentrant input changes own their queued work.
       return;
     }
     if (!current()) return;
@@ -448,13 +448,13 @@ export class EntityScene<P extends Properties> {
     this.prepared.set(feature.id, candidate);
     this.geometryDirty = true;
     const diagnostic = result.diagnostic;
-    if (diagnostic && this.diagnosticKeys.get(feature.id) !== diagnostic)
+    if (!diagnostic) this.diagnosticKeys.delete(feature.id);
+    else if (this.diagnosticKeys.get(feature.id) !== diagnostic) {
+      this.diagnosticKeys.set(feature.id, diagnostic);
       this.options.diagnostic(new RidgelineError(diagnostic,
         diagnostic === 'ALTITUDE_MISSING' ? 'Entity altitude is missing and ground fallback is disabled.' : 'Entity is below terrain; only its ground position is shown.',
         { operation: 'entities', recoverable: true, featureId: feature.id }));
-    if (!current()) return;
-    if (diagnostic) this.diagnosticKeys.set(feature.id, diagnostic);
-    else this.diagnosticKeys.delete(feature.id);
+    }
   }
 
   private prepareModel(feature: MapFeature<P>, result: EntityComputationResult) {

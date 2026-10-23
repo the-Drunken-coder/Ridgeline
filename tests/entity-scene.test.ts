@@ -20,7 +20,8 @@ const entity = (lng = 0): MapFeature => ({ type: 'Feature', id: 'aircraft', prop
 
 function sceneFixture(prepare: (positions: readonly [number, number][], signal: AbortSignal) => Promise<void>,
   style: (feature: MapFeature) => FeatureStyle = () => ({}),
-  sample: (lng: number, lat: number) => number | null = () => 0) {
+  sample: (lng: number, lat: number) => number | null = () => 0,
+  onDiagnostic?: (error: RidgelineError) => void) {
   const frames = new Map<number, FrameRequestCallback>();
   let nextFrame = 0;
   const originalRequest = globalThis.requestAnimationFrame;
@@ -40,11 +41,11 @@ function sceneFixture(prepare: (positions: readonly [number, number][], signal: 
   const map = { getPixelRatio: () => 1, getLayer: () => undefined,
     getSource: (id: string) => id === 'rl:entity-ground' ? source : undefined, off: () => {} } as unknown as GLMap;
   const scene = new EntityScene({ map, configuration: () => configuration, sampler: { sample, prepare },
-    style, diagnostic: error => diagnostics.push(error), changed: () => {} });
+    style, diagnostic: error => { diagnostics.push(error); onDiagnostic?.(error); }, changed: () => {} });
   return {
     scene, diagnostics,
     groundFeatures: () => structuredClone(ground.features),
-    frame() { const callbacks = [...frames.values()]; frames.clear(); for (const callback of callbacks) callback(0); },
+    frame() { const callbacks = [...frames.values()]; frames.clear(); for (const callback of callbacks) callback(0); return callbacks.length; },
     destroy() {
       scene.destroy();
       globalThis.requestAnimationFrame = originalRequest;
@@ -139,6 +140,123 @@ test('a failed entity style retains the last complete placement', () => {
     assert.equal(f.diagnostics.at(-1)?.code, 'CALLBACK_FAILED');
   } finally { f.destroy(); }
 });
+
+for (const feedback of ['selection', 'preview'] as const) {
+  test(`a style diagnostic changing ${feedback} retains complete output until explicit recovery`, () => {
+    let failNext = false, styleCalls = 0;
+    const f = sceneFixture(async () => {}, feature => {
+      styleCalls++;
+      if (failNext) { failNext = false; throw new Error('Transient style failure'); }
+      return { color: feature.geometry.coordinates[0] === 0 ? '#123456' : '#abcdef',
+        selected: { enabled: false }, hover: { enabled: false } };
+    }, undefined, error => {
+      if (error.code !== 'CALLBACK_FAILED') return;
+      if (feedback === 'selection') f.scene.selection(['aircraft']);
+      else f.scene.preview('aircraft');
+    });
+    let published: readonly AirbornePrimitive[] = [];
+    const publish = f.scene.layer.set.bind(f.scene.layer);
+    f.scene.layer.set = (primitives, scale) => { published = structuredClone(primitives); publish(primitives, scale); };
+    const original: MapFeature = { ...entity(), entity: { ...entity().entity,
+      attachments: [{ id: 'body', type: 'sphere', radius: 20 }, { id: 'area', type: 'circle', radius: 30 }] } };
+    const update: MapFeature = { ...original, geometry: { type: 'Point', coordinates: [1, 0] }, entity: {
+      ...original.entity, altitude: { meters: 200, reference: 'sea-level' }, heading: 90, pitch: 15, roll: 10,
+      attachments: [{ id: 'body', type: 'sphere', radius: 40 }, { id: 'area', type: 'circle', radius: 60 }],
+    } };
+    try {
+      f.scene.set([original]);
+      f.frame();
+      const previous = { state: f.scene.getState(original.id), marker: f.scene.marker(original),
+        airborne: published, ground: f.groundFeatures() };
+      assert.ok(previous.airborne.length > 0);
+      assert.ok(previous.ground.length > 0);
+      failNext = true;
+      f.scene.set([update]);
+      f.frame();
+      assert.equal(styleCalls, 2);
+      assert.equal(f.diagnostics.length, 1);
+      for (let frame = 0; frame < 5; frame++) f.frame();
+      assert.equal(styleCalls, 2, 'Feedback must not retry a failed style automatically');
+      assert.deepEqual(f.scene.getState(original.id), previous.state);
+      assert.deepEqual(f.scene.marker(update), previous.marker);
+      assert.deepEqual(published, previous.airborne);
+      assert.deepEqual(f.groundFeatures(), previous.ground);
+      assert.equal(f.frame(), 0, 'Failed styling must settle without scheduled preparation');
+      if (feedback === 'selection') f.scene.set([update]);
+      else f.scene.retry();
+      f.frame();
+      assert.equal(styleCalls, 3);
+      assert.deepEqual(f.scene.marker(update).position, [1, 0]);
+      assert.equal(f.scene.getState(original.id)?.altitude, 200);
+      assert.notDeepEqual(published, previous.airborne);
+      assert.notDeepEqual(f.groundFeatures(), previous.ground);
+    } finally { f.destroy(); }
+  });
+
+  for (const diagnostic of ['ALTITUDE_MISSING', 'BELOW_TERRAIN'] as const) {
+    test(`${diagnostic} diagnostics changing ${feedback} report once and settle`, () => {
+      let notifications = 0, styleCalls = 0;
+      const f = sceneFixture(async () => {}, () => { styleCalls++; return {}; }, undefined, error => {
+        if (error.code !== diagnostic) return;
+        notifications++;
+        if (feedback === 'selection') f.scene.selection(notifications % 2 ? ['aircraft'] : []);
+        else f.scene.preview(notifications % 2 ? 'aircraft' : null);
+      });
+      const aircraft: MapFeature = { ...entity(), entity: diagnostic === 'ALTITUDE_MISSING'
+        ? { groundIfNoAltitude: false }
+        : { altitude: { meters: -1, reference: 'sea-level' } } };
+      try {
+        f.scene.set([aircraft]);
+        f.frame();
+        const previous = f.scene.getState(aircraft.id);
+        assert.equal(previous?.placement, diagnostic === 'ALTITUDE_MISSING' ? 'withheld' : 'below-terrain');
+        assert.equal(notifications, 1);
+        for (let frame = 0; frame < 5; frame++) f.frame();
+        assert.equal(notifications, 1, 'Feedback must not repeat a settled diagnostic');
+        assert.equal(styleCalls, 1, 'Feedback must not recompute installed valid preparation');
+        assert.deepEqual(f.scene.getState(aircraft.id), previous);
+        assert.equal(f.frame(), 0, 'Diagnostics must leave no preparation loop');
+        f.scene.set([entity(1)]);
+        f.frame();
+        assert.equal(f.scene.getState(aircraft.id)?.placement, 'airborne');
+        f.scene.set([aircraft]);
+        f.frame();
+        assert.equal(notifications, 2, 'A new diagnostic after valid recovery must still report');
+      } finally { f.destroy(); }
+    });
+  }
+}
+
+for (const diagnostic of ['CALLBACK_FAILED', 'BELOW_TERRAIN'] as const) {
+  for (const action of ['replace', 'configure'] as const) {
+    test(`${diagnostic} diagnostics preserve ${action} work scheduled by the observer`, () => {
+      let styleCalls = 0, notifications = 0;
+      const f = sceneFixture(async () => {}, () => {
+        styleCalls++;
+        if (diagnostic === 'CALLBACK_FAILED' && styleCalls === 1) throw new Error('Transient style failure');
+        return {};
+      }, undefined, error => {
+        if (error.code !== diagnostic || ++notifications !== 1) return;
+        if (action === 'replace') f.scene.set([entity(2)]);
+        else f.scene.configure();
+      });
+      const aircraft: MapFeature = diagnostic === 'CALLBACK_FAILED' ? entity(1)
+        : { ...entity(1), entity: { altitude: { meters: -1, reference: 'sea-level' } } };
+      try {
+        f.scene.set([aircraft]);
+        f.frame();
+        assert.equal(notifications, 1);
+        f.frame();
+        assert.equal(styleCalls, 2, 'An accepted replacement or configuration must still prepare');
+        assert.deepEqual(f.scene.marker(aircraft).position, [action === 'replace' ? 2 : 1, 0]);
+        assert.equal(f.scene.getState(aircraft.id)?.placement,
+          action === 'configure' && diagnostic === 'BELOW_TERRAIN' ? 'below-terrain' : 'airborne');
+        assert.equal(notifications, 1);
+        assert.equal(f.frame(), 0);
+      } finally { f.destroy(); }
+    });
+  }
+}
 
 test('a required sampling failure removes completed camera coverage while retaining placement and unrelated ground areas', () => {
   const cause = new Error('Required elevation calculation failed');
