@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { cssToPixel, pixelToCss, waitForVisible } from './browser-observation';
+import { cssToPixel, pixelToCss, waitForVisible } from './browser/browser-observation';
 
 test('CSS and WebGL pixels use independent canvas scales and opposite vertical origins', () => {
   const image = { width: 600, height: 400, cssWidth: 300, cssHeight: 100, origin: 'bottom-left' as const };

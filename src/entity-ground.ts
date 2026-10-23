@@ -1,6 +1,6 @@
 import type { FeatureCollection, MultiLineString, MultiPolygon, Polygon, Position } from 'geojson';
 import type { GeoJSONSource, Map as GLMap } from 'maplibre-gl';
-import type { Primitive } from './entity-layer';
+import type { GroundPrimitive } from './entity-primitives';
 import { rectangleBounds } from './screen-rectangle';
 import type { ScreenRectangle } from './screen-rectangle';
 
@@ -45,10 +45,10 @@ export class EntityGround {
       );
   }
 
-  set(primitives: readonly Primitive[]) {
+  set(primitives: readonly GroundPrimitive[]) {
     const features: GroundData['features'] = [];
     for (const primitive of primitives) {
-      if (!primitive.attachmentId || primitive.mode === 'points' || primitive.color[3] <= 0) continue;
+      if (primitive.color[3] <= 0) continue;
       const { vertices, color, entityId, attachmentId } = primitive;
       // Keep small shapes crossing the antimeridian local rather than spanning the whole map.
       const reference = vertices[0]?.[0] ?? 0;

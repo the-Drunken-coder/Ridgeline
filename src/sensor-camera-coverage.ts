@@ -1,10 +1,10 @@
-import { MercatorCoordinate, type Map as GLMap } from 'maplibre-gl';
+import type { Map as GLMap } from 'maplibre-gl';
 import type { CameraAttachment, EntityState, MapConfiguration } from './types';
 import type { GeoPoint } from './entity-geometry';
 import { cameraVolume, plainCameraPrimitives, terrainCameraPrimitives } from './camera-volume';
-import { cameraTerrain, cameraTerrainPreparationBounds } from './gpu-camera-terrain';
+import { cameraTerrain, cameraTerrainCovers, cameraTerrainHalfExtent, cameraTerrainPreparationBounds } from './gpu-camera-terrain';
 import type { CameraTerrain } from './gpu-camera-terrain';
-import type { Primitive } from './entity-layer';
+import type { EntityGeometry } from './entity-primitives';
 import { GpuCameras, sameCamera, sameCameraAppearance } from './gpu-cameras';
 import type { GpuCamera } from './gpu-cameras';
 import { cameraAreaKey, placementAreaKey, type Elevation } from './elevation';
@@ -37,7 +37,7 @@ export type SensorCameraInput = {
 };
 
 export type SensorCameraOutput = {
-  geometry: Primitive[];
+  geometry: EntityGeometry;
   footprintTriangles: number;
   coverage: EntityState['coverage'];
 };
@@ -52,7 +52,7 @@ type TerrainReadiness =
   | { kind: 'preparing' }
   | { kind: 'unavailable' };
 type CameraPhase =
-  | { kind: 'plain'; geometry?: Primitive[] }
+  | { kind: 'plain'; geometry?: EntityGeometry }
   | { kind: 'waiting'; shown?: GpuCamera; inFlight?: GpuCamera }
   | { kind: 'requested'; request: GpuCamera; shown?: GpuCamera }
   | { kind: 'displayed'; request: GpuCamera; shown: GpuCamera }
@@ -68,7 +68,7 @@ function startCamera(terrainVisibility: boolean): CameraPhase {
   return terrainVisibility ? { kind: 'waiting' } : { kind: 'plain' };
 }
 
-function showPlainCamera(geometry?: Primitive[]): CameraPhase {
+function showPlainCamera(geometry?: EntityGeometry): CameraPhase {
   return { kind: 'plain', geometry };
 }
 
@@ -135,10 +135,11 @@ export class SensorCameraCoverage {
       rendererDiagnostic: (cause: unknown) => void;
       changed: (entityId: string) => void;
       displayed?: (entityId: string) => void;
+      publishStyle?: (publish: () => void) => void;
       adapter?: SensorCameraAdapterFactory;
     },
   ) {
-    const factory = options.adapter ?? ((map, completed, failed) => new GpuCameras(map, completed, failed));
+    const factory = options.adapter ?? ((map, completed, failed) => new GpuCameras(map, completed, failed, options.publishStyle));
     this.adapter = factory(options.map, (value, publish) => this.complete(value, publish), cause => this.fail(cause));
   }
 
@@ -153,11 +154,11 @@ export class SensorCameraCoverage {
       const requestedCenter = previous?.get(range);
       const patch = entity?.terrain.get(range)?.patch;
       if (requestedCenter && (requestedCenter[0] === center[0] && requestedCenter[1] === center[1] ||
-        patch?.ready && this.patchCovers(patch, center, range))) {
+        patch && cameraTerrainCovers(patch, center, range))) {
         next.set(range, requestedCenter);
         continue;
       }
-      this.options.elevation.request(this.terrainKey(entityId, range), center, range * 1.3,
+      this.options.elevation.request(this.terrainKey(entityId, range), center, cameraTerrainHalfExtent(range),
         cameraTerrainPreparationBounds(center[0], center[1], range), range);
       next.set(range, [center[0], center[1]]);
     }
@@ -166,20 +167,12 @@ export class SensorCameraCoverage {
     if (entity) this.pruneTerrainWork(entity, ranges);
   }
 
-  private patchCovers(patch: CameraTerrain, center: readonly [number, number], range: number) {
-    const point = MercatorCoordinate.fromLngLat([center[0], center[1]]);
-    let dx = point.x - patch.centre.x;
-    dx -= Math.round(dx);
-    const distance = Math.max(Math.abs(dx), Math.abs(point.y - patch.centre.y)) / patch.scale;
-    return distance + range <= patch.half && patch.half <= range * 2;
-  }
-
   private terrainKey(entityId: string, range: number) {
     return cameraAreaKey(entityId, range);
   }
 
   update(input: SensorCameraInput): SensorCameraOutput {
-    if (this.destroyed) return { geometry: [], footprintTriangles: 0, coverage: 'unavailable' };
+    if (this.destroyed) return { geometry: { ground: [], airborne: [] }, footprintTriangles: 0, coverage: 'unavailable' };
     let entity = this.entities.get(input.entityId);
     if (!entity) {
       entity = { input, cameras: new Map(), terrain: new Map() };
@@ -250,14 +243,23 @@ export class SensorCameraCoverage {
     this.adapterDirty = true;
   }
 
-  output(entityId: string): Primitive[] {
+  output(entityId: string): EntityGeometry {
     const entity = this.entities.get(entityId);
-    return entity ? [...entity.cameras.values()].flatMap(camera => camera.phase.kind === 'plain'
-      ? camera.phase.geometry ?? [] : shown(camera.phase)?.geometry ?? []) : [];
+    const geometry: EntityGeometry = { ground: [], airborne: [] };
+    if (entity) for (const { phase } of entity.cameras.values()) {
+      if (phase.kind === 'plain') {
+        if (phase.geometry) {
+          geometry.ground.push(...phase.geometry.ground);
+          geometry.airborne.push(...phase.geometry.airborne);
+        }
+      } else geometry.airborne.push(...shown(phase)?.geometry ?? []);
+    }
+    return geometry;
   }
 
-  allGeometry(): Primitive[] {
-    return [...this.entities.keys()].flatMap(entityId => this.output(entityId));
+  allGeometry(): EntityGeometry {
+    const geometry = [...this.entities.keys()].map(entityId => this.output(entityId));
+    return { ground: geometry.flatMap(value => value.ground), airborne: geometry.flatMap(value => value.airborne) };
   }
 
   status(entityId: string) {

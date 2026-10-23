@@ -1,6 +1,6 @@
 import { expect, test } from 'playwright/test';
 import type { Locator, Page } from 'playwright/test';
-import { pixelToCss, waitForVisible } from '../browser-observation';
+import { pixelToCss, waitForVisible } from '../browser/browser-observation';
 
 // Software WebGL can block a single render or screenshot for over a minute in CI.
 // These workflows verify correctness; target-hardware performance is tracked separately.

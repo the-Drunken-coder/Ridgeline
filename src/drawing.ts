@@ -16,7 +16,7 @@ import {
   wrapLongitude,
 } from "./drawing-geometry";
 import { createArrowheads } from "./arrowheads";
-import { getViewportDrawingInternals } from "./viewport";
+import { getViewportAttachmentInternals } from "./viewport-attachments";
 import { createGroundTargetResolver } from "./ground-target";
 import type { ScreenPoint } from "./ground-target";
 import { createGroundFeedback } from "./ground-feedback";
@@ -47,10 +47,10 @@ export function attachDrawing<P extends Properties>(
 ) {
   if (attached.has(viewport.map))
     throw new Error("Drawing is already attached to this viewport.");
-  const internals = getViewportDrawingInternals(viewport);
+  const internals = getViewportAttachmentInternals(viewport);
   if (!internals)
     throw new Error("Drawing requires a viewport created by createViewport.");
-  const drawingInternals = internals;
+  const attachmentInternals = internals;
   attached.add(viewport.map);
   let disposed = false,
     stateRevision = 0,
@@ -65,7 +65,7 @@ export function attachDrawing<P extends Properties>(
   const session = createDrawingSession(viewport, options),
     map = viewport.map;
   const resolveGround = createGroundTargetResolver(map, () => viewport.getConfiguration().terrain,
-    cause => drawingInternals.reportTargetError(cause));
+    cause => attachmentInternals.reportTargetError(cause));
   const feedback = options.visualFeedback === false ? undefined : createGroundFeedback(viewport.container, map, resolveGround);
   const draftArrowheads = createArrowheads(map, "rl:draft-arrows", "rl:draft-arrow");
   // Broader wings remain visible between endpoint and insertion handles on short
@@ -208,7 +208,7 @@ export function attachDrawing<P extends Properties>(
       if (!current()) return;
       if (allowed === false) continue;
       if (feature.entity) continue;
-      const displayed = drawingInternals.getDisplayedFeature(id);
+      const displayed = attachmentInternals.getDisplayedFeature(id);
       if (!displayed || displayed.entity) continue;
       const g = displayed.geometry;
       candidates.push(
@@ -831,7 +831,7 @@ export function attachDrawing<P extends Properties>(
       return;
     }
     const editingId = session.getState().draft?.before?.id;
-    drawingInternals.setEditing(editingId ?? null);
+    attachmentInternals.setEditing(editingId ?? null);
     active = next;
     if (!session.getState().draft?.placing && !draggingHandle) pointer = undefined;
     if (!session.getState().draft?.placing || !editable()) feedback?.clear();
@@ -1131,8 +1131,9 @@ export function attachDrawing<P extends Properties>(
     feedback?.clear();
     session.setCursor(undefined);
   };
-  const offSceneChange = drawingInternals.onSceneChange(() => {
-    onGestureLoss();
+  const offViewInvalidation = attachmentInternals.onViewInvalidation(reason => {
+    if (reason.kind === "configuration" || reason.kind === "context-lost") onGestureLoss();
+    else { resolutionEpoch++; invalidateTarget(); }
   });
   const offDataChange = viewport.on("datachange", ({ ids, removed }) => {
     // Candidate mutation retires in-flight screen input. Unrelated live data
@@ -1140,12 +1141,6 @@ export function attachDrawing<P extends Properties>(
     if (snapCandidateIds && [...ids, ...removed].some(id => snapCandidateIds?.has(id))) resolutionEpoch++;
     invalidateTarget();
   });
-  const invalidateCameraTarget = () => { resolutionEpoch++; invalidateTarget(); };
-  const offCameraChange = viewport.on("camerachange", invalidateCameraTarget);
-  // Animated camera operations emit movestart before their first frame;
-  // completion-only viewport events arrive too late to stop callback work.
-  map.on("movestart", invalidateCameraTarget);
-  map.on("move", invalidateCameraTarget);
   const offPreview = session.onPreview(renderGeometry);
   let offDestroy = () => {};
   function destroy() {
@@ -1153,11 +1148,8 @@ export function attachDrawing<P extends Properties>(
     disposed = true;
     off();
     offPrepared();
-    offSceneChange();
+    offViewInvalidation();
     offDataChange();
-    offCameraChange();
-    map.off("movestart", invalidateCameraTarget);
-    map.off("move", invalidateCameraTarget);
     offPreview();
     offDestroy();
     abort.abort();
@@ -1183,7 +1175,7 @@ export function attachDrawing<P extends Properties>(
     if (active && restoreDoubleClick) map.doubleClickZoom.enable();
     const failures: unknown[] = [];
     for (const cleanup of [
-      () => drawingInternals.setEditing(null),
+      () => attachmentInternals.setEditing(null),
       () => feedback?.destroy(),
       ...[...markers.values()].map(item => () => item.marker.remove()),
       ...[...layers].reverse().map(layer => () => {
@@ -1202,7 +1194,7 @@ export function attachDrawing<P extends Properties>(
     if (failures.length) throw failures[0];
   }
   offDestroy = viewport.on("destroy", destroy);
-  offPrepared = drawingInternals.onPrepared(prepare);
+  offPrepared = attachmentInternals.onPrepared(prepare);
   if (disposed) offPrepared();
   return {
     ...session,

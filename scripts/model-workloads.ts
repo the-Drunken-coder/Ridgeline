@@ -3,8 +3,8 @@ import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseGlb, type ModelBatch, type ParsedModel } from '../src/model-glb';
-import { encodeGlb } from '../tests/model-fixtures';
-import { materialGlb, type MaterialPanel } from '../tests/model-material-fixtures';
+import { encodeGlb } from '../tests/browser/model-fixtures';
+import { materialGlb, type MaterialPanel } from '../tests/browser/model-material-fixtures';
 
 export type ModelWorkloadVariant = 'original' | 'normalized' | '4x' | '16x';
 
@@ -174,7 +174,7 @@ export async function writeModelWorkloads(sourceDir = 'playground/public/entity-
     const data = serialize(parseGlb(materialGlb([panel]))), path = `material-${id}.glb`;
     await writeFile(resolve(outputDir, path), new Uint8Array(data));
     fixtures.push({ id, path, ...describe(data), origin: { kind: 'synthetic',
-      source: 'tests/model-material-fixtures.ts',
+      source: 'tests/browser/model-material-fixtures.ts',
       description: 'Project-authored planar geometry and a 16 x 16 embedded RGBA PNG; identical geometry and image for each material cost case.',
       license: null, licenseNote: 'No separate license declaration; repository-authored test fixture, not a third-party vehicle asset.',
     } });

@@ -12,10 +12,23 @@ export type CameraTerrain = {
   failed: boolean;
 };
 
+export function cameraTerrainHalfExtent(range: number) {
+  return range * 1.3;
+}
+
+export function cameraTerrainCovers(patch: CameraTerrain, center: readonly [number, number], range: number) {
+  if (!patch.ready) return false;
+  const point = MercatorCoordinate.fromLngLat([center[0], center[1]]);
+  let dx = point.x - patch.centre.x;
+  dx -= Math.round(dx);
+  const distance = Math.max(Math.abs(dx), Math.abs(point.y - patch.centre.y)) / patch.scale;
+  return distance + range <= patch.half && patch.half <= range * 2;
+}
+
 /** Geographic bounds of the same Mercator square sampled by cameraTerrain. */
 export function cameraTerrainPreparationBounds(lng: number, lat: number, range: number): [number, number, number, number] {
   const centre = MercatorCoordinate.fromLngLat([lng, lat]);
-  const margin = range * 1.3 * centre.meterInMercatorCoordinateUnits();
+  const margin = cameraTerrainHalfExtent(range) * centre.meterInMercatorCoordinateUnits();
   const west = new MercatorCoordinate(centre.x - margin, centre.y).toLngLat().lng;
   const east = new MercatorCoordinate(centre.x + margin, centre.y).toLngLat().lng;
   const south = new MercatorCoordinate(centre.x, centre.y + margin).toLngLat().lat;
@@ -26,14 +39,9 @@ export function cameraTerrainPreparationBounds(lng: number, lat: number, range: 
 
 /** Cache a patch with a movement margin; unknown samples never become visible ground. */
 export function cameraTerrain(lng: number, lat: number, range: number, height: HeightAt, previous?: CameraTerrain): CameraTerrain {
+  if (previous && cameraTerrainCovers(previous, [lng, lat], range)) return previous;
   const centre = MercatorCoordinate.fromLngLat([lng, lat]);
-  if (previous) {
-    let dx = centre.x - previous.centre.x;
-    dx -= Math.round(dx);
-    const distance = Math.max(Math.abs(dx), Math.abs(centre.y - previous.centre.y)) / previous.scale;
-    if (distance + range <= previous.half && previous.half <= range * 2 && previous.ready) return previous;
-  }
-  const scale = centre.meterInMercatorCoordinateUnits(), half = range * 1.3;
+  const scale = centre.meterInMercatorCoordinateUnits(), half = cameraTerrainHalfExtent(range);
   // Preserve completed samples while tiles for the remaining samples load.
   // Other cameras may evict those source tiles before this patch completes.
   const continuing = previous && !previous.ready && previous.centre.x === centre.x &&

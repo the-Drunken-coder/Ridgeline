@@ -36,9 +36,9 @@ test('plain camera corners share the flat-ground range rule and keep raw heights
   const { geometry, footprintTriangles } = plainCameraPrimitives('entity', origin, 0, pose);
   const footprint = cameraFootprint(origin, pose, 0);
   assert.equal(footprintTriangles, 2);
-  const face = geometry.find(part => part.mode === 'triangles')!;
-  const wireframe = geometry.find(part => part.mode === 'lines' && !part.surface)!;
-  const overlay = geometry.find(part => part.mode === 'polygon')!;
+  const face = geometry.airborne.find(part => part.mode === 'triangles')!;
+  const wireframe = geometry.airborne.find(part => part.mode === 'lines')!;
+  const overlay = geometry.ground.find(part => part.mode === 'polygon')!;
   assert.deepEqual(overlay.vertices, footprint);
   for (let i = 0; i < 4; i++) {
     const corner = face.vertices[i * 3 + 1]!;
@@ -56,16 +56,16 @@ test('plain camera uses the existing appearance defaults and omits skyward cover
   const pose = { ...camera, elevation: -90, wireframe: true };
   const { geometry, footprintTriangles } = plainCameraPrimitives('entity', origin, 0, pose);
   assert.equal(footprintTriangles, 2);
-  const fill = geometry.find(part => part.mode === 'polygon')!;
-  const outline = geometry.find(part => part.mode === 'lines' && part.surface)!;
-  const wireframe = geometry.find(part => part.mode === 'lines' && !part.surface)!;
+  const fill = geometry.ground.find(part => part.mode === 'polygon')!;
+  const outline = geometry.ground.find(part => part.mode === 'lines')!;
+  const wireframe = geometry.airborne.find(part => part.mode === 'lines')!;
   assert.deepEqual(fill.color, [40 / 255, 139 / 255, 89 / 255, 0.25]);
   assert.deepEqual(outline.color, [40 / 255, 139 / 255, 89 / 255, 0.95]);
   assert.equal(outline.size, 3);
   assert.deepEqual(wireframe.color, [139 / 255, 171 / 255, 151 / 255, 1]);
   assert.equal(wireframe.size, 3);
   assert.deepEqual(plainCameraPrimitives('entity', origin, 0, { ...pose, elevation: 90, volumeOpacity: 0.5 }),
-    { geometry: [], footprintTriangles: 0 });
+    { geometry: { ground: [], airborne: [] }, footprintTriangles: 0 });
 });
 
 test('terrain-visibility volume vertices remain in raw meters', () => {

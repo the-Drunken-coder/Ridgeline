@@ -3,7 +3,8 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 
-import { browserCases } from '../browser-cases';
+import { browserCatalog } from '../browser/catalog';
+import type { BrowserCaseMetadata } from '../browser/catalog';
 
 function git(...args: string[]) {
   const result = spawnSync('git', args, { encoding: 'utf8' });
@@ -20,10 +21,9 @@ function command() {
 const source = { revision: git('rev-parse', 'HEAD').trim(), status: git('status', '--short'),
   diffSha256: createHash('sha256').update(git('diff', 'HEAD')).digest('hex'), command: command() };
 
-function registerCase(name: string) {
+function registerCase(name: string, metadata: BrowserCaseMetadata) {
   test(name, async ({ page }, testInfo) => {
-    if (name === 'Snapshot review isolates shared and ordinary buffers across public reads and callbacks' ||
-      name === 'Snapshot review drawing state permissions history and submission isolate shared memory') {
+    if (metadata.crossOriginIsolated) {
       await page.route('**/*', async route => {
         const response = await route.fetch();
         await route.fulfill({ response, headers: { ...response.headers(),
@@ -32,12 +32,10 @@ function registerCase(name: string) {
       });
     }
     await page.addInitScript(context => { Reflect.set(window, 'browserEvidenceContext', context); }, { ...source, testCase: name });
-    if (name === 'Reliability drawing restores rejected handle edits on a third visible world copy' ||
-      name === 'Reliability drawing preserves rejected handle edits after camera turns and reversal')
-      await page.setViewportSize({ width: 2000, height: 720 });
+    if (metadata.viewport) await page.setViewportSize(metadata.viewport);
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
-    if (name.startsWith('Drawing upgrades touch')) {
+    if (metadata.touch) {
       const session = await page.context().newCDPSession(page);
       await session.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
       await page.exposeFunction('browserTouch', async (action: string, points: { id: number; x: number; y: number }[]) => {
@@ -141,13 +139,13 @@ function registerCase(name: string) {
   });
 }
 
-for (const name of browserCases) {
-  if (name === 'Model pixel observation aligns visible picking across canvas ratios and rejects absent models' ||
-      name === 'Attachment markers and wireframes keep CSS size across map pixel ratios') {
-    test.describe('Pixel observation at browser DPR 2', () => {
-      test.use({ deviceScaleFactor: 2 });
-      test.describe.configure({ timeout: 90_000 });
-      registerCase(name);
+for (const [name, metadata] of Object.entries<BrowserCaseMetadata>(browserCatalog)) {
+  const observation = metadata.pixelObservation;
+  if (observation) {
+    test.describe(observation.describe, () => {
+      test.use({ deviceScaleFactor: observation.deviceScaleFactor });
+      test.describe.configure({ timeout: observation.timeout });
+      registerCase(name, metadata);
     });
-  } else registerCase(name);
+  } else registerCase(name, metadata);
 }

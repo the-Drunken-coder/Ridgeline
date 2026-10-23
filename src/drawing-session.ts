@@ -37,6 +37,9 @@ import {
 type InputState = { current?: () => boolean };
 const inputStates = new WeakMap<object, InputState>();
 type Opening = { featureId: string | undefined; conflict: boolean };
+type DrawingFeedback =
+  | { kind: "permission-check-failed" }
+  | { kind: "message"; text: string };
 
 type DrawingHost<P extends Properties> = Pick<
   Viewport<P>,
@@ -68,7 +71,7 @@ export function createDrawingSession<P extends Properties>(
     pending = false,
     disposed = false,
     applying = false;
-  let reason: string | undefined, release: (() => void) | undefined;
+  let feedback: DrawingFeedback | undefined, release: (() => void) | undefined;
   let opening: Opening | undefined;
   let submission: {
     controller: AbortController;
@@ -144,7 +147,7 @@ export function createDrawingSession<P extends Properties>(
       permissionFailures.add(operation);
       snapshot = undefined;
       if (submission?.kind === operation) {
-        reason = permissionFailureMessage;
+        feedback = { kind: "permission-check-failed" };
         submission.controller.abort();
       }
       if (gesture) {
@@ -177,6 +180,9 @@ export function createDrawingSession<P extends Properties>(
     }
   }
 
+  function hasPermissionFailureFeedback() {
+    return feedback?.kind === "permission-check-failed";
+  }
   function phase(editable: boolean): DrawingState<P>["phase"] {
     return !draft
       ? "idle"
@@ -186,7 +192,7 @@ export function createDrawingSession<P extends Properties>(
           ? "conflict"
           : !editable
             ? "forbidden"
-            : reason || permissionFailures.size
+            : feedback?.kind === "permission-check-failed" || feedback?.text || permissionFailures.size
               ? "rejected"
               : "editing";
   }
@@ -207,7 +213,8 @@ export function createDrawingSession<P extends Properties>(
           ? "This feature changed. Discard or restart with the latest feature."
           : currentPhase === "forbidden"
             ? permissionFailures.has(operation) ? permissionFailureMessage : "Editing permission removed. Your draft is preserved."
-            : permissionFailures.size ? permissionFailureMessage : reason,
+            : permissionFailures.size || feedback?.kind === "permission-check-failed"
+              ? permissionFailureMessage : feedback?.text,
       validation: draft
         ? !draft.before && !draft.placed
           ? "Click the map to place the drawing."
@@ -288,7 +295,7 @@ export function createDrawingSession<P extends Properties>(
     if (sameDraft(before, current)) return;
     if (!gesture) pushPast(before);
     future = [];
-    reason = undefined;
+    feedback = undefined;
     notify();
   }
   function beginOpening(featureId?: string): Opening {
@@ -320,7 +327,7 @@ export function createDrawingSession<P extends Properties>(
       past = [];
       future = [];
       conflict = active.conflict;
-      reason = undefined;
+      feedback = undefined;
       notify();
     } finally {
       if (owned) {
@@ -345,7 +352,7 @@ export function createDrawingSession<P extends Properties>(
     gesture = undefined;
     gestureCancelled = false;
     conflict = false;
-    reason = undefined;
+    feedback = undefined;
     owned?.();
     notify();
   }
@@ -535,7 +542,7 @@ export function createDrawingSession<P extends Properties>(
       }
       gesture = undefined;
       gestureCancelled = true;
-      reason = undefined;
+      feedback = undefined;
       notify();
       return;
     }
@@ -545,7 +552,7 @@ export function createDrawingSession<P extends Properties>(
     if (next) {
       future.push(cloneSnapshot(draft!));
       draft = next;
-      reason = undefined;
+      feedback = undefined;
       notify();
     } else if (hadCursor) emit(previewListeners, "drawing.onPreview");
   }
@@ -557,7 +564,7 @@ export function createDrawingSession<P extends Properties>(
     if (next) {
       pushPast(cloneSnapshot(draft!));
       draft = next;
-      reason = undefined;
+      feedback = undefined;
       notify();
     } else if (hadCursor) emit(previewListeners, "drawing.onPreview");
   }
@@ -586,7 +593,7 @@ export function createDrawingSession<P extends Properties>(
         ? "Click the map to place the drawing."
         : (validateShape(current.shape) ?? validateDrawingStyle(current.style));
     if (error) {
-      reason = error;
+      feedback = { kind: "message", text: error };
       notify();
       return false;
     }
@@ -610,7 +617,7 @@ export function createDrawingSession<P extends Properties>(
       after: remove ? undefined : after,
     };
     pending = true;
-    reason = undefined;
+    feedback = undefined;
     const active = { controller: new AbortController(), kind: request.kind };
     submission = active;
     notify();
@@ -621,7 +628,7 @@ export function createDrawingSession<P extends Properties>(
       if (!mayStart || conflict || active.controller.signal.aborted ||
         current.shape !== shape || current.style !== style) {
         pending = false;
-        reason ??= "Permission changed while this request was pending. Review the draft and try again.";
+        feedback ??= { kind: "message", text: "Permission changed while this request was pending. Review the draft and try again." };
         notify();
         return false;
       }
@@ -636,12 +643,12 @@ export function createDrawingSession<P extends Properties>(
       if (disposed || submission !== active || draft !== current ||
         current.shape !== shape || current.style !== style) return false;
       if (conflict || active.controller.signal.aborted || !permitted) {
-        reason ??= "Permission changed while this request was pending. Review the draft and try again.";
+        feedback ??= { kind: "message", text: "Permission changed while this request was pending. Review the draft and try again." };
         notify();
         return false;
       }
       if (!decision.accepted) {
-        reason = decision.reason || "The application rejected this change.";
+        feedback = { kind: "message", text: decision.reason || "The application rejected this change." };
         notify();
         return false;
       }
@@ -659,10 +666,13 @@ export function createDrawingSession<P extends Properties>(
         pending = false;
         // An abort-aware consumer may reject because our permission check failed.
         // Keep that actionable feedback through settlement, including after repair.
-        if (!active.controller.signal.aborted || reason !== permissionFailureMessage)
-          reason = error instanceof Error
-            ? error.message
-            : "The application could not accept the change.";
+        if (!active.controller.signal.aborted || !hasPermissionFailureFeedback())
+          feedback = {
+            kind: "message",
+            text: error instanceof Error
+              ? error.message
+              : "The application could not accept the change.",
+          };
         notify();
       }
       return false;
@@ -700,8 +710,8 @@ export function createDrawingSession<P extends Properties>(
       const permitted = allowed(active.kind);
       if (disposed || draft !== current || submission !== active || revision !== checkedRevision) return;
       if (!permitted) {
-        reason = permissionFailures.has(active.kind) ? permissionFailureMessage
-          : "Permission changed while this request was pending. Review the draft and try again.";
+        feedback = permissionFailures.has(active.kind) ? { kind: "permission-check-failed" }
+          : { kind: "message", text: "Permission changed while this request was pending. Review the draft and try again." };
         active.controller.abort();
       }
     }
@@ -709,8 +719,8 @@ export function createDrawingSession<P extends Properties>(
       allowed();
       if (disposed || draft !== current) return;
     }
-    if (!pending && !permissionFailures.size && reason === permissionFailureMessage)
-      reason = undefined;
+    if (!pending && !permissionFailures.size && hasPermissionFailureFeedback())
+      feedback = undefined;
     notify();
   }
   function restart() {

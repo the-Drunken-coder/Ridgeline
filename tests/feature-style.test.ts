@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createExpression } from '@maplibre/maplibre-gl-style-spec';
-import { dashExpression, featureStyle, fontExpression, highlightExpression, resolveHighlight, styleProperties } from '../src/feature-style';
+import { dashExpression, featureStyle, fontExpression, highlightExpression, nativeExpressions, nativeVisibility, resolveHighlight, resolveNativeAppearance, styleProperties } from '../src/feature-style';
 import { clipToRectangle, screenRectangle } from '../src/screen-rectangle';
 import { modelPresentationGeometry } from '../src/model-presentation';
 import type { FeatureStyle } from '../src/types';
@@ -103,4 +103,54 @@ test('malformed offsets are rejected before snapshotting can discard their extra
     Reflect.set(style.labelStyle!, 'offset', offset);
     assert.throws(() => featureStyle(style));
   }
+});
+
+test('native expressions and JavaScript appearance agree across per-field feedback and explicit zeros', () => {
+  const styles: FeatureStyle[] = [
+    {}, { selected: {}, hover: {} },
+    { color: '#123456', radius: 20, lineWidth: 30, fillColor: 'rgba(0, 0, 255, 0)', fillOpacity: 0, labelStyle: { color: '#654321' } },
+    { radius: 0, lineWidth: 0, fillOpacity: 0 },
+    { selected: { color: '#ff0000', radius: 0, lineWidth: 0, fillColor: '#00000000', fillOpacity: 0, iconOpacity: 0, labelColor: '#00ff00' },
+      hover: { color: '#0000ff', radius: 14, lineWidth: 15, fillColor: '#abcdef', fillOpacity: .9, iconOpacity: .8, labelColor: '#ffff00' } },
+    { selected: { color: '#ff0000' }, hover: { radius: 0, lineWidth: 0, fillColor: '#abcdef', fillOpacity: 0, iconOpacity: 0, labelColor: '#ffff00' } },
+    { selected: { radius: 0 }, hover: { color: '#ff0000' } },
+    { selected: { enabled: false, color: '#ff0000', fillOpacity: 0 }, hover: { color: '#0000ff', fillOpacity: 0 } },
+    { selected: { lineWidth: 0 }, hover: { enabled: false, radius: 0, color: '#0000ff', fillOpacity: 0 } },
+    { selected: { enabled: false }, hover: { enabled: false } },
+  ];
+  const fields: (keyof typeof nativeExpressions)[] = ['fillColor', 'fillOpacity', 'lineColor', 'lineWidth', 'circleRadius', 'circleColor',
+    'circleStrokeWidth', 'circleStrokeColor', 'iconOpacity', 'labelColor'];
+  for (const key of fields) {
+    const expression = createExpression(nativeExpressions[key], key);
+    assert.equal(expression.result, 'success');
+    if (expression.result !== 'success') throw new Error(`${key} did not compile.`);
+    for (const [index, input] of styles.entries()) for (const selected of [false, true]) for (const hover of [false, true]) {
+      const style = featureStyle(input);
+      const expected = resolveNativeAppearance(style, selected, hover)[key];
+      const actual = expression.value.evaluate({ zoom: 1 }, { type: 1, properties: styleProperties(style) }, { selected, hover });
+      assert.equal(actual, expected, `${key}, style ${index}, selected ${selected}, hover ${hover}`);
+    }
+  }
+  const selected = resolveNativeAppearance({ lineWidth: 30 }, true, false);
+  assert.equal(selected.lineWidth, 30);
+  assert.equal(selected.fillOpacity, .45);
+  assert.equal(selected.circleStrokeColor, '#ffffff');
+  const hovered = resolveNativeAppearance({}, false, true);
+  assert.equal(hovered.lineColor, '#db6a20');
+  assert.equal(hovered.circleColor, '#216e5b');
+  assert.equal(hovered.circleRadius, 12);
+  assert.equal(hovered.circleStrokeColor, '#db6a20');
+});
+
+test('native picking visibility preserves independent representations, CSS alpha and disabled feedback', () => {
+  assert.deepEqual(nativeVisibility({ hover: { iconOpacity: 0 } }, false, true), { icon: false, fill: true });
+  assert.deepEqual(nativeVisibility({ hover: { fillOpacity: 0 } }, false, true), { icon: true, fill: false });
+  for (const fillColor of ['transparent', 'rgba(255, 0, 0, 0)', '#ff000000']) {
+    const style: FeatureStyle = { fillColor, selected: { fillOpacity: 1 } };
+    assert.deepEqual(nativeVisibility(style, true, false), { icon: true, fill: false });
+    assert.deepEqual(nativeVisibility({ ...style, selected: { fillColor: '#ff0000', fillOpacity: .1 } }, true, false), { icon: true, fill: true });
+  }
+  assert.deepEqual(nativeVisibility({ selected: { enabled: false }, hover: { iconOpacity: 0, fillOpacity: 0 } }, true, true), { icon: true, fill: true });
+  assert.deepEqual(nativeVisibility({ selected: { iconOpacity: 0, fillOpacity: 0 }, hover: { iconOpacity: 1, fillOpacity: 1 } }, true, true), { icon: false, fill: false });
+  assert.deepEqual(nativeVisibility({ fillOpacity: 0, selected: { enabled: false } }, true, false), { icon: true, fill: false });
 });

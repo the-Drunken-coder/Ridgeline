@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { parseGlb } from '../src/model-glb';
-import { encodeGlb, solidGlb } from './model-fixtures';
+import { encodeGlb, solidGlb } from './browser/model-fixtures';
 
 test('an embedded solid model produces owned geometry with outward flat faces', () => {
   const input = solidGlb();
