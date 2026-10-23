@@ -557,12 +557,14 @@ function assertLiterals(book: NativeDisplayBook<Properties>, source: MapFeature,
   const fonts = createExpression(fontExpression(styles), 'text-font', { type: 'array', value: 'string', 'property-type': 'data-driven', transition: false });
   assert.equal(dashes.result, 'success'); assert.equal(fonts.result, 'success');
   if (dashes.result !== 'success' || fonts.result !== 'success') throw new Error('Style literals did not compile.');
-  assert.deepEqual(dashes.value.evaluate({ zoom: 1 }, { type: 2, properties: source.properties }), dash);
-  assert.deepEqual(fonts.value.evaluate({ zoom: 1 }, { type: 1, properties: source.properties }), font);
+  assert.deepEqual({
+    dash: dashes.value.evaluate({ zoom: 1 }, { type: 2, properties: source.properties }),
+    font: fonts.value.evaluate({ zoom: 1 }, { type: 1, properties: source.properties }),
+  }, { dash, font });
 }
 
 for (const failure of ['rejection', 'partial failure', 'source error']) {
-  test(`installed and staged dash/font literals survive ${failure} until their own commit or full replacement`, async () => {
+  test(`installed and staged dash/font literals survive successive ${failure} until their own commit or full replacement`, async () => {
     const f = fixture(styled);
     f.upsert(point('a', 10), point('b', 20));
     f.publication.restore();
@@ -590,9 +592,27 @@ for (const failure of ['rejection', 'partial failure', 'source error']) {
     assertLiterals(f.book, stagedA, [12, 1], ['Revision 11']);
     f.upsert(point('a', 12));
     f.frame();
-    f.source().succeed(1);
+    const next = f.source().getCall(1), nextA = next.changes.add[0];
+    assert.ok(nextA);
+    if (failure === 'source error') { f.source().error(); next.resolve(); }
+    else next.reject(new Error('Successive rejected update'));
     await Promise.resolve();
+    assert.equal(f.diagnostics.length, 2);
+    assert.equal(f.frames.size, 0);
+    assert.deepEqual(f.publishedRecords, []);
+    assert.equal(f.book.get('a')?.feature.properties.revision, 10);
+    if (failure !== 'rejection') assert.equal(f.source().features.get('a'), stagedA);
+    assertLiterals(f.book, installedA, [11, 1], ['Revision 10']);
+    assertLiterals(f.book, stagedA, [12, 1], ['Revision 11']);
+    assertLiterals(f.book, nextA, [13, 1], ['Revision 12']);
+    f.upsert(point('a', 13));
+    f.frame();
+    f.source().succeed(2);
+    await Promise.resolve();
+    assertLiterals(f.book, installedA, [3, 2], ['Noto Sans Regular']);
     assertLiterals(f.book, stagedA, [3, 2], ['Noto Sans Regular']);
+    assertLiterals(f.book, nextA, [3, 2], ['Noto Sans Regular']);
+    assertLiterals(f.book, installedB, [21, 1], ['Revision 20']);
     assertLiterals(f.book, stagedB, [22, 1], ['Revision 21']);
     f.replaceStyle(); f.publication.restore();
     assertLiterals(f.book, installedB, [3, 2], ['Noto Sans Regular']);

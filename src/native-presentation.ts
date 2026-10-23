@@ -9,9 +9,13 @@ export type NativeRecord<P extends Properties> = {
 /** Installed display and staged literals have different retirement rules. */
 export class NativeDisplayBook<P extends Properties> {
   private installed = new Map<string, NativeRecord<P>>();
-  private staged = new Map<string, FeatureStyle>();
+  private staged = new Map<string, Set<FeatureStyle>>();
 
-  stage(record: NativeRecord<P>) { this.staged.set(record.feature.id, record.style); }
+  stage(record: NativeRecord<P>) {
+    const styles = this.staged.get(record.feature.id) ?? new Set<FeatureStyle>();
+    styles.add(record.style);
+    this.staged.set(record.feature.id, styles);
+  }
 
   commit(id: string, record: NativeRecord<P> | null) {
     if (record) {
@@ -32,8 +36,8 @@ export class NativeDisplayBook<P extends Properties> {
 
   *styles() {
     for (const record of this.installed.values()) yield record.style;
-    // A rejected updateData may already have installed geometry using these literals.
-    yield* this.staged.values();
+    // Rejected updates may already have installed geometry using any staged variant.
+    for (const styles of this.staged.values()) yield* styles;
   }
 
   arrows() {
