@@ -9,7 +9,7 @@ for (const [scenario, count, terrain] of [
   const label = terrain === 'ready' ? `${scenario}, ready terrain` : scenario;
   test(`motion controls reset and pending measurements retire when switching scenarios (${label})`, async ({ page }, testInfo) => {
     test.setTimeout(120_000);
-    if (terrain === 'ready') await page.setViewportSize({ width: 1024, height: 720 });
+    await page.setViewportSize({ width: 800, height: 640 });
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.route('https://tiles.openfreemap.org/styles/*', route => route.fulfill({
@@ -24,7 +24,6 @@ for (const [scenario, count, terrain] of [
       await terrainReady;
       await route.fulfill({ path: 'tests/fixtures/flat-terrain.png', contentType: 'image/png' });
     });
-    if (terrain === 'ready') releaseTerrain();
     try {
       await page.goto('/?scenario=moving');
       await expect(page.locator('#map-status')).toHaveText('Ready');
@@ -51,22 +50,21 @@ for (const [scenario, count, terrain] of [
         await expect(page.locator('#selected-name')).toHaveText('Kestrel 01');
         await expect(page.locator('#airborne-demo')).toBeVisible();
       }
-      await pause.click();
-      await page.getByRole('button', { name: 'Resume', exact: true }).click();
-      await pause.click();
+      await pause.press('Enter');
+      await page.getByRole('button', { name: 'Resume', exact: true }).press('Enter');
+      await pause.press('Enter');
       if (terrain === 'ready') {
+        await page.getByRole('spinbutton', { name: 'Range m', exact: true }).fill('800');
+        releaseTerrain();
         await expect(page.locator('#airborne-demo [data-state]')).toHaveText('airborne · overlay ready', { timeout: 30_000 });
       }
-      await measure.click();
-      await expect(pause).toBeVisible();
-      await expect(measure).toBeDisabled();
-      await expect(output).toHaveText('Measuring for 10 seconds…');
       await scenarioControl.evaluate(select => {
         if (!(select instanceof HTMLSelectElement)) throw new Error('Scenario control is not a native select');
         const readMotion = () => ({
           measurement: document.querySelector('#measurement')?.textContent,
           measureDisabled: document.querySelector<HTMLButtonElement>('#measure')?.disabled,
           pause: document.querySelector('#pause')?.textContent,
+          pauseVisible: document.querySelector<HTMLElement>('#pause')?.checkVisibility(),
           motionVisible: document.querySelector<HTMLElement>('#motion')?.hidden === false,
           inspector: document.querySelector('#airborne-demo [data-state]')?.textContent,
           featureCount: document.querySelector('#feature-count')?.textContent,
@@ -78,13 +76,14 @@ for (const [scenario, count, terrain] of [
             elapsedMs: performance.now() - startedAt, visibility: document.visibilityState });
         }, { capture: true, once: true });
       });
+      await measure.press('Enter');
       await scenarioControl.selectOption('empty');
       const transition = await scenarioControl.getAttribute('data-motion-transition');
       try {
         const snapshot: unknown = JSON.parse(transition ?? 'null');
         expect(snapshot, 'Measurement must still be pending when the native scenario change reaches the application').toMatchObject({
           destination: 'empty',
-          atChange: { measurement: 'Measuring for 10 seconds…', measureDisabled: true, pause: 'Pause', motionVisible: true },
+          atChange: { measurement: 'Measuring for 10 seconds…', measureDisabled: true, pause: 'Pause', pauseVisible: true, motionVisible: true },
         });
       } catch (error) {
         await testInfo.attach('motion-scenario-transition.json', { body: transition ?? 'null', contentType: 'application/json' });
