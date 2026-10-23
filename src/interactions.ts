@@ -1,6 +1,6 @@
 import { createFeatureContent } from './feature-content';
 import { attachBoxSelection } from './box-selection';
-import { getViewportDrawingInternals } from './viewport';
+import { getViewportAttachmentInternals } from './viewport-attachments';
 import type { FeatureContentRenderer, OverlayContent } from './feature-content';
 import type { Interaction, MapFeature, Properties, Viewport } from './types';
 
@@ -263,7 +263,7 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
     suppressShiftClick = true;
     event.preventDefault(); event.stopImmediatePropagation();
     if (!disposed && press.revision === shiftRevision && !viewport.getInteractionOwner())
-      getViewportDrawingInternals(viewport)?.dispatchClick(point, event);
+      getViewportAttachmentInternals(viewport)?.dispatchClick(point, event);
   }, { capture: true, signal: abort.signal });
   canvas.addEventListener('click', event => {
     if (suppressShiftClick) { suppressShiftClick = false; event.preventDefault(); event.stopImmediatePropagation(); }
@@ -345,19 +345,16 @@ export function attachInteractions<P extends Properties>(viewport: Viewport<P>, 
     if (event.target instanceof Node && !viewport.container.contains(event.target)) close();
   }, { signal: abort.signal });
   const closeOnMove = () => { sceneRevision++; cancelShift(); close(); };
-  viewport.map.on('movestart', closeOnMove);
-  viewport.map.on('resize', closeOnMove);
-  viewport.map.on('move', cancelShift);
-  viewport.map.on('style.load', cancelShift);
-  const internals = getViewportDrawingInternals(viewport);
-  if (internals) subscriptions.push(internals.onSceneChange(cancelShift));
+  const internals = getViewportAttachmentInternals(viewport);
+  if (internals) subscriptions.push(internals.onViewInvalidation(reason => {
+    if (reason.kind === 'resize' || reason.kind === 'camera' && reason.phase === 'start') closeOnMove();
+    else if (reason.kind !== 'camera' || reason.phase !== 'end') cancelShift();
+  }));
   subscriptions.push(viewport.on('entitychange', () => { sceneRevision++; }));
   const boxSelection = options.boxSelection ? attachBoxSelection(viewport, () => close(true)) : undefined;
   function destroy() {
     if (disposed) return;
     disposed = true; cancelShift(); boxSelection?.destroy(); close(); setCursor(undefined); abort.abort();
-    viewport.map.off('movestart', closeOnMove); viewport.map.off('resize', closeOnMove);
-    viewport.map.off('move', cancelShift); viewport.map.off('style.load', cancelShift);
     for (const unsubscribe of subscriptions) unsubscribe();
     root.remove();
   }

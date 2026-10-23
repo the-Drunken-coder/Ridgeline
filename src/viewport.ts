@@ -19,27 +19,13 @@ import { ModelRegistry } from './models';
 import type { ModelGpu } from './model-renderer';
 import { DEFAULT_ENTITY_MODELS, modelSettings } from './model-settings';
 import { EntityScene, DEFAULT_ENTITY_VISIBILITY } from './entities';
+import { viewportAttachmentInternals } from './viewport-attachments';
+import type { ViewInvalidation } from './viewport-attachments';
 import type { FeatureQuery, FeatureStyle, IconDefinition, Interaction, MapConfiguration, MapFeature, Properties, ScreenBounds, Viewport, ViewportEvents, ViewportOptions } from './types';
 
 const TERRAIN = 'rl:terrain';
 const SHADE = 'rl:hillshade';
 const layerIds = ['rl:fill', 'rl:line', 'rl:dashed', 'rl:arrowheads', 'rl:points', 'rl:icons', 'rl:map-icons', 'rl:labels'];
-
-type ViewportDrawingInternals = {
-  getDisplayedFeature(id: string): MapFeature | undefined;
-  isQueryReady(): boolean;
-  dispatchClick(point: { x: number; y: number }, originalEvent: MouseEvent): void;
-  setEditing(id: string | null): void;
-  onPrepared(listener: () => void): () => void;
-  onSceneChange(listener: () => void): () => void;
-  reportTargetError(cause?: unknown): void;
-};
-const drawingInternals = new WeakMap<object, ViewportDrawingInternals>();
-
-/** Map attachments share this seam without expanding the consumer Viewport API. */
-export function getViewportDrawingInternals<P extends Properties>(viewport: Viewport<P>): ViewportDrawingInternals | undefined {
-  return drawingInternals.get(viewport.map);
-}
 
 export const DEFAULT_BASEMAP = 'https://tiles.openfreemap.org/styles/liberty';
 export const DEFAULT_ELEVATION = {
@@ -61,7 +47,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   let previewId: string | null = null;
   let editingId: string | null = null;
   const preparedListeners = new Set<() => void>();
-  const sceneListeners = new Set<() => void>();
+  const viewListeners = new Set<(reason: ViewInvalidation) => void>();
   let interactionOwner: string | null = null;
   let destroyed = false;
   let prepared = false;
@@ -178,10 +164,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     contextLost: () => {
       contextLost = true; prepared = false; sceneGeneration++; interactionRevision++;
       publication.retire(); modelVisibility.invalidate(); modelLabels.invalidate();
-      for (const listener of sceneListeners) {
-        if (destroyed) break;
-        notifyDrawingListener(listener, 'contextLost');
-      }
+      invalidateView({ kind: 'context-lost' });
       scheduleHover();
     },
     contextRestored: () => { contextLost = false; },
@@ -346,9 +329,22 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     return native.get(id)?.feature.drawing?.shape.kind === 'arrow';
   }
 
-  function notifyDrawingListener(listener: () => void, operation: 'style' | 'configure' | 'contextLost') {
+  function notifyAttachmentListener(listener: () => void, operation: string) {
     try { listener(); } catch (cause) {
-      diagnostic(new RidgelineError('CALLBACK_FAILED', 'A drawing listener threw.', { operation, recoverable: true }, cause));
+      diagnostic(new RidgelineError('CALLBACK_FAILED', 'An attachment listener threw.', { operation, recoverable: true }, cause));
+    }
+  }
+
+  function invalidateView(reason: ViewInvalidation, attached =
+    reason.kind === 'configuration' || reason.kind === 'context-lost' ? viewListeners : [...viewListeners]) {
+    const operation = reason.kind === 'configuration' ? 'configure' : reason.kind === 'context-lost' ? 'contextLost'
+      : reason.kind === 'camera' ? reason.event.type : reason.kind;
+    // Native dispatch snapshots attachments; scene retirement also reaches
+    // reentrant replacements, as configuration and context loss always have.
+    for (const listener of attached) {
+      if (destroyed) break;
+      if (!viewListeners.has(listener)) continue;
+      notifyAttachmentListener(() => listener(reason), operation);
     }
   }
 
@@ -416,7 +412,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (!readySettled) { readySettled = true; clearTimeout(timer); resolveReady(); }
       for (const listener of preparedListeners) {
         if (!current()) return;
-        notifyDrawingListener(listener, 'style');
+        notifyAttachmentListener(listener, 'style');
       }
     } catch (cause) {
       if (!current()) return;
@@ -509,9 +505,14 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       { operation: elevation ? 'elevation' : 'renderer', recoverable: prepared || elevation, sourceId }, event.error);
     if (!prepared && !readySettled && !sourceId) failReady(error); else diagnostic(error);
   }
-  map.on('style.load', prepareStyle);
-  map.on('movestart', () => { interactionRevision++; });
-  map.on('resize', () => { interactionRevision++; });
+  map.on('style.load', () => {
+    const attached = [...viewListeners];
+    prepareStyle();
+    invalidateView({ kind: 'style' }, attached);
+  });
+  map.on('movestart', event => { interactionRevision++; invalidateView({ kind: 'camera', phase: 'start', event }); });
+  map.on('move', event => invalidateView({ kind: 'camera', phase: 'move', event }));
+  map.on('resize', () => { interactionRevision++; invalidateView({ kind: 'resize' }); });
   map.on('error', onError);
   map.on('webglcontextlost', () => entities.contextLost());
   map.on('webglcontextrestored', () => {
@@ -562,7 +563,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   map.on('render', scheduleHover);
   // Feature publication and camera changes can alter the pick under a still pointer.
   map.on('idle', refreshHover);
-  map.on('moveend', () => {
+  map.on('moveend', event => {
+    invalidateView({ kind: 'camera', phase: 'end', event });
     emit('camerachange', { center: map.getCenter(), zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() });
     refreshHover();
   });
@@ -743,14 +745,10 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
           applyElevation(next.elevation !== undefined);
         }
       } finally {
-        // Drawing callbacks can configure the viewport too. Start native work
+        // Attachment callbacks can configure the viewport too. Start native work
         // before notifying them so an unrelated patch cannot skip this style.
-        if (sceneChanged) for (const listener of sceneListeners) {
-          // These listeners retire screen-derived work without applying an old
-          // configuration. A nested patch must not skip that retirement.
-          if (destroyed) break;
-          notifyDrawingListener(listener, 'configure');
-        }
+        // A nested patch must not skip retirement of screen-derived work.
+        if (sceneChanged) invalidateView({ kind: 'configuration' });
         if (!destroyed && (configuration === configuredScene || pendingElevationReset)) {
           // Native style observers and preparation abort listeners can reenter.
           // Consume the required reset before callbacks, using current settings.
@@ -786,7 +784,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       retire('destroy.models', () => models.destroy());
       retire('destroy.labels', () => modelLabels.destroy());
       retire('destroy.measurement', () => measurement.destroy());
-      preparedListeners.clear(); sceneListeners.clear(); drawingInternals.delete(map);
+      preparedListeners.clear(); viewListeners.clear(); viewportAttachmentInternals.delete(map);
       map.getCanvas().removeEventListener('mouseleave', onLeave);
       if (nativeRenderDepth) removeAfterRender = true;
       else { const nativeFailure = removeMap(); failure ??= nativeFailure; }
@@ -797,7 +795,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (failure) throw failure;
     },
   };
-  drawingInternals.set(map, {
+  viewportAttachmentInternals.set(map, {
     getDisplayedFeature: id => native.get(id)?.feature,
     isQueryReady: () => prepared && !contextLost && !destroyed,
     dispatchClick,
@@ -816,13 +814,13 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     onPrepared(listener) {
       if (destroyed) return () => {};
       preparedListeners.add(listener);
-      if (prepared) notifyDrawingListener(listener, 'style');
+      if (prepared) notifyAttachmentListener(listener, 'style');
       return () => { preparedListeners.delete(listener); };
     },
-    onSceneChange(listener) {
+    onViewInvalidation(listener) {
       if (destroyed) return () => {};
-      sceneListeners.add(listener);
-      return () => { sceneListeners.delete(listener); };
+      viewListeners.add(listener);
+      return () => { viewListeners.delete(listener); };
     },
   });
   return viewport;

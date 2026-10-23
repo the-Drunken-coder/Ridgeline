@@ -1,10 +1,10 @@
-import { getViewportDrawingInternals } from './viewport';
+import { getViewportAttachmentInternals } from './viewport-attachments';
 import type { Properties, Viewport } from './types';
 
 /** Alt-left owns only its rectangle; native Shift box zoom and other navigation keep their input. */
 export function attachBoxSelection<P extends Properties>(viewport: Viewport<P>, beforeStart: () => void) {
   const canvas = viewport.map.getCanvas(), abort = new AbortController();
-  const internals = getViewportDrawingInternals(viewport);
+  const internals = getViewportAttachmentInternals(viewport);
   const subscriptions: (() => void)[] = [];
   let disposed = false, suppressClick = false, completing = false, revision = 0;
   type Gesture = { pointer: number; start: { x: number; y: number }; end: { x: number; y: number }; additive: boolean;
@@ -81,14 +81,14 @@ export function attachBoxSelection<P extends Properties>(viewport: Viewport<P>, 
   document.addEventListener('keydown', event => {
     if (gesture && event.key === 'Escape') { consume(event); cancel(); }
   }, { capture: true, signal: abort.signal });
-  viewport.map.on('movestart', invalidate); viewport.map.on('move', invalidate); viewport.map.on('resize', invalidate); viewport.map.on('style.load', invalidate);
   subscriptions.push(viewport.on('datachange', dataChanged), viewport.on('entitychange', dataChanged),
     viewport.on('interactionchange', ({ owner }) => { if ((gesture && owner !== 'rectangle-selection') || (completing && owner)) invalidate(); }));
-  if (internals) subscriptions.push(internals.onSceneChange(invalidate));
+  if (internals) subscriptions.push(internals.onViewInvalidation(reason => {
+    if (reason.kind !== 'camera' || reason.phase !== 'end') invalidate();
+  }));
   function destroy() {
     if (disposed) return;
     disposed = true; cancel(); abort.abort();
-    viewport.map.off('movestart', invalidate); viewport.map.off('move', invalidate); viewport.map.off('resize', invalidate); viewport.map.off('style.load', invalidate);
     for (const unsubscribe of subscriptions) unsubscribe();
   }
   subscriptions.push(viewport.on('destroy', destroy));
