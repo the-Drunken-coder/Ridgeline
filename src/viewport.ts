@@ -53,7 +53,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   let prepared = false;
   let contextLost = false;
   let restoreBasemap = false;
-  let detachedEntityLayers: NonNullable<ReturnType<GLMap['getLayer']>>[] = [];
+  const detachedEntityLayers = new Map<string, NonNullable<ReturnType<GLMap['getLayer']>>>();
   let pendingElevationReset = false;
   let interactionRevision = 0;
   let sceneGeneration = 0;
@@ -416,7 +416,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (!current()) return;
       entities.attach();
       if (!current()) return;
-      detachedEntityLayers = [];
+      detachedEntityLayers.clear();
       // Fallbacks draw after models, so a detected model draw failure can expose them in this frame.
       for (const id of ['rl:points', 'rl:icons', 'rl:map-icons', 'rl:labels']) map.moveLayer(id);
       modelVisibility.invalidate(); modelLabels.invalidate();
@@ -536,7 +536,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     if (!destroyed && map.style?._loaded && map.getTerrain()) map.setTerrain(null);
     // Native style replacement skips custom-layer teardown. Retire the detached
     // owners before a replacement context can receive their old GL handles.
-    const detached = detachedEntityLayers; detachedEntityLayers = [];
+    const detached = [...detachedEntityLayers.values()]; detachedEntityLayers.clear();
     for (const layer of detached) {
       if (destroyed) return;
       layer.onRemove?.(map);
@@ -772,9 +772,10 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
           // Its observers can replace configuration or destroy the viewport.
           if (!contextLost && map.style?._loaded && map.getTerrain()) map.setTerrain(null);
           if (!destroyed && generation === sceneGeneration && !contextLost && !contextCanvas.getContext('webgl2')?.isContextLost()) {
-            const detached = ['rl:camera-gpu', 'rl:entities', 'rl:models', 'rl:model-feedback']
-              .flatMap(id => { const layer = map.getLayer(id); return layer ? [layer] : []; });
-            if (detached.length) detachedEntityLayers = detached;
+            for (const id of ['rl:camera-gpu', 'rl:entities', 'rl:models', 'rl:model-feedback']) {
+              const layer = map.getLayer(id);
+              if (layer) detachedEntityLayers.set(id, layer);
+            }
             restoreBasemap = false;
             map.setStyle(structuredClone(configuration.basemap), { diff: false });
           }
@@ -805,7 +806,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     destroy() {
       if (destroyed) return;
       interactionRevision++; destroyed = true; prepared = false;
-      detachedEntityLayers = [];
+      detachedEntityLayers.clear();
       let failure: RidgelineError | undefined;
       const retire = (operation: string, dispose: () => void) => {
         const error = disposeOwner(operation, dispose);

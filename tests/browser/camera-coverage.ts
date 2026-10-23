@@ -4,7 +4,126 @@ import { GeoJSONSource } from 'maplibre-gl';
 import type { ImageSource } from 'maplibre-gl';
 import { style, point, check, pointer, untilPixel, pixelAt } from './helpers';
 import { observeIdle } from './browser-idle';
+import { captureMapPixels } from './browser-observation';
+import { solidGlb } from './model-fixtures';
 import type { BrowserCaseContext, BrowserCaseModule } from './context';
+
+async function recoverPartialReattachment({ own, container, until }: BrowserCaseContext) {
+  const basemap = `https://ridgeline.invalid/partial-camera-style-${crypto.randomUUID()}.json`;
+  const fetch = window.fetch;
+  const requests: { signal: AbortSignal; release(): void; returned: boolean }[] = [];
+  window.fetch = async (input, options) => {
+    const request = new Request(input, options);
+    if (request.url !== basemap) return fetch.call(window, input, options);
+    const index = requests.length;
+    await new Promise<void>(resolve => { requests.push({ signal: request.signal, release: resolve, returned: false }); });
+    requests[index]!.returned = true;
+    return new Response(JSON.stringify(style(index === 0 ? '#ff0000' : '#303030')), { headers: { 'content-type': 'application/json' } });
+  };
+  const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+  dem.getContext('2d')!.fillRect(0, 0, 256, 256);
+  const owners = ['rl:camera-gpu', 'rl:entities', 'rl:models', 'rl:model-feedback'];
+  const errors: RidgelineError[] = [];
+  let armed = false, failedAllocations = 0, attachedAtFailure: string[] = [], expectedFailure: RidgelineError | undefined;
+  const air = own(createViewport({ container, basemap: style(), terrain: true,
+    elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 0, greenFactor: 0, blueFactor: 0, baseShift: 0, maxzoom: 0 },
+    camera: { center: [0, 0], zoom: 16 }, elevationSampler: { sample: () => 0 },
+    style: feature => ({ color: '#00ffff', radius: 10,
+      selected: feature.id === 'retained-model' ? { color: '#ffff00', lineWidth: 5, modelBrightness: 0 } : { enabled: false } }),
+    logger: () => {}, onError: error => {
+      errors.push(error);
+      if (!armed || failedAllocations !== 1 || !(error.cause instanceof Error) || error.cause.message !== 'Cannot allocate camera shader.') return;
+      armed = false; expectedFailure = error;
+      attachedAtFailure = owners.filter(id => air.map.getLayer(id));
+      air.configure({ basemap });
+    } }));
+  await air.ready;
+  const gl = air.map.getCanvas().getContext('webgl2'), extension = gl?.getExtension('WEBGL_lose_context');
+  if (!gl || !extension) throw new Error('Actual partial-attachment context loss is unavailable');
+  const createProgram = gl.createProgram.bind(gl);
+  Object.defineProperty(gl, 'createProgram', { configurable: true, writable: true, value: () => {
+    if (armed && failedAllocations === 0 && air.map.getLayer('rl:camera-gpu') && !air.map.getLayer('rl:entities')) {
+      failedAllocations++; return null;
+    }
+    return createProgram();
+  } });
+  const diagnosticSummary = () => errors.map(error => `${error.code}: ${error.message}; ${String(error.cause)}; ${JSON.stringify(error.context)}`).join(', ');
+  const checkModelPixels = async () => {
+    const { bytes } = await captureMapPixels(air);
+    let model = 0, feedback = 0;
+    for (let i = 0; i < bytes.length; i += 4) {
+      const red = bytes[i]!, green = bytes[i + 1]!, blue = bytes[i + 2]!;
+      if (red > green + 80 && blue > green + 80) model++;
+      if (red > blue + 80 && green > blue + 80 && Math.abs(red - green) < 30) feedback++;
+    }
+    check(model > 100 && feedback > 30, `Partial-attachment model or selected feedback pixels missing: model=${model}, feedback=${feedback}`);
+  };
+  try {
+    await air.registerModel('retained-box', { bytes: solidGlb(), metersPerUnit: 12 });
+    const camera: CameraAttachment = { id: 'before-partial', type: 'camera', terrainVisibility: true,
+      color: '#00ff00', bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300, volumeOpacity: 0, wireframe: false };
+    const feature: MapFeature = { ...point('partial-camera'), entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [camera] } };
+    const model: MapFeature = { ...point('retained-model', -.0015), entity: { heading: 0, model: { id: 'retained-box' } } };
+    const pin = point('partial-pin', -.0027);
+    air.upsert([feature, model, pin]); air.setSelection([model.id, pin.id]);
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready' && air.getEntityState(model.id)?.representation === 'model' && air.map.loaded(), 'complete camera and selected model before partial reattachment');
+    check(owners.every(id => air.map.getLayer(id)) && Boolean(air.map.getTerrain()), 'Partial-attachment history requires all four live owners and native terrain');
+    await untilPixel(air, [0, .0008], true, 'completed camera before partial reattachment');
+    await checkModelPixels();
+    armed = true;
+    air.configure({ basemap: style('#101010') });
+    await until(() => requests.length === 1 && !air.map.style?._loaded, 'diagnostic observer holds another native basemap request');
+    check(failedAllocations === 1 && expectedFailure?.code === 'UPDATE_FAILED', `Expected one genuine camera allocation failure: ${diagnosticSummary()}`);
+    check(attachedAtFailure.join() === 'rl:camera-gpu', `Diagnostic did not interrupt partial reattachment: ${attachedAtFailure.join()}`);
+    gl.createProgram = createProgram;
+    let lost = false, restored = false;
+    air.map.once('webglcontextlost', () => { lost = true; });
+    extension.loseContext();
+    await until(() => lost, 'actual loss after partial reattachment and diagnostic basemap replacement');
+    check(requests[0]!.signal.aborted, 'Partial-attachment loss did not abort the held native request');
+    air.upsert([{ ...feature, entity: { ...feature.entity, attachments: [{ ...camera, id: 'after-partial', color: '#0000ff', bearing: 180 }] } }]);
+    const accepted = JSON.stringify(air.getFeatures()), selection = air.getSelection().join();
+    air.map.once('webglcontextrestored', () => { restored = true; });
+    extension.restoreContext();
+    await until(() => restored && requests.length === 2, 'partial reattachment restores the current accepted HTTP basemap');
+    check(!requests[1]!.signal.aborted, 'Partial-attachment restoration cancelled the current request');
+    requests[1]!.release();
+    await until(() => owners.slice(1).every(id => air.map.getLayer(id)), 'entity, model and feedback layers reattach after actual loss');
+    air.retryUpdates();
+    await until(() => errors.some(error => error !== expectedFailure) || air.getEntityState(feature.id)?.coverage === 'ready' && air.getEntityState(model.id)?.representation === 'model', 'current model and camera recover after explicit retry');
+    check(errors.length === 1 && errors[0] === expectedFailure, `Partial reattachment reported an unrelated failure: ${diagnosticSummary()}`);
+    await untilPixel(air, [0, -.0008], true, 'current camera after partial reattachment recovery');
+    const mask = await pixelAt(air, [0, -.0008], 8000, 'partial reattachment current mask color');
+    check(mask.blue > mask.green + 35, `Partial-attachment recovery restored stale coverage: ${JSON.stringify(mask)}`);
+    await untilPixel(air, [0, .0008], false, 'old partial-attachment camera remains retired');
+    await checkModelPixels();
+    const native = await pixelAt(air, [-.0027, 0], 8000, 'native feature after partial reattachment');
+    check(native.green > native.red + 35 && native.blue > native.red + 35, `Partial-attachment recovery lost native feature pixels: ${JSON.stringify(native)}`);
+    let picked: string[] = [];
+    const offClick = air.on('click', event => { picked = [...event.features.map(feature => feature.id), ...event.attachments.map(hit => hit.attachmentId)]; });
+    try {
+      for (const [position, id] of [ [[0, -.0008], 'after-partial'], [[-.0015, 0], model.id], [[-.0027, 0], pin.id] ] as const) {
+        picked = [];
+        await pointer('click', air.map.project([position[0], position[1]]));
+        check(picked.includes(id), `Partial-attachment recovery lost picking for ${id}`);
+      }
+    } finally { offClick(); }
+    requests[0]!.release();
+    await until(() => requests[0]!.returned, 'late aborted partial-attachment style response arrives');
+    const base = await pixelAt(air, [.0025, .0012], 8000, 'current basemap after partial reattachment and late response');
+    check([base.red, base.green, base.blue].every(value => Math.abs(value - 48) < 3), `Partial-attachment recovery lost current native basemap pixels: ${JSON.stringify(base)}`);
+    check(JSON.stringify(air.getFeatures()) === accepted && air.getSelection().join() === selection, 'Partial-attachment recovery changed accepted data or selection');
+    check(air.getConfiguration().basemap === basemap && Boolean(air.map.getTerrain()) && air.map.queryTerrainElevation({ lng: 0, lat: 0 }) === 0, 'Partial-attachment recovery lost current basemap or terrain');
+    await until(() => air.map.loaded(), 'partial-attachment recovery settles');
+    check(gl.getError() === gl.NO_ERROR, 'Partial-attachment recovery contaminated the restored WebGL context');
+    await observeIdle(air, 'partial reattachment and diagnostic basemap context recovery').assertQuiet();
+    check(errors.length === 1 && errors[0] === expectedFailure, `Late partial-attachment recovery failure: ${diagnosticSummary()}`);
+  } finally {
+    gl.createProgram = createProgram;
+    for (const request of requests) request.release();
+    window.fetch = fetch; air.destroy();
+  }
+}
 
 async function recoverCompletionLoss({ own, container, until }: BrowserCaseContext) {
   const errors: RidgelineError[] = [];
@@ -351,6 +470,7 @@ export const cameraCoverageCases = {
       gl.createFramebuffer = createFramebuffer; gl.deleteFramebuffer = deleteFramebuffer;
       gl.createTexture = createTexture; gl.deleteTexture = deleteTexture;
     }
+    await recoverPartialReattachment(caseContext);
   },
   "A null GPU synchronization result reports failure and recovers on retry": async caseContext => {
     const { own, container, until } = caseContext;
