@@ -135,10 +135,11 @@ export class SensorCameraCoverage {
       rendererDiagnostic: (cause: unknown) => void;
       changed: (entityId: string) => void;
       displayed?: (entityId: string) => void;
+      publishStyle?: (publish: () => void) => void;
       adapter?: SensorCameraAdapterFactory;
     },
   ) {
-    const factory = options.adapter ?? ((map, completed, failed) => new GpuCameras(map, completed, failed));
+    const factory = options.adapter ?? ((map, completed, failed) => new GpuCameras(map, completed, failed, options.publishStyle));
     this.adapter = factory(options.map, (value, publish) => this.complete(value, publish), cause => this.fail(cause));
   }
 

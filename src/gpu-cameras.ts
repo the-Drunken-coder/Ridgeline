@@ -101,17 +101,47 @@ export class GpuCameras implements CustomLayerInterface {
   private maskFrame?: WebGLFramebuffer;
   private maskTexture?: WebGLTexture;
   private failed = false;
+  private requested: { values: readonly GpuCamera[]; retained: readonly GpuCamera[] } = { values: [], retained: [] };
+  private stylePublication?: object;
+  private retryPending = false;
+  private destroyed = false;
 
   constructor(
     private map: GLMap,
     private completed: (value: GpuCamera, publish: () => void) => boolean,
     private report: (cause: unknown) => void,
+    private publishStyle: (publish: () => void) => void = publish => publish(),
   ) {}
 
   set(values: GpuCamera[], retained: readonly GpuCamera[] = []) {
+    if (this.destroyed) return;
+    this.requested = { values, retained };
+    this.updateStyle();
+  }
+  private updateStyle() {
+    const publication = this.stylePublication = {};
+    // Terrain caches source coordinates before custom-layer preflight. Publish
+    // topology only after that native frame has finished using its sources.
+    this.publishStyle(() => {
+      if (this.stylePublication !== publication || this.destroyed) return;
+      this.stylePublication = undefined;
+      try {
+        if ((this.cameras.size || this.requested.values.length || this.requested.retained.length) &&
+          this.map.getCanvas().getContext('webgl2')?.isContextLost()) return;
+        if (this.retryPending) {
+          this.retryPending = false;
+          if (this.map.getLayer(this.id)) this.map.removeLayer(this.id);
+        }
+        this.reconcile();
+      } catch (cause) { this.fail(cause); }
+    });
+  }
+  private reconcile() {
+    const { values, retained } = this.requested;
     const active = new Set<string>();
     const requested = new Set<string>();
     for (const value of values) {
+      if (this.destroyed) return;
       const key = cameraKey(value); active.add(key); requested.add(key);
       let item = this.cameras.get(key);
       if (!item) {
@@ -127,6 +157,7 @@ export class GpuCameras implements CustomLayerInterface {
       this.attachMask(item);
     }
     for (const value of retained) {
+      if (this.destroyed) return;
       const key = cameraKey(value); active.add(key);
       if (requested.has(key)) continue;
       const item = this.cameras.get(key);
@@ -143,11 +174,10 @@ export class GpuCameras implements CustomLayerInterface {
     }
     if (this.cameras.size) this.ensureLayer();
     else if (this.map.getLayer(this.id)) this.map.removeLayer(this.id);
-    if (values.length || [...this.cameras.values()].some(item => item.pending)) this.map.triggerRepaint();
+    if (!this.destroyed && (values.length || [...this.cameras.values()].some(item => item.pending))) this.map.triggerRepaint();
   }
   attach() {
-    for (const item of this.cameras.values()) this.attachMask(item);
-    this.ensureLayer();
+    if (!this.destroyed) this.updateStyle();
   }
   private ensureLayer() {
     if (!this.cameras.size || (!this.map.isStyleLoaded() && !this.map.getLayer('rl:points')) || this.map.getLayer(this.id)) return;
@@ -158,6 +188,7 @@ export class GpuCameras implements CustomLayerInterface {
     if (!value.terrain.ready) { this.removeMask(item); return; }
     if (!this.map.getSource(item.source)) {
       this.map.addSource(item.source, { type: 'image', coordinates: terrainCoordinates(value.terrain) });
+      if (this.destroyed) return;
       this.map.addLayer({ id: item.source, type: 'raster', source: item.source,
         paint: { 'raster-opacity': 1, 'raster-opacity-transition': {duration:0,delay:0}, 'raster-fade-duration': 0, 'raster-resampling': 'linear' } }, 'rl:points');
       item.dirty = true;
@@ -168,6 +199,7 @@ export class GpuCameras implements CustomLayerInterface {
     if (this.map.getSource(item.source)) this.map.removeSource(item.source);
   }
   onAdd(_map: GLMap, gl: WebGL2RenderingContext) {
+    if (this.destroyed) return;
     this.gl = gl; this.failed = false;
     this.map.on('render', this.publish);
     const restore = this.saveState();
@@ -259,7 +291,7 @@ export class GpuCameras implements CustomLayerInterface {
     }
   }
   prerender() {
-    if (!this.gl || this.failed) return;
+    if (!this.gl || this.gl.isContextLost() || this.failed || this.destroyed) return;
     const gl = this.gl, restore = this.saveState();
     try {
       gl.bindVertexArray(this.vao!); gl.disable(gl.SCISSOR_TEST); gl.disable(gl.CULL_FACE); gl.disable(gl.BLEND); gl.disable(gl.STENCIL_TEST);
@@ -336,10 +368,11 @@ export class GpuCameras implements CustomLayerInterface {
   // Publish after drawing, so MapLibre uploads the image and matching geometry together
   // during the next frame. Publishing in prerender leaves the raster one upload behind.
   private publish = () => {
-    if (!this.gl || this.failed) return;
+    if (!this.gl || this.gl.isContextLost() || this.failed || this.destroyed) return;
     const gl=this.gl,restore=this.saveState();
     try {
       for(const item of this.cameras.values()) {
+        if (this.destroyed) break;
         if (item.pending) {
           const status=gl.clientWaitSync(item.pending,0,0);
           if (status===gl.WAIT_FAILED) throw new Error('Camera GPU transfer failed.');
@@ -387,6 +420,7 @@ export class GpuCameras implements CustomLayerInterface {
     const gl = this.gl!; gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
   }
   pick(x: number, y: number) {
+    if (this.destroyed) return [];
     const point = MercatorCoordinate.fromLngLat(this.map.unproject([x, y]));
     return [...this.cameras.values()].flatMap(item => {
       const published = item.published;
@@ -400,6 +434,7 @@ export class GpuCameras implements CustomLayerInterface {
     });
   }
   query(rectangle: ScreenRectangle) {
+    if (this.destroyed) return [];
     const longitude = this.map.getCenter().lng;
     return [...this.cameras.values()].flatMap(item => {
       const published = item.published, terrain = published?.terrain;
@@ -449,7 +484,7 @@ export class GpuCameras implements CustomLayerInterface {
       gl.blendFuncSeparate(blend[0], blend[1], blend[2], blend[3]); gl.clearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]); gl.clearDepth(clearDepth);
     };
   }
-  private fail(cause: unknown) { this.failed = true; this.report(cause); }
+  private fail(cause: unknown) { if (!this.destroyed) { this.failed = true; this.report(cause); } }
   private release(item: Camera, preservePublished = false) {
     const gl = this.gl; if (!gl) return;
     if(item.pending)gl.deleteSync(item.pending);if(item.pixels)gl.deleteBuffer(item.pixels);
@@ -463,6 +498,7 @@ export class GpuCameras implements CustomLayerInterface {
     item.buffer = undefined; item.uploaded = undefined; item.dirty = true;
   }
   onRemove() {
+    this.stylePublication = undefined;
     this.map.off('render', this.publish);
     const gl = this.gl; if (!gl) return;
     for (const item of this.cameras.values()) this.release(item, true);
@@ -483,14 +519,20 @@ export class GpuCameras implements CustomLayerInterface {
     this.vao = undefined; this.gl = undefined;
   }
   retry() {
-    if (!this.failed) return;
-    if (this.map.getLayer(this.id)) this.map.removeLayer(this.id);
-    this.attach();
+    if (!this.failed || this.destroyed) return;
+    this.retryPending = true;
+    this.updateStyle();
   }
   destroy() {
-    for (const item of this.cameras.values()) this.removeMask(item);
-    if (this.map.getLayer(this.id)) this.map.removeLayer(this.id);
-    this.onRemove();
-    this.cameras.clear();
+    if (this.destroyed) return;
+    this.destroyed = true; this.stylePublication = undefined;
+    this.requested = { values: [], retained: [] };
+    this.map.off('render', this.publish);
+    this.publishStyle(() => {
+      for (const item of this.cameras.values()) this.removeMask(item);
+      if (this.map.getLayer(this.id)) this.map.removeLayer(this.id);
+      this.onRemove();
+      this.cameras.clear();
+    });
   }
 }

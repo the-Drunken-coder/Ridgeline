@@ -59,6 +59,7 @@ type SceneOptions<P extends Properties> = {
   diagnostic: (error: RidgelineError) => void;
   changed: (ids: string[]) => void;
   models?: ModelRegistry<ModelGpu>;
+  publishCameraStyle?(publish: () => void): void;
   beginNativeFrame?(): void;
   nativeAvailable?(feature: MapFeature<P>, style: FeatureStyle): boolean;
   commitVisibility?(hidden: ReadonlyMap<string, boolean>, current: () => boolean): boolean;
@@ -134,6 +135,7 @@ export class EntityScene<P extends Properties> {
     });
     this.coverage = new SensorCameraCoverage({
       map: options.map,
+      publishStyle: options.publishCameraStyle,
       elevation: this.elevation,
       rendererDiagnostic: cause => options.diagnostic(new RidgelineError(
         'UPDATE_FAILED',

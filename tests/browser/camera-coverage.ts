@@ -2,7 +2,8 @@ import { createViewport, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature } from '@ridgeline/map';
 import { GeoJSONSource } from 'maplibre-gl';
 import type { ImageSource } from 'maplibre-gl';
-import { style, point, check, pointer } from './helpers';
+import { style, point, check, pointer, untilPixel, pixelAt } from './helpers';
+import { observeIdle } from './browser-idle';
 import type { BrowserCaseModule } from './context';
 
 
@@ -369,7 +370,11 @@ export const cameraCoverageCases = {
     const { own, container, until } = caseContext;
     let available = true;
     let finish: (() => void) | undefined;
-    const air = own(createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 }, elevationSampler: {
+    const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+    const context = dem.getContext('2d')!; context.fillRect(0, 0, 256, 256);
+    const air = own(createViewport({ container, basemap: style(), terrain: true,
+      elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 0, greenFactor: 0, blueFactor: 0, baseShift: 0, maxzoom: 0 },
+      camera: { center: [0, 0], zoom: 16 }, elevationSampler: {
       sample: () => available ? 0 : null,
       prepare: async () => new Promise<void>(resolve => { finish = resolve; }),
     }, logger: () => {} }));
@@ -377,7 +382,17 @@ export const cameraCoverageCases = {
     const camera: CameraAttachment = { id: 'camera', type: 'camera', terrainVisibility: true,
       bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300, volumeOpacity: 0, wireframe: false };
     const feature: MapFeature = { ...point('retained-camera'), entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [camera] } };
-    air.upsert([feature]);
+    await until(() => air.map.loaded() && air.map.queryTerrainElevation({ lng: 0, lat: 0 }) === 0, 'native terrain before camera publication');
+    check(Boolean(air.map.getTerrain()), 'The late camera history requires native terrain');
+    let lateInput: (() => void) | undefined;
+    const installInputLayer = () => {
+      if (!air.map.getLayer('late-camera-input')) air.map.addLayer({ id: 'late-camera-input', type: 'custom', prerender() {
+        const action = lateInput; lateInput = undefined; action?.();
+      }, render() {} }, 'rl:models');
+    };
+    const duringFrame = (action: () => void) => { lateInput = action; air.map.triggerRepaint(); };
+    installInputLayer();
+    duringFrame(() => air.upsert([feature]));
     await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'initial retained camera');
     let picked = '';
     const off = air.on('click', event => { picked = event.attachments.find(hit => hit.entityId === feature.id)?.attachmentId ?? ''; });
@@ -389,15 +404,68 @@ export const cameraCoverageCases = {
     };
     try {
       check(await pickAt(0, .0008) === camera.id, 'Initial retained camera was not pickable');
+      await untilPixel(air, [0, .0008], true, 'Late camera pixels on native terrain');
+      duringFrame(() => air.remove([feature.id]));
+      await until(() => !air.map.getLayer('rl:camera-gpu'), 'late camera removal');
+      check(await pickAt(0, .0008) === '', 'Late removal retained camera picking');
+      await untilPixel(air, [0, .0008], false, 'Late camera pixel retirement');
+      duringFrame(() => air.upsert([feature]));
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'late camera identity reuse');
       available = false;
       air.retryUpdates();
       await until(() => Boolean(finish) && air.getEntityState(feature.id)?.coverage === 'loading', 'pending retained retry');
       air.configure({ basemap: style('#ffffff') });
       await until(() => Boolean(air.map.getLayer('rl:camera-gpu')), 'camera layer after style rebuild');
       check(await pickAt(0, .0008) === camera.id, 'Style rebuild dropped retained camera picking');
+      await untilPixel(air, [0, .0008], true, 'Retained camera pixels after native terrain style rebuild');
       available = true;
       finish!(); finish = undefined;
       await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'retained camera retry');
+      installInputLayer();
+      const gl = air.map.getCanvas().getContext('webgl2'), extension = gl?.getExtension('WEBGL_lose_context');
+      if (!gl || !extension) throw new Error('Actual camera context loss is unavailable');
+      let lost = false, loseAfterPreparation = true;
+      air.map.once('webglcontextlost', () => { lost = true; });
+      const current: MapFeature = { ...feature, entity: { ...feature.entity,
+        attachments: [{ ...camera, id: 'after-loss', color: '#0000ff' }] } };
+      const offPreparation = air.on('entitychange', () => {
+        if (!loseAfterPreparation || air.getEntityState(feature.id)?.coverage !== 'loading') return;
+        loseAfterPreparation = false; extension.loseContext();
+      });
+      try {
+        duringFrame(() => air.upsert([current]));
+        await until(() => lost, 'context loss during pending camera topology publication');
+      } finally { offPreparation(); }
+      let restored = false;
+      air.map.once('webglcontextrestored', () => { restored = true; });
+      extension.restoreContext();
+      await until(() => restored && air.getEntityState(feature.id)?.coverage === 'ready', 'current camera after actual context restoration');
+      await until(() => air.map.loaded(), 'restored native camera settles');
+      check(Boolean(air.map.getTerrain()), 'Context restoration did not restore configured native terrain');
+      check(await pickAt(0, .0008) === 'after-loss', 'Context restoration revived the retired camera identity');
+      await untilPixel(air, [0, .0008], true, 'Current camera pixels after context restoration');
+      const pixel = await pixelAt(air, [0, .0008], 8000, 'current restored camera color');
+      check(pixel.blue > pixel.green + 35, `Context restoration republished stale camera appearance: ${JSON.stringify(pixel)}`);
+      await observeIdle(air, 'camera topology restoration').assertQuiet();
+      installInputLayer();
+      duringFrame(() => air.remove([feature.id]));
+      await until(() => !air.map.getLayer('rl:camera-gpu'), 'restored camera retirement');
+      await untilPixel(air, [0, .0008], false, 'Restored camera pixels retired');
+      duringFrame(() => air.upsert([current]));
+      await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'camera before native teardown');
+      let replacement: ReturnType<typeof createViewport> | undefined;
+      duringFrame(() => {
+        air.destroy();
+        check(!air.map.getCanvas().isConnected, 'Camera teardown retained its canvas during the native frame');
+        replacement = own(createViewport({ container, basemap: style(), logger: () => {} }));
+      });
+      await until(() => Boolean(replacement), 'camera teardown remount');
+      if (!replacement) throw new Error('Replacement viewport was not mounted');
+      await replacement.ready;
+      air.destroy();
+      check(replacement.map.getCanvas().isConnected && container.classList.contains('maplibregl-map'), 'Old camera retirement removed the replacement viewport');
+      await until(() => replacement?.map.loaded() === true, 'replacement viewport settles');
+      await observeIdle(replacement, 'native camera teardown remount').assertQuiet();
     } finally {
       finish?.();
       off();

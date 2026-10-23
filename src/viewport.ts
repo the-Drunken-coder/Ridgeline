@@ -124,16 +124,28 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     throw error;
   }
   // MapLibre keeps using its style and tiles after a custom layer callback.
-  // Retire those resources at the end of that native call, while logical
-  // disposal and removal of this viewport's DOM remain synchronous.
+  // Publish camera topology and retire native resources after that call returns.
+  // Logical disposal and removal of this viewport's DOM remain synchronous.
   let nativeRenderDepth = 0, removeAfterRender = false;
+  let cameraStylePublication: (() => void) | undefined;
+  const publishCameraStyle = (publish: () => void) => {
+    if (nativeRenderDepth) cameraStylePublication = publish;
+    else publish();
+  };
   const nativeRender = map._render, cleanupContainer = map._cleanupContainer;
   map._render = function (time) {
     nativeRenderDepth++;
     try { return nativeRender.call(this, time); }
     finally {
       nativeRenderDepth--;
-      if (!nativeRenderDepth && removeAfterRender) { removeAfterRender = false; removeMap(); }
+      if (!nativeRenderDepth) {
+        const publish = cameraStylePublication; cameraStylePublication = undefined;
+        try {
+          if (destroyed && publish) disposeOwner('destroy.cameras', publish);
+          else publish?.();
+        }
+        finally { if (removeAfterRender) { removeAfterRender = false; removeMap(); } }
+      }
     }
   };
   function disposeOwner(operation: string, dispose: () => void): RidgelineError | undefined {
@@ -160,7 +172,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   let frameMarkers: Map<string, string> | undefined;
   const measurement = new ModelMeasurement(map.getCanvas());
   const models = new ModelRegistry<ModelGpu>({ measurement, diagnostic, changed: id => entities.modelsChanged(id) });
-  const entities = new EntityScene<P>({ measurement, models, map, configuration: () => configuration, style: getStyle, sampler: options.elevationSampler, diagnostic,
+  const entities = new EntityScene<P>({ measurement, models, map, publishCameraStyle, configuration: () => configuration, style: getStyle, sampler: options.elevationSampler, diagnostic,
     contextLost: () => {
       contextLost = true; prepared = false; sceneGeneration++; interactionRevision++;
       publication.retire(); modelVisibility.invalidate(); modelLabels.invalidate();
@@ -514,6 +526,13 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   map.on('move', event => invalidateView({ kind: 'camera', phase: 'move', event }));
   map.on('resize', () => { interactionRevision++; invalidateView({ kind: 'resize' }); });
   map.on('error', onError);
+  const contextCanvas = map.getCanvas();
+  const retireLostTerrain = () => {
+    // Retire terrain while its painter still owns the lost context. Later
+    // destruction would return its old textures to the replacement painter.
+    if (!destroyed && map.style?._loaded && map.getTerrain()) map.setTerrain(null);
+  };
+  contextCanvas.addEventListener('webglcontextlost', retireLostTerrain, true);
   map.on('webglcontextlost', () => entities.contextLost());
   map.on('webglcontextrestored', () => {
     if (destroyed) return;
@@ -780,6 +799,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (!readySettled) { readySettled = true; rejectReady(new RidgelineError('DESTROYED', 'Viewport was destroyed before initialization completed.', { operation: 'initialize', recoverable: false })); }
       clearTimeout(timer);
       retire('destroy.resize', () => resize.disconnect());
+      retire('destroy.context', () => contextCanvas.removeEventListener('webglcontextlost', retireLostTerrain, true));
       retire('destroy.entities', () => entities.destroy());
       retire('destroy.models', () => models.destroy());
       retire('destroy.labels', () => modelLabels.destroy());
