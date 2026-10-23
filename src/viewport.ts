@@ -53,6 +53,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   let prepared = false;
   let contextLost = false;
   let restoreBasemap = false;
+  let detachedEntityLayers: NonNullable<ReturnType<GLMap['getLayer']>>[] = [];
   let pendingElevationReset = false;
   let interactionRevision = 0;
   let sceneGeneration = 0;
@@ -414,6 +415,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       applyElevation();
       if (!current()) return;
       entities.attach();
+      if (!current()) return;
+      detachedEntityLayers = [];
       // Fallbacks draw after models, so a detected model draw failure can expose them in this frame.
       for (const id of ['rl:points', 'rl:icons', 'rl:map-icons', 'rl:labels']) map.moveLayer(id);
       modelVisibility.invalidate(); modelLabels.invalidate();
@@ -531,15 +534,22 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     // Retire terrain while its painter still owns the lost context. Later
     // destruction would return its old textures to the replacement painter.
     if (!destroyed && map.style?._loaded && map.getTerrain()) map.setTerrain(null);
+    // Native style replacement skips custom-layer teardown. Retire the detached
+    // owners before a replacement context can receive their old GL handles.
+    const detached = detachedEntityLayers; detachedEntityLayers = [];
+    for (const layer of detached) {
+      if (destroyed) return;
+      layer.onRemove?.(map);
+    }
   };
   contextCanvas.addEventListener('webglcontextlost', retireLostTerrain, true);
   map.on('webglcontextlost', () => entities.contextLost());
   map.on('webglcontextrestored', () => {
     if (destroyed) return;
     contextLost = false;
-    // MapLibre first restores its pre-loss style. Apply any newer accepted basemap
-    // only after its painter exists; prepareStyle then rebuilds our owned layers.
-    if (restoreBasemap) { restoreBasemap = false; map.setStyle(structuredClone(configuration.basemap), { diff: false }); }
+    // An unloaded style has no native restoration snapshot. Install its accepted
+    // basemap or a newer configuration after the replacement painter exists.
+    if (restoreBasemap || !map.style) { restoreBasemap = false; map.setStyle(structuredClone(configuration.basemap), { diff: false }); }
   });
   const interactionCurrent = (revision: number) => () => !destroyed && !interactionOwner && interactionRevision === revision;
   function dispatchClick(point: { x: number; y: number }, originalEvent: MouseEvent) {
@@ -756,8 +766,18 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (styleChanged) { sceneGeneration++; prepared = false; publication.retire(); }
       try {
         if (styleChanged) {
-          if (contextLost) restoreBasemap = true;
-          else map.setStyle(structuredClone(configuration.basemap), { diff: false });
+          restoreBasemap = true;
+          const generation = sceneGeneration;
+          // Terrain must retire through its loaded style and original painter.
+          // Its observers can replace configuration or destroy the viewport.
+          if (!contextLost && map.style?._loaded && map.getTerrain()) map.setTerrain(null);
+          if (!destroyed && generation === sceneGeneration && !contextLost && !contextCanvas.getContext('webgl2')?.isContextLost()) {
+            const detached = ['rl:camera-gpu', 'rl:entities', 'rl:models', 'rl:model-feedback']
+              .flatMap(id => { const layer = map.getLayer(id); return layer ? [layer] : []; });
+            if (detached.length) detachedEntityLayers = detached;
+            restoreBasemap = false;
+            map.setStyle(structuredClone(configuration.basemap), { diff: false });
+          }
         }
         else if (prepared) {
           map.setProjection({ type: configuration.projection === 'flat' ? 'mercator' : 'globe' });
@@ -785,6 +805,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     destroy() {
       if (destroyed) return;
       interactionRevision++; destroyed = true; prepared = false;
+      detachedEntityLayers = [];
       let failure: RidgelineError | undefined;
       const retire = (operation: string, dispose: () => void) => {
         const error = disposeOwner(operation, dispose);

@@ -4,7 +4,182 @@ import { GeoJSONSource } from 'maplibre-gl';
 import type { ImageSource } from 'maplibre-gl';
 import { style, point, check, pointer, untilPixel, pixelAt } from './helpers';
 import { observeIdle } from './browser-idle';
-import type { BrowserCaseModule } from './context';
+import type { BrowserCaseContext, BrowserCaseModule } from './context';
+
+async function recoverCompletionLoss({ own, container, until }: BrowserCaseContext) {
+  const errors: RidgelineError[] = [];
+  const air = own(createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 },
+    elevationSampler: { sample: () => 0 }, logger: () => {}, onError: error => errors.push(error) }));
+  await air.ready;
+  const gl = air.map.getCanvas().getContext('webgl2'), extension = gl?.getExtension('WEBGL_lose_context');
+  if (!gl || !extension) throw new Error('Actual completion context loss is unavailable');
+  const clientWaitSync = gl.clientWaitSync.bind(gl);
+  const held = new Set<WebGLSync>();
+  let release = false, readsAfterLoss = 0;
+  gl.clientWaitSync = (sync, flags, timeout) => {
+    if (gl.isContextLost()) readsAfterLoss++;
+    if (!release) { held.add(sync); return gl.TIMEOUT_EXPIRED; }
+    return clientWaitSync(sync, flags, timeout);
+  };
+  const camera: CameraAttachment = { id: 'before-loss', type: 'camera', terrainVisibility: true,
+    color: '#00ff00', bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300, volumeOpacity: 0, wireframe: false };
+  const features: MapFeature[] = [-.003, .003].map((lng, index) => ({ ...point(`completion-${index}`, lng),
+    entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [camera] } }));
+  let lost = false, armed = false, completedEntity: string | undefined, otherCoverage: string | undefined;
+  air.map.once('webglcontextlost', () => { lost = true; });
+  const offCompletion = air.on('entitychange', ({ ids }) => {
+    if (!armed) return;
+    const completed = features.find(feature => ids.includes(feature.id) && air.getEntityState(feature.id)?.coverage === 'ready');
+    if (!completed) return;
+    armed = false; completedEntity = completed.id;
+    otherCoverage = air.getEntityState(features.find(feature => feature.id !== completed.id)!.id)?.coverage;
+    extension.loseContext();
+  });
+  let picked: string[] = [];
+  const offClick = air.on('click', event => { picked = event.attachments.map(hit => `${hit.entityId}/${hit.attachmentId}`); });
+  const pickAt = async (lng: number, lat: number) => {
+    picked = [];
+    await pointer('click', air.map.project([lng, lat]));
+    return picked;
+  };
+  try {
+    air.upsert(features);
+    await until(() => held.size === 2, 'both camera entities have pending GPU fences');
+    check(features.every(feature => air.getEntityState(feature.id)?.coverage === 'loading'), 'A camera completed before the loss observer was armed');
+    armed = true; release = true;
+    await until(() => lost, 'real context loss from first completed camera observer');
+    check(Boolean(completedEntity) && otherCoverage === 'loading', 'Context loss did not run from one completion while the other camera was pending');
+    check(readsAfterLoss === 0 && !errors.some(error => error.code === 'UPDATE_FAILED'),
+      `Completion read another fence after physical loss: ${readsAfterLoss}; ${errors.map(error => `${error.code}: ${String(error.cause)}`).join(', ')}`);
+    const current: MapFeature[] = features.map(feature => ({ ...feature, entity: { ...feature.entity,
+      attachments: [{ ...camera, id: 'after-loss', bearing: 180, color: '#0000ff' }] } }));
+    air.upsert(current);
+    let restored = false;
+    air.map.once('webglcontextrestored', () => { restored = true; });
+    extension.restoreContext();
+    await until(() => restored && current.every(feature => air.getEntityState(feature.id)?.coverage === 'ready'), 'both current camera entities recover without retry');
+    for (const [index, lng] of [-.003, .003].entries()) {
+      check((await pickAt(lng, -.0008)).includes(`completion-${index}/after-loss`), 'Restored camera picking did not use current attachment geometry');
+      check(!(await pickAt(lng, .0008)).some(hit => hit.startsWith(`completion-${index}/`)), 'Restoration revived the old camera direction');
+      await untilPixel(air, [lng, -.0008], true, 'current camera pixels after completion loss');
+      const pixel = await pixelAt(air, [lng, -.0008], 8000, 'current camera color after completion loss');
+      check(pixel.blue > pixel.green + 35, `Completion recovery restored stale mask color: ${JSON.stringify(pixel)}`);
+      await untilPixel(air, [lng, .0008], false, 'old camera pixels remain retired');
+    }
+    check(!errors.some(error => error.code === 'UPDATE_FAILED'), 'Context cancellation became a persistent camera failure');
+    check(gl.getError() === gl.NO_ERROR, 'Completion recovery left a WebGL error');
+    await until(() => air.map.loaded(), 'completion recovery settles');
+    await observeIdle(air, 'two camera completion context recovery').assertQuiet();
+  } finally {
+    offCompletion(); offClick(); gl.clientWaitSync = clientWaitSync; air.destroy();
+  }
+}
+
+async function recoverPendingBasemap({ own, container, until }: BrowserCaseContext) {
+  const basemap = `https://ridgeline.invalid/camera-style-${crypto.randomUUID()}.json`;
+  const fetch = window.fetch;
+  const requests: { signal: AbortSignal; release: () => void; returned: boolean }[] = [];
+  window.fetch = async (input, options) => {
+    const request = new Request(input, options);
+    if (request.url !== basemap) return fetch.call(window, input, options);
+    const index = requests.length;
+    await new Promise<void>(resolve => { requests.push({ signal: request.signal, release: resolve, returned: false }); });
+    requests[index]!.returned = true;
+    // Deliver the aborted response too, so MapLibre's native HTTP loader must
+    // reject it before the detached style can affect the current map.
+    return new Response(JSON.stringify(style(index === 0 ? '#ff0000' : '#303030')), { headers: { 'content-type': 'application/json' } });
+  };
+  const dem = document.createElement('canvas'); dem.width = dem.height = 256;
+  dem.getContext('2d')!.fillRect(0, 0, 256, 256);
+  const errors: RidgelineError[] = [];
+  const air = own(createViewport({ container, basemap: style(), terrain: true,
+    elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 0, greenFactor: 0, blueFactor: 0, baseShift: 0, maxzoom: 0 },
+    camera: { center: [0, 0], zoom: 16 }, elevationSampler: { sample: () => 0 },
+    style: () => ({ color: '#00ffff', radius: 10, selected: { enabled: false } }),
+    logger: () => {}, onError: error => errors.push(error) }));
+  try {
+    await air.ready;
+    const camera: CameraAttachment = { id: 'before-loading', type: 'camera', terrainVisibility: true,
+      color: '#00ff00', bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300, volumeOpacity: 0, wireframe: false };
+    const feature: MapFeature = { ...point('loading-camera'), entity: { altitude: { meters: 100, reference: 'ground' }, attachments: [camera] } };
+    const pin = point('retained-pin', -.0025);
+    air.upsert([feature, pin]); air.setSelection([pin.id]);
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready' && air.map.loaded() && air.map.queryTerrainElevation({ lng: 0, lat: 0 }) === 0, 'initialized native terrain and camera before pending style');
+    await untilPixel(air, [0, .0008], true, 'camera pixels before pending basemap');
+    await untilPixel(air, [-.0025, 0], true, 'native feature pixels before pending basemap');
+    check(Boolean(air.map.getTerrain()), 'Pending style history requires initialized native terrain');
+    air.configure({ basemap });
+    await until(() => requests.length === 1 && !air.map.style?._loaded, 'accepted basemap URL is still unloaded');
+    check(!air.map.getLayer('rl:points'), 'Pending basemap retained the previous loaded style');
+    const gl = air.map.getCanvas().getContext('webgl2'), extension = gl?.getExtension('WEBGL_lose_context');
+    if (!gl || !extension) throw new Error('Actual pending-style context loss is unavailable');
+    let lost = false, restored = false;
+    air.map.once('webglcontextlost', () => { lost = true; });
+    extension.loseContext();
+    await until(() => lost, 'real context loss while accepted basemap is unloaded');
+    check(requests[0]!.signal.aborted, 'Original pending style request was not cancelled');
+    const current: MapFeature = { ...feature, entity: { ...feature.entity,
+      attachments: [{ ...camera, id: 'after-loading', color: '#0000ff', bearing: 180 }] } };
+    air.upsert([current]);
+    const accepted = JSON.stringify(air.getFeatures());
+    air.map.once('webglcontextrestored', () => { restored = true; });
+    extension.restoreContext();
+    await until(() => restored, 'pending-style native context restoration');
+    await until(() => requests.length === 2, 'restoration requests the current accepted basemap again');
+    check(!requests[1]!.signal.aborted, 'Current restored style request was cancelled');
+    requests[1]!.release();
+    await until(() => air.getEntityState(feature.id)?.coverage === 'ready' && air.map.loaded(), 'current pending basemap and camera restored');
+    check(Boolean(air.map.getTerrain()) && air.map.queryTerrainElevation({ lng: 0, lat: 0 }) === 0, 'Pending basemap recovery lost configured native terrain');
+    check(JSON.stringify(air.getFeatures()) === accepted && air.getSelection().join() === pin.id, 'Pending basemap recovery changed accepted snapshots or selection');
+    check(air.getConfiguration().basemap === basemap && air.map.getZoom() === 16, 'Pending basemap recovery changed configuration or camera');
+    await untilPixel(air, [0, -.0008], true, 'current mask pixels after pending basemap recovery');
+    const mask = await pixelAt(air, [0, -.0008], 8000, 'pending basemap current mask color');
+    check(mask.blue > mask.green + 35, `Pending basemap restored stale mask appearance: ${JSON.stringify(mask)}`);
+    await untilPixel(air, [0, .0008], false, 'pending basemap retired old camera geometry');
+    await untilPixel(air, [-.0025, 0], true, 'retained native feature pixels after pending basemap');
+    const pinPixel = await pixelAt(air, [-.0025, 0], 8000, 'retained native feature color');
+    check(pinPixel.green > pinPixel.red + 35 && pinPixel.blue > pinPixel.red + 35, `Pending basemap lost retained native feature pixels: ${JSON.stringify(pinPixel)}`);
+    let picked: string[] = [];
+    const offClick = air.on('click', event => { picked = [...event.features.map(feature => feature.id), ...event.attachments.map(hit => hit.attachmentId)]; });
+    try {
+      await pointer('click', air.map.project([0, -.0008]));
+      check(picked.includes('after-loading'), 'Pending basemap recovery lost current camera picking');
+      picked = [];
+      await pointer('click', air.map.project([-.0025, 0]));
+      check(picked.includes(pin.id), 'Pending basemap recovery lost retained native feature picking');
+    } finally { offClick(); }
+    requests[0]!.release();
+    await until(() => requests[0]!.returned, 'stale aborted style response delivered after the current response');
+    const base = await pixelAt(air, [.0025, .0012], 8000, 'current basemap after late aborted response');
+    check([base.red, base.green, base.blue].every(value => Math.abs(value - 48) < 3), `Stale basemap response overwrote current pixels: ${JSON.stringify(base)}`);
+    check(errors.length === 0 && gl.getError() === gl.NO_ERROR, `Pending basemap recovery reported a failure: ${errors.map(error => `${error.code}: ${error.message}; ${String(error.cause)}; ${JSON.stringify(error.context)}`).join(', ')}`);
+    await until(() => air.map.loaded(), 'pending basemap recovery settles');
+    await observeIdle(air, 'pending accepted basemap context recovery').assertQuiet();
+    check(air.map.getPaintProperty('background', 'background-color') === '#303030', 'Late aborted response replaced the current basemap');
+    check(Boolean(air.map.getTerrain()), 'Late aborted response disabled current native terrain');
+    for (const change of ['patch', 'replacement'] as const) {
+      let reentered = false;
+      const onTerrain = () => {
+        if (air.map.getTerrain() || reentered) return;
+        reentered = true;
+        air.configure(change === 'patch' ? { exaggeration: 2 } : { basemap: style('#505050') });
+      };
+      air.map.on('terrain', onTerrain);
+      const hadTerrain = Boolean(air.map.getTerrain());
+      try { air.configure({ basemap: style(change === 'patch' ? '#404040' : '#606060') }); }
+      finally { air.map.off('terrain', onTerrain); }
+      check(reentered, `Basemap replacement did not retire terrain through its owning style: ${change}, terrain before=${hadTerrain}, after=${Boolean(air.map.getTerrain())}, basemap=${JSON.stringify(air.getConfiguration().basemap)}`);
+      await until(() => air.map.loaded() && Boolean(air.map.getTerrain()), 'terrain callback configuration settles');
+      check(air.getConfiguration().exaggeration === 2, 'Terrain retirement lost the reentrant configuration patch');
+      const pixel = await pixelAt(air, [.0025, .0012], 8000, 'basemap selected from terrain callback');
+      const expected = change === 'patch' ? 64 : 80;
+      check([pixel.red, pixel.green, pixel.blue].every(value => Math.abs(value - expected) < 3), 'Outer basemap replacement overwrote the current callback configuration');
+    }
+  } finally {
+    for (const request of requests) request.release();
+    window.fetch = fetch; air.destroy();
+  }
+}
 
 
 export const cameraCoverageCases = {
@@ -140,6 +315,7 @@ export const cameraCoverageCases = {
       gl.clientWaitSync = clientWaitSync;
       air.destroy();
     }
+    await recoverPendingBasemap(caseContext);
   },
   "Failed GPU target allocation releases its resources and retries": async caseContext => {
     const { own, container, until } = caseContext;
@@ -306,6 +482,7 @@ export const cameraCoverageCases = {
       check(air.getEntityState(feature.id)?.coverage === 'ready', 'Known ground-level camera stayed loading');
       check(!air.map.getLayer('rl:camera-gpu'), 'Ground-level camera retained GPU geometry');
     } finally { gl.clientWaitSync = clientWaitSync; gl.texImage2D=texImage2D;source.setData=setData;air.destroy(); }
+    await recoverCompletionLoss(caseContext);
   },
   "Rejected camera frames do not replace the displayed picking mask": async caseContext => {
     const { own, container, until } = caseContext;

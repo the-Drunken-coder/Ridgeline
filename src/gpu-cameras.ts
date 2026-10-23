@@ -126,8 +126,12 @@ export class GpuCameras implements CustomLayerInterface {
       if (this.stylePublication !== publication || this.destroyed) return;
       this.stylePublication = undefined;
       try {
-        if ((this.cameras.size || this.requested.values.length || this.requested.retained.length) &&
-          this.map.getCanvas().getContext('webgl2')?.isContextLost()) return;
+        if (this.cameras.size || this.requested.values.length || this.requested.retained.length) {
+          if (this.map.getCanvas().getContext('webgl2')?.isContextLost()) return;
+          // A loading restoration can still install saved mask sources. Keep
+          // their owners until our layers attach and reconciliation can retire them.
+          if (!this.map.getLayer('rl:points')) return;
+        }
         if (this.retryPending) {
           this.retryPending = false;
           if (this.map.getLayer(this.id)) this.map.removeLayer(this.id);
@@ -370,11 +374,14 @@ export class GpuCameras implements CustomLayerInterface {
   private publish = () => {
     if (!this.gl || this.gl.isContextLost() || this.failed || this.destroyed) return;
     const gl=this.gl,restore=this.saveState();
+    const current = () => !this.destroyed && this.gl === gl && !gl.isContextLost();
     try {
       for(const item of this.cameras.values()) {
-        if (this.destroyed) break;
+        // Completion observers can lose the context before its DOM event runs.
+        if (!current()) break;
         if (item.pending) {
           const status=gl.clientWaitSync(item.pending,0,0);
+          if (!current()) break;
           if (status===gl.WAIT_FAILED) throw new Error('Camera GPU transfer failed.');
           if (status===gl.TIMEOUT_EXPIRED) { this.map.triggerRepaint(); continue; }
           gl.deleteSync(item.pending);item.pending=undefined;
@@ -392,8 +399,8 @@ export class GpuCameras implements CustomLayerInterface {
           }
         }
       }
-    } catch(error) { this.fail(error); }
-    finally { restore(); }
+    } catch(error) { if (current()) this.fail(error); }
+    finally { if (current()) restore(); }
   };
   private clipRange(item: Camera, size: number) {
     const gl = this.gl!;
