@@ -817,12 +817,18 @@ export const selectionWorkflowCases = {
           'Invalid rectangle query changed features, selection or interaction ownership');
       }
       const start = { x: center.x - 30, y: center.y - 30 }, end = { x: center.x + 30, y: center.y + 30 };
-      for (const interruption of ['Escape', 'camera'] as const) {
+      viewport.setSelection(['a']);
+      for (const interruption of ['Escape', 'camera', 'configuration'] as const) {
         const count = requests;
         await bridge.down('Alt'); await bridge.mouse('down', start.x, start.y); await bridge.mouse('move', end.x, end.y);
         check(context.container.querySelector('.rl-selection-box'), 'Interrupted fixture never acquired a rectangle');
         if (interruption === 'Escape') await bridge.key('Escape');
-        else viewport.setCamera({ bearing: 15 });
+        else if (interruption === 'camera') viewport.setCamera({ bearing: 15 });
+        else {
+          viewport.configure({ exaggeration: 2 });
+          check(requests === count && !viewport.getInteractionOwner() && !context.container.querySelector('.rl-selection-box')
+            && viewport.getSelection().join() === 'a', 'Configuration did not synchronously retire the rectangle and preserve selection');
+        }
         await bridge.mouse('up', end.x, end.y); await bridge.up('Alt');
         check(requests === count && !viewport.getInteractionOwner() && !context.container.querySelector('.rl-selection-box'), `${interruption} retained a stale rectangle`);
         viewport.setCamera({ bearing: 0 }); await idle(viewport); await rectangle(viewport, start, end);
