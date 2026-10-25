@@ -1,9 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { featureStyle } from '../src/feature-style';
+import { dashExpression, featureStyle, fontExpression } from '../src/feature-style';
 import { NativeDisplayBook } from '../src/native-presentation';
 import type { NativeRecord } from '../src/native-presentation';
 import type { MapFeature, Properties } from '../src/types';
+
+function assertLiterals(book: NativeDisplayBook<Properties>, records: NativeRecord<Properties>[]) {
+  const expected = records.map(record => record.style);
+  assert.deepEqual(dashExpression(book.styles()), dashExpression(expected));
+  assert.deepEqual(fontExpression(book.styles()), fontExpression(expected));
+}
 
 test('staged variants survive newer staging and retire only on their own commit or full replacement', () => {
   const book = new NativeDisplayBook<Properties>();
@@ -15,14 +21,13 @@ test('staged variants survive newer staging and retire only on their own commit 
   const a11 = record('a', 11), a12 = record('a', 12), b21 = record('b', 21), b22 = record('b', 22);
   book.replace([a10, b20]);
   for (const staged of [a11, a12, b21, b22, a11]) book.stage(staged);
-  assert.equal([...book.styles()].length, 6);
-  assert.deepEqual(new Set(book.styles()), new Set([a10.style, b20.style, a11.style, a12.style, b21.style, b22.style]));
+  assertLiterals(book, [a10, b20, a11, a12, b21, b22]);
   assert.equal(book.get('a'), a10);
   assert.equal(book.get('b'), b20);
 
   book.commit('a', a12);
   assert.equal(book.get('a'), a12);
-  assert.deepEqual(new Set(book.styles()), new Set([a12.style, b20.style, b21.style, b22.style]));
+  assertLiterals(book, [a12, b20, b21, b22]);
   book.commit('b', null);
   assert.equal(book.get('b'), undefined);
   assert.deepEqual([...book.styles()], [a12.style]);
@@ -33,6 +38,24 @@ test('staged variants survive newer staging and retire only on their own commit 
   assert.equal(book.get('a'), replacement);
   assert.equal(book.get('b'), undefined);
   assert.deepEqual([...book.styles()], [replacement.style]);
+});
+
+test('staging retains independent literal values without multiplying font and dash combinations', () => {
+  const book = new NativeDisplayBook<Properties>();
+  const feature: MapFeature = { type: 'Feature', id: 'a', properties: {}, geometry: { type: 'Point', coordinates: [0, 0] } };
+  const installed = { feature, style: featureStyle({}) };
+  book.replace([installed]);
+  const variants: NativeRecord<Properties>[] = [];
+  for (let dash = 1; dash <= 3; dash++) for (let font = 1; font <= 3; font++) {
+    const record = { feature, style: featureStyle({ dashArray: [dash, 1], labelStyle: { font: [`Font ${font}`] }, label: 'Uncommitted' }) };
+    variants.push(record);
+    book.stage(record);
+  }
+  assert.equal([...book.styles()].length, 7);
+  assertLiterals(book, [installed, ...variants]);
+  assert.equal(book.get('a'), installed);
+  book.commit('a', null);
+  assert.deepEqual([...book.styles()], []);
 });
 
 test('marker withdrawal retains displayed data and style until source confirmation or reintroduction', () => {
@@ -47,7 +70,7 @@ test('marker withdrawal retains displayed data and style until source confirmati
   assert.equal(book.get(feature.id)?.markerKey, undefined);
   assert.equal(book.get(feature.id)?.feature, feature);
   assert.equal(book.get(feature.id)?.style, record.style);
-  assert.deepEqual([...book.styles()], [record.style, staged.style]);
+  assert.deepEqual([...book.styles()], [record.style]);
   book.commit(feature.id, staged);
   assert.equal(book.get(feature.id), staged);
   assert.equal(book.get(feature.id)?.markerKey, 'staged');

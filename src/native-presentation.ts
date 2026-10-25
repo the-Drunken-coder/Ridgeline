@@ -9,12 +9,15 @@ export type NativeRecord<P extends Properties> = {
 /** Installed display and staged literals have different retirement rules. */
 export class NativeDisplayBook<P extends Properties> {
   private installed = new Map<string, NativeRecord<P>>();
-  private staged = new Map<string, Set<FeatureStyle>>();
+  private staged = new Map<string, Map<string, FeatureStyle>>();
 
   stage(record: NativeRecord<P>) {
-    const styles = this.staged.get(record.feature.id) ?? new Set<FeatureStyle>();
-    styles.add(record.style);
-    this.staged.set(record.feature.id, styles);
+    const { dashArray, labelStyle } = record.style, font = labelStyle?.font;
+    if (!dashArray && !font) return;
+    const literals = this.staged.get(record.feature.id) ?? new Map<string, FeatureStyle>();
+    if (dashArray) literals.set(JSON.stringify(['dash', dashArray]), { dashArray });
+    if (font) literals.set(JSON.stringify(['font', font]), { labelStyle: { font } });
+    this.staged.set(record.feature.id, literals);
   }
 
   commit(id: string, record: NativeRecord<P> | null) {
@@ -37,7 +40,7 @@ export class NativeDisplayBook<P extends Properties> {
   *styles() {
     for (const record of this.installed.values()) yield record.style;
     // Rejected updates may already have installed geometry using any staged variant.
-    for (const styles of this.staged.values()) yield* styles;
+    for (const literals of this.staged.values()) yield* literals.values();
   }
 
   arrows() {
