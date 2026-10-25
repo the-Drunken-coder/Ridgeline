@@ -27,6 +27,7 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - name: Ten independent focused runs, then original shard 2 of 4
         run: |
+          set -o pipefail
           mkdir -p .artifacts/date-line-diagnostics
           node scripts/ci/date-line-diagnostics.mjs 2>&1 | tee .artifacts/date-line-diagnostics/job.log
       - uses: actions/upload-artifact@v4
