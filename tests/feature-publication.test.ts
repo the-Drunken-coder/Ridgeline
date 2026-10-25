@@ -563,6 +563,41 @@ function assertLiterals(book: NativeDisplayBook<Properties>, source: MapFeature,
   }, { dash, font });
 }
 
+for (const failure of ['rejection', 'source error']) {
+  test(`repeated ${failure} retains distinct style literals without retaining every prepared style`, async () => {
+    const f = fixture(feature => {
+      const style = featureStyle({ dashArray: [7, 3], label: `Revision ${feature.properties.revision}`,
+        labelStyle: { font: ['Stream'] } });
+      return { source: { ...feature, properties: { ...feature.properties, ...styleProperties(style) } }, record: { feature, style } };
+    });
+    f.upsert(point('a'));
+    f.publication.restore();
+    const installed = f.book.get('a');
+    assert.ok(installed);
+    for (let revision = 1; revision <= 1000; revision++) {
+      f.upsert(point('a', revision));
+      f.frame();
+      const call = f.source().getCall(revision - 1);
+      if (failure === 'source error') { f.source().error(); call.resolve(); }
+      else call.reject(new Error('Worker unavailable'));
+      await Promise.resolve();
+      assert.equal(f.frames.size, 0);
+    }
+    assert.equal(f.diagnostics.length, 1000);
+    assert.equal(f.book.get('a'), installed);
+    assert.ok([...f.book.styles()].length <= 3, 'Retain the installed style and distinct font/dash literals only');
+    const submitted = f.source().getCall(999).changes.add[0];
+    assert.ok(submitted);
+    assertLiterals(f.book, submitted, [7, 3], ['Stream']);
+    f.publication.retry();
+    f.frame();
+    f.source().succeed(1000);
+    await Promise.resolve();
+    assert.equal(f.book.get('a')?.feature.properties.revision, 1000);
+    assert.equal([...f.book.styles()].length, 1);
+  });
+}
+
 for (const failure of ['rejection', 'partial failure', 'source error']) {
   test(`installed and staged dash/font literals survive successive ${failure} until their own commit or full replacement`, async () => {
     const f = fixture(styled);
