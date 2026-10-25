@@ -1,112 +1,21 @@
-name: Validation
+name: PR 122 date-line diagnostics
 
 'on':
-  pull_request:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: validation-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: true
-
 jobs:
-  typecheck:
+  date-line-diagnostics:
+    name: Original c747d78 instrumented experiment
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 14
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
         with:
-          version: 11.0.9
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '24'
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm check
-
-  module-tests:
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.0.9
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '24'
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm test
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: validation-fixture-failures-${{ matrix.os }}
-          path: .artifacts/validation/
-          include-hidden-files: true
-          if-no-files-found: ignore
-
-  consumer-builds:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.0.9
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '24'
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build:playground && pnpm build:controls
-
-  model-measurement:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.0.9
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '24'
-      - name: Record measurement revision and command
-        run: node scripts/test-measurement.mjs --record-context
-      - run: node scripts/browser-resources.mjs measurement --preflight
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
-      - name: Verify packed model measurement consumer
-        run: pnpm test:measurement
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: model-measurement-verification
-          path: |
-            .artifacts/validation/model-measurement/
-            .artifacts/model-measurement/verification.json
-            .artifacts/model-measurement/consumer/public/provenance.json
-            .artifacts/model-measurement/assets/manifest.json
-            .artifacts/model-measurement/run-*/
-          include-hidden-files: true
-          if-no-files-found: warn
-
-  packaged-browser:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
-    steps:
-      - uses: actions/checkout@v5
+          fetch-depth: 0
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
         with:
           version: 11.0.9
@@ -116,176 +25,19 @@ jobs:
       - run: node scripts/browser-resources.mjs packaged --preflight
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
-      - name: Run installed consumer cases
-        run: pnpm test:browser --shard=${{ matrix.shard }}/4 --reporter=list,blob,json
-        env:
-          PLAYWRIGHT_BLOB_OUTPUT_DIR: blob-report
-          PLAYWRIGHT_JSON_OUTPUT_FILE: reports/packaged-${{ matrix.shard }}.json
+      - name: Ten independent focused runs, then original shard 2 of 4
+        run: |
+          mkdir -p .artifacts/date-line-diagnostics
+          node scripts/ci/date-line-diagnostics.mjs 2>&1 | tee .artifacts/date-line-diagnostics/job.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: blob-packaged-${{ matrix.shard }}
-          path: blob-report/
-          if-no-files-found: warn
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: results-packaged-${{ matrix.shard }}
-          path: reports/
-          if-no-files-found: warn
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: failures-packaged-${{ matrix.shard }}
-          path: .artifacts/playwright/
-          include-hidden-files: true
-          if-no-files-found: warn
-
-  browser-support:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.0.9
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '24'
-      - run: node scripts/browser-resources.mjs packaged --preflight
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium firefox webkit
-      - run: pnpm test:support --reporter=list,json
-        env:
-          PLAYWRIGHT_JSON_OUTPUT_FILE: .artifacts/support/report.json
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: browser-support
+          name: pr122-date-line-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            .artifacts/support/
+            .artifacts/date-line-diagnostics/
             .artifacts/playwright/
-          include-hidden-files: true
-          if-no-files-found: warn
-
-  control-browser:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.0.9
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '24'
-      - run: node scripts/browser-resources.mjs controls --preflight
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:controls:browser --reporter=list,blob
-        env:
-          PLAYWRIGHT_BLOB_OUTPUT_DIR: blob-report
-          PLAYWRIGHT_BLOB_OUTPUT_NAME: report-control.zip
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: blob-control
-          path: blob-report/
-          if-no-files-found: warn
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: failures-control
-          path: control-lab/test-results/
-          if-no-files-found: warn
-
-  playground-browser:
-    runs-on: ubuntu-latest
-    # Reserve five minutes for setup and uploads beyond the runner's 30-minute limit.
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.0.9
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '24'
-      - run: node scripts/browser-resources.mjs playground --preflight
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:playground:browser --reporter=list,blob
-        env:
-          PLAYWRIGHT_BLOB_OUTPUT_DIR: blob-report
-          PLAYWRIGHT_BLOB_OUTPUT_NAME: report-playground.zip
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: blob-playground
-          path: blob-report/
-          if-no-files-found: warn
-      - uses: actions/upload-artifact@v4
-        if: ${{ always() && hashFiles('.artifacts/playground-tests/**') != '' }}
-        with:
-          name: failures-playground
-          path: .artifacts/playground-tests/
-          include-hidden-files: true
-          if-no-files-found: warn
-
-  browser-reports:
-    if: ${{ !cancelled() }}
-    needs: [packaged-browser, control-browser, playground-browser]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.0.9
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '24'
-      - run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: blob-*
-          path: blob-report
-          merge-multiple: true
-      - name: Combine available browser reports
-        if: always()
-        run: pnpm exec playwright merge-reports --config scripts/playwright-merge.config.mjs blob-report
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: browser-report
-          path: .artifacts/browser-report/
+            .artifacts/browser-runs/
+            .artifacts/browser-run.lock/
           include-hidden-files: true
           if-no-files-found: error
-      - uses: actions/download-artifact@v4
-        if: always()
-        with:
-          pattern: results-packaged-*
-          path: reports
-          merge-multiple: true
-      - name: Verify every packaged case executed exactly once
-        if: always()
-        run: |
-          pnpm exec playwright test --config playwright.packaged.config.mjs --list --reporter=json > discovery.json
-          node scripts/check-shards.mjs discovery.json reports/packaged-{1,2,3,4}.json
-
-  validate:
-    # A skipped required job permits merging. Always evaluate the short gate,
-    # including cancelled prerequisites, instead of skipping it on cancellation.
-    if: always()
-    needs: [typecheck, module-tests, packaged-browser, browser-support, control-browser, playground-browser, consumer-builds, browser-reports, model-measurement]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '24'
-          package-manager-cache: false
-      - run: node scripts/check-validation.mjs
-        env:
-          VALIDATION_NEEDS: ${{ toJSON(needs) }}
+          retention-days: 14

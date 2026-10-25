@@ -5,6 +5,7 @@ import { writeFile } from 'node:fs/promises';
 
 import { browserCatalog } from '../browser/catalog';
 import type { BrowserCaseMetadata } from '../browser/catalog';
+import { registerDateLineDiagnostics } from './date-line-diagnostics';
 
 function git(...args: string[]) {
   const result = spawnSync('git', args, { encoding: 'utf8' });
@@ -20,6 +21,7 @@ function command() {
 }
 const source = { revision: git('rev-parse', 'HEAD').trim(), status: git('status', '--short'),
   diffSha256: createHash('sha256').update(git('diff', 'HEAD')).digest('hex'), command: command() };
+registerDateLineDiagnostics(source);
 
 function registerCase(name: string, metadata: BrowserCaseMetadata) {
   test(name, async ({ page }, testInfo) => {

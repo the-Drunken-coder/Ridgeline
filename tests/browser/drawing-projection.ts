@@ -3,6 +3,7 @@ import type { MapFeature } from '@ridgeline/map';
 import { addProtocol, removeProtocol } from 'maplibre-gl';
 import { style, point, check, pointer, browserKey, browserClick, browserDrag } from './helpers';
 import type { BrowserCaseModule, BrowserCaseRun } from './context';
+import { startDateLineDiagnostics } from './date-line-diagnostics';
 
 function dateLineDrawing(projection: "flat" | "globe", terrain: false | true): BrowserCaseRun {
   return async caseContext => {
@@ -15,10 +16,12 @@ function dateLineDrawing(projection: "flat" | "globe", terrain: false | true): B
     addProtocol(protocol, async () => ({ data: image.slice(0) }));
     const anchor: [number, number] = [-179.65, 0];
     const elevation = { tiles: [`${protocol}://dem/{z}/{x}/{y}.png`], encoding: 'terrarium' as const, maxzoom: 0 };
+    const diagnostic = projection === 'globe' && terrain ? startDateLineDiagnostics() : undefined;
     try {
         const options = { container, basemap: style(), terrain, elevation, projection,
           camera: { center: [179.8, 0] as [number, number], zoom: 7, pitch: projection === 'globe' ? 50 : 0 }, logger: () => {} };
         let draw = own(createViewport({ ...options, features: [point('world-anchor', anchor[0])] }));
+        diagnostic?.observe(draw, 'initial');
         await draw.ready;
         if (terrain) await until(() => draw.map.loaded() && Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - 100) < 1,
           `${projection} date-line elevation loaded`);
@@ -32,20 +35,41 @@ function dateLineDrawing(projection: "flat" | "globe", terrain: false | true): B
             // The pinned globe renderer loads DEM samplers on its canonical
             // side. Navigate across the seam before placing on western terrain.
             const canvas = draw.map.getCanvas().getBoundingClientRect();
+            diagnostic?.mark('drag.entry');
             await browserDrag(canvas.x + 340, canvas.y + 250, canvas.x + 250, canvas.y + 250);
+            diagnostic?.mark('drag.return');
+            diagnostic?.mark('camera.entry');
             draw.setCamera({ center: [-179.8, 0] });
+            diagnostic?.mark('camera.return');
             let liveUpdates = 0;
-            const live = setInterval(() => draw.upsert([point('western-readiness-live', 170 + (++liveUpdates % 100) * .0001)]), 16);
+            diagnostic?.mark('interval.install.entry', { delayMs: 16 });
+            const live = setInterval(() => {
+              diagnostic?.mark('interval.callback.entry', { liveUpdates });
+              try {
+                diagnostic?.mark('upsert.entry', { liveUpdates });
+                draw.upsert([point('western-readiness-live', 170 + (++liveUpdates % 100) * .0001)]);
+                diagnostic?.mark('upsert.return', { liveUpdates });
+              } catch (cause) {
+                diagnostic?.mark('upsert.throw', { liveUpdates, error: String(cause) });
+                throw cause;
+              } finally { diagnostic?.mark('interval.callback.exit', { liveUpdates }); }
+            }, 16);
+            diagnostic?.mark('interval.install.return', { timerId: Number(live) });
             try {
               // Global loaded() includes unrelated feature publication. Require
               // the DEM and camera used by this target while live data continues.
               await until(() => liveUpdates >= 2 && !draw.map.isMoving() && draw.map.isSourceLoaded('rl:terrain') === true &&
-                Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - 100) < 1, 'western globe terrain loaded');
+                Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - 100) < 1, 'western globe terrain loaded', undefined,
+                diagnostic ? event => diagnostic.mark(event, { liveUpdates }) : undefined);
             } catch (cause) {
+              diagnostic?.mark('wait.catch', { liveUpdates, error: String(cause) });
               throw new Error(`Western terrain readiness: ${JSON.stringify({ liveUpdates, loaded: draw.map.loaded(),
                 terrainLoaded: draw.map.isSourceLoaded('rl:terrain'), elevation: draw.map.queryTerrainElevation(anchor),
                 moving: draw.map.isMoving() })}`, { cause });
-            } finally { clearInterval(live); }
+            } finally {
+              clearInterval(live);
+              diagnostic?.mark('interval.clear', { liveUpdates });
+            }
           }
           const across = draw.map.project(canonicalGlobeTerrain ? [-179.6, 0] : [180.4, 0]);
           await pointer('move', across);
@@ -61,10 +85,13 @@ function dateLineDrawing(projection: "flat" | "globe", terrain: false | true): B
           check(saved.geometry.coordinates.every(p => Math.abs(p[0]!) <= 180) &&
             saved.geometry.coordinates[0]![0]! > 0 && saved.geometry.coordinates[1]![0]! < 0, 'Crossing geometry was not bounded');
           const restored: MapFeature = JSON.parse(JSON.stringify(saved));
+          diagnostic?.mark('initial.cleanup.entry');
           editor.destroy(); draw.destroy();
+          diagnostic?.mark('initial.cleanup.return');
           draw = own(createViewport({ ...options, camera: { ...options.camera,
             center: canonicalGlobeTerrain ? [-179.8, 0] : options.camera.center },
             features: [restored, point('world-anchor', anchor[0])] }));
+          diagnostic?.observe(draw, 'reloaded');
           await draw.ready;
           if (terrain) await until(() => draw.map.loaded() && Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - 100) < 1,
             `${projection} reloaded date-line elevation`);
@@ -107,8 +134,15 @@ function dateLineDrawing(projection: "flat" | "globe", terrain: false | true): B
             await pointer('click', { x: screen.x + 5, y: screen.y + 3 });
             check(JSON.stringify(editor.getState().draft?.shape) === before, 'Missing replacement elevation reused old globe coverage');
           }
-        } finally { editor.destroy(); draw.destroy(); }
-    } finally { removeProtocol(protocol); }
+        } finally {
+          diagnostic?.mark('viewport.cleanup.entry');
+          try { editor.destroy(); draw.destroy(); }
+          finally { diagnostic?.mark('viewport.cleanup.exit'); }
+        }
+    } finally {
+      try { removeProtocol(protocol); }
+      finally { diagnostic?.mark('case.cleanup'); diagnostic?.stop(); }
+    }
   };
 }
 

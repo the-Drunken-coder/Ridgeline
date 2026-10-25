@@ -5,12 +5,27 @@ export const style = (color = '#e9efea'): StyleSpecification => ({ version: 8, s
 export const point = (id: string, lng = 0): MapFeature => ({ type: 'Feature', id, properties: { name: id }, geometry: { type: 'Point', coordinates: [lng, 0] } });
 export const check = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
 
-export async function until(predicate: () => boolean, description: string, timeout = 8_000) {
+export async function until(predicate: () => boolean, description: string, timeout = 8_000, observe?: (event: string) => void) {
   const start = performance.now();
-  while (!predicate()) {
-    if (performance.now() - start > timeout) throw new Error(`Timed out: ${description}`);
-    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+  const poll = observe ? () => {
+    observe('predicate.entry');
+    try {
+      const result = predicate();
+      observe(result ? 'predicate.true' : 'predicate.false');
+      return result;
+    } catch (error) { observe('predicate.throw'); throw error; }
+  } : predicate;
+  observe?.('wait.entry');
+  while (!poll()) {
+    if (performance.now() - start > timeout) {
+      observe?.('wait.timeout');
+      throw new Error(`Timed out: ${description}`);
+    }
+    observe?.('wait.raf.request');
+    await new Promise<void>(resolve => requestAnimationFrame(() => { observe?.('wait.raf.callback'); resolve(); }));
+    observe?.('wait.continuation');
   }
+  observe?.('wait.return');
 }
 
 export async function pointer(action: 'move' | 'click', point: { x: number; y: number }) {
