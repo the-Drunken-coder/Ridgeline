@@ -1,5 +1,15 @@
 # Reliability repair closeout
 
+## Western-globe readiness follow-up, 2026-10-26
+
+[#123](https://github.com/the-Drunken-coder/Ridgeline/issues/123) remains open and unexplained. The [historical evidence](evidence/issue-123-history/README.md) preserves the original failure and selected hosted controls before the diagnostic artifact expires on November 8. Original producer bytes, metadata and hashes were verified through the existing evidence-promotion workflow.
+
+The [current investigation](evidence/issue-123-investigation/README.md) records seven passing local focused executions, including two against the archived historical runtime. Every run retained real pointer input, ongoing live updates, the eight-second readiness condition and zero retries. These are passing controls, not proof that the historical failure is fixed. A synchronous renderer check during GPU work is a lead from passing traces; no causal production fix was accepted.
+
+The user requested this follow-up while withdrawing the separate model hardware-acceptance matrix. That decision changes neither this failure's outcome nor the terrain, drawing and public API guarantees. Earlier closeout records below retain their original pins.
+
+## Historical reliability-repair closeout, 2026-10-02
+
 Status: resolved.
 Spec: `.scratch/codebase-reliability-repairs/spec.md`, [canonical requirements](spec.md), [GitHub #54](https://github.com/the-Drunken-coder/Ridgeline/issues/54).
 Integration: [GitHub #55](https://github.com/the-Drunken-coder/Ridgeline/issues/55), branch `t3code/implement-spec-54`.
