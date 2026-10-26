@@ -21,7 +21,7 @@ import { DEFAULT_ENTITY_MODELS, modelAppearance, modelSettings } from './model-s
 import type { Map as GLMap } from 'maplibre-gl';
 import { EntityLayer } from './entity-layer';
 import { EntityGround } from './entity-ground';
-import type { Primitive } from './entity-layer';
+import type { AirbornePrimitive, GroundPrimitive } from './entity-primitives';
 import { computeEntity } from './entity-computation';
 import type { EntityComputationResult } from './entity-computation';
 import type { ElevationArea } from './elevation';
@@ -59,6 +59,7 @@ type SceneOptions<P extends Properties> = {
   diagnostic: (error: RidgelineError) => void;
   changed: (ids: string[]) => void;
   models?: ModelRegistry<ModelGpu>;
+  publishCameraStyle?(publish: () => void): void;
   beginNativeFrame?(): void;
   nativeAvailable?(feature: MapFeature<P>, style: FeatureStyle): boolean;
   commitVisibility?(hidden: ReadonlyMap<string, boolean>, current: () => boolean): boolean;
@@ -67,13 +68,22 @@ type SceneOptions<P extends Properties> = {
   contextLost?(): void;
   contextRestored?(): void;
 };
+type PreparedEntity<P extends Properties> = Readonly<{
+  feature: MapFeature<P>;
+  style: FeatureStyle;
+  settings: EntityModelSettings;
+  state: Readonly<EntityState>;
+  position: EntityComputationResult['position'];
+  geometry: EntityComputationResult['geometry'];
+  nonCameraCoverage: EntityState['coverage'];
+}>;
 
 export class EntityScene<P extends Properties> {
   readonly layer: EntityLayer;
   readonly modelLayer?: ModelLayer;
   private feedbackLayer: ModelFeedbackLayer;
   private previewed: string | null = null;
-  private preparedModels = new Map<string, { feature: MapFeature<P>; style: FeatureStyle; settings: EntityModelSettings }>();
+  private prepared = new Map<string, PreparedEntity<P>>();
   private choices = new Map<string, ModelChoice>();
   private published = new Map<string, EntityState['representation']>();
   private revision = 0;
@@ -83,10 +93,6 @@ export class EntityScene<P extends Properties> {
   private modelDiagnostics = new Map<string, string>();
   private groundLayer: EntityGround;
   private features = new Map<string, MapFeature<P>>();
-  private states = new Map<string, EntityState>();
-  private nonCameraCoverage = new Map<string, EntityState['coverage']>();
-  private positions = new Map<string, [number, number]>();
-  private geometry = new Map<string, Primitive[]>();
   private geometryDirty = false;
   private dirty = new Set<string>();
   private selected = new Set<string>();
@@ -129,6 +135,7 @@ export class EntityScene<P extends Properties> {
     });
     this.coverage = new SensorCameraCoverage({
       map: options.map,
+      publishStyle: options.publishCameraStyle,
       elevation: this.elevation,
       rendererDiagnostic: cause => options.diagnostic(new RidgelineError(
         'UPDATE_FAILED',
@@ -142,8 +149,9 @@ export class EntityScene<P extends Properties> {
         options.changed([id]);
       },
       displayed: id => {
-        const state = this.states.get(id);
-        if (state) state.coverage = combineCoverage(this.nonCameraCoverage.get(id) ?? 'ready', this.coverage.status(id));
+        const prepared = this.prepared.get(id);
+        if (prepared) this.prepared.set(id, { ...prepared,
+          state: { ...prepared.state, coverage: combineCoverage(prepared.nonCameraCoverage, this.coverage.status(id)) } });
         this.renderLayers(false);
         options.changed([id]);
       },
@@ -160,11 +168,8 @@ export class EntityScene<P extends Properties> {
     this.modelHits = this.modelHits.filter(({ feature }) => !retired.has(feature.id));
     for (const id of retired) {
       this.features.delete(id);
-      this.states.delete(id);
-      this.preparedModels.delete(id); this.modelDiagnostics.delete(id); this.choices.delete(id); this.published.delete(id);
-      this.nonCameraCoverage.delete(id);
-      this.positions.delete(id);
-      this.geometryDirty = this.geometry.delete(id) || this.geometryDirty;
+      this.geometryDirty = this.prepared.delete(id) || this.geometryDirty;
+      this.modelDiagnostics.delete(id); this.choices.delete(id); this.published.delete(id);
       this.dirty.delete(id);
       this.diagnosticKeys.delete(id);
     }
@@ -198,7 +203,7 @@ export class EntityScene<P extends Properties> {
           : attachment.radius;
         return Math.max(radius, extent);
       }, 0);
-      const previous = this.states.get(feature.id);
+      const previous = this.prepared.get(feature.id)?.state;
       const cameraCapable = previous === undefined || previous.placement === 'elevation-unavailable' ||
         (previous.placement === 'airborne' && (previous.altitude ?? 0) > (previous.ground ?? 0) + 0.01);
       this.coverage.requestAreas(feature.id, center,
@@ -244,13 +249,13 @@ export class EntityScene<P extends Properties> {
     if (!this.lost) this.renderLayers(false);
   }
   getState(id: string) {
-    const state = this.states.get(id);
+    const state = this.prepared.get(id)?.state;
     const reference = this.features.get(id)?.entity?.model;
     return state && { ...state, representation: this.modelLayer ? this.published.get(id) ?? 'withheld' : state.representation, model: reference ? this.options.models?.status(reference.id) : undefined };
   }
   marker(feature: MapFeature<P>) {
     if (!feature.entity) return { visible: true, ground: true, offset: 0 };
-    const state = this.states.get(feature.id),
+    const prepared = this.prepared.get(feature.id), state = prepared?.state,
       config = this.options.configuration();
     if (!feature.entity.altitude && feature.entity.groundIfNoAltitude === false)
       return { visible: false, ground: false, offset: 0 };
@@ -260,7 +265,7 @@ export class EntityScene<P extends Properties> {
     return {
       visible: true,
       ground: !airborne,
-      position: this.positions.get(feature.id),
+      position: prepared?.position,
       offset: airborne ? (config.terrain ? (altitude - ground) * verticalScale(config) : altitude) : 0,
     };
   }
@@ -324,12 +329,8 @@ export class EntityScene<P extends Properties> {
     this.elevation.destroy();
     this.layer.onRemove();
     this.modelLayer?.destroy(); this.feedbackLayer.destroy();
-    this.preparedModels.clear(); this.modelDiagnostics.clear(); this.choices.clear(); this.published.clear();
+    this.prepared.clear(); this.modelDiagnostics.clear(); this.choices.clear(); this.published.clear();
     this.features.clear();
-    this.geometry.clear();
-    this.states.clear();
-    this.nonCameraCoverage.clear();
-    this.positions.clear();
   }
   private invalidate() {
     for (const id of this.features.keys()) this.dirty.add(id);
@@ -354,13 +355,20 @@ export class EntityScene<P extends Properties> {
     for (const id of ids) {
       const feature = this.features.get(id);
       if (!feature) continue;
+      const revision = this.revision, configuration = this.options.configuration();
       try {
         this.build(feature);
       } catch (cause) {
         if (this.destroyed || this.features.get(id) !== feature) continue;
+        if (this.revision !== revision || this.options.configuration() !== configuration) {
+          this.dirty.add(id);
+          this.schedule('interrupted-preparation');
+          continue;
+        }
         this.coverage.unavailable(id);
-        const state = this.states.get(id);
-        if (state) this.states.set(id, { ...state, coverage: 'unavailable', footprintTriangles: 0 });
+        const prepared = this.prepared.get(id);
+        if (prepared) this.prepared.set(id, { ...prepared,
+          state: { ...prepared.state, coverage: 'unavailable', footprintTriangles: 0 } });
         // Preserve the last valid placement and non-camera attachments while
         // removing coverage whose required elevation calculation failed.
         this.geometryDirty = true;
@@ -382,10 +390,10 @@ export class EntityScene<P extends Properties> {
     this.trace('preparation-end', 'entity-flush');
   }
   private build(feature: MapFeature<P>) {
-    const revision = this.revision;
+    const revision = this.revision, configuration = this.options.configuration();
     const current = () => {
       if (this.destroyed || this.features.get(feature.id) !== feature) return false;
-      if (this.revision === revision) return true;
+      if (this.revision === revision && this.options.configuration() === configuration) return true;
       // Selection, preview or configuration callbacks can invalidate this attempt
       // without replacing the feature. Keep its consumed work queued for recovery.
       this.dirty.add(feature.id);
@@ -398,10 +406,11 @@ export class EntityScene<P extends Properties> {
       this.options.diagnostic(cause instanceof RidgelineError && cause.code === 'INVALID_FEATURE' && cause.context.operation === 'style'
         ? cause : new RidgelineError('CALLBACK_FAILED', 'An entity style callback threw.',
           { operation: 'style', recoverable: true, featureId: feature.id }, cause));
+      // Failed styling is settled. Reentrant input changes own their queued work.
       return;
     }
     if (!current()) return;
-    const input = { feature, configuration: this.options.configuration(), style, selected: this.selected.has(feature.id) };
+    const input = { feature, configuration, style };
     const placementKey = placementAreaKey(feature.id);
     const result = computeEntity(input, this.elevation.sampling(placementKey),
       (lng, lat) => this.elevation.failedAt(placementKey, lng, lat));
@@ -426,18 +435,28 @@ export class EntityScene<P extends Properties> {
     const placementCoverage = result.state.coverage;
     result.state.coverage = combineCoverage(placementCoverage, camera.coverage);
     result.state.footprintTriangles = camera.footprintTriangles;
-    const preparedStyle = { ...style, modelAppearance: modelAppearance(style.modelAppearance) };
-    const settings = modelSettings(input.configuration.entityModels ?? DEFAULT_ENTITY_MODELS, feature.entity?.model);
+    const candidate: PreparedEntity<P> = {
+      feature, style: { ...style, modelAppearance: modelAppearance(style.modelAppearance) },
+      settings: modelSettings(configuration.entityModels ?? DEFAULT_ENTITY_MODELS, feature.entity?.model),
+      state: result.state, position: result.position, geometry: result.geometry, nonCameraCoverage: placementCoverage,
+    };
     this.prepareModel(feature, result);
     if (!current()) return;
-    if (this.preparedModels.get(feature.id)?.feature.entity?.model?.id !== feature.entity?.model?.id ||
+    if (this.prepared.get(feature.id)?.feature.entity?.model?.id !== feature.entity?.model?.id ||
       feature.entity?.heading === undefined || result.state.model?.status === 'unavailable')
       this.choices.delete(feature.id);
     // Pose and appearance belong to the same successful preparation as placement
     // and attachments. Failed updates must not mix accepted data with old geometry.
-    this.preparedModels.set(feature.id, { feature, style: preparedStyle, settings });
-    this.nonCameraCoverage.set(feature.id, placementCoverage);
-    this.apply(feature.id, result);
+    this.prepared.set(feature.id, candidate);
+    this.geometryDirty = true;
+    const diagnostic = result.diagnostic;
+    if (!diagnostic) this.diagnosticKeys.delete(feature.id);
+    else if (this.diagnosticKeys.get(feature.id) !== diagnostic) {
+      this.diagnosticKeys.set(feature.id, diagnostic);
+      this.options.diagnostic(new RidgelineError(diagnostic,
+        diagnostic === 'ALTITUDE_MISSING' ? 'Entity altitude is missing and ground fallback is disabled.' : 'Entity is below terrain; only its ground position is shown.',
+        { operation: 'entities', recoverable: true, featureId: feature.id }));
+    }
   }
 
   private prepareModel(feature: MapFeature<P>, result: EntityComputationResult) {
@@ -479,11 +498,11 @@ export class EntityScene<P extends Properties> {
     const camera = MercatorCoordinate.fromLngLat(transform.getCameraLngLat());
     const cameraHeight = transform.getCameraAltitude();
     for (const [id, accepted] of this.features) {
-      const prepared = this.preparedModels.get(id);
+      const prepared = this.prepared.get(id);
       if (!prepared) continue;
-      const { feature, style, settings } = prepared;
-      const entity = feature.entity, state = this.states.get(id);
-      if (!entity || !state || feature.geometry.type !== 'Point') continue;
+      const { feature, style, settings, state } = prepared;
+      const entity = feature.entity;
+      if (!entity || feature.geometry.type !== 'Point') continue;
       const reference = entity.model, asset = reference && registry?.get(reference.id);
       const status = reference ? registry?.status(reference.id).status ?? 'unavailable' : 'unavailable';
       const point = MercatorCoordinate.fromLngLat([wrapLongitude(feature.geometry.coordinates[0]!),
@@ -587,38 +606,28 @@ export class EntityScene<P extends Properties> {
       },
     };
   }
-  private apply(id: string, result: EntityComputationResult) {
-    if (this.destroyed || !this.features.has(id)) return;
-    this.geometry.set(id, result.primitives);
-    this.geometryDirty = true;
-    this.states.set(id, result.state);
-    this.positions.set(id, result.position);
-    const diagnostic = result.diagnostic;
-    if (diagnostic && this.diagnosticKeys.get(id) !== diagnostic)
-      this.options.diagnostic(new RidgelineError(diagnostic,
-        diagnostic === 'ALTITUDE_MISSING' ? 'Entity altitude is missing and ground fallback is disabled.' : 'Entity is below terrain; only its ground position is shown.',
-        { operation: 'entities', recoverable: true, featureId: id }));
-    if (diagnostic) this.diagnosticKeys.set(id, diagnostic);
-    else this.diagnosticKeys.delete(id);
-  }
   private render() {
     if (!this.geometryDirty) return;
     this.geometryDirty = false;
     this.renderLayers();
   }
   private renderLayers(includeGround = true) {
-    const primitives = [...this.geometry.values()].flat().map(primitive => {
-      if (!primitive.marker) return primitive;
-      const style = this.preparedModels.get(primitive.entityId)?.style;
-      if (!style) return primitive;
-      const { selected, hovered, appearance } = resolveHighlight(style, this.selected.has(primitive.entityId), this.previewed === primitive.entityId);
-      const radius = appearance.radius ?? (hovered ? Math.max(12, style.radius ?? 6) : style.radius ?? 6);
-      const color = primitive.marker === 'stroke' ? selected ? '#ffa633' : hovered ? '#db6a20' : '#ffffff'
-        : appearance.color ?? style.color ?? '#216e5b';
-      const size = radius * 2 + (primitive.marker === 'stroke' ? selected ? 8 : 4 : 0);
-      return { ...primitive, size, innerRadius: primitive.marker === 'stroke' ? radius * 2 / size : 0, color: parseColor(color, Color.parse(color)?.a ?? 1, { initialCss: '#216e5b' }) };
-    }).concat(this.coverage.allGeometry());
-    this.layer.set(primitives.filter(p => !p.surface), verticalScale(this.options.configuration()));
-    if (includeGround) this.groundLayer.set(primitives.filter(p => p.surface));
+    const airborne: AirbornePrimitive[] = [], ground: GroundPrimitive[] = [];
+    for (const { geometry, style } of this.prepared.values()) {
+      ground.push(...geometry.ground);
+      for (const primitive of geometry.airborne) {
+        if (primitive.mode !== 'points' || !primitive.marker) { airborne.push(primitive); continue; }
+        const { selected, hovered, appearance } = resolveHighlight(style, this.selected.has(primitive.entityId), this.previewed === primitive.entityId);
+        const radius = appearance.radius ?? (hovered ? Math.max(12, style.radius ?? 6) : style.radius ?? 6);
+        const color = primitive.marker === 'stroke' ? selected ? '#ffa633' : hovered ? '#db6a20' : '#ffffff'
+          : appearance.color ?? style.color ?? '#216e5b';
+        const size = radius * 2 + (primitive.marker === 'stroke' ? selected ? 8 : 4 : 0);
+        airborne.push({ ...primitive, size, innerRadius: primitive.marker === 'stroke' ? radius * 2 / size : 0,
+          color: parseColor(color, Color.parse(color)?.a ?? 1, { initialCss: '#216e5b' }) });
+      }
+    }
+    const camera = this.coverage.allGeometry();
+    this.layer.set([...airborne, ...camera.airborne], verticalScale(this.options.configuration()));
+    if (includeGround) this.groundLayer.set([...ground, ...camera.ground]);
   }
 }

@@ -3,6 +3,10 @@ import test from 'node:test';
 import { createFeaturePublication } from '../src/feature-publication';
 import type { FeatureChanges, FeaturePublicationSource } from '../src/feature-publication';
 import { FeatureStore } from '../src/features';
+import { NativeDisplayBook } from '../src/native-presentation';
+import type { NativeRecord } from '../src/native-presentation';
+import { dashExpression, featureStyle, fontExpression, styleProperties } from '../src/feature-style';
+import { createExpression } from '@maplibre/maplibre-gl-style-spec';
 import type { RidgelineError } from '../src/errors';
 import type { MapFeature, Properties } from '../src/types';
 
@@ -43,29 +47,51 @@ class ControlledSource implements FeaturePublicationSource {
   }
 }
 
-function fixture(render: (feature: MapFeature) => MapFeature = feature => feature, onDiagnostic?: (error: RidgelineError) => void) {
+function prepared(feature: MapFeature): { source: MapFeature; record: NativeRecord<Properties> } {
+  return { source: feature, record: { feature, style: featureStyle({}) } };
+}
+
+function styled(feature: MapFeature): ReturnType<typeof prepared> {
+  const revision = feature.properties.revision;
+  assert.ok(typeof revision === 'number');
+  const style = featureStyle({ dashArray: [revision + 1, 1], labelStyle: { font: [`Revision ${revision}`] } });
+  return { source: { ...feature, properties: { ...feature.properties, ...styleProperties(style) } },
+    record: { feature, style, markerKey: `marker-${revision}` } };
+}
+
+function fixture(render = prepared, onDiagnostic?: (error: RidgelineError) => void) {
   const store = new FeatureStore<Properties>();
   const diagnostics: RidgelineError[] = [];
   const published: string[] = [];
+  const book = new NativeDisplayBook<Properties>();
+  const preparedRecords: NativeRecord<Properties>[] = [];
+  const publishedRecords: (NativeRecord<Properties> | null)[] = [];
+  const restoredRecords: NativeRecord<Properties>[][] = [];
   const frames = new Map<number, () => void>();
   let frameId = 0;
   let source: ControlledSource | undefined;
   let initialFailure: ((cause: unknown) => void) | undefined;
   const publication = createFeaturePublication({
-    store, render, diagnostic: error => { diagnostics.push(error); onDiagnostic?.(error); },
+    store, diagnostic: error => { diagnostics.push(error); onDiagnostic?.(error); },
+    render: feature => {
+      const result = render(feature);
+      preparedRecords.push(result.record); book.stage(result.record);
+      return result;
+    },
     target: {
       current: () => source,
       create: features => { source = new ControlledSource(features); },
       watchInitial: failed => { initialFailure = failed; return () => { if (initialFailure === failed) initialFailure = undefined; }; },
     },
-    published: id => published.push(id),
+    published: (id, record) => { published.push(id); publishedRecords.push(record); book.commit(id, record); },
+    restored: records => { restoredRecords.push(records); book.replace(records); },
     frames: {
       request(callback) { const id = ++frameId; frames.set(id, callback); return id; },
       cancel(id) { frames.delete(id); },
     },
   });
   return {
-    publication, store, diagnostics, published, frames,
+    publication, store, diagnostics, published, frames, book, preparedRecords, publishedRecords, restoredRecords,
     source() { assert.ok(source); return source; },
     upsert(...features: MapFeature[]) { publication.update(store.upsert(features)); },
     remove(...ids: string[]) { publication.update([], store.remove(ids)); },
@@ -175,7 +201,7 @@ test('one broken feature keeps its last display while healthy changes proceed an
   let broken = true;
   const f = fixture(feature => {
     if (broken && feature.properties.revision === 1) throw new Error('Broken style');
-    return feature;
+    return prepared(feature);
   });
   f.upsert(point('a'), point('removed'));
   f.publication.restore();
@@ -309,7 +335,7 @@ test('restoration isolates preparation failures and keeps those IDs available fo
   let broken = true;
   const f = fixture(feature => {
     if (broken && feature.id === 'broken') throw new Error('Broken style');
-    return feature;
+    return prepared(feature);
   });
   f.upsert(point('broken'), point('healthy'));
   f.publication.restore();
@@ -356,7 +382,7 @@ test('reentrant removal during preparation does not publish the removed feature'
   let f: ReturnType<typeof fixture>;
   f = fixture(feature => {
     if (feature.id === 'removed') f.remove('removed');
-    return feature;
+    return prepared(feature);
   });
   f.publication.restore();
   f.upsert(point('removed'), point('healthy'));
@@ -376,7 +402,7 @@ test('restoration stops when a preparation diagnostic destroys the publisher', (
   f = fixture(feature => {
     renders++;
     if (feature.id === 'broken') throw new Error('Broken style');
-    return feature;
+    return prepared(feature);
   }, () => f.publication.destroy());
   f.upsert(point('broken'), point('later'));
   f.publication.restore();
@@ -389,9 +415,9 @@ test('source creation stops restoration when an error observer destroys publicat
   store.upsert([point('a')]);
   let restored = 0;
   let watched = 0;
-  let publication: ReturnType<typeof createFeaturePublication<Properties>>;
+  let publication: ReturnType<typeof createFeaturePublication<Properties, NativeRecord<Properties>>>;
   publication = createFeaturePublication({
-    store, render: feature => feature, diagnostic: () => {}, published: () => {},
+    store, render: prepared, diagnostic: () => {}, published: () => {},
     restored: () => { restored++; },
     frames: { request: () => 1, cancel: () => {} },
     target: {
@@ -439,7 +465,7 @@ test('a replacement restoration keeps its scene when an obsolete render callback
       f.store.upsert([point('a', 2)]);
       f.publication.restore();
     }
-    return feature;
+    return prepared(feature);
   });
   f.upsert(point('a', 1));
   f.publication.restore();
@@ -468,3 +494,164 @@ test('a deferred reset cannot publish after source replacement or destruction', 
     if (!destroy) assert.deepEqual([...f.source().features.values()], [point('a', 2)]);
   }
 });
+
+test('publication commits the exact prepared record even when newer accepted data is waiting', async () => {
+  const f = fixture(styled);
+  f.upsert(point('a', 10));
+  f.publication.restore();
+  const initial = f.preparedRecords[0];
+  assert.ok(initial);
+  assert.equal(f.restoredRecords[0]?.[0], initial);
+  assert.equal(f.book.get('a'), initial);
+  f.upsert(point('a', 11));
+  f.frame();
+  const submitted = f.preparedRecords[1];
+  assert.ok(submitted);
+  f.upsert(point('a', 12));
+  f.source().succeed(0);
+  await Promise.resolve();
+  assert.equal(f.publishedRecords[0], submitted);
+  assert.equal(f.book.get('a'), submitted);
+  assert.equal(submitted.feature.properties.revision, 11);
+  assert.deepEqual(submitted.style.dashArray, [12, 1]);
+  assert.equal(submitted.markerKey, 'marker-11');
+  f.frame();
+  f.source().succeed(1);
+  await Promise.resolve();
+  assert.equal(f.publishedRecords[1], f.preparedRecords[2]);
+  assert.equal(f.book.get('a')?.feature.properties.revision, 12);
+  f.remove('a');
+  f.frame();
+  f.source().succeed(2);
+  await Promise.resolve();
+  assert.equal(f.publishedRecords[2], null);
+  assert.equal(f.book.get('a'), undefined);
+});
+
+test('full reset restores and commits the same newly prepared records synchronously at settlement', async () => {
+  const f = fixture(styled);
+  f.upsert(point('a', 10));
+  f.publication.restore();
+  f.failInitial();
+  f.store.upsert([point('a', 11), point('b', 20)]);
+  f.publication.retry();
+  f.frame();
+  const records = f.preparedRecords.slice(1);
+  assert.equal(f.source().getCall(0).reset, true);
+  assert.equal(f.book.get('a'), f.preparedRecords[0]);
+  f.source().succeed(0);
+  await Promise.resolve();
+  const restored = f.restoredRecords[1];
+  assert.ok(restored);
+  assert.equal(restored.length, 2);
+  for (const [index, record] of records.entries()) {
+    assert.equal(restored[index], record);
+    assert.equal(f.publishedRecords[index], record);
+    assert.equal(f.book.get(record.feature.id), record);
+  }
+});
+
+function assertLiterals(book: NativeDisplayBook<Properties>, source: MapFeature, dash: number[], font: string[]) {
+  const styles = [...book.styles()];
+  const dashes = createExpression(dashExpression(styles), 'line-dasharray');
+  const fonts = createExpression(fontExpression(styles), 'text-font', { type: 'array', value: 'string', 'property-type': 'data-driven', transition: false });
+  assert.equal(dashes.result, 'success'); assert.equal(fonts.result, 'success');
+  if (dashes.result !== 'success' || fonts.result !== 'success') throw new Error('Style literals did not compile.');
+  assert.deepEqual({
+    dash: dashes.value.evaluate({ zoom: 1 }, { type: 2, properties: source.properties }),
+    font: fonts.value.evaluate({ zoom: 1 }, { type: 1, properties: source.properties }),
+  }, { dash, font });
+}
+
+for (const failure of ['rejection', 'source error']) {
+  test(`repeated ${failure} retains distinct style literals without retaining every prepared style`, async () => {
+    const f = fixture(feature => {
+      const style = featureStyle({ dashArray: [7, 3], label: `Revision ${feature.properties.revision}`,
+        labelStyle: { font: ['Stream'] } });
+      return { source: { ...feature, properties: { ...feature.properties, ...styleProperties(style) } }, record: { feature, style } };
+    });
+    f.upsert(point('a'));
+    f.publication.restore();
+    const installed = f.book.get('a');
+    assert.ok(installed);
+    for (let revision = 1; revision <= 1000; revision++) {
+      f.upsert(point('a', revision));
+      f.frame();
+      const call = f.source().getCall(revision - 1);
+      if (failure === 'source error') { f.source().error(); call.resolve(); }
+      else call.reject(new Error('Worker unavailable'));
+      await Promise.resolve();
+      assert.equal(f.frames.size, 0);
+    }
+    assert.equal(f.diagnostics.length, 1000);
+    assert.equal(f.book.get('a'), installed);
+    assert.ok([...f.book.styles()].length <= 3, 'Retain the installed style and distinct font/dash literals only');
+    const submitted = f.source().getCall(999).changes.add[0];
+    assert.ok(submitted);
+    assertLiterals(f.book, submitted, [7, 3], ['Stream']);
+    f.publication.retry();
+    f.frame();
+    f.source().succeed(1000);
+    await Promise.resolve();
+    assert.equal(f.book.get('a')?.feature.properties.revision, 1000);
+    assert.equal([...f.book.styles()].length, 1);
+  });
+}
+
+for (const failure of ['rejection', 'partial failure', 'source error']) {
+  test(`installed and staged dash/font literals survive successive ${failure} until their own commit or full replacement`, async () => {
+    const f = fixture(styled);
+    f.upsert(point('a', 10), point('b', 20));
+    f.publication.restore();
+    const installedA = f.source().features.get('a'), installedB = f.source().features.get('b');
+    assert.ok(installedA); assert.ok(installedB);
+    f.upsert(point('a', 11), point('b', 21));
+    f.frame();
+    const call = f.source().getCall(0), stagedA = call.changes.add[0], stagedB = call.changes.add[1];
+    assert.ok(stagedA); assert.ok(stagedB);
+    if (failure !== 'rejection') f.source().apply({ add: [stagedA], remove: [] });
+    if (failure === 'source error') { f.source().error(); call.resolve(); }
+    else call.reject(new Error(failure));
+    await Promise.resolve();
+    assert.equal(f.diagnostics.length, 1);
+    assert.equal(f.frames.size, 0);
+    assert.deepEqual(f.publishedRecords, []);
+    assert.equal(f.book.get('a')?.feature.properties.revision, 10);
+    assertLiterals(f.book, installedA, [11, 1], ['Revision 10']);
+    assertLiterals(f.book, installedB, [21, 1], ['Revision 20']);
+    assertLiterals(f.book, stagedA, [12, 1], ['Revision 11']);
+    assertLiterals(f.book, stagedB, [22, 1], ['Revision 21']);
+    if (failure !== 'rejection') assert.equal(f.source().features.get('a'), stagedA);
+    f.publication.retire(); f.publication.restore();
+    assert.equal(f.frames.size, 0);
+    assertLiterals(f.book, stagedA, [12, 1], ['Revision 11']);
+    f.upsert(point('a', 12));
+    f.frame();
+    const next = f.source().getCall(1), nextA = next.changes.add[0];
+    assert.ok(nextA);
+    if (failure === 'source error') { f.source().error(); next.resolve(); }
+    else next.reject(new Error('Successive rejected update'));
+    await Promise.resolve();
+    assert.equal(f.diagnostics.length, 2);
+    assert.equal(f.frames.size, 0);
+    assert.deepEqual(f.publishedRecords, []);
+    assert.equal(f.book.get('a')?.feature.properties.revision, 10);
+    if (failure !== 'rejection') assert.equal(f.source().features.get('a'), stagedA);
+    assertLiterals(f.book, installedA, [11, 1], ['Revision 10']);
+    assertLiterals(f.book, stagedA, [12, 1], ['Revision 11']);
+    assertLiterals(f.book, nextA, [13, 1], ['Revision 12']);
+    f.upsert(point('a', 13));
+    f.frame();
+    f.source().succeed(2);
+    await Promise.resolve();
+    assertLiterals(f.book, installedA, [3, 2], ['Noto Sans Regular']);
+    assertLiterals(f.book, stagedA, [3, 2], ['Noto Sans Regular']);
+    assertLiterals(f.book, nextA, [3, 2], ['Noto Sans Regular']);
+    assertLiterals(f.book, installedB, [21, 1], ['Revision 20']);
+    assertLiterals(f.book, stagedB, [22, 1], ['Revision 21']);
+    f.replaceStyle(); f.publication.restore();
+    assertLiterals(f.book, installedB, [3, 2], ['Noto Sans Regular']);
+    assertLiterals(f.book, stagedB, [22, 1], ['Revision 21']);
+    assert.equal(f.book.get('b')?.markerKey, 'marker-21');
+  });
+}

@@ -159,14 +159,15 @@ async function runWorkload(sourceRoot: string, fixtureRoot: string, workload: Wo
     assert.deepEqual(store.ids(), expected.map(feature => feature.id));
     const digest = sha256(JSON.stringify(results));
     for (const batch of inputs.batches) for (const feature of batch) mutateSnapshot(feature);
-    assert.deepEqual(store.all(), expected, 'Store aliases input');
+    // Supplying an Error preserves the comparison without diffing every aliased feature on failure.
+    assert.deepEqual(store.all(), expected, new Error('Store aliases input'));
     assert.equal(sha256(JSON.stringify(results)), digest, 'Returned batch aliases input');
     const read = store.all();
     for (const feature of read) mutateSnapshot(feature);
     const single = store.get('moving-0');
     assert(single);
     mutateSnapshot(single);
-    assert.deepEqual(store.all(), expected, 'Store aliases returned snapshots');
+    assert.deepEqual(store.all(), expected, new Error('Store aliases returned snapshots'));
     outputSha256 = digest;
     work = { features: settings.features, replacements: settings.features * settings.batches };
   }

@@ -209,10 +209,10 @@ test('unknown ground attachment reports unavailable independent of its camera', 
       ] },
     };
     const unavailable = (lng: number) => lng > .002;
-    const result = computeEntity({ feature, configuration, style: {}, selected: false },
+    const result = computeEntity({ feature, configuration, style: {} },
       lng => unavailable(lng) ? null : 0, unavailable);
     assert.equal(result.state.coverage, 'unavailable');
-    assert.equal(result.primitives.some(value => value.attachmentId === 'area'), false);
+    assert.equal([...result.geometry.ground, ...result.geometry.airborne].some(value => value.attachmentId === 'area'), false);
   } finally {
     Object.defineProperty(globalThis, 'OffscreenCanvas', { configurable: true, value: originalCanvas });
   }

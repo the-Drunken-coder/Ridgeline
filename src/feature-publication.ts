@@ -19,19 +19,19 @@ export interface FeaturePublicationTarget {
   watchInitial?(failed: (cause: unknown) => void): () => void;
 }
 
-type PublicationOptions<P extends Properties> = {
+type PublicationOptions<P extends Properties, R> = {
   store: Pick<FeatureStore<P>, 'get' | 'all'>;
   target: FeaturePublicationTarget;
-  render: (feature: MapFeature<P>) => MapFeature;
+  render: (feature: MapFeature<P>) => { source: MapFeature; record: R };
   sourceId?: (id: string) => string;
   diagnostic: (error: RidgelineError) => void;
-  published: (id: string, feature: MapFeature<P> | null) => void;
-  restored?: (features: MapFeature<P>[]) => void;
+  published: (id: string, record: R | null) => void;
+  restored?: (records: R[]) => void;
   frames?: { request: (callback: () => void) => number; cancel: (id: number) => void };
 };
 
 /** Publishes accepted snapshots. Failed IDs wait for explicit retry or a newer change. */
-export function createFeaturePublication<P extends Properties>(options: PublicationOptions<P>) {
+export function createFeaturePublication<P extends Properties, R>(options: PublicationOptions<P, R>) {
   const { store, target, render, diagnostic } = options;
   const frames = options.frames ?? { request: (callback: () => void) => requestAnimationFrame(callback), cancel: (id: number) => cancelAnimationFrame(id) };
   const pending = new Map<string, MapFeature<P> | null>();
@@ -68,13 +68,12 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
     resetRequested = false;
     const add: MapFeature[] = [];
     const remove: string[] = [];
-    const submitted: string[] = [];
-    const submittedSnapshots = new Map<string, MapFeature<P> | null>();
+    const submitted = new Map<string, R | null>();
     let rejected = false;
     function reject(cause: unknown) {
       if (!current() || rejected) return;
       rejected = true;
-      for (const id of submitted) if (!pending.has(id)) failed.add(id);
+      for (const id of submitted.keys()) if (!pending.has(id)) failed.add(id);
       diagnostic(new RidgelineError('UPDATE_FAILED', 'The renderer could not apply a feature update. Call retryUpdates() to retry.', { operation: 'upsert', recoverable: true }, cause));
     }
     // MapLibre can emit a worker error while resolving updateData successfully.
@@ -87,17 +86,19 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
             const rendered = render(feature);
             // A callback may synchronously replace or remove this ID.
             if (pending.has(id)) continue;
-            add.push(rendered);
-          } else remove.push(options.sourceId?.(id) ?? id);
-          submitted.push(id);
-          submittedSnapshots.set(id, feature);
+            add.push(rendered.source);
+            submitted.set(id, rendered.record);
+          } else {
+            remove.push(options.sourceId?.(id) ?? id);
+            submitted.set(id, null);
+          }
         } catch (cause) {
           if (!current() || !active) return;
           preparationFailed(id, cause);
         }
         if (!current() || !active) return;
       }
-      if (!submitted.length && !resetting) return;
+      if (!submitted.size && !resetting) return;
       source.on('error', onSourceError);
       // Replacements and removals can safely repeat after a partial renderer failure.
       if (resetting) await source.setData({ type: 'FeatureCollection', features: add });
@@ -105,9 +106,9 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
       if (current() && active && !rejected) {
         if (resetting) {
           initialFailed = false;
-          options.restored?.([...submittedSnapshots.values()].filter((feature): feature is MapFeature<P> => feature !== null));
+          options.restored?.([...submitted.values()].filter((record): record is R => record !== null));
         }
-        for (const id of submitted) options.published(id, submittedSnapshots.get(id) ?? null);
+        for (const [id, record] of submitted) options.published(id, record);
       }
     } catch (cause) {
       reject(cause);
@@ -163,15 +164,15 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
       const token = restoration;
       const current = () => !destroyed && active && restoration === token;
       const features: MapFeature[] = [];
-      const preparedSnapshots: MapFeature<P>[] = [];
+      const records: R[] = [];
       for (const feature of store.all()) {
         if (!current()) return;
         try {
           const rendered = render(feature);
           if (!current()) return;
           if (pending.has(feature.id) || !store.get(feature.id)) continue;
-          features.push(rendered);
-          preparedSnapshots.push(feature);
+          features.push(rendered.source);
+          records.push(rendered.record);
         }
         catch (cause) {
           if (!current()) return;
@@ -181,7 +182,7 @@ export function createFeaturePublication<P extends Properties>(options: Publicat
       if (!current()) return;
       target.create(features);
       if (!current()) return;
-      options.restored?.(preparedSnapshots);
+      options.restored?.(records);
       if (!current()) return;
       const source = target.current();
       if (source) releaseInitial = target.watchInitial?.(cause => {

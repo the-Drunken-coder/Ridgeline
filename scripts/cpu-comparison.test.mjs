@@ -63,6 +63,8 @@ test('feature worker accepts owned snapshots and rejects shared geometry and coo
       assert.ifError(result.error);
       assert.equal(result.status, 1, result.stdout + result.stderr);
       assert.match(result.stderr, boundary === 'input' ? /Store aliases input/ : /Store aliases returned snapshots/);
+      assert.match(result.stderr, /\n\s+at /, 'Ownership failures retain a stack trace');
+      assert(Buffer.byteLength(result.stderr) < 8192, 'Ownership failures must not dump feature batches');
       assert.equal(result.stdout, '');
     });
   }

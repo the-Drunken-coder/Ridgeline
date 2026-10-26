@@ -423,7 +423,7 @@ test('a failed fine tile does not clear retained camera output awaiting coarser 
       assert.ok(initial);
       assert.equal(complete(initial, () => {}), true);
       const displayed = coverage.output('camera');
-      assert.ok(displayed.length);
+      assert.ok(displayed.ground.length + displayed.airborne.length);
       elevation.height(7.2, 46);
       await new Promise<void>(resolve => setImmediate(resolve));
       assert.equal(elevation.failedAt('unregistered', 7.2, 46), true);
@@ -457,7 +457,7 @@ test('100 km ground zones finish at fixed zoom 12 with competing areas and remai
     const areas = features.map((feature, index) => ({ key: feature.id, center: [index === 0 ? 6 : 12, 46] as const,
       radiusMeters: 100000, groundRequirementKey: 'circle:100000' }));
     elevation.requestBatch(areas);
-    const compute = (feature: MapFeature) => computeEntity({ feature, configuration, style: {}, selected: false },
+    const compute = (feature: MapFeature) => computeEntity({ feature, configuration, style: {} },
       elevation.sampling(feature.id), (lng, lat) => elevation.failedAt(feature.id, lng, lat));
     const drain = async () => { await new Promise<void>(resolve => setImmediate(resolve)); };
     try {
@@ -468,7 +468,8 @@ test('100 km ground zones finish at fixed zoom 12 with competing areas and remai
       }
       assert.deepEqual(results.map(result => result.state.coverage), ['ready', 'ready']);
       assert.deepEqual(results.map(result => result.state.ground), [0, 0]);
-      assert.deepEqual(results.map(result => result.primitives.filter(p => p.mode === 'triangles').length), [1, 1]);
+      assert.deepEqual(results.map(result => [...result.geometry.ground, ...result.geometry.airborne]
+        .filter(p => p.mode === 'triangles').length), [1, 1]);
       assert.ok(new Set(requests).size > 1024, 'The actual combined tile working set exceeds the 512-tile cache');
       assert.ok(requests.every(url => url.includes('/12/')), 'Source zoom must remain 12');
       assert.ok(requests.length <= 8000, `Unexpected request growth ${requests.length}`);
