@@ -1,6 +1,12 @@
 # Reliability repair closeout
 
-## Western-globe readiness follow-up, 2026-10-26
+## Empty model upload query, 2026-10-26
+
+The narrow renderer repair skips the instance-upload error query when there are no upload groups. The [verification record and recordings](evidence/empty-model-query/README.md) preserve matched controlled failure/pass runs, native upload-error recovery, frame/context checks and independent review. It keeps initialization, current-frame publication and actual-upload error checks in their existing paths.
+
+This is not a complete repair of [#123](https://github.com/the-Drunken-coder/Ridgeline/issues/123). An original globe/terrain case failed on the guarded runtime without the test-owned hold. Four subsequent observed histories passed all 20 cases but captured no failing timing window or additional cause. The failed input snapshot and trace remain retained, and #123 stays open. The controlled hold is not an organic GPU-duration measurement.
+
+## Earlier western-globe readiness follow-up, 2026-10-26
 
 [#123](https://github.com/the-Drunken-coder/Ridgeline/issues/123) remains open and unexplained. The [historical evidence](evidence/issue-123-history/README.md) preserves the original failure and selected hosted controls before the diagnostic artifact expires on November 8. Original producer bytes, metadata and hashes were verified through the existing evidence-promotion workflow.
 
