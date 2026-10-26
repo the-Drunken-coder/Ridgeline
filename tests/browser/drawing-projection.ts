@@ -76,7 +76,7 @@ function dateLineDrawing(projection: "flat" | "globe", terrain: false | true, bl
             try {
               // Global loaded() includes unrelated feature publication. Require
               // the DEM and camera used by this target while live data continues.
-              await until(() => liveUpdates >= 2 && !draw.map.isMoving() && draw.map.isSourceLoaded('rl:terrain') === true &&
+              await until(() => (!blockingQuery || observedEmptyFrame) && liveUpdates >= 2 && !draw.map.isMoving() && draw.map.isSourceLoaded('rl:terrain') === true &&
                 Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - 100) < 1, 'western globe terrain loaded');
               if (blockingQuery) {
                 check(performance.now() - started <= 8000, 'Western terrain readiness exceeded eight seconds');
