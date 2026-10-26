@@ -63,7 +63,7 @@ test('Browser metadata retains the original isolation viewport touch and DPR env
   const actual = Object.fromEntries(Object.entries(browserCatalog).flatMap(([title, { support, ...environment }]) =>
     Object.keys(environment).length ? [[title, environment]] : []));
   assert.deepEqual(actual, expected);
-  assert.equal(browserCases.length, 257);
+  assert.equal(browserCases.length, 258);
   assert.equal(supportCases.length, 45);
   assert.equal(Object.values(starterCases).length, 3);
 });
