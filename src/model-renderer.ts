@@ -171,8 +171,10 @@ export class ModelRenderer {
         gl.bindBuffer(gl.ARRAY_BUFFER, batch.instances); gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
       }
     }
-    const error = gl.getError();
-    if (error !== gl.NO_ERROR) throw new Error(`Model instance upload failed with WebGL error ${error}.`);
+    if (groups.size > 0) {
+      const error = gl.getError();
+      if (error !== gl.NO_ERROR) throw new Error(`Model instance upload failed with WebGL error ${error}.`);
+    }
     if (preparationStart !== undefined) this.measurement!.end('instance-preparation', preparationStart);
     return { draw: () => {
       if (this.destroyed || generation !== this.generation || gl.isContextLost()) return;
