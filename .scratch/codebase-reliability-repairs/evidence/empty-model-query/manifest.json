@@ -1,0 +1,243 @@
+{
+  "promotedAt": "2026-10-26T16:16:12.508Z",
+  "provenance": {
+    "spec": "https://github.com/the-Drunken-coder/Ridgeline/issues/123",
+    "integrationOwner": "root",
+    "reviewed": {
+      "base": "7ac9fc76af64a7cc11613600dad9373e69888862",
+      "head": "9df8eb570f2c06682704c33815fdb270d22980cd",
+      "result": "Independent correctness and comment reviews: no actionable findings in the narrow guard and regression; original123 remains unresolved."
+    },
+    "localVerification": [
+      {
+        "revision": "9df8eb570f2c06682704c33815fdb270d22980cd ; baseline reverses only the upload guard, exact hashes in context JSON",
+        "command": "pnpm test:browser -- --config .artifacts/issue-123/root-controlled.config.mjs --grep \"Reliability drawing date-line stays live with a blocking empty-model query\" --retries=0",
+        "result": "Controlled baseline expected failure, guard full-workflow pass. Actual baseline counter13; not an organic failure."
+      },
+      {
+        "revision": "9df8eb570f2c06682704c33815fdb270d22980cd",
+        "command": "pnpm check; focused packed model frame/recovery cases",
+        "result": "Typechecks and all five focused packaged cases passed."
+      },
+      {
+        "revision": "7febd0888fb57237b8d16ababa766786840f906a ; subsequent9df8eb5 changes only the browser observer precondition",
+        "command": "pnpm test",
+        "result": "546 Node tests and5 control-lab tests passed."
+      }
+    ],
+    "hostedVerification": "No new hosted run yet. PR CI will verify its actual head separately.",
+    "historical": [
+      "Guarded original-case failure is preserved, with its original input snapshot and true failed outcome.",
+      "Four subsequent five-case histories passed20 controls; these do not establish a repair."
+    ],
+    "remainingLimits": [
+      "The original CI and guarded organic failure causes remain unproven; #123 stays open.",
+      "Full subsequent passing-run Chrome profiles remain transient in the follow-up checkout.",
+      "No target-hardware, installed-browser or performance certification."
+    ]
+  },
+  "reproduction": [
+    "task_evidence_dir=$(mktemp -d)\ntar -xzf raw-reports.tar.gz -C \"$task_evidence_dir\"\ncat \"$task_evidence_dir/root-controlled-red.log\"\ncat \"$task_evidence_dir/root-controlled-green.log\""
+  ],
+  "files": [
+    {
+      "path": "controlled-green.webm",
+      "source": ".artifacts/issue-123/pr-final/curated/controlled-green.webm",
+      "bytes": 232376,
+      "sha256": "5e2cddcefc5359b07662f4d65aa90151dde0d30c2435c85dbcf0b7724ea99979"
+    },
+    {
+      "path": "controlled-red.webm",
+      "source": ".artifacts/issue-123/pr-final/curated/controlled-red.webm",
+      "bytes": 197604,
+      "sha256": "732ec2c728c6da49adbb66bada4f9524fee7d634b8e468d3277b0e2799f43bb0"
+    },
+    {
+      "path": "summary.md",
+      "source": ".artifacts/issue-123/pr-final/curated/summary.md",
+      "bytes": 3977,
+      "sha256": "eb3c5992c3aefcc67af135ae983adfc982cc266a116fdcf08cf5de9a979f66d3"
+    }
+  ],
+  "rawArchive": {
+    "path": "raw-reports.tar.gz",
+    "bytes": 1080369,
+    "sha256": "a378b0ef70e936bff10c2767b9cf17d64f38492080de8735851d996b53263f7d",
+    "members": [
+      {
+        "path": "follow-up-chrome-inputs.json",
+        "source": ".artifacts/issue-123/pr-final/selected/follow-up-chrome-inputs.json",
+        "bytes": 18603,
+        "sha256": "326de47c7203a4f977d973e1345c01f49736f89ced35affcc48a5091c2c55fc2"
+      },
+      {
+        "path": "follow-up-chrome.log",
+        "source": ".artifacts/issue-123/pr-final/selected/follow-up-chrome.log",
+        "bytes": 6949,
+        "sha256": "48fce5a8f1dfddb1013d266ba1c453c775d1078152ef385652776e63efada09c"
+      },
+      {
+        "path": "follow-up-environment.json",
+        "source": ".artifacts/issue-123/pr-final/selected/follow-up-environment.json",
+        "bytes": 506,
+        "sha256": "033f4d4e7cc784dcb1eea2bd18998b2acb66256255dc3b3a68a7371f1dcb1fc0"
+      },
+      {
+        "path": "follow-up-instrumentation.patch",
+        "source": ".artifacts/issue-123/pr-final/selected/follow-up-instrumentation.patch",
+        "bytes": 8693,
+        "sha256": "c3eef32da40789d358b274bc145acb10dc111970721fbbb2c1a8ab2429f8f650"
+      },
+      {
+        "path": "follow-up-observed-inputs.json",
+        "source": ".artifacts/issue-123/pr-final/selected/follow-up-observed-inputs.json",
+        "bytes": 18401,
+        "sha256": "25dbe6692865d466ca344d1ed4eb6d008092294e3981a7197501dd74ea563a4d"
+      },
+      {
+        "path": "follow-up-observed.log",
+        "source": ".artifacts/issue-123/pr-final/selected/follow-up-observed.log",
+        "bytes": 6777,
+        "sha256": "b52bb25ff1a163ae79b1a8c03df62a19a42b94b400cb74cfbe3681c388d3263b"
+      },
+      {
+        "path": "follow-up-observed2.log",
+        "source": ".artifacts/issue-123/pr-final/selected/follow-up-observed2.log",
+        "bytes": 6774,
+        "sha256": "59b0161a1cde003e165aeb82e32a4ed963a2021da8759e4b5725222b3e419d90"
+      },
+      {
+        "path": "follow-up-observed3.log",
+        "source": ".artifacts/issue-123/pr-final/selected/follow-up-observed3.log",
+        "bytes": 6774,
+        "sha256": "00eba27081a53e0f06ae7a2a49a9fbd92dd68fca81ff793737c8963ce1732224"
+      },
+      {
+        "path": "follow-up-original-comparison.json",
+        "source": ".artifacts/issue-123/pr-final/selected/follow-up-original-comparison.json",
+        "bytes": 2049,
+        "sha256": "a3ad815595baf4aeee1945ce8a5790fc33d25ac1991b40fd05fc5a38027d23e4"
+      },
+      {
+        "path": "follow-up-probe-init.js",
+        "source": ".artifacts/issue-123/pr-final/selected/follow-up-probe-init.js",
+        "bytes": 2616,
+        "sha256": "b4555641faabc0fa053e42c4e68f7944dfef2d2d17c3aa67c405d96bfdbdabb7"
+      },
+      {
+        "path": "follow-up-report.txt",
+        "source": ".artifacts/issue-123/pr-final/selected/follow-up-report.txt",
+        "bytes": 8347,
+        "sha256": "6420a51ac695b5041741eeab98bd8c0d6a5ef771ed209a60da806aa415f2b968"
+      },
+      {
+        "path": "guarded-organic-error-context.md",
+        "source": ".artifacts/issue-123/pr-final/selected/guarded-organic-error-context.md",
+        "bytes": 1889,
+        "sha256": "678eeac56012c7146b5af43da05184a55e7b836d2dd1242d6f0c737f6381d4cb"
+      },
+      {
+        "path": "guarded-organic-focused-inputs.json",
+        "source": ".artifacts/issue-123/pr-final/selected/guarded-organic-focused-inputs.json",
+        "bytes": 16338,
+        "sha256": "cc8213cb761fe2cb5ca609e8cd906e920d635eec8fa18479fea93a14f0418ec4"
+      },
+      {
+        "path": "guarded-organic-focused-inputs.tar.gz",
+        "source": ".artifacts/issue-123/pr-final/selected/guarded-organic-focused-inputs.tar.gz",
+        "bytes": 842308,
+        "sha256": "dfe693ea3e230026ea2e361445d68c855869936c59a98377c22e6c10fb3350b2"
+      },
+      {
+        "path": "guarded-organic-focused.config.mjs",
+        "source": ".artifacts/issue-123/pr-final/selected/guarded-organic-focused.config.mjs",
+        "bytes": 404,
+        "sha256": "9b210930a9b06186c118d224f399092d1d51326b028e4f87da2649173eba87bd"
+      },
+      {
+        "path": "guarded-organic-focused.log",
+        "source": ".artifacts/issue-123/pr-final/selected/guarded-organic-focused.log",
+        "bytes": 10852,
+        "sha256": "0d4b1b50e884ad0cfef08e2770131c0e47adb19a010732210ea3e494e562464c"
+      },
+      {
+        "path": "guarded-organic-test-failed-1.png",
+        "source": ".artifacts/issue-123/pr-final/selected/guarded-organic-test-failed-1.png",
+        "bytes": 78687,
+        "sha256": "a7e8d2386c8f937f3604a5dbf0523be1608454a0781042709889ccb1557064ea"
+      },
+      {
+        "path": "guarded-organic-trace.zip",
+        "source": ".artifacts/issue-123/pr-final/selected/guarded-organic-trace.zip",
+        "bytes": 102103,
+        "sha256": "eb14eed4c047265e55e1c7a3e22cebf3911c7ba61cde7dd0200b5111cf39a3a8"
+      },
+      {
+        "path": "pr-final-typecheck.log",
+        "source": ".artifacts/issue-123/pr-final/selected/pr-final-typecheck.log",
+        "bytes": 156,
+        "sha256": "6593c9898542b6860ea4b7c90c30835756d8ebd2fdfccbf3839293898214f71f"
+      },
+      {
+        "path": "pr-modules.log",
+        "source": ".artifacts/issue-123/pr-final/selected/pr-modules.log",
+        "bytes": 51016,
+        "sha256": "9ddc406c970995e1a1ae4f56cf13982d8aea4a8cc30ceb50349d7c1b3884ecd9"
+      },
+      {
+        "path": "pr-typecheck.log",
+        "source": ".artifacts/issue-123/pr-final/selected/pr-typecheck.log",
+        "bytes": 156,
+        "sha256": "6593c9898542b6860ea4b7c90c30835756d8ebd2fdfccbf3839293898214f71f"
+      },
+      {
+        "path": "root-controlled-green.config.mjs",
+        "source": ".artifacts/issue-123/pr-final/selected/root-controlled-green.config.mjs",
+        "bytes": 571,
+        "sha256": "928ae381945acb65e0b936d266b0647af7298ebb3f4ec194af3622bd96837134"
+      },
+      {
+        "path": "root-controlled-green.log",
+        "source": ".artifacts/issue-123/pr-final/selected/root-controlled-green.log",
+        "bytes": 6209,
+        "sha256": "848b1319aadac37287610f8f0fa7989807e7b2dfcc705c1be7aae7d13dd3ba23"
+      },
+      {
+        "path": "root-controlled-red.config.mjs",
+        "source": ".artifacts/issue-123/pr-final/selected/root-controlled-red.config.mjs",
+        "bytes": 569,
+        "sha256": "5ed83d354b8d8cb7fed142309ec0d0d3dce421ea7c29e9d3d9a08bdc5fad6a33"
+      },
+      {
+        "path": "root-controlled-red.log",
+        "source": ".artifacts/issue-123/pr-final/selected/root-controlled-red.log",
+        "bytes": 10926,
+        "sha256": "e34666d1a6b26f550629c22dbb47c68df38e2180584098ce55023651f11ee36f"
+      },
+      {
+        "path": "root-green-context.json",
+        "source": ".artifacts/issue-123/pr-final/selected/root-green-context.json",
+        "bytes": 937,
+        "sha256": "a6d2a2b5de6cec557b37342d8ca8a6936fb73b92dc1ba446613ca1cf069a14e8"
+      },
+      {
+        "path": "root-models.config.mjs",
+        "source": ".artifacts/issue-123/pr-final/selected/root-models.config.mjs",
+        "bytes": 562,
+        "sha256": "fc5d0a81ad632e2a38bf2a5e3c2bb5500dc2d02b72f09a85af297bfcd119eb00"
+      },
+      {
+        "path": "root-models.log",
+        "source": ".artifacts/issue-123/pr-final/selected/root-models.log",
+        "bytes": 6939,
+        "sha256": "d40546789c053b895b96d393458218d9624dae0f02d3fe108945e79770b0d8ef"
+      },
+      {
+        "path": "root-red-context.json",
+        "source": ".artifacts/issue-123/pr-final/selected/root-red-context.json",
+        "bytes": 1160,
+        "sha256": "2998362977030517ae50e3dc94e8672be17a2f45e2b55f5692834b11d21e8ae4"
+      }
+    ]
+  }
+}

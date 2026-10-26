@@ -1,0 +1,130 @@
+{
+  "promotedAt": "2026-10-26T03:56:46.093Z",
+  "provenance": {
+    "spec": "https://github.com/the-Drunken-coder/Ridgeline/issues/123",
+    "integrationOwner": "root",
+    "reviewed": {
+      "base": "7ac9fc76af64a7cc11613600dad9373e69888862",
+      "head": "7ac9fc76af64a7cc11613600dad9373e69888862",
+      "result": "Root read-only review. Runtime investigation is INCONCLUSIVE; no production fix accepted."
+    },
+    "localVerification": [
+      {
+        "revision": "7ac9fc76af64a7cc11613600dad9373e69888862 with documentation-only changes; private-port config retained as root.packaged.config.mjs",
+        "command": "pnpm test:browser -- --config .artifacts/issue-123/root.packaged.config.mjs --grep 'date-line storage snapping and reload globe with terrain' --retries=0",
+        "result": "One unmodified current-runtime packed case passed. Setup, standalone starter builds and package checks passed. Six separate investigative executions are recorded in report.txt with their distinct test/package pins."
+      }
+    ],
+    "hostedVerification": "No new hosted run. The original hosted failure remains unexplained.",
+    "historical": [
+      "Original failure production runtime c747d780d2dcf73efed2a2857d4cb1cb48cd6121."
+    ],
+    "remainingLimits": [
+      "No reproduced historical readiness failure or verified causal fix.",
+      "Instrumentation can change scheduling; passing controls cannot establish the original cause.",
+      "Full local Chrome capture files remain transient at the investigator paths named in the report."
+    ]
+  },
+  "reproduction": [
+    "task_evidence_dir=$(mktemp -d)\ntar -xzf raw-reports.tar.gz -C \"$task_evidence_dir\"\ncat \"$task_evidence_dir/report.txt\""
+  ],
+  "files": [
+    {
+      "path": "summary.md",
+      "source": ".artifacts/issue-123/curated/investigation.md",
+      "bytes": 1609,
+      "sha256": "0a89e24c757cffed3abcf30bb0947de24e2c5156761ee6a0581312468479c583"
+    }
+  ],
+  "rawArchive": {
+    "path": "raw-reports.tar.gz",
+    "bytes": 19105,
+    "sha256": "4978a8a61c54c315086a368efac81d9ffd205bf209dd2f6eb6b4d9f3b3bb8386",
+    "members": [
+      {
+        "path": "analysis.json",
+        "source": ".artifacts/issue-123/current-records/analysis.json",
+        "bytes": 30359,
+        "sha256": "f68003031cea2b3e28398d66dbe3593607864b56d53db67106755aebbb3d57e3"
+      },
+      {
+        "path": "analyze.py",
+        "source": ".artifacts/issue-123/current-records/analyze.py",
+        "bytes": 2588,
+        "sha256": "3a63eaa872182b21efda64afc0d77e43382da8056b92390ad2eb43a8fbb8599c"
+      },
+      {
+        "path": "current-baseline.log",
+        "source": ".artifacts/issue-123/current-records/current-baseline.log",
+        "bytes": 6144,
+        "sha256": "121f7e73b1eb76fdb7af069be8ea2d07f675df090b805e1efcfd08495cf63e54"
+      },
+      {
+        "path": "current-enhanced-results.json",
+        "source": ".artifacts/issue-123/current-records/current-enhanced-results.json",
+        "bytes": 3351,
+        "sha256": "f8d275e7787df5730175865fac199c4dd52d4497c353fd403289edf9086948c4"
+      },
+      {
+        "path": "current-enhanced.log",
+        "source": ".artifacts/issue-123/current-records/current-enhanced.log",
+        "bytes": 6344,
+        "sha256": "d1c27d2408539668ee08e47605406014162668e28427f69b2874435307c62858"
+      },
+      {
+        "path": "current-instrumented.log",
+        "source": ".artifacts/issue-123/current-records/current-instrumented.log",
+        "bytes": 10921,
+        "sha256": "461fe0724d5cadb5cfaf1b94a77c03bb68d19b232400cec1f5ca5459e9f9eab0"
+      },
+      {
+        "path": "historical-failure-extract.json",
+        "source": ".artifacts/issue-123/current-records/historical-failure-extract.json",
+        "bytes": 1952,
+        "sha256": "a5f067bcdbe8bcdf23a922dd982e8c6ed66a6a84fdbd7fc7b108f3da938e89a1"
+      },
+      {
+        "path": "historical-instrumented.log",
+        "source": ".artifacts/issue-123/current-records/historical-instrumented.log",
+        "bytes": 3942,
+        "sha256": "4578a07314af20988a2d603112a52ef188b2f263fc0f639e23dc6198037e7bbc"
+      },
+      {
+        "path": "historical-results.json",
+        "source": ".artifacts/issue-123/current-records/historical-results.json",
+        "bytes": 4438,
+        "sha256": "0730433865ffd9102fd50de55f6635c0612fa169f046e0fcc89d8c161ce7e357"
+      },
+      {
+        "path": "historical-runtime.json",
+        "source": ".artifacts/issue-123/current-records/historical-runtime.json",
+        "bytes": 430,
+        "sha256": "9238ead89ee562ad3e5a9a0ab94a5aff8ad8d72aa55fcaaa794b5bbb89cf1cd0"
+      },
+      {
+        "path": "instrumentation-final.patch",
+        "source": ".artifacts/issue-123/current-records/instrumentation-final.patch",
+        "bytes": 20929,
+        "sha256": "ff8571c01c01bbadcaf6d678c39cfe3aeb9f6fcf47fe0a1f157942369400d2d0"
+      },
+      {
+        "path": "report.txt",
+        "source": ".artifacts/issue-123/current-records/report.txt",
+        "bytes": 6464,
+        "sha256": "2c808c2bf4731a3fa7bfa915863c503e6439a23a64fc423a1f1c9a6a183cb644"
+      },
+      {
+        "path": "root-reproduction.log",
+        "source": ".artifacts/issue-123/current-records/root-reproduction.log",
+        "bytes": 6189,
+        "sha256": "9ad45db469eae545a74d10a2897257b40e70ec898ccd7ad6d11bb9bf2e90001e"
+      },
+      {
+        "path": "root.packaged.config.mjs",
+        "source": ".artifacts/issue-123/current-records/root.packaged.config.mjs",
+        "bytes": 552,
+        "sha256": "4c96944cdfb97a9dcac15ebfa1ea2d1c7fb1ed8bbab6c0764e352ae84ae8affb"
+      }
+    ]
+  }
+}

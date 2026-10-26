@@ -1,0 +1,305 @@
+{
+  "promotedAt": "2026-10-26T03:50:45.362Z",
+  "provenance": {
+    "spec": "https://github.com/the-Drunken-coder/Ridgeline/issues/123",
+    "integrationOwner": "root",
+    "reviewed": {
+      "base": "7ac9fc76af64a7cc11613600dad9373e69888862",
+      "head": "7ac9fc76af64a7cc11613600dad9373e69888862",
+      "result": "Read-only evidence inspection. Historical cause remains unresolved."
+    },
+    "localVerification": [
+      {
+        "revision": "7ac9fc76af64a7cc11613600dad9373e69888862 with ignored evidence selection and verification scripts",
+        "command": "python3 .artifacts/issue-123/select-evidence.py; python3 .artifacts/issue-123/curated/verify.py .artifacts/issue-123/selected",
+        "result": "ZIP integrity and all selected producer bytes verified. These are preservation checks, not runtime verification."
+      }
+    ],
+    "hostedVerification": "Historical failed run 40036469253 and incomplete diagnostic run 40168970252 retain their actual outcomes. No new hosted run.",
+    "historical": [
+      "Original production runtime c747d780d2dcf73efed2a2857d4cb1cb48cd6121.",
+      "Diagnostic revision 35722efd912b2924a6e546661f7bd9c35439da12; incomplete experiment, despite green job badge."
+    ],
+    "remainingLimits": [
+      "No failing CPU/timer/frame capture establishes the historical readiness failure cause.",
+      "Passing controls and current CI cannot establish a repair.",
+      "Six redundant focused passing-control Chrome profiles are retained only in the locally pinned full source ZIP."
+    ]
+  },
+  "reproduction": [
+    "task_evidence_dir=$(mktemp -d)\ntar -xzf raw-reports.tar.gz -C \"$task_evidence_dir\"\npython3 verify.py \"$task_evidence_dir\""
+  ],
+  "files": [
+    {
+      "path": "summary.md",
+      "source": ".artifacts/issue-123/curated/summary.md",
+      "bytes": 2685,
+      "sha256": "56bebcde1b40ca0570444a51d0d118209063fef00a6aa65027f99c7f4bf3d234"
+    },
+    {
+      "path": "verify.py",
+      "source": ".artifacts/issue-123/curated/verify.py",
+      "bytes": 489,
+      "sha256": "4fb5be5e73fee93cce1181cbd463e59b8fbb62110c9a48b5ee0b485905737967"
+    }
+  ],
+  "rawArchive": {
+    "path": "raw-reports.tar.gz",
+    "bytes": 5380703,
+    "sha256": "ea9908cd8444461586abff5286b3f043f54182d646fa3bc91f4e8ef9f42cf8cb",
+    "members": [
+      {
+        "path": "consumer-pnpm-lock.yaml",
+        "source": ".artifacts/issue-123/selected/consumer-pnpm-lock.yaml",
+        "bytes": 27804,
+        "sha256": "0215311fa978d337fffb59bd02a28ae3725db44dd23b88ba71f741f15bb85718"
+      },
+      {
+        "path": "diagnostic-metadata.json",
+        "source": ".artifacts/issue-123/selected/diagnostic-metadata.json",
+        "bytes": 769,
+        "sha256": "ee95b49f145891ec5d32e0d9f5382a5a6cfeca6cd619c2573f1218306c69218a"
+      },
+      {
+        "path": "diagnostic.patch",
+        "source": ".artifacts/issue-123/selected/diagnostic.patch",
+        "bytes": 38628,
+        "sha256": "9c8888136b5cc0717f2725b8ff461098207b4d5bed76b7084f5f0bb1134015bb"
+      },
+      {
+        "path": "focused-01__discovery.json",
+        "source": ".artifacts/issue-123/selected/focused-01__discovery.json",
+        "bytes": 2766,
+        "sha256": "f6a3f57a40287eaa33f342ab9ba7246ce8437f64faf4d6e94f4d40f84f4b324e"
+      },
+      {
+        "path": "focused-01__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-provenance.json",
+        "source": ".artifacts/issue-123/selected/focused-01__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-provenance.json",
+        "bytes": 6506,
+        "sha256": "797a364d9bec2465d1c4c70ccddc836b79fb59be46697bb1df9f0ca0250e6064"
+      },
+      {
+        "path": "focused-01__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-timeline.json",
+        "source": ".artifacts/issue-123/selected/focused-01__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-timeline.json",
+        "bytes": 53974,
+        "sha256": "0cd7512a5ead0e352d8cead2d3d11d40720f1b3e1a6519476c0537dcc65102f8"
+      },
+      {
+        "path": "focused-01__results.json",
+        "source": ".artifacts/issue-123/selected/focused-01__results.json",
+        "bytes": 5342,
+        "sha256": "e986996d78a9954a506d9635b56dd6fb1eb4a28fc59d07035ef2122bb70b7df4"
+      },
+      {
+        "path": "focused-02__discovery.json",
+        "source": ".artifacts/issue-123/selected/focused-02__discovery.json",
+        "bytes": 2766,
+        "sha256": "6c8660af34a8b8bf6b4294f97acb824ef40bc4fc9092df2e9bf6229a8dc2a5de"
+      },
+      {
+        "path": "focused-02__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-provenance.json",
+        "source": ".artifacts/issue-123/selected/focused-02__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-provenance.json",
+        "bytes": 6726,
+        "sha256": "c8b0d48f4c527a22b2a9f9b9b3c8926b80f64f9abcd4cc7f304ad5be124171f1"
+      },
+      {
+        "path": "focused-02__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-timeline.json",
+        "source": ".artifacts/issue-123/selected/focused-02__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-timeline.json",
+        "bytes": 57658,
+        "sha256": "a85146d91fa7351c1dfa2cad5a514e567303ee9f296ca0f003f93ac0a2823f46"
+      },
+      {
+        "path": "focused-02__results.json",
+        "source": ".artifacts/issue-123/selected/focused-02__results.json",
+        "bytes": 5333,
+        "sha256": "db4705ec0b4d12aa7321dab6eef738d971196a34289db78dd0a42a4409a3a43a"
+      },
+      {
+        "path": "focused-03__discovery.json",
+        "source": ".artifacts/issue-123/selected/focused-03__discovery.json",
+        "bytes": 2766,
+        "sha256": "516e9a2d4ec6cbdfed4e735545c3aa581391f3ac520ecfe83acdc7ebde8b9ccc"
+      },
+      {
+        "path": "focused-03__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-provenance.json",
+        "source": ".artifacts/issue-123/selected/focused-03__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-provenance.json",
+        "bytes": 6615,
+        "sha256": "37a7368b785c7728bab9aaccdbdef3dfee731e5e803e49c2df5451e26a5d54a0"
+      },
+      {
+        "path": "focused-03__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-timeline.json",
+        "source": ".artifacts/issue-123/selected/focused-03__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-timeline.json",
+        "bytes": 56357,
+        "sha256": "295f2df021be42ad10118e10cf42589a1822bafc7d84df9a3cce032110a7d0f0"
+      },
+      {
+        "path": "focused-03__results.json",
+        "source": ".artifacts/issue-123/selected/focused-03__results.json",
+        "bytes": 5333,
+        "sha256": "9d2cf590652f48ffeaa830166526b5a010b3d7b29001fada05ed96057593a449"
+      },
+      {
+        "path": "focused-04__discovery.json",
+        "source": ".artifacts/issue-123/selected/focused-04__discovery.json",
+        "bytes": 2766,
+        "sha256": "71fb38054009cbb70a535d5e65284df905867171718b29f61329d1abe3d73799"
+      },
+      {
+        "path": "focused-04__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-provenance.json",
+        "source": ".artifacts/issue-123/selected/focused-04__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-provenance.json",
+        "bytes": 6492,
+        "sha256": "bcd4d64e85d1d682eaa3a7009b548b13300d70ad87f282b1d4cd3e9901c42295"
+      },
+      {
+        "path": "focused-04__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-timeline.json",
+        "source": ".artifacts/issue-123/selected/focused-04__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-timeline.json",
+        "bytes": 55439,
+        "sha256": "8297d6d18ed782bb7e3f7583d51c585e5d3731357c44338b565089943e201ddf"
+      },
+      {
+        "path": "focused-04__results.json",
+        "source": ".artifacts/issue-123/selected/focused-04__results.json",
+        "bytes": 5331,
+        "sha256": "96229f3139685561fba05a454078686f8c6955376adfa324dbd39f17e07963ce"
+      },
+      {
+        "path": "focused-05__discovery.json",
+        "source": ".artifacts/issue-123/selected/focused-05__discovery.json",
+        "bytes": 2755,
+        "sha256": "c1293b84a94b4c75c623d740b363d98eb214fce67e29457820d6d0b1c2278f22"
+      },
+      {
+        "path": "focused-05__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-provenance.json",
+        "source": ".artifacts/issue-123/selected/focused-05__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-provenance.json",
+        "bytes": 6500,
+        "sha256": "9efab8c122f834315cdd66a7f67bd699f4cfedc6cc454fdc6dea75633ad41e09"
+      },
+      {
+        "path": "focused-05__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-timeline.json",
+        "source": ".artifacts/issue-123/selected/focused-05__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-timeline.json",
+        "bytes": 56284,
+        "sha256": "77b85105554eef78fb8c1109845629fd4366d6e38250fbf68c77007a489d51b2"
+      },
+      {
+        "path": "focused-05__results.json",
+        "source": ".artifacts/issue-123/selected/focused-05__results.json",
+        "bytes": 5342,
+        "sha256": "1bdd8b171a4af09043d93a382500b44bfbea1c64564bb5bd6000220c22145e24"
+      },
+      {
+        "path": "focused-06__discovery.json",
+        "source": ".artifacts/issue-123/selected/focused-06__discovery.json",
+        "bytes": 2766,
+        "sha256": "dde2ddd69bc6e6b9ca56e53ecfcdf6096d9cdcd1ed5970b635f8e31fc1eafb04"
+      },
+      {
+        "path": "focused-06__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-provenance.json",
+        "source": ".artifacts/issue-123/selected/focused-06__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-provenance.json",
+        "bytes": 6478,
+        "sha256": "3cef4beccd1516b854878060819ed3c8ea7d12b48ed0f38cbd7ba874ca890bfc"
+      },
+      {
+        "path": "focused-06__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-timeline.json",
+        "source": ".artifacts/issue-123/selected/focused-06__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-timeline.json",
+        "bytes": 51850,
+        "sha256": "6a51ac324e24ea2da8cd8bdadbd83088dc7da7e319a11844e84824248a94286b"
+      },
+      {
+        "path": "focused-06__results.json",
+        "source": ".artifacts/issue-123/selected/focused-06__results.json",
+        "bytes": 5333,
+        "sha256": "6380e7bd2f175f850ba4f4aff2e0ea8891ab28dcb1f7d2c011cbaa45543585f7"
+      },
+      {
+        "path": "focused-07__discovery.json",
+        "source": ".artifacts/issue-123/selected/focused-07__discovery.json",
+        "bytes": 2766,
+        "sha256": "587c929e2a7ab3fb73bfca98068503a3621579a7989aeea6dfd73cc607ca1ba4"
+      },
+      {
+        "path": "focused-08__discovery.json",
+        "source": ".artifacts/issue-123/selected/focused-08__discovery.json",
+        "bytes": 2766,
+        "sha256": "6fbb5ed634f55e6ae4515f3a9b3be66fac566aec43f932b91c466a89b8dd5903"
+      },
+      {
+        "path": "focused-09__discovery.json",
+        "source": ".artifacts/issue-123/selected/focused-09__discovery.json",
+        "bytes": 2766,
+        "sha256": "7c034f53c5d2a408b6cdfb65c20838b6912d81d772ebd8f2bd31f6ac70c60652"
+      },
+      {
+        "path": "focused-10__discovery.json",
+        "source": ".artifacts/issue-123/selected/focused-10__discovery.json",
+        "bytes": 2766,
+        "sha256": "505a015e01e1b74b8fac37fdb92695445a074fe72939899aefbf85eb247fa60b"
+      },
+      {
+        "path": "job.log",
+        "source": ".artifacts/issue-123/selected/job.log",
+        "bytes": 50633,
+        "sha256": "a81db09448db0334f1bc2b2144774857af9b4eb0106b29b18149d40becf1d866"
+      },
+      {
+        "path": "manifest.json",
+        "source": ".artifacts/issue-123/selected/manifest.json",
+        "bytes": 88141,
+        "sha256": "7d49a6051ba6ca6549016e8fe418b41085323bc3ff1b2989da145fa45a41359f"
+      },
+      {
+        "path": "original-failure.zip",
+        "source": ".artifacts/issue-123/selected/original-failure.zip",
+        "bytes": 307132,
+        "sha256": "b17d187872f3ed2c2c405ac75115bfef87cd861f539c3bc5d165ab1a5a8b9239"
+      },
+      {
+        "path": "original-metadata.json",
+        "source": ".artifacts/issue-123/selected/original-metadata.json",
+        "bytes": 735,
+        "sha256": "94575531f4ad545edbd1d889393e5946439d3bc4bff2a1fe1ab66a953967db30"
+      },
+      {
+        "path": "original-shard-2-of-4__discovery.json",
+        "source": ".artifacts/issue-123/selected/original-shard-2-of-4__discovery.json",
+        "bytes": 40864,
+        "sha256": "edd15b86f93377fb364d10be0cdfb4804f5d467383e2d8c03474a25dc98fd659"
+      },
+      {
+        "path": "original-shard-2-of-4__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-chrome.json.gz",
+        "source": ".artifacts/issue-123/selected/original-shard-2-of-4__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-chrome.json.gz",
+        "bytes": 4638190,
+        "sha256": "b6fe4b454f3bceaa73e571d6be166ae5a2814ce028f9f537d8f4df16556d3e1a"
+      },
+      {
+        "path": "original-shard-2-of-4__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-provenance.json",
+        "source": ".artifacts/issue-123/selected/original-shard-2-of-4__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-provenance.json",
+        "bytes": 6609,
+        "sha256": "dc23dd13c4cb7f2e9f99ad76687e29b0a9fbb85d816e0a6cbc7316564002cd3f"
+      },
+      {
+        "path": "original-shard-2-of-4__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-timeline.json",
+        "source": ".artifacts/issue-123/selected/original-shard-2-of-4__playwright__browser-Reliability-drawin-06328-d-reload-globe-with-terrain__date-line-timeline.json",
+        "bytes": 54279,
+        "sha256": "ddb74c29aa82af25d2e681ac4d89a5c5508a9ddcec5769a25268dee6c7eefac2"
+      },
+      {
+        "path": "original-shard-2-of-4__results.json",
+        "source": ".artifacts/issue-123/selected/original-shard-2-of-4__results.json",
+        "bytes": 72267,
+        "sha256": "0bec6c044fe0abea7a1ef70777c5eb3d28eedc0d0b01288890f450f893c409b3"
+      },
+      {
+        "path": "ridgeline-map-0.1.0.tgz",
+        "source": ".artifacts/issue-123/selected/ridgeline-map-0.1.0.tgz",
+        "bytes": 402310,
+        "sha256": "f56ff87cbbc2aad865d04060f81f18d86fda0790a0c7c28247e3e88d9d586fbb"
+      },
+      {
+        "path": "selection.json",
+        "source": ".artifacts/issue-123/selected/selection.json",
+        "bytes": 13483,
+        "sha256": "2df4135b54609174baf6e3c2c157aac6e9d4e02696571a090984093b3491e809"
+      }
+    ]
+  }
+}
