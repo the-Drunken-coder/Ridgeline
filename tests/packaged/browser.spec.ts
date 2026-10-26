@@ -23,6 +23,12 @@ const source = { revision: git('rev-parse', 'HEAD').trim(), status: git('status'
 
 function registerCase(name: string, metadata: BrowserCaseMetadata) {
   test(name, async ({ page }, testInfo) => {
+    if (name === 'Reliability drawing date-line stays live with a blocking empty-model query') {
+      await page.route('**/empty-model-query-hold', async route => {
+        await new Promise(resolve => setTimeout(resolve, 9000));
+        await route.fulfill({ status: 200, body: 'Controlled query hold completed.' });
+      });
+    }
     if (metadata.crossOriginIsolated) {
       await page.route('**/*', async route => {
         const response = await route.fetch();

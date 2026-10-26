@@ -122,6 +122,7 @@ export const browserCatalog = {
   "Reliability drawing date-line storage snapping and reload flat with terrain": {},
   "Reliability drawing date-line storage snapping and reload globe without terrain": {},
   "Reliability drawing date-line storage snapping and reload globe with terrain": {},
+  "Reliability drawing date-line stays live with a blocking empty-model query": {},
   "Reliability entity nonsimple attachment polygons reject mixed batches before accepted or rendered changes": {},
   "Reliability publication retires styling when callbacks replace the basemap": {},
   "Reliability publication keeps updates made during icon registration": {},

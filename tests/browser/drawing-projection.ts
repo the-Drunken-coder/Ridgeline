@@ -1,10 +1,11 @@
 import { createViewport, attachDrawing, shapeGeometry, RidgelineError } from '@ridgeline/map';
 import type { MapFeature } from '@ridgeline/map';
 import { addProtocol, removeProtocol } from 'maplibre-gl';
+import type { CustomLayerInterface } from 'maplibre-gl';
 import { style, point, check, pointer, browserKey, browserClick, browserDrag } from './helpers';
 import type { BrowserCaseModule, BrowserCaseRun } from './context';
 
-function dateLineDrawing(projection: "flat" | "globe", terrain: false | true): BrowserCaseRun {
+function dateLineDrawing(projection: "flat" | "globe", terrain: false | true, blockingQuery = false): BrowserCaseRun {
   return async caseContext => {
     const { container, own, until } = caseContext;
     const dem = document.createElement('canvas'); dem.width = dem.height = 256;
@@ -19,7 +20,14 @@ function dateLineDrawing(projection: "flat" | "globe", terrain: false | true): B
         const options = { container, basemap: style(), terrain, elevation, projection,
           camera: { center: [179.8, 0] as [number, number], zoom: 7, pitch: projection === 'globe' ? 50 : 0 }, logger: () => {} };
         let draw = own(createViewport({ ...options, features: [point('world-anchor', anchor[0])] }));
-        await draw.ready;
+        const addLayer = draw.map.addLayer;
+        let modelLayer: CustomLayerInterface | undefined;
+        if (blockingQuery) draw.map.addLayer = function (layer, beforeId) {
+          if (layer.id === 'rl:models' && layer.type === 'custom') modelLayer = layer;
+          return addLayer.call(this, layer, beforeId);
+        };
+        try { await draw.ready; }
+        finally { draw.map.addLayer = addLayer; }
         if (terrain) await until(() => draw.map.loaded() && Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - 100) < 1,
           `${projection} date-line elevation loaded`);
         let editor = attachDrawing(draw, { createFeature: () => ({ id: 'world-line', properties: {} }),
@@ -35,17 +43,53 @@ function dateLineDrawing(projection: "flat" | "globe", terrain: false | true): B
             await browserDrag(canvas.x + 340, canvas.y + 250, canvas.x + 250, canvas.y + 250);
             draw.setCamera({ center: [-179.8, 0] });
             let liveUpdates = 0;
-            const live = setInterval(() => draw.upsert([point('western-readiness-live', 170 + (++liveUpdates % 100) * .0001)]), 16);
+            let observedEmptyFrame = false, heldQuery = false;
+            const prerender = modelLayer?.prerender;
+            if (blockingQuery) {
+              if (!modelLayer || !prerender) throw new Error('The model custom layer must be installed');
+              check(draw.getFeatures().every(feature => !feature.entity?.model), 'The drawing fixture must have no model references');
+              modelLayer.prerender = function (gl, input) {
+                if (liveUpdates === 0) return prerender.call(this, gl, input);
+                observedEmptyFrame = true;
+                const getError = gl.getError;
+                gl.getError = function () {
+                  const error = getError.call(this);
+                  if (!heldQuery) {
+                    heldQuery = true;
+                    // A synchronous network hold models a blocking native query without spinning the CPU.
+                    const request = new XMLHttpRequest();
+                    request.open('GET', '/empty-model-query-hold', false); request.send();
+                    check(request.status === 200, 'The controlled query hold must complete');
+                  }
+                  return error;
+                };
+                try { return prerender.call(this, gl, input); }
+                finally { gl.getError = getError; }
+              };
+            }
+            const started = performance.now();
+            const live = setInterval(() => {
+              const next = liveUpdates + 1;
+              draw.upsert([point('western-readiness-live', 170 + (next % 100) * .0001)]);
+              liveUpdates = next;
+            }, 16);
             try {
               // Global loaded() includes unrelated feature publication. Require
               // the DEM and camera used by this target while live data continues.
               await until(() => liveUpdates >= 2 && !draw.map.isMoving() && draw.map.isSourceLoaded('rl:terrain') === true &&
                 Math.abs((draw.map.queryTerrainElevation(anchor) ?? NaN) - 100) < 1, 'western globe terrain loaded');
+              if (blockingQuery) {
+                check(performance.now() - started <= 8000, 'Western terrain readiness exceeded eight seconds');
+                check(observedEmptyFrame, 'Model prerender must run after a live upsert returns with no registered models');
+              }
             } catch (cause) {
               throw new Error(`Western terrain readiness: ${JSON.stringify({ liveUpdates, loaded: draw.map.loaded(),
                 terrainLoaded: draw.map.isSourceLoaded('rl:terrain'), elevation: draw.map.queryTerrainElevation(anchor),
                 moving: draw.map.isMoving() })}`, { cause });
-            } finally { clearInterval(live); }
+            } finally {
+              clearInterval(live);
+              if (modelLayer && prerender) modelLayer.prerender = prerender;
+            }
           }
           const across = draw.map.project(canonicalGlobeTerrain ? [-179.6, 0] : [180.4, 0]);
           await pointer('move', across);
@@ -456,4 +500,5 @@ export const drawingProjectionCases = {
   "Reliability drawing date-line storage snapping and reload flat with terrain": dateLineDrawing("flat", true),
   "Reliability drawing date-line storage snapping and reload globe without terrain": dateLineDrawing("globe", false),
   "Reliability drawing date-line storage snapping and reload globe with terrain": dateLineDrawing("globe", true),
+  "Reliability drawing date-line stays live with a blocking empty-model query": dateLineDrawing("globe", true, true),
 } satisfies BrowserCaseModule;
