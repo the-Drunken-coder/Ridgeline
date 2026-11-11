@@ -9,7 +9,7 @@ Read the relevant project context before planning, changing, or reviewing work:
 - [README.md](README.md) for public contracts and package/playground validation.
 - [CODE_CONVENTIONS.md](CODE_CONVENTIONS.md) and its applicable topic files for coding standards.
 - [GLOSSARY.md](GLOSSARY.md) and relevant [ADRs](docs/adr/) for domain terms and accepted decisions.
-- Existing `.scratch/<feature>/spec.md` files and linked tickets for feature requirements and approval evidence.
+- Historical feature specs and tickets remain in git history under [`.scratch` at 2856656](https://github.com/the-Drunken-coder/Ridgeline/tree/2856656a885f8b53e0600953a4698c446a3ea68f/.scratch). Current requirements and approval evidence live in [docs/](docs/), [ADRs](docs/adr/), and [GitHub Issues](https://github.com/the-Drunken-coder/Ridgeline/issues). Do not commit new investigation archives.
 - The relevant `package.json` for current commands. The separate control lab is documented in [control-lab/README.md](control-lab/README.md).
 
 Every worker and reviewer brief must identify the applicable document paths and sections above, tracker links, protected guarantees, and required verification. Each agent must read that context before acting.

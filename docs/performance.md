@@ -12,7 +12,7 @@ The final uncommitted runtime/test/config digest is `d1d09ba1353f0b2ac5d31b10f5e
 | Ridgeline CSS | 6,089 | 7,011 | 1,788 | 1,975 |
 | Net increase | | 44,568 | | 12,304 |
 
-No library dependency was added. Source data, history, clocks, interpolation, replay and retention stay in consumer applications. The checkout-only `.scratch/viewport-upgrades/closeout.md` retains file hashes and check pins. These payload measurements do not establish hardware performance or device budgets. The playground retains Vite's large-chunk warning.
+No library dependency was added. Source data, history, clocks, interpolation, replay and retention stay in consumer applications. The checkout-only record at [`.scratch/viewport-upgrades/closeout.md`](https://github.com/the-Drunken-coder/Ridgeline/blob/2856656a885f8b53e0600953a4698c446a3ea68f/.scratch/viewport-upgrades/closeout.md) retains file hashes and check pins. These payload measurements do not establish hardware performance or device budgets. The playground retains Vite's large-chunk warning.
 
 ## Historical viewport tools snapshot after scope correction, 2026-10-11
 
@@ -24,7 +24,7 @@ This snapshot predates the review follow-up changes. Its uncommitted input diges
 | Ridgeline CSS | 6,089 | 7,011 | 1,788 | 1,975 |
 | Net increase | | 40,651 | | 11,218 |
 
-Removing motion/replay reduced the earlier upgrade build by 23,939 raw bytes and 6,499 gzip bytes. No library dependency was added. The checkout-only record at `.scratch/viewport-upgrades/closeout.md` retains bundle hashes and check pins. It is not shipped in the package. These are payload measurements; target hardware performance remains unverified.
+Removing motion/replay reduced the earlier upgrade build by 23,939 raw bytes and 6,499 gzip bytes. No library dependency was added. The checkout-only record at [`.scratch/viewport-upgrades/closeout.md`](https://github.com/the-Drunken-coder/Ridgeline/blob/2856656a885f8b53e0600953a4698c446a3ea68f/.scratch/viewport-upgrades/closeout.md) retains bundle hashes and check pins. It is not shipped in the package. These are payload measurements; target hardware performance remains unverified.
 
 ## Historical viewport tools snapshot before scope correction, 2026-10-11
 
@@ -36,7 +36,7 @@ This historical build includes the motion/replay scope that the user subsequentl
 | Ridgeline CSS | 6,089 | 8,281 | 1,788 | 2,195 |
 | Net increase | | 64,590 | | 17,717 |
 
-That library entry and CSS added 17,717 gzip bytes with no new library dependency. The checkout-only record at `.scratch/viewport-upgrades/closeout.md` retains file hashes, the baseline method, production bundle data and commands. It is not shipped in the package. These payload measurements do not establish frame-rate, update-latency or device budgets. The existing large playground chunk warning remains. Physical GPU and installed-browser performance acceptance is still pending.
+That library entry and CSS added 17,717 gzip bytes with no new library dependency. The checkout-only record at [`.scratch/viewport-upgrades/closeout.md`](https://github.com/the-Drunken-coder/Ridgeline/blob/2856656a885f8b53e0600953a4698c446a3ea68f/.scratch/viewport-upgrades/closeout.md) retains file hashes, the baseline method, production bundle data and commands. It is not shipped in the package. These payload measurements do not establish frame-rate, update-latency or device budgets. The existing large playground chunk warning remains. Physical GPU and installed-browser performance acceptance is still pending.
 
 ## Entity model bundle snapshot, 2026-10-05
 
