@@ -11,7 +11,12 @@ import type { Properties, ViewportOptions } from '@ridgeline/map';
 export function createEntityViewport<P extends Properties>(options: ViewportOptions<P>) {
   const { features, ...rest } = options;
   const viewport = createViewport(rest);
-  attachEntities(viewport);
-  if (features?.length) viewport.upsert(features);
-  return viewport;
+  try {
+    attachEntities(viewport);
+    if (features?.length) viewport.upsert(features);
+    return viewport;
+  } catch (cause) {
+    try { viewport.destroy(); } catch { /* Preserve the setup failure. */ }
+    throw cause;
+  }
 }

@@ -65,10 +65,13 @@ function createAttachedRuntime<P extends Properties>(hooks: EntityInstallHooks<P
     configure: reset => entities.configure(reset),
     attach: () => entities.attach(),
     destroy() {
-      entities.destroy();
-      models.destroy();
-      modelLabels.destroy();
-      measurement.destroy();
+      let failed = false;
+      let failure: unknown;
+      for (const dispose of [() => entities.destroy(), () => models.destroy(), () => modelLabels.destroy(), () => measurement.destroy()]) {
+        try { dispose(); }
+        catch (cause) { if (!failed) { failed = true; failure = cause; } }
+      }
+      if (failed) throw failure;
     },
     contextLost: () => entities.contextLost(),
     readinessFailed: error => {
@@ -98,7 +101,7 @@ export function attachEntities<P extends Properties>(viewport: Viewport<P>) {
   const internals = getViewportAttachmentInternals(viewport);
   if (!internals)
     throw new Error('Entities require a viewport created by createViewport.');
-  internals.installEntities(hooks => createAttachedRuntime(hooks as EntityInstallHooks<P>));
+  internals.installEntities(createAttachedRuntime);
   attached.add(viewport.map);
 }
 

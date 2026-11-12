@@ -1,4 +1,4 @@
-import { attachDrawing, attachInteractions, RidgelineError, shapeGeometry } from '@ridgeline/map';
+import { attachDrawing, attachInteractions, createViewport, RidgelineError, shapeGeometry } from '@ridgeline/map';
 import type { FeatureStyle, MapFeature, ScreenBounds, Viewport } from '@ridgeline/map';
 import { createEntityViewport } from './entity-viewport';
 import { addProtocol, removeProtocol, GeoJSONSource } from 'maplibre-gl';
@@ -117,8 +117,8 @@ export const selectionWorkflowCases = {
     }
   },
   "Optional selection refuses completed-empty requests while renderer unavailable": async (context) => {
-    for (const phase of ['lost', 'loading'] as const) {
-      const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [point('a', 0)], logger: () => {} }));
+    for (const create of [createViewport, createEntityViewport]) for (const phase of ['lost', 'loading'] as const) {
+      const viewport = context.own(create({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [point('a', 0)], logger: () => {} }));
 
       const ui = attachInteractions(viewport, { boxSelection: true, picker: false, hover: false });
       const requests: string[][] = [];

@@ -15,9 +15,9 @@ import { hillshadePaint, resolveHillshade } from './hillshade';
 import { DEFAULT_ENTITY_MODELS, modelSettings } from './model-settings';
 import { DEFAULT_ENTITY_VISIBILITY } from './entity-defaults';
 import { createDetachedEntityRuntime } from './entity-runtime';
-import type { EntityInstallHooks, EntityRuntime } from './entity-runtime';
+import type { EntityRuntime } from './entity-runtime';
 import { viewportAttachmentInternals } from './viewport-attachments';
-import type { ViewInvalidation } from './viewport-attachments';
+import type { EntityRuntimeInstaller, ViewInvalidation } from './viewport-attachments';
 import type { FeatureQuery, FeatureStyle, IconDefinition, Interaction, MapConfiguration, MapFeature, Properties, ScreenBounds, Viewport, ViewportEvents, ViewportOptions } from './types';
 
 const TERRAIN = 'rl:terrain';
@@ -504,7 +504,14 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     }
   };
   contextCanvas.addEventListener('webglcontextlost', retireLostTerrain, true);
-  map.on('webglcontextlost', () => entityRuntime.contextLost());
+  function onContextLost() {
+    if (destroyed || contextLost) return;
+    contextLost = true; prepared = false; sceneGeneration++; interactionRevision++;
+    publication.retire(); entityRuntime.invalidatePresentation();
+    invalidateView({ kind: 'context-lost' });
+    scheduleHover();
+  }
+  map.on('webglcontextlost', () => { onContextLost(); entityRuntime.contextLost(); });
   map.on('webglcontextrestored', () => {
     if (destroyed) return;
     contextLost = false;
@@ -822,7 +829,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       viewListeners.add(listener);
       return () => { viewListeners.delete(listener); };
     },
-    installEntities(install: (hooks: EntityInstallHooks<P>) => EntityRuntime<P>) {
+    installEntities(install: EntityRuntimeInstaller) {
       assertActive();
       if (entityRuntime.attached) throw new Error('Entities are already attached to this viewport.');
       entityRuntime = install({
@@ -849,12 +856,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
           if (frameMarkers.get(feature.id) === key) { availableMarkers.set(feature.id, key); return true; }
           return false;
         },
-        onContextLost() {
-          contextLost = true; prepared = false; sceneGeneration++; interactionRevision++;
-          publication.retire(); entityRuntime.invalidatePresentation();
-          invalidateView({ kind: 'context-lost' });
-          scheduleHover();
-        },
+        onContextLost,
         onContextRestored() { contextLost = false; },
         emitEntityChange(ids) { if (!destroyed) emit('entitychange', { ids }); },
         synchronizeState,
@@ -862,6 +864,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         updatePublication: features => publication.update(features),
       });
       entityRuntime.set(store.all());
+      entityRuntime.selection([...selected]);
+      entityRuntime.preview(previewId);
       if (prepared && !destroyed && !contextLost) {
         entityRuntime.attach();
         for (const id of ['rl:points', 'rl:icons', 'rl:map-icons', 'rl:labels']) if (map.getLayer(id)) map.moveLayer(id);

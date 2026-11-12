@@ -91,7 +91,7 @@ export function createDetachedEntityRuntime<P extends Properties = Properties>()
     destroy() {},
     contextLost() {},
     readinessFailed() {},
-    registerModel() { requireEntities(); },
+    async registerModel() { requireEntities(); },
     unregisterModel() { requireEntities(); },
     invalidatePresentation() {},
     collectCustomLayers() { return []; },
