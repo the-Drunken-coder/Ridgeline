@@ -1,6 +1,6 @@
 # Promoting evidence at closeout
 
-Development output belongs in ignored `.artifacts/` directories. Do not commit investigation archives, screenshots, tarballs, or curated closeout sets. Historical evidence collected before this policy remains reachable in git history under [`.scratch` at 2856656](https://github.com/the-Drunken-coder/Ridgeline/tree/2856656a885f8b53e0600953a4698c446a3ea68f/.scratch).
+Development output belongs in ignored `.artifacts/` directories. Authored specs, approval records, design contracts, reviews, closeouts, and ticket snapshots remain at their existing `.scratch/` paths with their authority unchanged. Generated evidence and prototype directories are ignored. Do not commit investigation archives, screenshots, tarballs, or curated closeout sets. Historical evidence collected before this policy remains reachable in git history under [`.scratch` at 2856656](https://github.com/the-Drunken-coder/Ridgeline/tree/2856656a885f8b53e0600953a4698c446a3ea68f/.scratch).
 
 If a compact final set is worth keeping after a run, package it under `.artifacts/evidence/<feature>/` and attach it to the pull request or a workflow artifact. Findings that belong in the repository should be written into ordinary docs, ADRs, or GitHub issues, not into a parallel evidence tree.
 
@@ -18,7 +18,7 @@ Write a plan in `.artifacts/`. Each selected source must be an ignored, untracke
 {
   "destination": ".artifacts/evidence/my-feature/final",
   "provenance": {
-    "spec": "docs/my-feature.md",
+    "spec": ".scratch/my-feature/spec.md",
     "integrationOwner": "root",
     "reviewed": { "base": "<base SHA>", "head": "<head SHA>", "result": "<review outcome>" },
     "localVerification": [{ "revision": "<exercised SHA and any uncommitted input>", "command": "<command>", "result": "<outcome>" }],

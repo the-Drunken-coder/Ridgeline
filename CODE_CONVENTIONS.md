@@ -4,7 +4,7 @@ These are Ridgeline's implementation and review standards. Apply them to the wor
 
 ## Applicable topic standards
 
-Read the common standards below and every topic whose behavior the change affects. Select by behavior, including relevant callers and owners outside the diff. These linked files are authoritative standards; the [retrospective](https://github.com/the-Drunken-coder/Ridgeline/blob/2856656a885f8b53e0600953a4698c446a3ea68f/.scratch/pr-review-retrospective/README.md) records their supporting evidence.
+Read the common standards below and every topic whose behavior the change affects. Select by behavior, including relevant callers and owners outside the diff. These linked files are authoritative standards; the [retrospective](.scratch/pr-review-retrospective/README.md) records their supporting evidence.
 
 | When the change affects | Read |
 | --- | --- |

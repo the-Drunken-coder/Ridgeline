@@ -2,7 +2,8 @@ node_modules/
 dist/
 playground-dist/
 .artifacts/
-.scratch/
+.scratch/**/evidence/
+.scratch/**/prototype/
 .audit/
 *.tgz
 .DS_Store

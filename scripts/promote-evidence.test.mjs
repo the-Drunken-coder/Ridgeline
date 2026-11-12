@@ -11,21 +11,21 @@ function fixture() {
   const root = mkdtempSync(resolve(tmpdir(), 'ridgeline-promotion-'));
   const run = (command, args) => spawnSync(command, args, { cwd: root, encoding: 'utf8' });
   assert.equal(run('git', ['init', '-q']).status, 0);
-  writeFileSync(resolve(root, '.gitignore'), '.artifacts/\n');
-  mkdirSync(resolve(root, 'docs'), { recursive: true });
-  writeFileSync(resolve(root, 'docs/fixture-spec.md'), '# Fixture spec\n');
-  assert.equal(run('git', ['add', '.gitignore', 'docs/fixture-spec.md']).status, 0);
+  writeFileSync(resolve(root, '.gitignore'), readFileSync(resolve(import.meta.dirname, '../.gitignore')));
+  mkdirSync(resolve(root, '.scratch/fixture'), { recursive: true });
+  writeFileSync(resolve(root, '.scratch/fixture/spec.md'), '# Fixture spec\n');
+  assert.equal(run('git', ['add', '.gitignore', '.scratch/fixture/spec.md']).status, 0);
   assert.equal(run('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.com', 'commit', '-qm', 'fixture']).status, 0);
   const revision = run('git', ['rev-parse', 'HEAD']).stdout.trim();
   mkdirSync(resolve(root, '.artifacts/browser-runs/packaged-fixture'), { recursive: true });
   const producer = '.artifacts/browser-runs/packaged-fixture';
   writeFileSync(resolve(root, producer, '.pin'), 'selected failure\n');
-  writeFileSync(resolve(root, producer, 'summary.md'), '# Final summary\n[Spec](../../../../docs/fixture-spec.md)\n');
+  writeFileSync(resolve(root, producer, 'summary.md'), '# Final summary\n[Spec](../../../../.scratch/fixture/spec.md)\n');
   writeFileSync(resolve(root, producer, 'raw.json'), 'abc');
   writeFileSync(resolve(root, producer, 'capture.png'), Buffer.from([0, 255, 13, 10, 8]));
   writeFileSync(resolve(root, producer, 'intermediate.log'), 'keep transient\n');
   const plan = { destination: '.artifacts/evidence/fixture/final',
-    provenance: { spec: 'docs/fixture-spec.md', integrationOwner: 'fixture',
+    provenance: { spec: '.scratch/fixture/spec.md', integrationOwner: 'fixture',
       reviewed: { base: revision, head: revision, result: 'fixture review only' },
       localVerification: [{ revision, command: 'fixture producer', result: 'historical fixture, no runtime correctness claim' }],
       hostedVerification: 'unavailable for fixture', historical: [], remainingLimits: ['fixture only'] },
@@ -64,7 +64,7 @@ test('promotion verifies raw producer bytes in dry-run and publish while preserv
     const again = f.promote();
     assert.notEqual(again.status, 0);
     assert.match(again.stderr, /already exists/);
-    assert.equal(readFileSync(resolve(destination, 'summary.md'), 'utf8'), '# Final summary\n[Spec](../../../../docs/fixture-spec.md)\n');
+    assert.equal(readFileSync(resolve(destination, 'summary.md'), 'utf8'), '# Final summary\n[Spec](../../../../.scratch/fixture/spec.md)\n');
   } finally { f.cleanup(); }
 });
 
@@ -114,14 +114,14 @@ test('provenance permits failed checks, unavailable hosted verification and expl
 test('inline evidence links must point to tracked repository files or retained files', () => {
   const f = fixture();
   try {
-    writeFileSync(resolve(f.root, 'docs/disposable.md'), '# Temporary note\n');
-    writeFileSync(resolve(f.root, f.producer, 'summary.md'), '[Note](../../../../docs/disposable.md#temporary-note)\n');
+    writeFileSync(resolve(f.root, '.scratch/fixture/disposable.md'), '# Temporary note\n');
+    writeFileSync(resolve(f.root, f.producer, 'summary.md'), '[Note](../../../../.scratch/fixture/disposable.md#temporary-note)\n');
     const rejected = f.promote();
     assert.notEqual(rejected.status, 0);
     assert.match(rejected.stderr, /untracked/i);
     assert.equal(existsSync(resolve(f.root, f.plan.destination)), false);
     assert.equal(readFileSync(resolve(f.root, f.producer, '.pin'), 'utf8'), 'selected failure\n');
-    assert.equal(f.run('git', ['add', 'docs/disposable.md']).status, 0);
+    assert.equal(f.run('git', ['add', '.scratch/fixture/disposable.md']).status, 0);
     const accepted = f.promote('--dry-run');
     assert.equal(accepted.status, 0, accepted.stderr);
   } finally { f.cleanup(); }
@@ -138,7 +138,7 @@ test('reference links verify tracked and retained files with headings in every r
 [Archive][archive]
 [Self][self]
 
-[spec REF]: ../../../../docs/fixture-spec.md#fixture-spec "Tracked spec"
+[spec REF]: ../../../../.scratch/fixture/spec.md#fixture-spec "Tracked spec"
 [image]: capture.png
 [archive]: raw-reports.tar.gz
 [self]: #summary
@@ -160,13 +160,13 @@ test('reference links reject missing, ignored, untracked and broken-heading targ
   const cases = [
     ['missing file', '../../../../docs/missing.md', /Missing evidence link/],
     ['ignored producer', '../../../browser-runs/packaged-fixture/raw.json', /transient/],
-    ['untracked document', '../../../../docs/disposable.md', /untracked/i],
-    ['missing heading', '../../../../docs/fixture-spec.md#missing-heading', /Missing evidence heading/],
+    ['untracked document', '../../../../.scratch/fixture/disposable.md', /untracked/i],
+    ['missing heading', '../../../../.scratch/fixture/spec.md#missing-heading', /Missing evidence heading/],
   ];
   for (const [name, link, message] of cases) await t.test(name, () => {
     const f = fixture();
     try {
-      writeFileSync(resolve(f.root, 'docs/disposable.md'), '# Temporary note\n');
+      writeFileSync(resolve(f.root, '.scratch/fixture/disposable.md'), '# Temporary note\n');
       writeFileSync(resolve(f.root, f.producer, 'summary.md'), `[Evidence][record]\n\n[record]: ${link}\n`);
       const result = f.promote();
       assert.notEqual(result.status, 0);
@@ -181,7 +181,7 @@ test('reference links reject missing, ignored, untracked and broken-heading targ
 test('promotion rejects a symlinked producer without publishing or altering its target', () => {
   const f = fixture();
   try {
-    const target = resolve(f.root, 'docs/fixture-spec.md');
+    const target = resolve(f.root, '.scratch/fixture/spec.md');
     symlinkSync(target, resolve(f.root, '.artifacts/linked.md'));
     f.plan.files[0].source = '.artifacts/linked.md';
     const result = f.promote();
@@ -320,6 +320,6 @@ test('promotion and browser retention preserve pinned evidence until its owner r
     assert.deepEqual(protectedRuns.map(path => JSON.parse(readFileSync(resolve(path, '.browser-run.json'), 'utf8')).status), ['running', 'interrupted']);
     const archive = resolve(f.root, f.plan.destination, 'raw-reports.tar.gz');
     assert.equal(f.run('tar', ['-xOzf', archive, 'raw.json']).stdout, 'abc');
-    assert.equal(readFileSync(resolve(f.root, f.plan.destination, 'summary.md'), 'utf8'), '# Final summary\n[Spec](../../../../docs/fixture-spec.md)\n');
+    assert.equal(readFileSync(resolve(f.root, f.plan.destination, 'summary.md'), 'utf8'), '# Final summary\n[Spec](../../../../.scratch/fixture/spec.md)\n');
   } finally { f.cleanup(); }
 });
