@@ -28,7 +28,7 @@ Ridgeline is built for anyone who needs an easy-to-use, reusable map viewport. C
 
 Review each core change against this question: can another application use it without adopting the playground's structure or assumptions? Verify package usability in a separate consuming application, as well as in the playground.
 
-For an Atlas operator application, keep sensor-feed panels, Track inspectors, task controls, authentication and persistence in that consumer. [Atlas Core](https://github.com/atlas-field-systems/atlas-core) owns the shared field-system contract; Ridgeline receives the consumer's current display features. The map playground and control lab do not establish a completed or operational Atlas operator interface. [ADR-0001](docs/adr/0001-consumer-owned-workflows.md) defines this boundary.
+For an Atlas operator application, keep sensor-feed panels, Track inspectors, task controls, authentication and persistence in that consumer. [Atlas Protocol](https://github.com/atlas-field-systems/atlas-core#three-layers-one-contract) owns the shared vocabulary, schemas, message contracts and observable rules. Atlas Core implements the server that enforces them. Ridgeline receives the consumer's current display features. The map playground and control lab do not establish a completed or operational Atlas operator interface. [ADR-0001](docs/adr/0001-consumer-owned-workflows.md) defines this boundary.
 
 ## Run locally
 
