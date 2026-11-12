@@ -12,7 +12,7 @@ Promotion never edits producer files or removes a pin. Leave the pin in place du
 
 ## Select and verify the final set
 
-Write a plan in `.artifacts/`. Each selected source must be an ignored, untracked regular file inside that directory, without a symlink in its path. Curated Markdown links are relative to their final location. Use simple unique output names. The generated `README.md`, `manifest.json`, and `raw-reports.tar.gz` names are reserved.
+Write a plan in `.artifacts/`. Each selected source must be an ignored, untracked regular file inside that directory, without a symlink in its path. Links within the bundle are relative to their final location. Use commit-pinned URLs for repository documents outside the bundle when preparing it for attachment. Use simple unique output names. The generated `README.md`, `manifest.json`, and `raw-reports.tar.gz` names are reserved.
 
 ```json
 {
@@ -49,5 +49,7 @@ node scripts/promote-evidence.mjs .artifacts/promotion-plan.json
 The [promotion command](../scripts/promote-evidence.mjs) validates the provenance before staging the explicit selections in ignored output, copying curated files, archiving raw reports, and comparing extracted members with producer bytes. It records each file/member's byte count and SHA-256, plus the archive hash. It parses inline and reference-style Markdown links and images, then checks relative file targets and heading fragments. Examples inside code spans or code blocks are not links. The destination must be a new directory under ignored `.artifacts/evidence/`; existing evidence is never overwritten. The dry run performs the same verification and removes its own staging directory without creating the destination. Neither mode commits files or runs the recorded runtime checks.
 
 Read `manifest.json` for the provenance and hashes. Extract the archive into a separate directory with `tar -xzf raw-reports.tar.gz -C <directory>`; compare `sha256sum` for the archive and members with the record. Relative links must point to retained files or Git-tracked repository documents. Stage a new repository document with `git add` before referring to it from curated evidence. Missing, ignored and untracked external targets fail verification; check remote and non-Markdown references separately. The command validates the record's shape and retained files, not whether a reported outcome or revision claim is true.
+
+Checkout-relative repository links pass local verification but break when an attached bundle is opened elsewhere. Before promotion for attachment, replace those links in the curated source with URLs pinned to the full commit SHA containing the referenced document. Keep relative links only for files included in the bundle. Promote that prepared source so the manifest hashes describe the exact shared bytes; do not edit the promoted output afterward.
 
 Confirm `git check-ignore` identifies the destination. Do not `git add` it. Attach the directory or a compressed copy to the pull request or a workflow artifact if reviewers need it. Report the promotion command, source/check pins, verified hashes, and remaining limits in closeout. The [subprocess regressions](../scripts/promote-evidence.test.mjs) exercise real files and archives, pin preservation, dry-run cleanup, and rejected source/destination paths.
