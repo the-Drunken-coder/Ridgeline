@@ -1,4 +1,5 @@
 import { createViewport } from '@ridgeline/map';
+import { attachEntities } from '@ridgeline/map/entities';
 import { setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -77,6 +78,7 @@ async function run(settings: Settings, machine?: Machine) {
     camera, basemap: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#f7f7f7' } }] },
     terrain: true, elevation: flatTerrain(), elevationSampler: { sample: () => 0 }, exaggeration: 1, entityModels: modelSettings,
     style: feature => style(feature, settings.appearance), logger: () => {}, onError: error => diagnostics.push(`${error.code}: ${error.message}`) });
+  attachEntities(viewport);
   viewport.map.setPixelRatio(settings.pixelRatio);
   const canvas = viewport.map.getCanvas(); canvas.dataset.ridgelineMeasure = String(settings.instrumentation);
   const gpu = observeGpu(viewport.map, settings.instrumentation && settings.gpu);
