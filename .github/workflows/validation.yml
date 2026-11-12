@@ -181,6 +181,8 @@ jobs:
           node-version: '24'
       - run: node scripts/browser-resources.mjs controls --preflight
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --dir control-lab typecheck
+      - run: pnpm test:controls
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:controls:browser --reporter=list,blob
         env:

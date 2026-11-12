@@ -55,7 +55,7 @@ pnpm build:playground
 pnpm measure
 ```
 
-`pnpm test` runs the fast module and control-lab state tests. `pnpm validate` runs type checking, those tests, the packaged consumer, support, playground and control-lab browser suites, both application builds, and model measurement verification. See [verification](#verification) for browser installation and the scope of each check.
+`pnpm test` runs the fast library module tests. Control-lab type checking and state tests stay on `pnpm --dir control-lab typecheck` and `pnpm test:controls`. `pnpm validate` runs type checking, those library tests, the control-lab checks, the packaged consumer, support, playground and control-lab browser suites, both application builds, and model measurement verification. See [verification](#verification) for browser installation and the scope of each check.
 
 `pnpm build` produces the importable ESM library and declarations in `dist`. `pnpm build:playground` also builds the playground against those exports, without development source aliases. This package is private and has not been published to npm. Install a local tarball in another application:
 
