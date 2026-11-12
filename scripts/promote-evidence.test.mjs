@@ -11,7 +11,7 @@ function fixture() {
   const root = mkdtempSync(resolve(tmpdir(), 'ridgeline-promotion-'));
   const run = (command, args) => spawnSync(command, args, { cwd: root, encoding: 'utf8' });
   assert.equal(run('git', ['init', '-q']).status, 0);
-  writeFileSync(resolve(root, '.gitignore'), '.artifacts/\n');
+  writeFileSync(resolve(root, '.gitignore'), readFileSync(resolve(import.meta.dirname, '../.gitignore')));
   mkdirSync(resolve(root, '.scratch/fixture'), { recursive: true });
   writeFileSync(resolve(root, '.scratch/fixture/spec.md'), '# Fixture spec\n');
   assert.equal(run('git', ['add', '.gitignore', '.scratch/fixture/spec.md']).status, 0);
@@ -20,11 +20,11 @@ function fixture() {
   mkdirSync(resolve(root, '.artifacts/browser-runs/packaged-fixture'), { recursive: true });
   const producer = '.artifacts/browser-runs/packaged-fixture';
   writeFileSync(resolve(root, producer, '.pin'), 'selected failure\n');
-  writeFileSync(resolve(root, producer, 'summary.md'), '# Final summary\n[Spec](../../spec.md)\n');
+  writeFileSync(resolve(root, producer, 'summary.md'), '# Final summary\n[Spec](../../../../.scratch/fixture/spec.md)\n');
   writeFileSync(resolve(root, producer, 'raw.json'), 'abc');
   writeFileSync(resolve(root, producer, 'capture.png'), Buffer.from([0, 255, 13, 10, 8]));
   writeFileSync(resolve(root, producer, 'intermediate.log'), 'keep transient\n');
-  const plan = { destination: '.scratch/fixture/evidence/final',
+  const plan = { destination: '.artifacts/evidence/fixture/final',
     provenance: { spec: '.scratch/fixture/spec.md', integrationOwner: 'fixture',
       reviewed: { base: revision, head: revision, result: 'fixture review only' },
       localVerification: [{ revision, command: 'fixture producer', result: 'historical fixture, no runtime correctness claim' }],
@@ -60,11 +60,11 @@ test('promotion verifies raw producer bytes in dry-run and publish while preserv
     assert.equal(readFileSync(resolve(f.root, f.producer, '.pin'), 'utf8'), 'selected failure\n');
     assert.equal(readFileSync(resolve(f.root, f.producer, 'intermediate.log'), 'utf8'), 'keep transient\n');
     assert.equal(f.run('git', ['check-ignore', `${f.producer}/intermediate.log`]).status, 0);
-    assert.equal(f.run('git', ['check-ignore', `${f.plan.destination}/manifest.json`]).status, 1);
+    assert.equal(f.run('git', ['check-ignore', `${f.plan.destination}/manifest.json`]).status, 0);
     const again = f.promote();
     assert.notEqual(again.status, 0);
     assert.match(again.stderr, /already exists/);
-    assert.equal(readFileSync(resolve(destination, 'summary.md'), 'utf8'), '# Final summary\n[Spec](../../spec.md)\n');
+    assert.equal(readFileSync(resolve(destination, 'summary.md'), 'utf8'), '# Final summary\n[Spec](../../../../.scratch/fixture/spec.md)\n');
   } finally { f.cleanup(); }
 });
 
@@ -115,7 +115,7 @@ test('inline evidence links must point to tracked repository files or retained f
   const f = fixture();
   try {
     writeFileSync(resolve(f.root, '.scratch/fixture/disposable.md'), '# Temporary note\n');
-    writeFileSync(resolve(f.root, f.producer, 'summary.md'), '[Note](../../disposable.md#temporary-note)\n');
+    writeFileSync(resolve(f.root, f.producer, 'summary.md'), '[Note](../../../../.scratch/fixture/disposable.md#temporary-note)\n');
     const rejected = f.promote();
     assert.notEqual(rejected.status, 0);
     assert.match(rejected.stderr, /untracked/i);
@@ -138,7 +138,7 @@ test('reference links verify tracked and retained files with headings in every r
 [Archive][archive]
 [Self][self]
 
-[spec REF]: ../../spec.md#fixture-spec "Tracked spec"
+[spec REF]: ../../../../.scratch/fixture/spec.md#fixture-spec "Tracked spec"
 [image]: capture.png
 [archive]: raw-reports.tar.gz
 [self]: #summary
@@ -158,10 +158,10 @@ test('reference links verify tracked and retained files with headings in every r
 
 test('reference links reject missing, ignored, untracked and broken-heading targets before publication', async t => {
   const cases = [
-    ['missing file', '../../missing.md', /Missing evidence link/],
-    ['ignored producer', '../../../../.artifacts/browser-runs/packaged-fixture/raw.json', /transient/],
-    ['untracked document', '../../disposable.md', /untracked/i],
-    ['missing heading', '../../spec.md#missing-heading', /Missing evidence heading/],
+    ['missing file', '../../../../docs/missing.md', /Missing evidence link/],
+    ['ignored producer', '../../../browser-runs/packaged-fixture/raw.json', /transient/],
+    ['untracked document', '../../../../.scratch/fixture/disposable.md', /untracked/i],
+    ['missing heading', '../../../../.scratch/fixture/spec.md#missing-heading', /Missing evidence heading/],
   ];
   for (const [name, link, message] of cases) await t.test(name, () => {
     const f = fixture();
@@ -196,7 +196,7 @@ test('promotion rejects a symlinked producer without publishing or altering its 
 test('promotion rejects a destination that escapes the versioned feature evidence area', () => {
   const f = fixture();
   try {
-    f.plan.destination = '.scratch/../evidence';
+    f.plan.destination = '.artifacts/../evidence';
     f.plan.files = [f.plan.files[1]];
     const result = f.promote();
     assert.notEqual(result.status, 0);
@@ -263,7 +263,7 @@ test('a broken retained link fails before publishing and leaves selected produce
 test('curated links cannot depend on ignored transient producer paths', () => {
   const f = fixture();
   try {
-    writeFileSync(resolve(f.root, f.producer, 'summary.md'), '# Summary\n[Raw](../../../../.artifacts/browser-runs/packaged-fixture/raw.json)\n');
+    writeFileSync(resolve(f.root, f.producer, 'summary.md'), '# Summary\n[Raw](../../../browser-runs/packaged-fixture/raw.json)\n');
     const result = f.promote();
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /transient|retained/);
@@ -320,6 +320,6 @@ test('promotion and browser retention preserve pinned evidence until its owner r
     assert.deepEqual(protectedRuns.map(path => JSON.parse(readFileSync(resolve(path, '.browser-run.json'), 'utf8')).status), ['running', 'interrupted']);
     const archive = resolve(f.root, f.plan.destination, 'raw-reports.tar.gz');
     assert.equal(f.run('tar', ['-xOzf', archive, 'raw.json']).stdout, 'abc');
-    assert.equal(readFileSync(resolve(f.root, f.plan.destination, 'summary.md'), 'utf8'), '# Final summary\n[Spec](../../spec.md)\n');
+    assert.equal(readFileSync(resolve(f.root, f.plan.destination, 'summary.md'), 'utf8'), '# Final summary\n[Spec](../../../../.scratch/fixture/spec.md)\n');
   } finally { f.cleanup(); }
 });

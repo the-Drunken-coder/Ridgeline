@@ -13,7 +13,7 @@ Recommend the smallest approach that preserves the agreed rule that unknown terr
 
 ## Comments
 
-2026-09-29: The user delegated the technical recommendation and asked to see visual choices. Do not require a separate technical permission exchange before presenting mocks. Independent source review recommends a narrow version-bound adapter around the renderer's existing strict intersection plus loaded-elevation check. There is no existing terrain coverage adapter to reuse; the raw elevation sampler cannot prove agreement with displayed terrain. Share one result across preview and commit. The [prototype design contract](../prototype/design-contract.md) records this recommendation and pending real-browser validation. No production implementation or final API contract is established here.
+2026-09-29: The user delegated the technical recommendation and asked to see visual choices. Do not require a separate technical permission exchange before presenting mocks. Independent source review recommends a narrow version-bound adapter around the renderer's existing strict intersection plus loaded-elevation check. There is no existing terrain coverage adapter to reuse; the raw elevation sampler cannot prove agreement with displayed terrain. Share one result across preview and commit. The [prototype design contract](https://github.com/the-Drunken-coder/Ridgeline/blob/2856656a885f8b53e0600953a4698c446a3ea68f/.scratch/terrain-pointer/prototype/design-contract.md) records this recommendation and pending real-browser validation. No production implementation or final API contract is established here.
 
 ## Answer
 

@@ -52,7 +52,7 @@ function rejectSymlinks(root, path) {
 
 function promote(plan, root, dryRun) {
   if (!plan || typeof plan !== 'object' || Array.isArray(plan)) throw new Error('Provide a promotion plan object.');
-  if (typeof plan.destination !== 'string' || !/^\.scratch\/[A-Za-z0-9][A-Za-z0-9._-]*\/evidence(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)?$/.test(plan.destination)) throw new Error('Destination must be a new .scratch/<feature>/evidence directory.');
+  if (typeof plan.destination !== 'string' || !/^\.artifacts\/evidence\/[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)?$/.test(plan.destination)) throw new Error('Destination must be a new .artifacts/evidence/<feature> directory.');
   const destination = resolve(root, plan.destination);
   rejectSymlinks(root, destination);
   if (existsSync(destination)) throw new Error(`Destination already exists: ${plan.destination}`);
@@ -107,6 +107,7 @@ function promote(plan, root, dryRun) {
         const local = relative(destination, finalTarget);
         const retained = !local.startsWith('..') && existsSync(join(output, local));
         if (!retained) {
+          if (!local.startsWith('..')) throw new Error(`Missing evidence link in ${file}: ${link}`);
           if (relative(root, finalTarget).startsWith('..')) throw new Error(`Evidence links must use retained files or repository documents: ${link}`);
           rejectSymlinks(root, finalTarget);
           const ignored = spawnSync('git', ['check-ignore', '--quiet', '--', relative(root, finalTarget)], { cwd: root });

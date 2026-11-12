@@ -12,7 +12,7 @@ Status at migration: ready-for-agent
 
 ## Context
 
-Read the [terrain-aware pointer specification](../spec.md), especially ownership, terrain validity, approved appearance, and testing decisions. The [exact-version research](../research/terrain-picking.md) explains why ordinary event coordinates and numeric elevation are insufficient. The [approved appearance decision](03-feedback-appearance.md) and [prototype design contract](../prototype/design-contract.md) preserve visual direction B. The prototype is a visual reference, not production code.
+Read the [terrain-aware pointer specification](../spec.md), especially ownership, terrain validity, approved appearance, and testing decisions. The [exact-version research](../research/terrain-picking.md) explains why ordinary event coordinates and numeric elevation are insufficient. The [approved appearance decision](03-feedback-appearance.md) and [prototype design contract](https://github.com/the-Drunken-coder/Ridgeline/blob/2856656a885f8b53e0600953a4698c446a3ea68f/.scratch/terrain-pointer/prototype/design-contract.md) preserve visual direction B. The prototype is a visual reference, not production code.
 
 This is the first complete placement slice. Introduce only the internal separation needed to share target resolution between preview and placement. Preserve existing snapping behavior and preview/commit agreement; expanded snap feedback and ground-handle editing are covered by the later snapping ticket. General scene-change recovery is covered by the final ticket, but this slice must already resolve current scene state at click time and clean up its own resources.
 

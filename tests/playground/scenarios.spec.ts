@@ -12,6 +12,8 @@ for (const [scenario, count, terrain] of [
     await page.setViewportSize({ width: 800, height: 640 });
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
+    const clockStart = Date.UTC(2026, 0, 1);
+    await page.clock.install({ time: clockStart });
     await page.route('https://tiles.openfreemap.org/styles/*', route => route.fulfill({
       json: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#e9efea' } }] },
     }));
@@ -58,6 +60,8 @@ for (const [scenario, count, terrain] of [
         releaseTerrain();
         await expect(page.locator('#airborne-demo [data-state]')).toHaveText('airborne · overlay ready', { timeout: 30_000 });
       }
+      // Hold application time across native actions even if software rendering delays the driver.
+      await page.clock.pauseAt(clockStart + 60 * 60 * 1000);
       await scenarioControl.evaluate(select => {
         if (!(select instanceof HTMLSelectElement)) throw new Error('Scenario control is not a native select');
         const readMotion = () => ({
@@ -73,7 +77,7 @@ for (const [scenario, count, terrain] of [
         // Capture before the application's change handler retires the previous scenario.
         select.addEventListener('change', () => {
           select.dataset.motionTransition = JSON.stringify({ destination: select.value, armed, atChange: readMotion(),
-            elapsedMs: performance.now() - startedAt, visibility: document.visibilityState });
+            elapsedMs: performance.now() - startedAt, applicationClock: 'paused', visibility: document.visibilityState });
         }, { capture: true, once: true });
       });
       await measure.press('Enter');
@@ -89,6 +93,7 @@ for (const [scenario, count, terrain] of [
         await testInfo.attach('motion-scenario-transition.json', { body: transition ?? 'null', contentType: 'application/json' });
         throw error;
       }
+      await page.clock.resume();
       await expect(page.locator('#motion')).toBeHidden();
       await expect(page.locator('#airborne-demo')).toBeHidden();
       await expect(page.locator('#measure')).toBeEnabled();

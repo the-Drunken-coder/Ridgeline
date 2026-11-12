@@ -2,15 +2,15 @@
 
 ## Empty model upload query, 2026-10-26
 
-The narrow renderer repair skips the instance-upload error query when there are no upload groups. The [verification record and recordings](evidence/empty-model-query/README.md) preserve matched controlled failure/pass runs, native upload-error recovery, frame/context checks and independent review. It keeps initialization, current-frame publication and actual-upload error checks in their existing paths.
+The narrow renderer repair skips the instance-upload error query when there are no upload groups. The [verification record and recordings](https://github.com/the-Drunken-coder/Ridgeline/blob/2856656a885f8b53e0600953a4698c446a3ea68f/.scratch/codebase-reliability-repairs/evidence/empty-model-query/README.md) preserve matched controlled failure/pass runs, native upload-error recovery, frame/context checks and independent review. It keeps initialization, current-frame publication and actual-upload error checks in their existing paths.
 
 This is not a complete repair of [#123](https://github.com/the-Drunken-coder/Ridgeline/issues/123). An original globe/terrain case failed on the guarded runtime without the test-owned hold. Four subsequent observed histories passed all 20 cases but captured no failing timing window or additional cause. The failed input snapshot and trace remain retained, and #123 stays open. The controlled hold is not an organic GPU-duration measurement.
 
 ## Earlier western-globe readiness follow-up, 2026-10-26
 
-[#123](https://github.com/the-Drunken-coder/Ridgeline/issues/123) remains open and unexplained. The [historical evidence](evidence/issue-123-history/README.md) preserves the original failure and selected hosted controls before the diagnostic artifact expires on November 8. Original producer bytes, metadata and hashes were verified through the existing evidence-promotion workflow.
+[#123](https://github.com/the-Drunken-coder/Ridgeline/issues/123) remains open and unexplained. The [historical evidence](https://github.com/the-Drunken-coder/Ridgeline/blob/2856656a885f8b53e0600953a4698c446a3ea68f/.scratch/codebase-reliability-repairs/evidence/issue-123-history/README.md) preserves the original failure and selected hosted controls before the diagnostic artifact expires on November 8. Original producer bytes, metadata and hashes were verified through the existing evidence-promotion workflow.
 
-The [current investigation](evidence/issue-123-investigation/README.md) records seven passing local focused executions, including two against the archived historical runtime. Every run retained real pointer input, ongoing live updates, the eight-second readiness condition and zero retries. These are passing controls, not proof that the historical failure is fixed. A synchronous renderer check during GPU work is a lead from passing traces; no causal production fix was accepted.
+The [current investigation](https://github.com/the-Drunken-coder/Ridgeline/blob/2856656a885f8b53e0600953a4698c446a3ea68f/.scratch/codebase-reliability-repairs/evidence/issue-123-investigation/README.md) records seven passing local focused executions, including two against the archived historical runtime. Every run retained real pointer input, ongoing live updates, the eight-second readiness condition and zero retries. These are passing controls, not proof that the historical failure is fixed. A synchronous renderer check during GPU work is a lead from passing traces; no causal production fix was accepted.
 
 The user requested this follow-up while withdrawing the separate model hardware-acceptance matrix. That decision changes neither this failure's outcome nor the terrain, drawing and public API guarantees. Earlier closeout records below retain their original pins.
 

@@ -1,6 +1,6 @@
 # Consumer journey audit
 
-Audited September 29, 2026 for [consumer testing and parallel CI](../.scratch/consumer-testing/spec.md). The baseline had 87 packaged browser cases and four control-lab browser cases. This audit adds one packaged lifecycle case and keeps all existing cases and focused module tests.
+Audited September 29, 2026 for [consumer testing and parallel CI](https://github.com/the-Drunken-coder/Ridgeline/blob/2856656a885f8b53e0600953a4698c446a3ea68f/.scratch/consumer-testing/spec.md). The baseline had 87 packaged browser cases and four control-lab browser cases. This audit adds one packaged lifecycle case and keeps all existing cases and focused module tests.
 
 The packaged suite builds and packs the library, installs the tarball into a separate consumer, checks its declarations, builds that consumer, and drives its production preview in Chromium. Its [case manifest](../tests/browser/catalog.ts) identifies scenarios implemented in [the browser consumer](../tests/browser/main.ts). [Playwright](../tests/packaged/browser.spec.ts) supplies real mouse and keyboard input and records uncaught browser errors.
 
