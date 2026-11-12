@@ -1,5 +1,6 @@
-import { attachInteractions, createViewport } from '@ridgeline/map';
+import { attachInteractions } from '@ridgeline/map';
 import type { Interaction, MapFeature, Viewport } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import { MercatorCoordinate } from 'maplibre-gl';
 import { solidGlb } from './model-fixtures';
 import { axisModelGlb, planarTerrain } from './model-placement-fixtures';
@@ -15,7 +16,7 @@ function entity(id = 'model'): MapFeature {
     entity: { heading: 0, altitude: { meters: 30, reference: 'ground' }, model: { id: 'asset', minimumSizePixels: 120 } } };
 }
 function create(context: Context, features = [entity()], sample: () => number | null = () => 0) {
-  const viewport = context.own(createViewport({ container: context.container, features, elevationSampler: { sample },
+  const viewport = context.own(createEntityViewport({ container: context.container, features, elevationSampler: { sample },
     basemap: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
     camera: { center: [0, 0], zoom: 17, pitch: 0, bearing: 0 },
     entityModels: { switchDistanceMeters: 1e7, deadZoneMeters: 0, minimumSizePixels: 120 },

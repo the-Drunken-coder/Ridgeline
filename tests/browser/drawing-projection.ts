@@ -2,6 +2,7 @@ import { createViewport, attachDrawing, shapeGeometry, RidgelineError } from '@r
 import type { MapFeature } from '@ridgeline/map';
 import { addProtocol, removeProtocol } from 'maplibre-gl';
 import type { CustomLayerInterface } from 'maplibre-gl';
+import { createEntityViewport } from './entity-viewport';
 import { style, point, check, pointer, browserKey, browserClick, browserDrag } from './helpers';
 import type { BrowserCaseModule, BrowserCaseRun } from './context';
 
@@ -19,7 +20,8 @@ function dateLineDrawing(projection: "flat" | "globe", terrain: false | true, bl
     try {
         const options = { container, basemap: style(), terrain, elevation, projection,
           camera: { center: [179.8, 0] as [number, number], zoom: 7, pitch: projection === 'globe' ? 50 : 0 }, logger: () => {} };
-        let draw = own(createViewport({ ...options, features: [point('world-anchor', anchor[0])] }));
+        // The blocking-query case exercises the empty model layer, which only exists with entities attached.
+        let draw = own((blockingQuery ? createEntityViewport : createViewport)({ ...options, features: [point('world-anchor', anchor[0])] }));
         const addLayer = draw.map.addLayer;
         let modelLayer: CustomLayerInterface | undefined;
         if (blockingQuery) draw.map.addLayer = function (layer, beforeId) {

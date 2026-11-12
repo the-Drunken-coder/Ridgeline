@@ -1,5 +1,6 @@
-import { createViewport, RidgelineError } from '@ridgeline/map';
+import { RidgelineError } from '@ridgeline/map';
 import type { MapFeature, Viewport } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import { GeoJSONSource, ErrorEvent as MapErrorEvent } from 'maplibre-gl';
 import { style, point, check, pointer } from './helpers';
 import { withBaseViewport } from './base-viewport';
@@ -50,7 +51,7 @@ export const featurePublicationCases = {
     mount.style.cssText = 'width:320px;height:240px;position:absolute;left:0;top:0';
     document.body.append(mount);
     const feature = { ...point('snapshot'), properties: { name: 'Original' } };
-    const map = own(createViewport({ container: mount, basemap: style(), camera: { center: [0, 0], zoom: 12 },
+    const map = own(createEntityViewport({ container: mount, basemap: style(), camera: { center: [0, 0], zoom: 12 },
       features: [feature], style: value => {
         value.properties.name = 'Mutated';
         if (value.geometry.type === 'Point') value.geometry.coordinates[0] = .1;
@@ -70,7 +71,7 @@ export const featurePublicationCases = {
   },
   "Removing and reinserting an airborne ID does not restore its selection": async caseContext => {
     const { own, container, until } = caseContext;
-    const air = own(createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, elevationSampler: { sample: () => 0 }, logger: () => {} }));
+    const air = own(createEntityViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, elevationSampler: { sample: () => 0 }, logger: () => {} }));
     await air.ready;
     const feature: MapFeature = { ...point('selected-air'), entity: { altitude: { meters: 100, reference: 'ground' },
       attachments: [{ id: 'zone', type: 'circle', radius: 100 }] } };
@@ -93,7 +94,7 @@ export const featurePublicationCases = {
   "Mutating object basemaps does not change accepted configuration or style": async caseContext => {
     const { own, container, until } = caseContext;
     const first = style('#112233');
-    const map = own(createViewport({ container, basemap: first, logger: () => {} }));
+    const map = own(createEntityViewport({ container, basemap: first, logger: () => {} }));
 
     try {
       await map.ready;
@@ -226,7 +227,7 @@ export const featurePublicationCases = {
     };
     let map: Viewport | undefined;
     try {
-      map = own(createViewport({ container: mount, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+      map = own(createEntityViewport({ container: mount, basemap: style(), camera: { center: [0, 0], zoom: 9 },
         features: [point('worker-latest'), point('worker-removed')], logger: () => {} }));
       const active = map;
       const diagnostics: RidgelineError[] = [];

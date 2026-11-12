@@ -1,9 +1,12 @@
 import type { MapMovementEvent } from 'maplibre-gl';
 import type { MapFeature, Properties, Viewport } from './types';
+import type { EntityInstallHooks, EntityRuntime } from './entity-runtime';
 
 export type ViewInvalidation =
   | { kind: 'camera'; phase: 'start' | 'move' | 'end'; event: MapMovementEvent }
   | { kind: 'resize' | 'style' | 'configuration' | 'context-lost' };
+
+export type EntityRuntimeInstaller = <P extends Properties>(hooks: EntityInstallHooks<P>) => EntityRuntime<P>;
 
 export type ViewportAttachmentInternals = {
   getDisplayedFeature(id: string): MapFeature | undefined;
@@ -13,6 +16,7 @@ export type ViewportAttachmentInternals = {
   onPrepared(listener: () => void): () => void;
   onViewInvalidation(listener: (reason: ViewInvalidation) => void): () => void;
   reportTargetError(cause?: unknown): void;
+  installEntities(install: EntityRuntimeInstaller): void;
 };
 
 export const viewportAttachmentInternals = new WeakMap<object, ViewportAttachmentInternals>();

@@ -1,5 +1,6 @@
-import { attachInteractions, createViewport } from '@ridgeline/map';
+import { attachInteractions } from '@ridgeline/map';
 import type { MapFeature, ModelAppearance, Viewport } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import { GeoJSONSource } from 'maplibre-gl';
 import { materialGlb } from './model-material-fixtures';
 import { groundModelGlb } from './model-placement-fixtures';
@@ -50,7 +51,7 @@ const feature = (floor = 0, altitude: number | null = 20): MapFeature => ({ type
 export const modelPresentationCases = {
   "Model feedback preserves appearance and follows model altitude": async (context) => {
     let appearance: ModelAppearance | undefined;
-    const viewport = context.own(createViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
       { id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
       camera: { center: [0, 0], zoom: 18, pitch: 0 }, features: [feature()], elevationSampler: { sample: () => 0 },
       style: () => ({ modelAppearance: appearance }), logger: () => {} }));
@@ -120,7 +121,7 @@ export const modelPresentationCases = {
     const glyphs = new URL('../fixtures/noto-sans/0-255.pbf', import.meta.url).href + '?fontstack={fontstack}&range={range}';
     const basemap = { version: 8 as const, glyphs, sources: {}, layers: [
       { id: 'background', type: 'background' as const, paint: { 'background-color': '#ffffff' } }] };
-    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 17, pitch: 0 },
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 17, pitch: 0 },
       elevationSampler: { sample: () => 0 }, style: () => ({ label, radius: 0, modelAppearance: { mode: 'color', color: '#ff0000' } }), logger: () => {} }));
 
     try {
@@ -191,7 +192,7 @@ export const modelPresentationCases = {
     } finally { viewport.destroy(); }
   },
   "Model enlargement preserves physical attachments and quiet presentation": async (context) => {
-    const viewport = context.own(createViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
       { id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
       camera: { center: [0, 0], zoom: 18, pitch: 55, bearing: 27 }, elevationSampler: { sample: () => 0 },
       entityVisibility: { footprints: true, zones: true, groundLines: true },

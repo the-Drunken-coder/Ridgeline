@@ -1,4 +1,5 @@
 import { attachDrawing, attachDrawingControls, createViewport, shapeGeometry } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import type { MapFeature, Viewport } from '@ridgeline/map';
 import { NavigationControl } from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
@@ -840,7 +841,7 @@ export const workflowDrawingCases = {
       } finally { editor.destroy(); viewport.destroy(); }
     },
   "Drawing upgrades touch survives live updates with atomic drag history": async ({ container, own, until }) => {
-      const viewport = own(createViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 13 }, logger: () => {}, elevationSampler: { sample: () => 0 }, entityVisibility: { footprints: false, zones: false, groundLines: false },
+      const viewport = own(createEntityViewport({ container, basemap: style, camera: { center: [0, 0], zoom: 13 }, logger: () => {}, elevationSampler: { sample: () => 0 }, entityVisibility: { footprints: false, zones: false, groundLines: false },
         features: [{ type: 'Feature', id: 'live', entity: { altitude: { meters: 100, reference: 'ground' } }, geometry: { type: 'Point', coordinates: [.01, .01] }, properties: {} }] }));
       await viewport.ready;
       const editor = attachDrawing(viewport, { createFeature: () => ({ id: 'touch-line', properties: {} }), submit: () => ({ accepted: true }) });

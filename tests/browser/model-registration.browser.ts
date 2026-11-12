@@ -1,5 +1,6 @@
-import { createViewport, RidgelineError } from '@ridgeline/map';
+import { RidgelineError } from '@ridgeline/map';
 import type { MapFeature, Viewport } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import { encodeGlb, solidGlb } from './model-fixtures';
 
 import type { BrowserCaseContext as Context, BrowserCaseModule } from './context';
@@ -16,7 +17,7 @@ function topFaceGlb() {
   }, new Uint8Array(positions.buffer));
 }
 function create(context: Context, features: MapFeature[] = [], onError: (error: RidgelineError) => void = () => {}) {
-  const viewport = context.own(createViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
+  const viewport = context.own(createEntityViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
     { id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
     camera: { center: [0, 0], zoom: 19, pitch: 0, bearing: 0 }, features, elevationSampler: { sample: () => 0 }, logger: () => {}, onError }));
   return viewport;

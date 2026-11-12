@@ -1,5 +1,6 @@
-import { createViewport, RidgelineError } from '@ridgeline/map';
+import { RidgelineError } from '@ridgeline/map';
 import type { MapFeature, Viewport } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import { GeoJSONSource } from 'maplibre-gl';
 import { style, point, check } from './helpers';
 import type { BrowserCaseModule } from './context';
@@ -8,7 +9,7 @@ import type { BrowserCaseModule } from './context';
 export const publicationReentryCases = {
   "Reliability entity nonsimple attachment polygons reject mixed batches before accepted or rendered changes": async caseContext => {
     const { own, container, until } = caseContext;
-    const air = own(createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 },
+    const air = own(createEntityViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 },
       elevationSampler: { sample: () => 0 }, logger: () => {} }));
     await air.ready;
     const original: MapFeature = { ...point('accepted'), properties: { name: 'Original' } };
@@ -51,7 +52,7 @@ export const publicationReentryCases = {
       let replace = initial;
       let map: Viewport | undefined;
       const diagnostics: RidgelineError[] = [];
-      map = own(createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+      map = own(createEntityViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
         features: [point('scene-current')], logger: () => {}, onError: error => diagnostics.push(error),
         style: () => {
           if (replace && map) {
@@ -80,7 +81,7 @@ export const publicationReentryCases = {
   "Reliability publication keeps updates made during icon registration": async caseContext => {
     const { own, container, until } = caseContext;
     let replace = false;
-    const map = own(createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+    const map = own(createEntityViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
       features: [point('icon-current')], logger: () => {}, style: () => {
         if (replace) { replace = false; map.upsert([point('icon-current', .03)]); }
         return { icon: 'callback-icon' };
@@ -101,7 +102,7 @@ export const publicationReentryCases = {
     const { own, container } = caseContext;
     for (const action of ['remove', 'scene', 'destroy']) {
       let armed = false, afterDestroy = 0;
-      const map = own(createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+      const map = own(createEntityViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 9 },
         features: [point('icon-earlier'), point('icon-trigger', -.03), point('icon-later', .06)], logger: () => {},
         style: feature => {
           if (armed && feature.id === 'icon-trigger') {
@@ -160,7 +161,7 @@ export const publicationReentryCases = {
     };
     let map: Viewport | undefined;
     try {
-      map = own(createViewport({ container: mount, basemap: style(), camera: { center: [0, 0], zoom: 9 },
+      map = own(createEntityViewport({ container: mount, basemap: style(), camera: { center: [0, 0], zoom: 9 },
         features: [point('worker-latest'), point('worker-removed')], logger: () => {} }));
       const active = map;
       const diagnostics: RidgelineError[] = [];

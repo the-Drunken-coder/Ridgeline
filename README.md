@@ -147,7 +147,7 @@ Register icons with `registerIcon(id, { image, pixelRatio, url? })`; `image` is 
 
 ## Airborne entities and attachments
 
-The **Single flying asset** scenario shows one moving aircraft with a four-sided camera overlay draped on terrain. **Airborne entities** provides a larger workload. The inspector controls altitude, direction, FOV, range, color, fill opacity, and outline. Consumers update the current position and pose through `upsert`; their application owns movement timing and interpolation.
+The **Single flying asset** scenario shows one moving aircraft with a four-sided camera overlay draped on terrain. **Airborne entities** provides a larger workload. The inspector controls altitude, direction, FOV, range, color, fill opacity, and outline. These features also require `attachEntities` from `@ridgeline/map/entities`. Consumers update the current position and pose through `upsert`; their application owns movement timing and interpolation.
 
 ```ts
 viewport.upsert([{
@@ -184,10 +184,11 @@ Camera appearance supports `volumeOpacity`, `wireframe`, and `wireframeWidth`. T
 
 ### Shared models
 
-Register application-supplied GLB bytes once per viewport, then reference that model from multiple entities. Fetching and palettes belong to the application:
+Models and GPU camera coverage are opt-in. Import `attachEntities` from `@ridgeline/map/entities` and call it after `createViewport` before registering models or upserting `entity` features. Fetching and palettes belong to the application:
 
 ```ts
 import type { ModelAppearance } from '@ridgeline/map';
+import { attachEntities } from '@ridgeline/map/entities';
 
 const appearances = new Map<string, ModelAppearance>([
   ['vehicle-1', { mode: 'color', color: '#db7428' }],
@@ -201,6 +202,7 @@ const viewport = createViewport({
     modelAppearance: appearances.get(feature.id),
   }),
 });
+attachEntities(viewport);
 const response = await fetch('/models/vehicle.glb');
 if (!response.ok) throw new Error(`Model request failed: ${response.status}`);
 await viewport.registerModel('vehicle', {

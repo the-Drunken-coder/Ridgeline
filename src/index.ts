@@ -1,6 +1,6 @@
 export { createViewport, DEFAULT_BASEMAP, DEFAULT_ELEVATION } from './viewport';
 export { DEFAULT_ENTITY_MODELS } from './model-settings';
-export { DEFAULT_ENTITY_VISIBILITY } from './entities';
+export { DEFAULT_ENTITY_VISIBILITY } from './entity-defaults';
 export { DEFAULT_HILLSHADE } from './hillshade';
 export { attachInteractions } from './interactions';
 export { RidgelineError } from './errors';

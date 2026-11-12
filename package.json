@@ -8,6 +8,7 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": { "types": "./dist/index.d.ts", "import": "./dist/ridgeline.js" },
+    "./entities": { "types": "./dist/attach-entities.d.ts", "import": "./dist/entities.js" },
     "./style.css": "./dist/ridgeline.css"
   },
   "sideEffects": ["**/*.css"],

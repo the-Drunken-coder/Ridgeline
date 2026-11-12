@@ -1,5 +1,5 @@
-import { createViewport } from '@ridgeline/map';
 import type { MapFeature } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import type { CustomRenderMethodInput } from 'maplibre-gl';
 import { style, point, check, pointer, pixelAt } from './helpers';
 import type { BrowserCaseModule, BrowserCaseRun } from './context';
@@ -7,7 +7,7 @@ import type { BrowserCaseModule, BrowserCaseRun } from './context';
 function meterScaleProjection(projection: "flat" | "globe"): BrowserCaseRun {
   return async caseContext => {
     const { own, container, until } = caseContext;
-    const air = own(createViewport({ container, basemap: style('#ffffff'), projection,
+    const air = own(createEntityViewport({ container, basemap: style('#ffffff'), projection,
       camera: { center: [6.87, 46], zoom: 18, pitch: 35, bearing: 23 },
       elevationSampler: { sample: () => 0 }, style: () => ({ color: '#ff0000', radius: 4 }), logger: () => {} }));
     await air.ready;
@@ -144,7 +144,7 @@ export const entityProjectionCases = {
   "Reliability entity meter-scale projection agrees with double precision in globe views": meterScaleProjection("globe"),
   "Reliability entity coherent attachments reject empty space across the opposite world seam": async caseContext => {
     const { own, container, until } = caseContext;
-    const air = own(createViewport({ container, basemap: style('#ffffff'), projection: 'flat',
+    const air = own(createEntityViewport({ container, basemap: style('#ffffff'), projection: 'flat',
       camera: { center: [179, 0], zoom: 0 }, elevationSampler: { sample: () => 0 },
       style: () => ({ color: '#0000ff', radius: 0 }), logger: () => {} }));
     await air.ready;

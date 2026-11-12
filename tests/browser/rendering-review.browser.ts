@@ -1,5 +1,6 @@
-import { createViewport, RidgelineError } from '@ridgeline/map';
+import { RidgelineError } from '@ridgeline/map';
 import type { MapFeature, Viewport } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import { captureMapPixels, pixelToCss, waitForVisible } from './browser-observation';
 import type { PixelImage } from './browser-observation';
 import { encodeGlb, solidGlb } from './model-fixtures';
@@ -9,7 +10,7 @@ function check(value: unknown, message: string): asserts value { if (!value) thr
 const airborne = (id = 'target'): MapFeature & { entity: NonNullable<MapFeature['entity']> } => ({ type: 'Feature', id, properties: {},
   geometry: { type: 'Point', coordinates: [0, 0] }, entity: { altitude: { reference: 'sea-level', meters: 100 } } });
 function create(context: Context, errors: RidgelineError[] = []) {
-  const viewport = context.own(createViewport({ container: context.container,
+  const viewport = context.own(createEntityViewport({ container: context.container,
     basemap: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
     camera: { center: [0, 0], zoom: 17, pitch: 0 }, elevationSampler: { sample: () => 0 },
     style: () => ({ color: '#00ff00', radius: 10 }), onError: error => errors.push(error), logger: () => {} }));

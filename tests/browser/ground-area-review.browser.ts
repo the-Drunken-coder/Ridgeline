@@ -1,5 +1,5 @@
-import { createViewport } from '@ridgeline/map';
 import type { MapFeature, RidgelineError, Viewport } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import { observeIdle } from './browser-idle';
 import { captureMapPixels, cssToPixel, waitForVisible } from './browser-observation';
 
@@ -32,7 +32,7 @@ export const groundAreaReviewCases = {
     const errors: RidgelineError[] = [], clicks: { entityId: string; attachmentId: string }[][] = [];
     let viewport: Viewport | undefined;
     try {
-      viewport = context.own(createViewport({ container: context.container,
+      viewport = context.own(createEntityViewport({ container: context.container,
         basemap: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
         camera: { center: [6, 46], zoom: 12, pitch: 0 }, terrain: false, hillshade: false,
         elevation: { tiles: [`${prefix}{z}/{x}/{y}.png`], encoding: 'terrarium', minzoom: 12, maxzoom: 12, tileSize: 256 },

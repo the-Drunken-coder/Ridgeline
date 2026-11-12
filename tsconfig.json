@@ -12,7 +12,7 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "types": ["node", "vite/client"],
-    "paths": { "@ridgeline/map": ["./src/index.ts"] }
+    "paths": { "@ridgeline/map/entities": ["./src/attach-entities.ts"], "@ridgeline/map": ["./src/index.ts"] }
   },
   "include": ["src", "playground", "tests", "examples/starter/*.ts", "vite*.ts"]
 }

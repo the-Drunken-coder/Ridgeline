@@ -1,10 +1,7 @@
-import { ModelMeasurement } from './model-measurement';
-import { ModelLabels } from './model-labels';
 import { dashExpression, featureStyle, fontExpression, nativeDefaults, nativeExpressions, nativeVisibility, resolveNativeAppearance, styleProperties } from './feature-style';
 import { NativeDisplayBook } from './native-presentation';
 import type { NativeRecord } from './native-presentation';
 import { rectangleBounds, screenRectangle } from './screen-rectangle';
-import { ModelVisibility } from './model-visibility';
 import { shapeGeometry } from './drawing-shapes';
 import { createArrowheads } from './arrowheads';
 import { Map as GLMap, GPUInitializationError } from 'maplibre-gl';
@@ -15,12 +12,12 @@ import { cloneSnapshot } from './snapshot';
 import { createFeaturePublication } from './feature-publication';
 import { FEATURE_SOURCE as SOURCE, mapLibreFeaturePublication, sourceFeatureId } from './maplibre-feature-publication';
 import { hillshadePaint, resolveHillshade } from './hillshade';
-import { ModelRegistry } from './models';
-import type { ModelGpu } from './model-renderer';
 import { DEFAULT_ENTITY_MODELS, modelSettings } from './model-settings';
-import { EntityScene, DEFAULT_ENTITY_VISIBILITY } from './entities';
+import { DEFAULT_ENTITY_VISIBILITY } from './entity-defaults';
+import { createDetachedEntityRuntime } from './entity-runtime';
+import type { EntityRuntime } from './entity-runtime';
 import { viewportAttachmentInternals } from './viewport-attachments';
-import type { ViewInvalidation } from './viewport-attachments';
+import type { EntityRuntimeInstaller, ViewInvalidation } from './viewport-attachments';
 import type { FeatureQuery, FeatureStyle, IconDefinition, Interaction, MapConfiguration, MapFeature, Properties, ScreenBounds, Viewport, ViewportEvents, ViewportOptions } from './types';
 
 const TERRAIN = 'rl:terrain';
@@ -72,7 +69,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     entityVisibility: { ...DEFAULT_ENTITY_VISIBILITY, ...options.entityVisibility },
     entityModels: { ...DEFAULT_ENTITY_MODELS, ...options.entityModels },
   };
+  let entityRuntime: EntityRuntime<P> = createDetachedEntityRuntime();
   function validateModels(feature: MapFeature<P>) {
+    entityRuntime.validateFeature(feature);
     if (feature.entity?.model) modelSettings(configuration.entityModels, feature.entity.model);
   }
   const listeners: { [K in keyof ViewportEvents<P>]: Set<(value: ViewportEvents<P>[K]) => void> } = {
@@ -166,46 +165,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     map._render = nativeRender; map._cleanupContainer = cleanupContainer;
     return decorationFailure ?? nativeFailure;
   }
-  const modelVisibility = new ModelVisibility(map);
-  const modelLabels = new ModelLabels(map, ids => publication.update(ids.flatMap(id => { const feature = store.get(id); return feature ? [feature] : []; })));
   let nativeSource: unknown;
   let availableMarkers = new Map<string, string>();
   let frameMarkers: Map<string, string> | undefined;
-  const measurement = new ModelMeasurement(map.getCanvas());
-  const models = new ModelRegistry<ModelGpu>({ measurement, diagnostic, changed: id => entities.modelsChanged(id) });
-  const entities = new EntityScene<P>({ measurement, models, map, publishCameraStyle, configuration: () => configuration, style: getStyle, sampler: options.elevationSampler, diagnostic,
-    contextLost: () => {
-      contextLost = true; prepared = false; sceneGeneration++; interactionRevision++;
-      publication.retire(); modelVisibility.invalidate(); modelLabels.invalidate();
-      invalidateView({ kind: 'context-lost' });
-      scheduleHover();
-    },
-    contextRestored: () => { contextLost = false; },
-    beginNativeFrame: () => { frameMarkers = undefined; },
-    nativeAvailable: (feature, style) => {
-      const source = map.getSource(SOURCE);
-      if (!source) return false;
-      if (source !== nativeSource) { nativeSource = source; availableMarkers.clear(); }
-      const key = markerKey(feature, style);
-      if (availableMarkers.get(feature.id) === key) return true;
-      if (native.get(feature.id)?.markerKey === key && map.isSourceLoaded(SOURCE)) {
-        availableMarkers.set(feature.id, key); return true;
-      }
-      frameMarkers ??= new Map(map.querySourceFeatures(SOURCE).flatMap(item =>
-        typeof item.properties?._rl_feature_id === 'string' && typeof item.properties?._rl_marker === 'string'
-          ? [[item.properties._rl_feature_id, item.properties._rl_marker] as [string, string]] : []));
-      if (frameMarkers.get(feature.id) === key) { availableMarkers.set(feature.id, key); return true; }
-      return false;
-    },
-    commitPresentation: (records, current) => modelLabels.commit(records, current),
-    commitVisibility: (hidden, current) => modelVisibility.commit(hidden, current),
-    representationChanged: ids => { if (!destroyed) emit('entitychange', { ids }); },
-    changed: ids => {
-      publication.update(ids.flatMap(id => { const feature = store.get(id); return feature ? [feature] : []; }));
-      for (const id of ids) { if (destroyed) return; synchronizeState(id); }
-      if (!destroyed) emit('entitychange', { ids });
-    },
-  });
   const arrowheads = createArrowheads(map, 'rl:arrows', 'rl:arrowheads');
   const publication = createFeaturePublication({ store, target: mapLibreFeaturePublication(map), render: rendered, sourceId: sourceFeatureId, diagnostic,
     published: (id, record) => {
@@ -216,12 +178,11 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     },
     restored: records => native.replace(records),
   });
-  entities.set(store.all());
   const timer = setTimeout(() => {
     if (!readySettled) failReady(new RidgelineError('INITIALIZATION_TIMEOUT', 'The initial map style did not become ready in time.', { operation: 'initialize', recoverable: false }));
   }, options.initializationTimeoutMs ?? 20_000);
   function failReady(error: RidgelineError) {
-    if (!readySettled) { readySettled = true; clearTimeout(timer); rejectReady(error); models.readinessFailed(error); }
+    if (!readySettled) { readySettled = true; clearTimeout(timer); rejectReady(error); entityRuntime.readinessFailed(error); }
     diagnostic(error);
   }
   function getName(feature: MapFeature<P>) {
@@ -262,7 +223,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     });
   }
   function markerKey(feature: MapFeature<P>, style: FeatureStyle) {
-    const marker = entities.marker(feature);
+    const marker = entityRuntime.marker(feature);
     return JSON.stringify([marker.position ?? feature.geometry.coordinates, marker.visible, marker.ground, marker.offset,
       style.icon && icons.has(style.icon) ? style.icon : '', style.color ?? nativeDefaults.color, style.radius ?? nativeDefaults.radius,
       style.iconSize ?? nativeDefaults.iconSize, style.iconRotation ?? nativeDefaults.iconRotation,
@@ -274,7 +235,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     // Publication owns replacement/removal checks for this ID. Unrelated data
     // or selection changes do not invalidate its successfully prepared style.
     if (destroyed || generation !== sceneGeneration) throw new Error('Feature presentation was superseded during styling.');
-    const marker = entities.marker(feature), key = feature.entity ? markerKey(feature, style) : undefined;
+    const marker = entityRuntime.marker(feature), key = feature.entity ? markerKey(feature, style) : undefined;
     const record: NativeRecord<P> = { feature, style, markerKey: key };
     native.stage(record); refreshStyleArrays();
     return { record, source: {
@@ -282,7 +243,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       geometry: feature.drawing ? shapeGeometry(feature.drawing.shape, true)
         : marker.position ? { type: 'Point', coordinates: marker.position } : feature.geometry,
       properties: {
-        ...modelLabels.properties(feature.id, style.labelStyle),
+        ...entityRuntime.labelProperties(feature.id, style.labelStyle),
         ...styleProperties(style),
         _rl_id: sourceFeatureId(feature.id), _rl_feature_id: feature.id, ...(key ? { _rl_marker: key } : {}),
         _rl_icon: style.icon && icons.has(style.icon) ? `rl:icon:${style.icon}` : '',
@@ -414,12 +375,12 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (!current()) return;
       applyElevation();
       if (!current()) return;
-      entities.attach();
+      entityRuntime.attach();
       if (!current()) return;
       detachedEntityLayers.clear();
       // Fallbacks draw after models, so a detected model draw failure can expose them in this frame.
       for (const id of ['rl:points', 'rl:icons', 'rl:map-icons', 'rl:labels']) map.moveLayer(id);
-      modelVisibility.invalidate(); modelLabels.invalidate();
+      entityRuntime.invalidatePresentation();
       if (!current()) return;
       for (const id of selected) synchronizeState(id);
       if (previewId) synchronizeState(previewId);
@@ -439,8 +400,8 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
   function displayedNativeId(hit: ReturnType<typeof map.queryRenderedFeatures>[number]) {
     const id = hit.properties?._rl_feature_id;
     if (typeof id !== 'string' || id === editingId || hit.properties?._rl_hidden === true) return undefined;
-    if (hit.layer.id === 'rl:labels' && !modelLabels.acceptsHit(id, hit.properties?._rl_label_stamp)) return undefined;
-    const representation = entities.getState(id)?.representation;
+    if (hit.layer.id === 'rl:labels' && !entityRuntime.acceptsLabelHit(id, hit.properties?._rl_label_stamp)) return undefined;
+    const representation = entityRuntime.getState(id)?.representation;
     if ((hit.layer.id === 'rl:points' || hit.layer.id === 'rl:icons' || hit.layer.id === 'rl:map-icons') && (representation === 'model' || representation === 'withheld')) return undefined;
     const visible = nativeVisibility(native.get(id)?.style, selected.has(id), previewId === id);
     if ((hit.layer.id === 'rl:icons' || hit.layer.id === 'rl:map-icons') && !visible.icon
@@ -455,7 +416,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       const hits = map.queryRenderedFeatures([[x - tolerance, y - tolerance], [x + tolerance, y + tolerance]], { layers: layerIds.filter(id => map.getLayer(id)) });
       const seen = new Set<string>();
       const seenAttachments = new Set<string>();
-      const addEntityHits = (hits: ReturnType<typeof entities.pickAbove>) => { for (const hit of hits) {
+      const addEntityHits = (hits: ReturnType<EntityRuntime<P>['pickAbove']>) => { for (const hit of hits) {
         const feature = store.get(hit.entityId);
         if (!feature) continue;
         if (!seen.has(feature.id)) { seen.add(feature.id); features.push(feature); }
@@ -472,9 +433,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       } };
       const overlay = (id: string) => id === 'rl:labels' || id === 'rl:icons' || id === 'rl:map-icons' || id === 'rl:points';
       addNativeHits(hits.filter(hit => overlay(hit.layer.id)));
-      addEntityHits(entities.pickAbove(x, y, tolerance));
+      addEntityHits(entityRuntime.pickAbove(x, y, tolerance));
       addNativeHits(hits.filter(hit => !overlay(hit.layer.id)));
-      addEntityHits(entities.pickGround(x, y, tolerance));
+      addEntityHits(entityRuntime.pickGround(x, y, tolerance));
     }
     return { features, attachments, point: { x: event.point.x, y: event.point.y }, lngLat: { lng: event.lngLat.lng, lat: event.lngLat.lat }, originalEvent: event.originalEvent };
   }
@@ -494,7 +455,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (id === undefined || ids.has(id)) continue;
       ids.add(id);
     }
-    for (const hit of entities.query(rectangle)) {
+    for (const hit of entityRuntime.query(rectangle)) {
       ids.add(hit.entityId);
       if ('attachmentId' in hit && typeof hit.attachmentId === 'string') {
         let values = attachmentIds.get(hit.entityId);
@@ -511,7 +472,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     return { features, attachments };
   }
   function onError(event: GLErrorEvent) {
-    if (contextLost && event.error instanceof GPUInitializationError) models.readinessFailed(new RidgelineError('MODEL_RENDERER_FAILED', 'The restored map could not create its rendering context.',
+    if (contextLost && event.error instanceof GPUInitializationError) entityRuntime.readinessFailed(new RidgelineError('MODEL_RENDERER_FAILED', 'The restored map could not create its rendering context.',
       { operation: 'restoreModel', recoverable: true }, event.error));
     const sourceId = 'sourceId' in event && typeof event.sourceId === 'string' ? event.sourceId : undefined;
     const elevation = sourceId === TERRAIN || sourceId === SHADE;
@@ -543,7 +504,14 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     }
   };
   contextCanvas.addEventListener('webglcontextlost', retireLostTerrain, true);
-  map.on('webglcontextlost', () => entities.contextLost());
+  function onContextLost() {
+    if (destroyed || contextLost) return;
+    contextLost = true; prepared = false; sceneGeneration++; interactionRevision++;
+    publication.retire(); entityRuntime.invalidatePresentation();
+    invalidateView({ kind: 'context-lost' });
+    scheduleHover();
+  }
+  map.on('webglcontextlost', () => { onContextLost(); entityRuntime.contextLost(); });
   map.on('webglcontextrestored', () => {
     if (destroyed) return;
     contextLost = false;
@@ -629,9 +597,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       assertActive();
       try {
         const changed = store.upsert(features, validateModels);
-        measurement.accepted(changed.length);
+        entityRuntime.accepted(changed.length);
         interactionRevision++;
-        entities.set(changed);
+        entityRuntime.set(changed);
         if (destroyed) return;
         const current = changed.flatMap(feature => { const latest = store.get(feature.id); return latest ? [latest] : []; });
         publication.update(current);
@@ -643,14 +611,14 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     },
     remove(ids) {
       assertActive(); const accepted = store.remove(ids); interactionRevision++;
-      entities.set([], accepted);
+      entityRuntime.set([], accepted);
       if (destroyed) return;
       const removed = accepted.filter(id => !store.has(id));
       publication.update([], removed);
       for (const id of removed) { selected.delete(id); if (editingId === id) editingId = null; if (previewId === id) previewId = null; if (prepared) map.removeFeatureState({ source: SOURCE, id: sourceFeatureId(id) }); }
-      if (removed.length) { modelVisibility.invalidate(); modelLabels.invalidate(); }
+      if (removed.length) entityRuntime.invalidatePresentation();
       for (const id of removed) { availableMarkers.delete(id); native.withdrawMarker(id); }
-      if (removed.length) entities.selection([...selected]);
+      if (removed.length) entityRuntime.selection([...selected]);
       if (removed.length) refreshLabelPriority();
       emit('datachange', { ids: [], removed });
       if (removed.includes(hovered)) refreshHover();
@@ -658,13 +626,13 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     clear() { viewport.remove(store.ids()); },
     retryUpdates() {
       assertActive();
-      entities.retry();
+      entityRuntime.retry();
       publication.retry();
     },
     refreshStyles(ids = store.ids()) {
       assertActive();
       const features = [...new Set(ids)].flatMap(id => { const feature = store.get(id); return feature ? [feature] : []; });
-      entities.set(features);
+      entityRuntime.set(features);
       if (destroyed) return;
       // Style callbacks may replace data while entity preparation is running.
       // Native publication must use the latest accepted inputs for each ID.
@@ -680,10 +648,10 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
         diagnostic(error); throw error;
       }
     },
-    getEntityState: id => entities.getState(id), getName, getStyle,
+    getEntityState: id => entityRuntime.getState(id), getName, getStyle,
     getIcon: id => icons.get(id),
-    registerModel(id, definition) { assertActive(); return models.register(id, definition); },
-    unregisterModel(id) { assertActive(); models.unregister(id); },
+    registerModel(id, definition) { assertActive(); return entityRuntime.registerModel(id, definition); },
+    unregisterModel(id) { assertActive(); entityRuntime.unregisterModel(id); },
     registerIcon(id, definition) {
       assertActive();
       if (!id.trim()) throw new RidgelineError('ICON_FAILED', 'An icon needs a nonempty ID.', { operation: 'registerIcon', recoverable: true });
@@ -710,7 +678,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     },
     setSelection(ids) {
       assertActive(); const previous = selected; selected = new Set(ids.filter(id => store.has(id)));
-      entities.selection([...selected]);
+      entityRuntime.selection([...selected]);
       if (previous.size !== selected.size || [...previous].some(id => !selected.has(id))) refreshLabelPriority();
       for (const id of new Set([...previous, ...selected])) synchronizeState(id);
       if ([...previous, ...selected].some(isPublishedArrow)) syncArrows();
@@ -720,7 +688,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
     preview(id) {
       if (destroyed) return;
       const previous = previewId; previewId = id && store.has(id) ? id : null;
-      entities.preview(previewId);
+      entityRuntime.preview(previewId);
       if (previous) synchronizeState(previous); if (previewId) synchronizeState(previewId);
       if (isPublishedArrow(previous ?? '') || isPublishedArrow(previewId ?? '')) syncArrows();
     },
@@ -772,9 +740,9 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
           // Its observers can replace configuration or destroy the viewport.
           if (!contextLost && map.style?._loaded && map.getTerrain()) map.setTerrain(null);
           if (!destroyed && generation === sceneGeneration && !contextLost && !contextCanvas.getContext('webgl2')?.isContextLost()) {
-            for (const id of ['rl:camera-gpu', 'rl:entities', 'rl:models', 'rl:model-feedback']) {
-              const layer = map.getLayer(id);
-              if (layer) detachedEntityLayers.set(id, layer);
+            for (const layer of entityRuntime.collectCustomLayers(map)) {
+              const id = layer && typeof layer === 'object' && 'id' in layer ? String(layer.id) : '';
+              if (id) detachedEntityLayers.set(id, layer as NonNullable<ReturnType<GLMap['getLayer']>>);
             }
             restoreBasemap = false;
             map.setStyle(structuredClone(configuration.basemap), { diff: false });
@@ -793,7 +761,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
           // Native style observers and preparation abort listeners can reenter.
           // Consume the required reset before callbacks, using current settings.
           const resetElevation = pendingElevationReset; pendingElevationReset = false;
-          entities.configure(resetElevation);
+          entityRuntime.configure(resetElevation);
         }
         if (!destroyed && configuration === configuredScene)
           emit('configurationchange', structuredClone(configuration), () => !destroyed && configuration === configuredScene);
@@ -822,10 +790,7 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       clearTimeout(timer);
       retire('destroy.resize', () => resize.disconnect());
       retire('destroy.context', () => contextCanvas.removeEventListener('webglcontextlost', retireLostTerrain, true));
-      retire('destroy.entities', () => entities.destroy());
-      retire('destroy.models', () => models.destroy());
-      retire('destroy.labels', () => modelLabels.destroy());
-      retire('destroy.measurement', () => measurement.destroy());
+      retire('destroy.entities', () => entityRuntime.destroy());
       preparedListeners.clear(); viewListeners.clear(); viewportAttachmentInternals.delete(map);
       map.getCanvas().removeEventListener('mouseleave', onLeave);
       if (nativeRenderDepth) removeAfterRender = true;
@@ -863,6 +828,49 @@ export function createViewport<P extends Properties = Properties>(options: Viewp
       if (destroyed) return () => {};
       viewListeners.add(listener);
       return () => { viewListeners.delete(listener); };
+    },
+    installEntities(install: EntityRuntimeInstaller) {
+      assertActive();
+      if (entityRuntime.attached) throw new Error('Entities are already attached to this viewport.');
+      entityRuntime = install({
+        map,
+        publishCameraStyle,
+        configuration: () => configuration,
+        getStyle,
+        sampler: options.elevationSampler,
+        diagnostic,
+        isDestroyed: () => destroyed,
+        beginNativeFrame: () => { frameMarkers = undefined; },
+        nativeAvailable: (feature, style) => {
+          const source = map.getSource(SOURCE);
+          if (!source) return false;
+          if (source !== nativeSource) { nativeSource = source; availableMarkers.clear(); }
+          const key = markerKey(feature, style);
+          if (availableMarkers.get(feature.id) === key) return true;
+          if (native.get(feature.id)?.markerKey === key && map.isSourceLoaded(SOURCE)) {
+            availableMarkers.set(feature.id, key); return true;
+          }
+          frameMarkers ??= new Map(map.querySourceFeatures(SOURCE).flatMap(item =>
+            typeof item.properties?._rl_feature_id === 'string' && typeof item.properties?._rl_marker === 'string'
+              ? [[item.properties._rl_feature_id, item.properties._rl_marker] as [string, string]] : []));
+          if (frameMarkers.get(feature.id) === key) { availableMarkers.set(feature.id, key); return true; }
+          return false;
+        },
+        onContextLost,
+        onContextRestored() { contextLost = false; },
+        emitEntityChange(ids) { if (!destroyed) emit('entitychange', { ids }); },
+        synchronizeState,
+        featuresFor: ids => ids.flatMap(id => { const feature = store.get(id); return feature ? [feature] : []; }),
+        updatePublication: features => publication.update(features),
+      });
+      entityRuntime.set(store.all());
+      entityRuntime.selection([...selected]);
+      entityRuntime.preview(previewId);
+      if (prepared && !destroyed && !contextLost) {
+        entityRuntime.attach();
+        for (const id of ['rl:points', 'rl:icons', 'rl:map-icons', 'rl:labels']) if (map.getLayer(id)) map.moveLayer(id);
+        entityRuntime.invalidatePresentation();
+      }
     },
   });
   return viewport;

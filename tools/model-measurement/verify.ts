@@ -1,4 +1,5 @@
 import { createViewport } from '@ridgeline/map';
+import { attachEntities } from '@ridgeline/map/entities';
 import type { MapFeature, Viewport } from '@ridgeline/map';
 import type { GeoJSONSource } from 'maplibre-gl';
 import { observeModels } from './observer';
@@ -17,10 +18,12 @@ export async function verify() {
   const features: MapFeature[] = [-.00015,.00015].map((longitude,index) => ({ type:'Feature',id:`model-${index}`,properties:{},
     geometry:{type:'Point',coordinates:[longitude,0]},entity:{heading:0,model:{id:'drone',minimumSizePixels:40}} }));
   const probe: MapFeature = { type:'Feature',id:'native-probe',properties:{},geometry:{type:'Point',coordinates:[0,.0005]},entity:{} };
-  const viewport = createViewport({container,features:[...features,probe],projection:'flat',camera:{center:[0,0],zoom:17,pitch:35},
+  const viewport = createViewport({container,projection:'flat',camera:{center:[0,0],zoom:17,pitch:35},
     basemap:{version:8,sources:{},layers:[{id:'background',type:'background',paint:{'background-color':'white'}}]},
     style:()=>({icon:'probe',radius:0}), elevationSampler:{sample:()=>0},entityModels:{switchDistanceMeters:1e8,deadZoneMeters:0,minimumSizePixels:40},logger:()=>{}});
   try {
+    attachEntities(viewport);
+    viewport.upsert([...features,probe]);
     await viewport.ready;
     viewport.registerIcon('probe',{image:new ImageData(new Uint8ClampedArray(8*8*4).fill(255),8,8)});
     const bytes = await fetch('/assets/drone.glb').then(response => response.arrayBuffer());

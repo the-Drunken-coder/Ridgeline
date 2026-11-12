@@ -1,12 +1,78 @@
-import { createViewport, attachInteractions, RidgelineError } from '@ridgeline/map';
+import { attachInteractions, createViewport, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
-import type { ImageSource } from 'maplibre-gl';
-import { style, point, check, pointer, browserKey, untilPixel } from './helpers';
+import { createEntityViewport } from './entity-viewport';
+import { attachEntities } from '@ridgeline/map/entities';
+import { materialGlb } from './model-material-fixtures';
+import { solidGlb } from './model-fixtures';
+import type { CustomLayerInterface, ImageSource } from 'maplibre-gl';
+import { style, point, check, pointer, browserKey, untilPixel, pixelAt } from './helpers';
 import { withBaseViewport } from './base-viewport';
 import type { BrowserCaseModule } from './context';
 
 
 export const viewportLifecycleCases = {
+  "Entity attachment preserves feedback and detached promise handling": async context => {
+    const diagnostics: string[] = [];
+    const viewport = context.own(createViewport({ container: context.container, basemap: style('#ffffff'),
+      camera: { center: [0, 0], zoom: 18 }, entityModels: { switchDistanceMeters: 1e8, deadZoneMeters: 0, minimumSizePixels: 40 }, features: [point('instance')], elevationSampler: { sample: () => 0 }, logger: () => {}, onError: error => diagnostics.push(String(error) + ': ' + String(error.cause)) }));
+    try {
+      const rejected = await viewport.registerModel('body', { bytes: solidGlb() }).catch(error => error);
+      check(rejected instanceof Error && rejected.message.includes('attachEntities'), 'Detached registration did not reject asynchronously');
+      viewport.setSelection(['instance']); viewport.preview('instance');
+      attachEntities(viewport);
+      viewport.upsert([{ ...point('instance'), entity: { heading: 0, altitude: { meters: 20, reference: 'ground' }, model: { id: 'body' } } }]);
+      await viewport.ready;
+      await viewport.registerModel('body', { bytes: materialGlb([{ unlit: true, baseColor: [.1, .3, .5, 1] }]), metersPerUnit: 10 });
+      try { await context.until(() => viewport.getEntityState('instance')?.representation === 'model', 'attached model frame'); }
+      catch (cause) { throw new Error(JSON.stringify({ state: viewport.getEntityState('instance'), diagnostics }), { cause }); }
+      const brightness = async () => {
+        const pixel = await pixelAt(viewport, [0, 0], 8000, 'attached model feedback');
+        return pixel.red + pixel.green + pixel.blue;
+      };
+      const selected = await brightness();
+      viewport.setSelection([]); const hovered = await brightness();
+      viewport.preview(null); const baseline = await brightness();
+      check(selected > hovered + 10 && hovered > baseline + 15, `Attachment lost selection or preview feedback: ${selected}/${hovered}/${baseline}`);
+    } finally { viewport.destroy(); }
+  },
+  "Entity teardown retires pending registrations after a cleanup failure": async context => {
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap: style(),
+      camera: { center: [0, 0], zoom: 18 }, elevationSampler: { sample: () => 0 }, logger: () => {},
+      features: [{ ...point('volume'), entity: { altitude: { meters: 20, reference: 'ground' }, attachments: [{ id: 'sphere', type: 'sphere', radius: 10 }] } }] }));
+    const captured: { layer?: CustomLayerInterface } = {};
+    const addLayer = viewport.map.addLayer;
+    viewport.map.addLayer = function(layer, ...args) {
+      if (layer.type === 'custom' && layer.id === 'rl:entities') captured.layer = layer;
+      return addLayer.call(this, layer, ...args);
+    };
+    await viewport.ready;
+    viewport.map.addLayer = addLayer;
+    await context.until(() => viewport.getEntityState('volume')?.placement === 'airborne', 'allocated entity renderer');
+    const implementation = captured.layer;
+    if (!implementation) throw new Error('Entity layer unavailable');
+    const remove = implementation.onRemove;
+    const failure = new Error('Entity layer cleanup failed');
+    let injected = false;
+    implementation.onRemove = function(map, gl) {
+      if (!injected) { injected = true; throw failure; }
+      remove?.call(this, map, gl);
+    };
+    const pending = viewport.registerModel('pending', { bytes: solidGlb() }).then(() => 'installed', error => error instanceof RidgelineError ? error.code : String(error));
+    let observed: unknown;
+    try { viewport.destroy(); } catch (cause) { observed = cause; }
+    finally { implementation.onRemove = remove; }
+    check(injected && observed instanceof RidgelineError && observed.cause === failure, 'Entity cleanup failure was not exercised and preserved');
+    const outcome = await Promise.race([pending, new Promise<string>(resolve => setTimeout(() => resolve('pending'), 1000))]);
+    check(outcome === 'MODEL_LOAD_CANCELLED', `Model registration survived failed entity cleanup: ${outcome}`);
+    check(!context.container.querySelector('canvas'), 'Failed teardown retained the viewport canvas');
+  },
+  "Entity helper releases invalid initial feature setup": async context => {
+    let rejected = false;
+    try { createEntityViewport({ container: context.container, basemap: style(), logger: () => {},
+      features: [{ ...point('invalid'), geometry: { type: 'Point', coordinates: [NaN, 0] } }] }); }
+    catch (cause) { rejected = cause instanceof RidgelineError && cause.code === 'INVALID_FEATURE'; }
+    check(rejected && !context.container.querySelector('canvas'), 'Invalid helper setup failed to release its renderer');
+  },
   "Preparation failures preserve construction and update publication and release the viewport": async caseContext => {
     const { own, container, until } = caseContext;
     for (const immediate of [true, false]) {
@@ -14,7 +80,7 @@ export const viewportLifecycleCases = {
       const feature = (id: string, lng: number): MapFeature => ({ ...point(id, lng), entity: {
         altitude: { meters: 100, reference: 'sea-level' }, attachments: [{ id: 'body', type: 'sphere', radius: 20 }],
       } });
-      const air = own(createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 },
+      const air = own(createEntityViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 },
         features: [feature('initial-preparation', 0)], logger: () => {}, onError: error => errors.push(error),
         elevationSampler: { sample: () => null, prepare: () => {
           if (immediate) throw new Error('Immediate preparation failure');
@@ -42,7 +108,7 @@ export const viewportLifecycleCases = {
   "Removing an entity from preparation leaves accepted data and rendered output absent": async caseContext => {
     const { own, container, until } = caseContext;
     let removeDuringPreparation = false;
-    const air = own(createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, logger: () => {},
+    const air = own(createEntityViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, logger: () => {},
       elevationSampler: { sample: () => null, prepare: async () => {
         if (removeDuringPreparation) { removeDuringPreparation = false; air.remove(['removed-in-preparation']); }
       } } }));
@@ -64,7 +130,7 @@ export const viewportLifecycleCases = {
   "Removing an entity during elevation sampling clears its displayed camera": async caseContext => {
     const { own, container, until } = caseContext;
     let armed = false, removed = false;
-    const air = own(createViewport({ container, basemap: style(), camera: { center: [0, .0008], zoom: 16 }, logger: () => {},
+    const air = own(createEntityViewport({ container, basemap: style(), camera: { center: [0, .0008], zoom: 16 }, logger: () => {},
       elevationSampler: { sample: () => {
         if (armed && !removed) { removed = true; air.remove(['sampled-camera']); }
         return 0;
@@ -92,7 +158,7 @@ export const viewportLifecycleCases = {
   "Destroying from a restoration diagnostic stops callbacks and resource creation": async caseContext => {
     const { own, container, until } = caseContext;
     let restoring = false, destroyed = false, callbacksAfterDestroy = 0, resourcesAfterDestroy = 0;
-    const air = own(createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, features: [point('broken-restore'), point('later-restore')],
+    const air = own(createEntityViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 }, features: [point('broken-restore'), point('later-restore')],
       logger: () => {}, style: feature => {
         if (destroyed) callbacksAfterDestroy++;
         if (restoring && feature.id === 'broken-restore') throw new Error('Restoration style failure');
@@ -119,7 +185,7 @@ export const viewportLifecycleCases = {
   "Unrelated terrain failure preserves the displayed mask of a pending replacement": async caseContext => {
     const { own, container, until } = caseContext;
     let pending = false, finish: (() => void) | undefined;
-    const air = own(createViewport({ container, basemap: style(), camera: { center: [.02, 0], zoom: 16 }, logger: () => {},
+    const air = own(createEntityViewport({ container, basemap: style(), camera: { center: [.02, 0], zoom: 16 }, logger: () => {},
       elevationSampler: {
         sample: (lng, lat) => !pending || (Math.abs(lat) < 1e-8 && (Math.abs(lng) < 1e-8 || Math.abs(lng - .04) < 1e-8)) ? 0 : null,
         prepare: positions => {
@@ -159,7 +225,7 @@ export const viewportLifecycleCases = {
   },
   "Destroy during initialization, repeat destroy, then remount": async caseContext => {
     const { own, container } = caseContext;
-    const abandoned = own(createViewport({ container, basemap: style() }));
+    const abandoned = own(createEntityViewport({ container, basemap: style() }));
     abandoned.on('destroy', () => abandoned.destroy());
     attachInteractions(abandoned);
     abandoned.destroy(); abandoned.destroy();
@@ -191,7 +257,7 @@ export const viewportLifecycleCases = {
     let available = false;
     let destroyed = false;
     let lateErrors = 0;
-    const abandoned = own(createViewport({ container, basemap: style(), logger: () => {},
+    const abandoned = own(createEntityViewport({ container, basemap: style(), logger: () => {},
       onError: () => { if (destroyed) lateErrors++; },
       elevationSampler: {
         sample: () => available ? 12 : null,
@@ -213,7 +279,7 @@ export const viewportLifecycleCases = {
       check(preparationSignal?.aborted, 'Destroy did not cancel terrain preparation');
       check(!container.querySelector('canvas,.rl-ui'), 'Old viewport retained DOM');
 
-      replacement = own(createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 8 },
+      replacement = own(createEntityViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 8 },
         features: [{ ...point('shared-id'), properties: { name: 'Replacement' } }],
       }));
 

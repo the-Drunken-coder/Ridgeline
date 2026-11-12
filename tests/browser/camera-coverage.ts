@@ -1,5 +1,6 @@
-import { createViewport, RidgelineError } from '@ridgeline/map';
+import { RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import { GeoJSONSource } from 'maplibre-gl';
 import type { ImageSource } from 'maplibre-gl';
 import { style, point, check, pointer, untilPixel, pixelAt } from './helpers';
@@ -25,7 +26,7 @@ async function recoverPartialReattachment({ own, container, until }: BrowserCase
   const owners = ['rl:camera-gpu', 'rl:entities', 'rl:models', 'rl:model-feedback'];
   const errors: RidgelineError[] = [];
   let armed = false, failedAllocations = 0, attachedAtFailure: string[] = [], expectedFailure: RidgelineError | undefined;
-  const air = own(createViewport({ container, basemap: style(), terrain: true,
+  const air = own(createEntityViewport({ container, basemap: style(), terrain: true,
     elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 0, greenFactor: 0, blueFactor: 0, baseShift: 0, maxzoom: 0 },
     camera: { center: [0, 0], zoom: 16 }, elevationSampler: { sample: () => 0 },
     style: feature => ({ color: '#00ffff', radius: 10,
@@ -127,7 +128,7 @@ async function recoverPartialReattachment({ own, container, until }: BrowserCase
 
 async function recoverCompletionLoss({ own, container, until }: BrowserCaseContext) {
   const errors: RidgelineError[] = [];
-  const air = own(createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 },
+  const air = own(createEntityViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 },
     elevationSampler: { sample: () => 0 }, logger: () => {}, onError: error => errors.push(error) }));
   await air.ready;
   const gl = air.map.getCanvas().getContext('webgl2'), extension = gl?.getExtension('WEBGL_lose_context');
@@ -211,7 +212,7 @@ async function recoverPendingBasemap({ own, container, until }: BrowserCaseConte
   const dem = document.createElement('canvas'); dem.width = dem.height = 256;
   dem.getContext('2d')!.fillRect(0, 0, 256, 256);
   const errors: RidgelineError[] = [];
-  const air = own(createViewport({ container, basemap: style(), terrain: true,
+  const air = own(createEntityViewport({ container, basemap: style(), terrain: true,
     elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 0, greenFactor: 0, blueFactor: 0, baseShift: 0, maxzoom: 0 },
     camera: { center: [0, 0], zoom: 16 }, elevationSampler: { sample: () => 0 },
     style: () => ({ color: '#00ffff', radius: 10, selected: { enabled: false } }),
@@ -306,7 +307,7 @@ export const cameraCoverageCases = {
     const { own, container, until } = caseContext;
     const meters = Math.PI / 180 * 6371008.8;
     const hill = (_lng: number, lat: number) => 150 * Math.exp(-(((lat * meters - 300) / 40) ** 2));
-    const air = own(createViewport({ container, basemap: style('#000000'),
+    const air = own(createEntityViewport({ container, basemap: style('#000000'),
       elevationSampler: { sample: hill }, camera: { center: [0, 480 / meters], zoom: 15, pitch: 0 },
       entityVisibility: { footprints: true, zones: false, groundLines: false }, logger: () => {} }));
     await air.ready;
@@ -345,7 +346,7 @@ export const cameraCoverageCases = {
     const { own, container, until } = caseContext;
     const meters = Math.PI / 180 * 6371008.8;
     const hill = (_lng: number, lat: number) => 100 * Math.exp(-(((lat * meters - 120) / 60) ** 2));
-    const air = own(createViewport({container, basemap: style('#000000'), elevationSampler: {sample: hill},
+    const air = own(createEntityViewport({container, basemap: style('#000000'), elevationSampler: {sample: hill},
       camera: {center: [0,80/meters], zoom:18, pitch:0}, logger:()=>{}}));
     await air.ready;
     air.upsert([{...point('near-hill'),entity:{altitude:{meters:100,reference:'sea-level'},attachments:[{
@@ -369,7 +370,7 @@ export const cameraCoverageCases = {
     const { own, container, until } = caseContext;
     const dem=document.createElement('canvas');dem.width=dem.height=256;
     const context=dem.getContext('2d')!;context.fillStyle='#000000';context.fillRect(0,0,256,256);
-    const air=own(createViewport({container,basemap:style(),elevation:{tiles:[dem.toDataURL()],encoding:'custom',redFactor:0,greenFactor:0,blueFactor:0,baseShift:0,maxzoom:12},logger:()=>{}}));
+    const air=own(createEntityViewport({container,basemap:style(),elevation:{tiles:[dem.toDataURL()],encoding:'custom',redFactor:0,greenFactor:0,blueFactor:0,baseShift:0,maxzoom:12},logger:()=>{}}));
     await air.ready;
     air.upsert([{...point('outside'),geometry:{type:'Point',coordinates:[0,86]},entity:{}}]);
     await until(()=>air.getEntityState('outside')?.coverage==='unavailable','out-of-range terrain');
@@ -385,7 +386,7 @@ export const cameraCoverageCases = {
   "A displayed camera failure removes only its coverage and retry uses current inputs": async caseContext => {
     const { own, container, until } = caseContext;
     const errors: RidgelineError[] = [];
-    const air = own(createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 }, elevationSampler: { sample: () => 0 },
+    const air = own(createEntityViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 }, elevationSampler: { sample: () => 0 },
       logger: () => {}, onError: error => errors.push(error) }));
     await air.ready;
     air.upsert([{ ...point('ground-survivor'), entity: { attachments: [{ id: 'zone', type: 'circle', radius: 50 }] } }]);
@@ -439,7 +440,7 @@ export const cameraCoverageCases = {
   "Failed GPU target allocation releases its resources and retries": async caseContext => {
     const { own, container, until } = caseContext;
     const errors: RidgelineError[] = [];
-    const air = own(createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 },
+    const air = own(createEntityViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 },
       logger: () => {}, onError: error => errors.push(error) }));
     await air.ready;
     air.upsert([{...point('plain-zone'),entity:{attachments:[{id:'zone',type:'circle',radius:50}]}}]);
@@ -475,7 +476,7 @@ export const cameraCoverageCases = {
   "A null GPU synchronization result reports failure and recovers on retry": async caseContext => {
     const { own, container, until } = caseContext;
     const errors: RidgelineError[] = [];
-    const air = own(createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 },
+    const air = own(createEntityViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 },
       logger: () => {}, onError: error => errors.push(error) }));
     await air.ready;
     const gl = air.map.getCanvas().getContext('webgl2')!;
@@ -501,7 +502,7 @@ export const cameraCoverageCases = {
   },
   "Coverage readiness follows every camera, pose changes, and ground placement": async caseContext => {
     const { own, container, until } = caseContext;
-    const air = own(createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 }, elevationSampler: { sample: () => 0 }, logger: () => {} }));
+    const air = own(createEntityViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 }, elevationSampler: { sample: () => 0 }, logger: () => {} }));
     await air.ready;
     air.upsert([{...point('ground'),entity:{attachments:[{id:'zone',type:'circle',radius:50}]}}]);
     await until(()=>air.getEntityState('ground')?.coverage==='ready','ground geometry ready');
@@ -606,7 +607,7 @@ export const cameraCoverageCases = {
   },
   "Rejected camera frames do not replace the displayed picking mask": async caseContext => {
     const { own, container, until } = caseContext;
-    const air = own(createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 }, elevationSampler: { sample: () => 0 }, logger: () => {} }));
+    const air = own(createEntityViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 }, elevationSampler: { sample: () => 0 }, logger: () => {} }));
     await air.ready;
     const camera: CameraAttachment = { id: 'camera', type: 'camera', terrainVisibility: true,
       color: '#00ff00', bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300, volumeOpacity: 0, wireframe: false };
@@ -669,7 +670,7 @@ export const cameraCoverageCases = {
     let finish: (() => void) | undefined;
     const dem = document.createElement('canvas'); dem.width = dem.height = 256;
     const context = dem.getContext('2d')!; context.fillRect(0, 0, 256, 256);
-    const air = own(createViewport({ container, basemap: style(), terrain: true,
+    const air = own(createEntityViewport({ container, basemap: style(), terrain: true,
       elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 0, greenFactor: 0, blueFactor: 0, baseShift: 0, maxzoom: 0 },
       camera: { center: [0, 0], zoom: 16 }, elevationSampler: {
       sample: () => available ? 0 : null,
@@ -750,11 +751,11 @@ export const cameraCoverageCases = {
       await untilPixel(air, [0, .0008], false, 'Restored camera pixels retired');
       duringFrame(() => air.upsert([current]));
       await until(() => air.getEntityState(feature.id)?.coverage === 'ready', 'camera before native teardown');
-      let replacement: ReturnType<typeof createViewport> | undefined;
+      let replacement: ReturnType<typeof createEntityViewport> | undefined;
       duringFrame(() => {
         air.destroy();
         check(!air.map.getCanvas().isConnected, 'Camera teardown retained its canvas during the native frame');
-        replacement = own(createViewport({ container, basemap: style(), logger: () => {} }));
+        replacement = own(createEntityViewport({ container, basemap: style(), logger: () => {} }));
       });
       await until(() => Boolean(replacement), 'camera teardown remount');
       if (!replacement) throw new Error('Replacement viewport was not mounted');
@@ -773,7 +774,7 @@ export const cameraCoverageCases = {
     const { own, container, until } = caseContext;
     const meters = Math.PI / 180 * 6371008.8;
     let samples = 0;
-    const air = own(createViewport({ container, basemap: style('#000000'),
+    const air = own(createEntityViewport({ container, basemap: style('#000000'),
       elevationSampler: { sample: () => { samples++; return 0; }, prepare: async () => {} },
       camera: { center: [0, 4000 / meters], zoom: 16, pitch: 0 }, logger: () => {} }));
     await air.ready;
@@ -865,7 +866,7 @@ export const cameraCoverageCases = {
     const { own, container, until } = caseContext;
     const meters = Math.PI / 180 * 6371008.8;
     let samples = 0;
-    const air = own(createViewport({ container, basemap: style('#000000'),
+    const air = own(createEntityViewport({ container, basemap: style('#000000'),
       elevationSampler: { sample: (_lng, lat) => { samples++; return lat * meters * .4; } },
       camera: { center: [0, 4000 / meters], zoom: 16, pitch: 0 }, logger: () => {} }));
     await air.ready;

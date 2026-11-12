@@ -1,5 +1,6 @@
 import { attachDrawing, attachInteractions, createViewport, RidgelineError, shapeGeometry } from '@ridgeline/map';
 import type { FeatureStyle, MapFeature, ScreenBounds, Viewport } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import { addProtocol, removeProtocol, GeoJSONSource } from 'maplibre-gl';
 import { groundModelGlb } from './model-placement-fixtures';
 import { waitForVisible } from './browser-observation';
@@ -71,7 +72,7 @@ export const selectionWorkflowCases = {
     for (const action of ['control', 'upsert', 'remove'] as const) {
       let blue = false, mutate = false, triggered = false;
       const diagnostics: RidgelineError[] = [];
-      const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 },
+      const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 },
         features: [point('a', 0), point('b', .004)], logger: () => {}, onError: error => diagnostics.push(error),
         style: feature => {
           if (feature.id === 'a' && mutate) {
@@ -99,7 +100,7 @@ export const selectionWorkflowCases = {
   },
   "Feature presentation refresh inside a native click preserves later observers and selection intent": async (context) => {
     for (const refresh of [false, true]) {
-      const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [point('a', 0)], logger: () => {} }));
+      const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [point('a', 0)], logger: () => {} }));
 
       let clicks = 0, requests = 0;
       viewport.on('click', () => { if (refresh) viewport.refreshStyles(); });
@@ -116,8 +117,8 @@ export const selectionWorkflowCases = {
     }
   },
   "Optional selection refuses completed-empty requests while renderer unavailable": async (context) => {
-    for (const phase of ['lost', 'loading'] as const) {
-      const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [point('a', 0)], logger: () => {} }));
+    for (const create of [createViewport, createEntityViewport]) for (const phase of ['lost', 'loading'] as const) {
+      const viewport = context.own(create({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [point('a', 0)], logger: () => {} }));
 
       const ui = attachInteractions(viewport, { boxSelection: true, picker: false, hover: false });
       const requests: string[][] = [];
@@ -155,7 +156,7 @@ export const selectionWorkflowCases = {
     }
   },
   "Optional selection query failures retain renderer context and recover": async (context) => {
-    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [point('a', 0)], logger: () => {} }));
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [point('a', 0)], logger: () => {} }));
 
     const diagnostics: RidgelineError[] = []; viewport.on('diagnostic', error => diagnostics.push(error));
     try {
@@ -175,7 +176,7 @@ export const selectionWorkflowCases = {
     for (const trigger of ['abort', 'native'] as const) {
     let preparing = false, patched = false, aborted = false, switching = false;
     const feature = point('pending', 0); feature.entity = { altitude: { meters: 100, reference: 'ground' } };
-    const viewport = context.own(createViewport({ container: context.container, basemap: { ...basemap, name: 'First' }, camera: { center: [0, 0], zoom: 15 },
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap: { ...basemap, name: 'First' }, camera: { center: [0, 0], zoom: 15 },
       features: [feature], logger: () => {}, entityVisibility: { footprints: false, zones: false, groundLines: false }, elevationSampler: {
         sample: () => null,
         prepare: (_positions, signal) => new Promise<void>(resolve => {
@@ -207,7 +208,7 @@ export const selectionWorkflowCases = {
     let color = '#0000ff', disabled = true, brightness = 0, fail = false;
     const modeled = point('model', .004); modeled.entity = { heading: 0, model: { id: 'body', minimumSizePixels: 60 } };
     const airborne = point('air', 0); airborne.entity = { altitude: { meters: 100, reference: 'ground' } };
-    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 },
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 },
       features: [point('native', -.004), airborne, modeled], elevationSampler: { sample: () => 0 }, logger: () => {},
       style: feature => {
         if (fail && feature.id === 'native') throw new Error('palette unavailable');
@@ -252,7 +253,7 @@ export const selectionWorkflowCases = {
   },
   "Feature presentation prioritizes selected labels without overlap or consumer replacement": async (context) => {
     const glyphs = new URL('../fixtures/noto-sans/0-255.pbf', import.meta.url).href + '?fontstack={fontstack}&range={range}';
-    const viewport = context.own(createViewport({ container: context.container, basemap: { ...basemap, glyphs }, camera: { center: [0, 0], zoom: 15 },
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap: { ...basemap, glyphs }, camera: { center: [0, 0], zoom: 15 },
       style: feature => ({ label: feature.id, selected: { enabled: false }, labelStyle: { size: 24, anchor: 'top', color: feature.id === 'first' ? '#ff0000' : '#0000ff', haloWidth: 0 } }), elevationSampler: { sample: () => 0 }, logger: () => {} }));
 
     const labels = () => [...new Set(viewport.map.queryRenderedFeatures({ layers: ['rl:labels'] }).map(feature => feature.properties._rl_feature_id))];
@@ -295,7 +296,7 @@ export const selectionWorkflowCases = {
   },
   "Feature presentation rejects invalid callback roots and retains the working display": async (context) => {
     let invalid: unknown = { color: '#0000ff' }, failing = false, otherColor = '#0000ff';
-    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [point('subject', -.003), point('other', .003)],
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [point('subject', -.003), point('other', .003)],
       style: feature => feature.id === 'subject' ? invalid as FeatureStyle : { color: otherColor }, logger: () => {} }));
     viewport.on('diagnostic', error => { if (error.context.featureId === 'subject' && error.code === 'UPDATE_FAILED') failing = true; });
     try {
@@ -324,7 +325,7 @@ export const selectionWorkflowCases = {
       style: { color: '#00ff00', fillColor: '#00ff00', lineWidth: 8, fillOpacity: .2, dashed: false, label: '' } } };
     const line: MapFeature = { type: 'Feature', id: 'line', properties: {}, geometry: { type: 'LineString', coordinates: [[-.003, 0], [.003, 0]] } };
     const icon: MapFeature = { ...point('icon', .003), geometry: { type: 'Point', coordinates: [.003, .003] } };
-    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [saved, line, icon], logger: () => {},
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [saved, line, icon], logger: () => {},
       style: feature => feature.id === 'saved' ? { dashArray: [1, 100] } : feature.id === 'line'
         ? { color: '#00ff00', lineWidth: 12, selected: { color: '#0000ff' }, hover: { color: '#ff0000' } }
         : { icon: 'orientation', iconRotationAlignment: 'map' } }));
@@ -358,7 +359,7 @@ export const selectionWorkflowCases = {
   "Feature presentation preserves CSS alpha in airborne feedback": async (context) => {
     const air = point('air', .003); air.entity = { altitude: { meters: 1, reference: 'ground' } };
     let color = 'rgba(0, 0, 255, .5)';
-    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [point('native', -.003), air],
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [point('native', -.003), air],
       entityVisibility: { footprints: false, zones: false, groundLines: false }, elevationSampler: { sample: () => 0 },
       style: () => ({ radius: 8, color: '#0000ff', selected: { color }, hover: { color } }), logger: () => {} }));
 
@@ -379,7 +380,7 @@ export const selectionWorkflowCases = {
   },
   "Feature presentation refresh discards callback replacements and removals": async (context) => {
     let action: 'replace' | 'remove' | undefined;
-    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 },
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 },
       features: [point('subject', 0)], logger: () => {}, style: feature => {
         const next = action; action = undefined;
         if (next === 'replace') viewport.upsert([point(feature.id, .003)]);
@@ -406,7 +407,7 @@ export const selectionWorkflowCases = {
     const polygon: MapFeature = { type: 'Feature', id: 'fill', properties: {}, geometry: { type: 'Polygon', coordinates: [[[-.004, -.001], [-.002, -.001], [-.002, .001], [-.004, .001], [-.004, -.001]]] } };
     let hidden = false;
     let fillStyle: FeatureStyle = { fillColor: '#00ff00', lineWidth: 0, label: '' };
-    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [polygon, point('icon', .003)], logger: () => {},
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [polygon, point('icon', .003)], logger: () => {},
       style: feature => feature.id === 'fill' ? fillStyle
         : { icon: 'visible', label: '', selected: { iconOpacity: hidden ? 0 : 1 } } }));
 
@@ -488,7 +489,7 @@ export const selectionWorkflowCases = {
   },
   "Optional selection released Shift before mouseup performs one ordinary click": async (context) => {
     for (const releaseEarly of [false, true]) {
-      const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [point('a', -.004), point('b', .004)], logger: () => {} }));
+      const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [point('a', -.004), point('b', .004)], logger: () => {} }));
 
       const ui = attachInteractions(viewport, { additiveSelection: true, hover: false });
       let requests = 0; viewport.on('selectionrequest', event => { requests++; viewport.setSelection(event.ids); });
@@ -508,7 +509,7 @@ export const selectionWorkflowCases = {
     }
   },
   "Optional selection remains request only until the consumer applies a filtered proposal": async (context) => {
-    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 },
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 },
       features: [point('original', -.006), point('a', 0), point('b', .002)], logger: () => {} }));
 
     const ui = attachInteractions(viewport, { boxSelection: true, picker: false, hover: false }), requests: string[][] = [];
@@ -524,7 +525,7 @@ export const selectionWorkflowCases = {
     } finally { ui.destroy(); viewport.destroy(); }
   },
   "Rectangle interruptions preserve selection through real renderer loss and restoration": async (context) => {
-    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 },
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 },
       features: [point('original', -.004), point('next', .004)], logger: () => {} }));
 
     const ui = attachInteractions(viewport, { boxSelection: true, picker: false, hover: false }), bridge = input();
@@ -558,7 +559,7 @@ export const selectionWorkflowCases = {
     const thick: MapFeature = { type: 'Feature', id: 'thick', properties: {}, geometry: { type: 'LineString', coordinates: [[-.02, -.008], [.02, -.008]] } };
     const area: MapFeature = { type: 'Feature', id: 'area', properties: {}, geometry: { type: 'Polygon', coordinates: [[[-.002, -.002], [.002, -.002], [.002, .002], [-.002, .002], [-.002, -.002]]] } };
     const airborne = point('airborne', -.008); airborne.entity = { altitude: { meters: 100, reference: 'ground' } };
-    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 13 },
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 13 },
       features: [drawing, thick, area, airborne, point('icon', .008)], elevationSampler: { sample: () => 0 }, logger: () => {},
       style: feature => feature.id === 'saved' ? { dashArray: [2, 2] } : feature.id === 'thick' ? { color: '#0000ff', lineWidth: 10, hover: { lineWidth: 12, color: '#0000ff' } }
         : feature.id === 'area' ? { lineWidth: 0, selected: { color: '#ff0000' }, hover: { fillOpacity: 0 } }
@@ -601,7 +602,7 @@ export const selectionWorkflowCases = {
     } finally { viewport.destroy(); }
   },
   "Optional selection rejects rectangles during ongoing camera movement": async (context) => {
-    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 },
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 },
       features: [point('a', -.004), point('b', .004)], logger: () => {} }));
 
     const ui = attachInteractions(viewport, { boxSelection: true, hover: false });
@@ -617,7 +618,7 @@ export const selectionWorkflowCases = {
     } finally { ui.destroy(); viewport.destroy(); }
   },
   "Optional selection Shift clicks tolerate small pointer jitter": async (context) => {
-    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 },
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 },
       features: [point('a', -.004), point('b', .004)], logger: () => {} }));
 
     const ui = attachInteractions(viewport, { additiveSelection: true, boxSelection: true, hover: false });
@@ -637,7 +638,7 @@ export const selectionWorkflowCases = {
   },
   "Optional selection Shift presses survive unrelated live updates": async ({ container, own, until }) => {
     const live = point('live', .02); live.entity = { altitude: { meters: 100, reference: 'ground' } };
-    const viewport = own(createViewport({ container, basemap, camera: { center: [0, 0], zoom: 15 },
+    const viewport = own(createEntityViewport({ container, basemap, camera: { center: [0, 0], zoom: 15 },
       features: [point('a', -.004), point('b', .004), live], logger: () => {} }));
 
     const ui = attachInteractions(viewport, { additiveSelection: true, boxSelection: true, hover: false });
@@ -674,7 +675,7 @@ export const selectionWorkflowCases = {
     } finally { if (timer) clearInterval(timer); ui.destroy(); viewport.destroy(); }
   },
   "Optional selection Shift release repicks display and retires lost gesture owners": async ({ container, own, until }) => {
-    const viewport = own(createViewport({ container, basemap, camera: { center: [0, 0], zoom: 15 },
+    const viewport = own(createEntityViewport({ container, basemap, camera: { center: [0, 0], zoom: 15 },
       features: [point('a', -.004), point('b', .004)], logger: () => {} }));
 
     const ui = attachInteractions(viewport, { additiveSelection: true, boxSelection: true, hover: false });
@@ -736,7 +737,7 @@ export const selectionWorkflowCases = {
     } finally { ui.destroy(); viewport.destroy(); focusTarget.remove(); }
   },
   "Optional selection toggles Shift candidates and retains radial intent": async (context) => {
-    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 },
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 },
       features: [point('a', -.004), point('b', .004)], logger: () => {} }));
 
     const ui = attachInteractions(viewport, { additiveSelection: true, boxSelection: true, hover: false });
@@ -799,7 +800,7 @@ export const selectionWorkflowCases = {
     } finally { ui.destroy(); viewport.destroy(); }
   },
   "Rectangle interruptions recover and stale selection callbacks retire": async (context) => {
-    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [point('a', 0)], logger: () => {} }));
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [point('a', 0)], logger: () => {} }));
 
     const ui = attachInteractions(viewport, { boxSelection: true, picker: false, hover: false });
     const bridge = input(); let requests = 0;
@@ -860,7 +861,7 @@ export const selectionWorkflowCases = {
       selected: { color: '#ff0000', labelColor: '#ff0000', radius: 16 }, hover: { color: '#00ff00', radius: 12, iconOpacity: 0 } };
     const diagnostics: string[] = [];
     const line: MapFeature = { type: 'Feature', id: 'line', properties: {}, geometry: { type: 'LineString', coordinates: [[-.02, .006], [.02, .006]] } };
-    const viewport = context.own(createViewport({ container: context.container, basemap: { ...basemap, glyphs }, camera: { center: [0, 0], zoom: 15 },
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap: { ...basemap, glyphs }, camera: { center: [0, 0], zoom: 15 },
       features: [point('point', 0), line], style: () => appearance, elevationSampler: { sample: () => 0 }, logger: () => {}, onError: error => diagnostics.push(error.code) }));
 
     try {
@@ -908,7 +909,7 @@ export const selectionWorkflowCases = {
     } finally { viewport.destroy(); }
   },
   "Optional selection preserves a usable keyboard focus after picker dismissal": async (context) => {
-    const viewport=context.own(createViewport({container:context.container,basemap,camera:{center:[0,0],zoom:15},features:[point('a',0),point('b',0)],logger:()=>{}}));
+    const viewport=context.own(createEntityViewport({container:context.container,basemap,camera:{center:[0,0],zoom:15},features:[point('a',0),point('b',0)],logger:()=>{}}));
     const ui=attachInteractions(viewport,{boxSelection:true,hover:false}),bridge=input();
     let requests=0;viewport.on('selectionrequest',()=>requests++);
     try {
@@ -926,7 +927,7 @@ export const selectionWorkflowCases = {
   },
   "Optional selection model rectangle queries retain the completed displayed frame until replacement draws": async (context) => {
     const model=point('body',0);model.entity={heading:0,model:{id:'body',minimumSizePixels:60}};
-    const viewport=context.own(createViewport({container:context.container,basemap,camera:{center:[0,0],zoom:15},features:[model],elevationSampler:{sample:()=>0},logger:()=>{}}));
+    const viewport=context.own(createEntityViewport({container:context.container,basemap,camera:{center:[0,0],zoom:15},features:[model],elevationSampler:{sample:()=>0},logger:()=>{}}));
     try {
       await viewport.ready;await viewport.registerModel('body',{bytes:groundModelGlb()});
       await context.until(()=>viewport.getEntityState('body')?.representation==='model','completed visible model before query');await idle(viewport);
@@ -947,7 +948,7 @@ export const selectionWorkflowCases = {
     } finally {viewport.destroy();}
   },
   "Optional selection rejects a lease round trip during rectangle release": async (context) => {
-    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [point('a', 0)], logger: () => {} }));
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 15 }, features: [point('a', 0)], logger: () => {} }));
     const ui = attachInteractions(viewport, { boxSelection: true, hover: false });
     let requests = 0, roundTrip = true;
     viewport.on('selectionrequest', () => { requests++; });
