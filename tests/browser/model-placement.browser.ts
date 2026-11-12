@@ -1,5 +1,5 @@
-import { createViewport } from '@ridgeline/map';
 import type { MapFeature, Viewport } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import type { CustomRenderMethodInput } from 'maplibre-gl';
 import { axisModelGlb, groundModelGlb, planarTerrain } from './model-placement-fixtures';
 
@@ -100,7 +100,7 @@ function rasterBounds(viewport: Viewport, points: { x: number; y: number }[]) {
 
 export const modelPlacementCases = {
   "Model heading pitch roll and authored offset preserve physical axes": async (context) => {
-    const viewport = context.own(createViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 18, pitch: 60, bearing: 0 },
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap, camera: { center: [0, 0], zoom: 18, pitch: 60, bearing: 0 },
       elevationSampler: { sample: () => 0 }, entityModels: { switchDistanceMeters: 1e9, deadZoneMeters: 0, minimumSizePixels: 0 },
       style: () => ({ radius: 0, color: '#fff', modelAppearance: { mode: 'original' } }), logger: () => {} }));
 
@@ -161,7 +161,7 @@ export const modelPlacementCases = {
     } finally { viewport.destroy(); }
   },
   "Ground models follow planar terrain at real and enlarged size": async (context) => {
-    const terrain = planarTerrain(), viewport = context.own(createViewport({ container: context.container, basemap, terrain: true, elevation: terrain.elevation,
+    const terrain = planarTerrain(), viewport = context.own(createEntityViewport({ container: context.container, basemap, terrain: true, elevation: terrain.elevation,
       elevationSampler: { sample: terrain.sample }, camera: { center: terrain.location, zoom: 18, pitch: 60, bearing: 23 },
       style: () => ({ radius: 0, color: '#fff', modelAppearance: { mode: 'color', color: '#ff0000' } }), logger: () => {} }));
 
@@ -210,7 +210,7 @@ export const modelPlacementCases = {
   "Model placement recovers from unknown terrain without moving entities": async (context) => {
     const terrain = planarTerrain(0, 0), known = new Map<string, number>();
     const requests: { positions: readonly [number, number][]; signal: AbortSignal; done: boolean; resolve(): void }[] = [];
-    const viewport = context.own(createViewport({ container: context.container, basemap, terrain: true, elevation: terrain.elevation,
+    const viewport = context.own(createEntityViewport({ container: context.container, basemap, terrain: true, elevation: terrain.elevation,
       camera: { center: terrain.location, zoom: 18, pitch: 45, bearing: 0 },
       elevationSampler: { sample: (lng, lat) => known.get(`${lng},${lat}`) ?? null,
         prepare: (positions, signal) => new Promise<void>(resolve => requests.push({ positions, signal, done: false, resolve })) },

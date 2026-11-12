@@ -1,5 +1,6 @@
-import { createViewport, RidgelineError } from '@ridgeline/map';
+import { RidgelineError } from '@ridgeline/map';
 import type { MapFeature, ModelAppearance, Viewport } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import { MercatorCoordinate } from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
 import { solidGlb } from './model-fixtures';
@@ -15,7 +16,7 @@ const feature = (id = 'instance', longitude = 0, modelId = 'material'): MapFeatu
   geometry: { type: 'Point', coordinates: [longitude, 0] }, entity: { heading: 0,
     model: { id: modelId, minimumSizePixels: 0 }, altitude: { meters: 20, reference: 'ground' } } });
 function create(context: Context, features = [feature()], appearances = new Map<string, ModelAppearance>(), onError: (error: RidgelineError) => void = () => {}) {
-  const viewport = context.own(createViewport({ container: context.container, basemap: basemap(),
+  const viewport = context.own(createEntityViewport({ container: context.container, basemap: basemap(),
     camera: { center: [0, 0], zoom: 19, pitch: 0, bearing: 0 }, features, elevationSampler: { sample: () => 0 },
     style: feature => ({ color: '#00ffff', modelAppearance: appearances.get(feature.id) }), logger: () => {}, onError }));
   return viewport;

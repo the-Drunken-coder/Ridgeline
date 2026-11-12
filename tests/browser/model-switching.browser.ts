@@ -1,5 +1,6 @@
-import { createViewport, RidgelineError } from '@ridgeline/map';
+import { RidgelineError } from '@ridgeline/map';
 import type { ElevationSampler, MapFeature, Viewport } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import type { CustomLayerInterface } from 'maplibre-gl';
 import { solidGlb } from './model-fixtures';
 
@@ -9,7 +10,7 @@ const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const feature = (modelId = 'box'): MapFeature => ({ type: 'Feature', id: 'entity', properties: {},
   geometry: { type: 'Point', coordinates: [0, 0] }, entity: { heading: 0, model: { id: modelId, minimumSizePixels: 40 } } });
 function create(context: Context, sampler: ElevationSampler = { sample: () => 0 }, errors: RidgelineError[] = [], icon = false) {
-  const viewport = context.own(createViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
+  const viewport = context.own(createEntityViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
     { id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
     camera: { center: [0, 0], zoom: 14, pitch: 0, bearing: 0 }, features: [feature()], elevationSampler: sampler,
     style: () => ({ color: '#0000ff', radius: icon ? 0 : 8, icon: icon ? 'blue-model-icon' : undefined }), logger: () => {}, onError: error => errors.push(error) }));

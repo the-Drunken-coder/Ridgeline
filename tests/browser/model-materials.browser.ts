@@ -1,5 +1,6 @@
-import { createViewport, RidgelineError } from '@ridgeline/map';
+import { RidgelineError } from '@ridgeline/map';
 import type { MapFeature, ModelAppearance, Viewport } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import { materialGlb } from './model-material-fixtures';
 import type { MaterialPanel } from './model-material-fixtures';
 
@@ -9,7 +10,7 @@ const feature = (id: string, longitude = 0): MapFeature => ({ type: 'Feature', i
   geometry: { type: 'Point', coordinates: [longitude, 0] }, entity: { heading: 0,
     model: { id: 'material', minimumSizePixels: 0 }, altitude: { meters: 20, reference: 'ground' } } });
 function create(context: Context, features = [feature('instance')], appearances = new Map<string, ModelAppearance>(), errors: RidgelineError[] = []) {
-  const viewport = context.own(createViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
+  const viewport = context.own(createEntityViewport({ container: context.container, basemap: { version: 8, sources: {}, layers: [
     { id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
     camera: { center: [0, 0], zoom: 19, pitch: 0, bearing: 0 }, features, elevationSampler: { sample: () => 0 },
     style: feature => ({ color: '#00ffff', modelAppearance: appearances.get(feature.id) }), logger: () => {}, onError: error => errors.push(error) }));

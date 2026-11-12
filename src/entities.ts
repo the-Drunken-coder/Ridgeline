@@ -41,11 +41,7 @@ import type {
   Properties,
 } from './types';
 
-export const DEFAULT_ENTITY_VISIBILITY = {
-  footprints: true,
-  zones: true,
-  groundLines: false,
-};
+export { DEFAULT_ENTITY_VISIBILITY } from './entity-defaults';
 const combineCoverage = (a: EntityState['coverage'], b: EntityState['coverage']): EntityState['coverage'] =>
   a === 'unavailable' || b === 'unavailable' ? 'unavailable' : a === 'loading' || b === 'loading' ? 'loading' : 'ready';
 const verticalScale = (configuration: MapConfiguration) =>

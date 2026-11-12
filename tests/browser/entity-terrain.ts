@@ -1,5 +1,6 @@
-import { createViewport, attachInteractions, RidgelineError } from '@ridgeline/map';
+import { attachInteractions, RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import { MercatorCoordinate } from 'maplibre-gl';
 import type { CustomLayerInterface, ImageSource } from 'maplibre-gl';
 import { style, point, check, pointer } from './helpers';
@@ -11,7 +12,7 @@ export const entityTerrainCases = {
     const { own, container, until } = caseContext;
     let missing=false;
     const errors: RidgelineError[]=[];
-    const air=own(createViewport({container,basemap:style(),camera:{center:[0,0],zoom:14,pitch:55},elevationSampler:{sample:()=>missing?null:100},logger:()=>{},onError:error=>errors.push(error)}));
+    const air=own(createEntityViewport({container,basemap:style(),camera:{center:[0,0],zoom:14,pitch:55},elevationSampler:{sample:()=>missing?null:100},logger:()=>{},onError:error=>errors.push(error)}));
 
     await air.ready;
     const aircraft:MapFeature={...point('aircraft'),entity:{altitude:{meters:300,reference:'ground'},attachments:[{id:'camera',type:'camera',bearing:0,elevation:-45,fovX:60,fovY:40,range:1000,volumeOpacity:.28,wireframe:true,wireframeWidth:5},{id:'zone',type:'sphere',radius:100}]}};
@@ -55,7 +56,7 @@ export const entityTerrainCases = {
   },
   "Wireframe-only camera interiors do not intercept clicks": async caseContext => {
     const { own, container, until } = caseContext;
-    const air = own(createViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 },
+    const air = own(createEntityViewport({ container, basemap: style(), elevationSampler: { sample: () => 0 },
       camera: { center: [0,0], zoom: 17, pitch: 0 }, logger: () => {} }));
     await air.ready;
     const camera: CameraAttachment = { id: 'camera', type: 'camera', bearing: 0, elevation: -90,
@@ -77,7 +78,7 @@ export const entityTerrainCases = {
   },
   "A real click selects a visible camera face clipped by the view": async caseContext => {
     const { own, container, until } = caseContext;
-    const air = own(createViewport({ container, basemap: style('#000000'), elevationSampler: { sample: () => 0 },
+    const air = own(createEntityViewport({ container, basemap: style('#000000'), elevationSampler: { sample: () => 0 },
       camera: { center: [0, .001], zoom: 18, pitch: 45 }, logger: () => {} }));
     await air.ready;
     const camera: CameraAttachment = { id: 'clipped-camera', type: 'camera', bearing: 0, elevation: -45,
@@ -153,7 +154,7 @@ export const entityTerrainCases = {
   "Incomplete custom camera terrain settles without polling and retries explicitly": async caseContext => {
     const { own, container, until } = caseContext;
     let samples = 0, available = false;
-    const air = own(createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+    const air = own(createEntityViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
       sample: (lng, lat) => { samples++; return available || (lng === 0 && lat === 0) ? 0 : null; },
     } }));
     await air.ready;
@@ -175,7 +176,7 @@ export const entityTerrainCases = {
   "Custom terrain preparation settles missing data and refreshes the cached patch": async caseContext => {
     const { own, container, until } = caseContext;
     let available = false, finish = () => {}, extent = 0;
-    const air = own(createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+    const air = own(createEntityViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
       sample: (lng, lat) => available || (lng === 0 && lat === 0) ? 0 : null,
       prepare: positions => new Promise<void>(resolve => {
         finish = resolve;
@@ -199,7 +200,7 @@ export const entityTerrainCases = {
     const { own, container, until } = caseContext;
     const preparedBounds: [number, number, number, number][] = [];
     const preparationExtents: number[] = [];
-    const air = own(createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+    const air = own(createEntityViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
       sample: (lng, lat) => preparedBounds.some(([west, south, east, north]) =>
         lng >= west && lng <= east && lat >= south && lat <= north) ? 0 : null,
       prepare: async positions => {
@@ -221,7 +222,7 @@ export const entityTerrainCases = {
   "A ready camera does not hide unavailable ground attachment terrain": async caseContext => {
     const { own, container, until } = caseContext;
     const known = (lng: number, lat: number) => Math.abs(lng) < .00055 && Math.abs(lat) < .00055;
-    const air = own(createViewport({ container, basemap: style(), elevationSampler: { sample: (lng, lat) => known(lng, lat) ? 0 : null }, logger: () => {} }));
+    const air = own(createEntityViewport({ container, basemap: style(), elevationSampler: { sample: (lng, lat) => known(lng, lat) ? 0 : null }, logger: () => {} }));
     await air.ready;
     const camera: CameraAttachment = { id: 'near-camera', type: 'camera', terrainVisibility: true,
       bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 10 };
@@ -238,7 +239,7 @@ export const entityTerrainCases = {
     const { own, container, until } = caseContext;
     let secondReady = false;
     let finishSecond: (() => void) | undefined;
-    const air = own(createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+    const air = own(createEntityViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
       sample(lng, lat) {
         if (Math.abs(lat) < 1e-8 && (Math.abs(lng) < 1e-8 || Math.abs(lng - .02) < 1e-8)) return 0;
         return secondReady && Math.abs(lng - .02) < .01 ? 0 : null;
@@ -265,7 +266,7 @@ export const entityTerrainCases = {
   "A failed airborne style update retains its last complete display": async caseContext => {
     const { own, container, until } = caseContext;
     const errors: RidgelineError[] = [];
-    const air = own(createViewport({ container, basemap: style(), camera: { center: [.005, 0], zoom: 15 },
+    const air = own(createEntityViewport({ container, basemap: style(), camera: { center: [.005, 0], zoom: 15 },
       elevationSampler: { sample: () => 0 }, logger: () => {}, onError: error => errors.push(error),
       style: feature => { if (feature.properties.fail) throw new Error('Airborne style failed'); return { color: '#1166aa' }; } }));
     await air.ready;
@@ -291,7 +292,7 @@ export const entityTerrainCases = {
   "Airborne shader creation recovers through retryUpdates": async caseContext => {
     const { own, container, until } = caseContext;
     const errors: RidgelineError[] = [];
-    const air = own(createViewport({ container, basemap: style('#ffffff'), camera: { center: [0, 0], zoom: 17, pitch: 45 },
+    const air = own(createEntityViewport({ container, basemap: style('#ffffff'), camera: { center: [0, 0], zoom: 17, pitch: 45 },
       elevationSampler: { sample: () => 0 }, logger: () => {}, onError: error => errors.push(error) }));
     await air.ready;
     await new Promise<void>(resolve => air.map.once('idle', () => resolve()));
@@ -330,7 +331,7 @@ export const entityTerrainCases = {
   "Custom elevation preparation also covers entities with only plain cameras": async caseContext => {
     const { own, container, until } = caseContext;
     let prepared = false, prepareCalls = 0;
-    const air = own(createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+    const air = own(createEntityViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
       sample: () => prepared ? 0 : null,
       prepare: async () => { prepareCalls++; prepared = true; },
     } }));
@@ -352,7 +353,7 @@ export const entityTerrainCases = {
     let prepareCalls = 0;
     let preparedPositions: readonly [number, number][] = [];
     let finishPreparation: (() => void) | undefined;
-    const air = own(createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 }, logger: () => {}, elevationSampler: {
+    const air = own(createEntityViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 16 }, logger: () => {}, elevationSampler: {
       sample: (lng, lat) => {
         if (Math.abs(lng) < 1e-8 && Math.abs(lat) < 1e-8) return 12;
         if (Math.abs(lng - movedLng) < 1e-8 && Math.abs(lat) < 1e-8) return centerAvailable ? 12 : null;
@@ -420,7 +421,7 @@ export const entityTerrainCases = {
     const { own, container, until } = caseContext;
     const missingLng = .0001;
     let resolvePreparation: (() => void) | undefined;
-    const air = own(createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+    const air = own(createEntityViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
       sample: (lng, lat) => Math.abs(lng - missingLng) < 1e-8 && Math.abs(lat) < 1e-8 ? null : 0,
       prepare: async () => new Promise<void>(resolve => { resolvePreparation = resolve; }),
     } }));
@@ -450,7 +451,7 @@ export const entityTerrainCases = {
     const { own, container, until } = caseContext;
     let prepared = false;
     let positions: readonly [number, number][] = [];
-    const air = own(createViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
+    const air = own(createEntityViewport({ container, basemap: style(), logger: () => {}, elevationSampler: {
       sample: () => prepared ? 12 : null,
       prepare: async requested => { positions = requested; prepared = true; },
     } }));
@@ -480,7 +481,7 @@ export const entityTerrainCases = {
       }
     }
     const errors: RidgelineError[] = [];
-    const air = own(createViewport({ container, basemap: style(), logger: () => {},
+    const air = own(createEntityViewport({ container, basemap: style(), logger: () => {},
       elevationSampler: new StatefulSampler(), onError: error => errors.push(error) }));
     await air.ready;
     const feature: MapFeature = { ...point('stateful-sampler'), entity: { altitude: { meters: 100, reference: 'ground' },
@@ -502,7 +503,7 @@ export const entityTerrainCases = {
       }
     }
     const sampler = new HiddenSampler();
-    const air = own(createViewport({ container, basemap: style(), logger: () => {},
+    const air = own(createEntityViewport({ container, basemap: style(), logger: () => {},
       entityVisibility: { footprints: false, zones: false, groundLines: false }, elevationSampler: sampler }));
     await air.ready;
     const feature: MapFeature = { ...point('hidden-placement'), entity: { altitude: { meters: 100, reference: 'ground' },
@@ -549,7 +550,7 @@ export const entityTerrainCases = {
     }
     const sampler = new PendingSampler();
     const errors: RidgelineError[] = [];
-    const air = own(createViewport({ container, basemap: style(), logger: () => {}, onError: error => errors.push(error), elevationSampler: sampler }));
+    const air = own(createEntityViewport({ container, basemap: style(), logger: () => {}, onError: error => errors.push(error), elevationSampler: sampler }));
     await air.ready;
     const feature: MapFeature = { ...point('hide-pending'), entity: { altitude: { meters: 100, reference: 'ground' },
       attachments: [{ id: 'camera', type: 'camera', terrainVisibility: true, bearing: 0, elevation: -45, fovX: 60, fovY: 40, range: 300 }] } };
@@ -566,7 +567,7 @@ export const entityTerrainCases = {
   "Hidden unavailable placement waits for explicit retry after display configuration changes": async caseContext => {
     const { own, container, until } = caseContext;
     let ready = false, recover = false, preparations = 0;
-    const air = own(createViewport({ container, basemap: style(), logger: () => {},
+    const air = own(createEntityViewport({ container, basemap: style(), logger: () => {},
       entityVisibility: { footprints: false, zones: false, groundLines: false },
       elevationSampler: { sample: () => ready ? 0 : null, prepare: async () => { preparations++; ready = recover; } } }));
     await air.ready;
@@ -589,7 +590,7 @@ export const entityTerrainCases = {
     const errors: RidgelineError[] = [];
     const dem=document.createElement('canvas'); dem.width=dem.height=256;
     const context=dem.getContext('2d')!; context.fillStyle='rgb(1,0,0)'; context.fillRect(0,0,256,256);
-    const air=own(createViewport({container,basemap:style(),elevation:{tiles:[dem.toDataURL()],encoding:'custom',redFactor:100,greenFactor:0,blueFactor:0,baseShift:0,maxzoom:0},camera:{center:[0,0],zoom:14,pitch:50},onError:error=>errors.push(error),logger:()=>{}}));
+    const air=own(createEntityViewport({container,basemap:style(),elevation:{tiles:[dem.toDataURL()],encoding:'custom',redFactor:100,greenFactor:0,blueFactor:0,baseShift:0,maxzoom:0},camera:{center:[0,0],zoom:14,pitch:50},onError:error=>errors.push(error),logger:()=>{}}));
     await air.ready;
     air.upsert([
       {...point('raw'),entity:{altitude:{meters:300,reference:'ground'},attachments:[{id:'camera',type:'camera',bearing:0,elevation:-45,fovX:50,fovY:30,range:1000},{id:'cylinder',type:'cylinder',radius:50,height:80}]}},
@@ -638,7 +639,7 @@ export const entityTerrainCases = {
     const dem = document.createElement('canvas'); dem.width = dem.height = 256;
     const context = dem.getContext('2d')!; context.fillStyle = 'rgb(1,0,0)'; context.fillRect(0, 0, 256, 256);
     for (const [shift, expected] of [[40, 60], [-40, 140]] as const) {
-      const air = own(createViewport({ container, basemap: style(), terrain: true,
+      const air = own(createEntityViewport({ container, basemap: style(), terrain: true,
         elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 100, greenFactor: 0,
           blueFactor: 0, baseShift: shift, maxzoom: 0 }, camera: { center: [0, 0], zoom: 12 }, logger: () => {} }));
 
@@ -658,7 +659,7 @@ export const entityTerrainCases = {
     const tilejson = { tilejson: '3.0.0', tiles: [dem.toDataURL()], minzoom: 0, maxzoom: 0,
       encoding: 'terrarium', scheme: 'tms' };
     const url = `data:application/json,${encodeURIComponent(JSON.stringify(tilejson))}`;
-    const air = own(createViewport({ container, basemap: style(), terrain: true,
+    const air = own(createEntityViewport({ container, basemap: style(), terrain: true,
       elevation: { url }, camera: { center: [0, 0], zoom: 12 }, logger: () => {} }));
 
     try {
@@ -673,7 +674,7 @@ export const entityTerrainCases = {
     const { own, container, until } = caseContext;
     const dem = document.createElement('canvas'); dem.width = dem.height = 256;
     const context = dem.getContext('2d')!; context.fillStyle = 'rgb(0,0,0)'; context.fillRect(0, 0, 256, 256);
-    const air = own(createViewport({ container, basemap: style(),
+    const air = own(createEntityViewport({ container, basemap: style(),
       elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 0, greenFactor: 0,
         blueFactor: 0, baseShift: 0, minzoom: 0, maxzoom: 12 },
       camera: { center: [0, 46], zoom: 9 }, logger: () => {} }));
@@ -692,7 +693,7 @@ export const entityTerrainCases = {
     const { own, container, until } = caseContext;
     const dem = document.createElement('canvas'); dem.width = dem.height = 256;
     const context = dem.getContext('2d')!; context.fillStyle = 'rgb(1,0,0)'; context.fillRect(0,0,256,256);
-    const air = own(createViewport({ container, basemap: style(), terrain: true, exaggeration: 1,
+    const air = own(createEntityViewport({ container, basemap: style(), terrain: true, exaggeration: 1,
       elevation: { tiles: [dem.toDataURL()], encoding: 'custom', redFactor: 100, greenFactor: 0, blueFactor: 0, baseShift: 0, maxzoom: 0 },
       camera: { center: [0,0], zoom: 14, pitch: 60 }, logger: () => {} }));
     await air.ready;
@@ -765,7 +766,7 @@ export const entityTerrainCases = {
     const { own, container, until } = caseContext;
     const dem=document.createElement('canvas'); dem.width=dem.height=256;
     const context=dem.getContext('2d')!; context.fillStyle='rgb(105,0,0)'; context.fillRect(0,0,256,256);
-    const air=own(createViewport({container,basemap:style('#000000'),terrain:true,elevation:{tiles:[dem.toDataURL()],encoding:'custom',redFactor:1,greenFactor:0,blueFactor:0,baseShift:0,maxzoom:0},elevationSampler:{sample:()=>100},camera:{center:[0,0],zoom:17,pitch:0},entityVisibility:{footprints:true,zones:false,groundLines:false},logger:()=>{}}));
+    const air=own(createEntityViewport({container,basemap:style('#000000'),terrain:true,elevation:{tiles:[dem.toDataURL()],encoding:'custom',redFactor:1,greenFactor:0,blueFactor:0,baseShift:0,maxzoom:0},elevationSampler:{sample:()=>100},camera:{center:[0,0],zoom:17,pitch:0},entityVisibility:{footprints:true,zones:false,groundLines:false},logger:()=>{}}));
     await air.ready;
     air.upsert([{...point('visible'),entity:{altitude:{meters:300,reference:'ground'},attachments:[{id:'camera',type:'camera',color:'#00ff00',bearing:0,elevation:-90,fovX:60,fovY:60,range:1000}]}}]);
     await until(()=>air.getEntityState('visible')?.coverage==='ready' && Math.abs((air.map.queryTerrainElevation([0,0])??0)-105)<0.1,'synthetic terrain and coverage');
@@ -789,7 +790,7 @@ export const entityTerrainCases = {
     const { own, container, until } = caseContext;
     const meters = Math.PI / 180 * 6371008.8;
     const hill = (_lng: number, lat: number) => 20 * Math.exp(-(((lat * meters - 300) / 40) ** 2));
-    const air = own(createViewport({ container, basemap: style('#000000'),
+    const air = own(createEntityViewport({ container, basemap: style('#000000'),
       elevationSampler: { sample: hill }, camera: { center: [0, 310 / meters], zoom: 17, pitch: 0 },
       entityVisibility: { footprints: true, zones: false, groundLines: false }, logger: () => {} }));
     await air.ready;

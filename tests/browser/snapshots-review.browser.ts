@@ -1,5 +1,6 @@
 import { createDrawingSession, createViewport, RidgelineError } from '@ridgeline/map';
 import type { DrawingChange, MapFeature, Properties, Viewport } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import type { StyleSpecification } from 'maplibre-gl';
 
 import type { BrowserCaseContext as Context, BrowserCaseModule } from './context';
@@ -75,8 +76,11 @@ export const snapshotReviewCases = {
   },
   "Snapshot review validates initial and updated model settings on the retained candidate": async ({ container, own }) => {
     const invalid: MapFeature = { ...point('invalid'), entity: { model: { id: 'asset', switchDistanceMeters: 1 } } };
-    rejected(() => own(createViewport({ container, basemap, features: [invalid], logger: () => {} })), 'INITIALIZATION_FAILED');
-    check(container.querySelectorAll('canvas').length === 0, 'Invalid initial model settings created a renderer');
+    // Core viewports reject every initial entity before creating a renderer; models need attachEntities.
+    const detached = rejected(() => own(createViewport({ container, basemap, features: [invalid], logger: () => {} })), 'INITIALIZATION_FAILED');
+    check(detached instanceof Error && detached.cause instanceof Error && detached.cause.message.includes('attachEntities'),
+      'Initial entity features were not rejected for missing attachEntities');
+    check(container.querySelectorAll('canvas').length === 0, 'Initial entity features created a renderer');
     function candidate(id: string) {
       let reads = 0;
       const feature: MapFeature = { ...point(id), entity: { model: {
@@ -84,8 +88,16 @@ export const snapshotReviewCases = {
       } } };
       return { feature, reads: () => reads };
     }
+    // With entities attached, the first batch is the initial model data.
+    const viewport = own(createEntityViewport({ container, basemap, logger: () => {} }));
+    let initialChanges = 0;
+    const offInitial = viewport.on('datachange', () => { initialChanges++; });
+    try {
+      rejected(() => viewport.upsert([invalid]), 'INVALID_FEATURE');
+      check(initialChanges === 0 && viewport.getFeatures().length === 0, 'Invalid initial model settings were retained');
+    } finally { offInitial(); }
     const initial = candidate('initial');
-    const viewport = own(createViewport({ container, basemap, features: [initial.feature], logger: () => {} }));
+    viewport.upsert([initial.feature]);
 
     try {
       await viewport.ready;

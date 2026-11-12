@@ -1,5 +1,6 @@
-import { createViewport, attachInteractions, RidgelineError } from '@ridgeline/map';
+import { attachInteractions, RidgelineError } from '@ridgeline/map';
 import type { MapFeature } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import { style, point, check, pointer, browserKey, browserClick } from './helpers';
 import { withBaseViewport } from './base-viewport';
 import type { BrowserCaseModule } from './context';
@@ -163,7 +164,7 @@ export const pickerCases = {
     const mount = document.createElement('div');
     mount.style.cssText = 'width:320px;height:240px;position:absolute;left:0;top:0';
     document.body.append(mount);
-    const iconMap = own(createViewport({
+    const iconMap = own(createEntityViewport({
       container: mount, basemap: style(), camera: { center: [0, 0], zoom: 12 },
       features: [point('icon-target'), point('icon-other')],
       style: feature => ({ icon: feature.id === 'icon-target' ? 'swap' : undefined }),
@@ -301,7 +302,7 @@ export const pickerCases = {
     mount.style.cssText = 'width:320px;height:240px';
     overlay.append(mount);
     document.body.append(overlay);
-    const air = own(createViewport({ container: mount, basemap: style(), camera: { center: [0, 0], zoom: 16 },
+    const air = own(createEntityViewport({ container: mount, basemap: style(), camera: { center: [0, 0], zoom: 16 },
       elevationSampler: { sample: () => 0 }, logger: () => {} }));
     let ui: ReturnType<typeof attachInteractions> | undefined;
     try {

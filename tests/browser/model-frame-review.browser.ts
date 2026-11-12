@@ -1,5 +1,6 @@
-import { createViewport, RidgelineError } from '@ridgeline/map';
+import { RidgelineError } from '@ridgeline/map';
 import type { MapFeature, Properties, Viewport, ViewportOptions } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import type { CustomLayerInterface } from 'maplibre-gl';
 import { solidGlb } from './model-fixtures';
 import { axisModelGlb } from './model-placement-fixtures';
@@ -12,7 +13,7 @@ const entity = (id = 'model', color = '#ff0000'): MapFeature => ({ type: 'Featur
   properties: { color }, geometry: { type: 'Point', coordinates: [0,0] },
   entity: { heading: 0, altitude: { meters: 30, reference: 'sea-level' }, model: { id: 'asset', minimumSizePixels: 80 } } });
 function create(context: Context, features: MapFeature[], options: Partial<Pick<ViewportOptions<Properties>, 'style' | 'onError' | 'elevationSampler'>> = {}) {
-  const viewport = context.own(createViewport({ container: context.container, features, elevationSampler: { sample: () => 0 },
+  const viewport = context.own(createEntityViewport({ container: context.container, features, elevationSampler: { sample: () => 0 },
     basemap: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#ffffff' } }] },
     camera: { center: [0,0], zoom: 17, pitch: 35, bearing: 0 },
     entityModels: { switchDistanceMeters: 1e7, deadZoneMeters: 0, minimumSizePixels: 80 },
@@ -257,7 +258,7 @@ export const modelFrameReviewCases = {
         let rejected = false;
         try { viewport.upsert([old]); } catch (error) { rejected = error instanceof RidgelineError && error.code === 'DESTROYED'; }
         retiredSynchronously = rejected && !context.container.querySelector('canvas');
-        replacement = context.own(createViewport({ container: context.container,
+        replacement = context.own(createEntityViewport({ container: context.container,
           basemap: { version: 8, sources: {}, layers: [{ id: 'new-background', type: 'background', paint: { 'background-color': '#ffffff' } }] }, logger: () => {} }));
 
       }; viewport.upsert([old]); };
@@ -381,7 +382,7 @@ export const modelFrameReviewCases = {
         await viewport.ready; await viewport.registerModel('asset', { bytes: solidGlb() }); await frame(viewport);
         viewport.on('destroy', () => {
           emptyInListener = !context.container.querySelector('canvas');
-          replacement = context.own(createViewport({ container: context.container, logger: () => {},
+          replacement = context.own(createEntityViewport({ container: context.container, logger: () => {},
             basemap: { version: 8, sources: {}, layers: [{ id: 'replacement', type: 'background', paint: { 'background-color': '#ffffff' } }] } }));
 
         });

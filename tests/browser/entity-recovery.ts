@@ -1,5 +1,6 @@
-import { createViewport, RidgelineError } from '@ridgeline/map';
+import { RidgelineError } from '@ridgeline/map';
 import type { CameraAttachment, MapFeature, Viewport } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import { style, point, check, pointer, pixelAt, untilPixel } from './helpers';
 import type { BrowserCaseModule } from './context';
 
@@ -8,7 +9,7 @@ export const entityRecoveryCases = {
   "Reliability entity null buffer allocation diagnoses once and retry renders only current geometry": async caseContext => {
     const { own, container, until } = caseContext;
     const errors: RidgelineError[] = [];
-    const air = own(createViewport({ container, basemap: style('#ffffff'), camera: { center: [.001, 0], zoom: 17 },
+    const air = own(createEntityViewport({ container, basemap: style('#ffffff'), camera: { center: [.001, 0], zoom: 17 },
       style: () => ({ color: '#ff0000', radius: 10 }), elevationSampler: { sample: () => 0 },
       logger: () => {}, onError: error => errors.push(error) }));
     await air.ready;
@@ -55,7 +56,7 @@ export const entityRecoveryCases = {
   },
   "Reliability entity date-line rendering and real picking agree across order pan and projection": async caseContext => {
     const { own, container, until } = caseContext;
-    const air = own(createViewport({ container, basemap: style('#ffffff'), projection: 'flat',
+    const air = own(createEntityViewport({ container, basemap: style('#ffffff'), projection: 'flat',
       camera: { center: [179, 0], zoom: 6 }, elevationSampler: { sample: () => 30 },
       style: () => ({ color: '#ff0000', radius: 10 }), logger: () => {} }));
     await air.ready;
@@ -115,7 +116,7 @@ export const entityRecoveryCases = {
       return originalFetch(tile.toDataURL(), init);
     };
     const lng = 0, lat = 0;
-    const air = own(createViewport({ container, basemap: style('#ffffff'), camera: { center: [lng, lat], zoom: 16 },
+    const air = own(createEntityViewport({ container, basemap: style('#ffffff'), camera: { center: [lng, lat], zoom: 16 },
       terrain: false, hillshade: false, logger: () => {}, elevation: {
         tiles: [prefix + '{z}/{x}/{y}.png'], encoding: 'terrarium', minzoom: 0, maxzoom: 0, tileSize: 256,
       } }));
@@ -152,7 +153,7 @@ export const entityRecoveryCases = {
     const failure = new Error('Required camera elevation failed');
     let broken = false, samples = 0;
     const errors: RidgelineError[] = [];
-    const air = own(createViewport({ container, basemap: style('#ffffff'), camera: { center: [0, 0], zoom: 16 },
+    const air = own(createEntityViewport({ container, basemap: style('#ffffff'), camera: { center: [0, 0], zoom: 16 },
       logger: () => {}, onError: error => errors.push(error), elevationSampler: { sample: lng => {
         samples++;
         if (broken && Math.abs(lng) < .003) throw failure;
@@ -212,7 +213,7 @@ export const entityRecoveryCases = {
     };
     let air: Viewport | undefined;
     try {
-      air = own(createViewport({ container, basemap: style(), camera: { center: [-45, 40], zoom: 3 }, logger: () => {} }));
+      air = own(createEntityViewport({ container, basemap: style(), camera: { center: [-45, 40], zoom: 3 }, logger: () => {} }));
 
       const active = air;
       await active.ready;

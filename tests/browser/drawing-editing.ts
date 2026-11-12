@@ -1,4 +1,5 @@
 import { createViewport, attachDrawing, attachDrawingControls, shapeGeometry } from '@ridgeline/map';
+import { createEntityViewport } from './entity-viewport';
 import type { MapFeature } from '@ridgeline/map';
 import { style, point, check, pointer, browserKey, browserClick, browserDrag } from './helpers';
 import type { BrowserCaseModule } from './context';
@@ -383,7 +384,7 @@ export const drawingEditingCases = {
   },
   "Stationary Alt toggles visible snap preview and placed vertex": async caseContext => {
     const { own, container, until } = caseContext;
-    const draw = own(createViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 },
+    const draw = own(createEntityViewport({ container, basemap: style(), camera: { center: [0, 0], zoom: 12 },
       features: [point('eligible', .025), point('filtered', -.025),
         { ...point('airborne', .05), entity: { altitude: { meters: 100, reference: 'sea-level' } } }], logger: () => {} }));
     await draw.ready;

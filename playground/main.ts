@@ -1,4 +1,5 @@
 import { attachInteractions, attachMapControls, createViewport, DEFAULT_ELEVATION } from '@ridgeline/map';
+import { attachEntities } from '@ridgeline/map/entities';
 import type { MapFeature, RidgelineError } from '@ridgeline/map';
 import { setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
@@ -53,6 +54,7 @@ const viewport = createViewport<Sample>({
     modelAppearance: activeScenario?.appearance?.(feature.id) }),
   onError: showError,
 });
+attachEntities(viewport);
 const mapControls = attachMapControls(viewport, { coordinates: { format: 'ddm' } });
 registerSampleIcons(viewport);
 
