@@ -1,6 +1,6 @@
 # Ridgeline
 
-A tactical mapping toolkit for TypeScript, built on MapLibre GL JS. It has a low barrier to entry: a working viewport takes a few lines. Add packs for drawing, entities with sensor cameras, and other tactical capabilities, and customize as far as you need. Ridgeline displays geospatial information and lets users interact with it; your application owns the data and decides what happens. Mapterhorn supplies the default elevation data.
+A tactical mapping toolkit for TypeScript, built on MapLibre GL JS. It has a low barrier to entry: a working viewport takes a few lines. Add optional capabilities such as drawing and entities with sensor cameras, and customize as far as you need. Ridgeline displays geospatial information and lets users interact with it; your application owns the data and decides what happens. Mapterhorn supplies the default elevation data.
 
 ## Standout features
 
@@ -19,18 +19,18 @@ A tactical mapping toolkit for TypeScript, built on MapLibre GL JS. It has a low
 
 ## Core design decisions
 
-Ridgeline is for developers building operator, command-and-control, public-safety, search-and-rescue and drone-operations applications. [ADR-0004](docs/adr/0004-tactical-mapping-toolkit.md) records this direction. It describes the target shape; the code is still moving to it (see the note below).
+Ridgeline is for developers building operator, command-and-control, public-safety, search-and-rescue and drone-operations applications. [ADR-0004](docs/adr/0004-tactical-mapping-toolkit.md) records this direction. These bullets describe the target shape; the code is still moving to it (see the note below).
 
-- **Display and interact, never decide.** Ridgeline shows located things in 3D space over terrain and turns user gestures into outputs. A gesture such as "send this asset there" is meant to produce an action request; your application decides, acts and draws any preview of what it plans to do. Packs draw only what the user is editing, such as a drawing draft.
+- **Display and interact, never decide.** Ridgeline shows located things in 3D space over terrain and turns user gestures into outputs. A gesture such as "send this asset there" is meant to produce an action request; your application decides, acts and draws any preview of what it plans to do. A pack draws the draft the user is editing; your application draws what it plans to do.
 - **Domain-neutral core.** Viewport, features, styling, selection, events and camera. The core knows nothing about entities, models, sensors or military symbols.
-- **Optional capabilities ship as packs.** Drawing, interactions, controls and entities are optional packs, tactical or not, imported from their own subpaths. Each uses only public interfaces (the extension API and MapLibre access), so you can build your own packs the same way. New first-party packs are built for real demand.
+- **Optional capabilities ship as packs.** Drawing, interactions, controls and entities become optional packs, tactical or not, imported from their own subpaths. Each uses only public interfaces (the extension API and MapLibre access), so you can build your own packs the same way. New first-party packs are built for real demand.
 - **Configure, then compose.** Adjust a pack through its options, or combine core building blocks with pack outputs. Copying a pack's source is a last resort, not a supported path.
 - **Applications own data and time.** Authentication, networking, persistence, business workflows, the clock, source history, retention and replay stay in your application. Packs may interpolate the samples you supply for display, draw track trails and follow entities with the camera.
-- **Simple to adopt before small.** Sizes of the core and each pack are reported, not capped. Direct MapLibre access remains available for advanced rendering ([ADR-0002](docs/adr/0002-maplibre-extension-access.md)).
+- **Simple to adopt before small.** Sizes of the core and each pack will be reported, not capped. Direct MapLibre access remains available for advanced rendering ([ADR-0002](docs/adr/0002-maplibre-extension-access.md)).
 
-The playground and Atlas are ordinary consumers: the library must work without their code, sample data or workflows, and the playground does not establish an operational Atlas operator interface. Verify package usability in a separate consuming application as well as the playground.
+The playground and Atlas are ordinary consumers: the library must work without their code, sample data or workflows, and the playground and control lab do not establish an operational Atlas operator interface. Verify package usability in a separate consuming application as well as the playground.
 
-The code is still moving to this shape. Entities already load from `@ridgeline/map/entities`, but drawing, interactions and controls still ship from the main entry, packs still use private attachment internals, and core types and main-entry exports still include entity, model and drawing members. There is no public extension API or action request yet. `pnpm measure` reports only the main entry, its CSS and the playground, and CI does not run it.
+The code is still moving to this shape. Entities already load from `@ridgeline/map/entities`, but drawing, interactions and controls still ship from the main entry, most packs still use private viewport internals, and core types and main-entry exports still include entity, model and drawing members. There is no public extension API, action request, or interpolation, trail or follow-camera pack yet. `pnpm measure` reports only the main entry, its CSS and the playground, and CI does not run it.
 
 ## Run locally
 

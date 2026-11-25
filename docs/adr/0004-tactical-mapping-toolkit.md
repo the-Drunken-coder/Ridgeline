@@ -5,7 +5,7 @@ supersedes: ADR-0001 in part
 
 # Position Ridgeline as a tactical mapping toolkit of core and packs
 
-Ridgeline was framed as a general "easy MapLibre viewport", but its real users build operator and command-and-control style applications, and its built capabilities (airborne entities, sensor cameras, terrain visibility, 3D entity models) are tactical. Symbology exists only as a playground demonstration. We now position it as a tactical mapping toolkit with a low barrier to entry: a domain-neutral core, optional packs that carry the tactical capabilities, and a public extension API that both first-party and third-party packs use. Ridgeline displays geospatial information and lets users interact with it; it never moves or decides on data. This partially supersedes [ADR-0001](0001-consumer-owned-workflows.md).
+Ridgeline was framed as a general "easy MapLibre viewport", but its real users build operator and command-and-control style applications, and its built capabilities (airborne entities, sensor cameras, terrain visibility, 3D entity models) are tactical. Symbology exists only as a playground demonstration. We now position it as a tactical mapping toolkit with a low barrier to entry: a domain-neutral core, optional packs, tactical or not, and a public extension API that both first-party and third-party packs use. Ridgeline displays geospatial information and lets users interact with it; it never moves or decides on data. This partially supersedes [ADR-0001](0001-consumer-owned-workflows.md).
 
 This ADR records the target shape. The code still has to move to it: most packs still ship from the main entry and use private internals, core types still carry entity, model and drawing members, and sizes are not yet reported per pack or in CI. That work follows in later tickets.
 
@@ -26,10 +26,10 @@ This ADR records the target shape. The code still has to move to it: most packs 
 
 Kept: applications own authentication, networking, persistence, business workflows, the clock, source history, retention and replay controls. The playground and Atlas remain ordinary consumers, and the library must work without their code. Ridgeline owns the current display snapshot, rendering resources and drafts of geometry the user is editing.
 
-Superseded: ADR-0001's 2026-10-11 clarification gave interpolation and camera-follow policy to consumers. A pack may now provide display-side interpolation between samples the application supplies, track trails and follow-camera behavior, because these are reusable across tactical applications. The motion and replay scope withdrawn on 2026-10-11 stays out of scope: the application still owns time.
+Superseded: ADR-0001's 2026-10-11 clarification gave interpolation and camera-follow policy to consumers. A pack may now provide display-side interpolation between samples the application supplies, track trails and follow-camera behavior, because these are reusable across tactical applications. A library-owned clock, retained sample history and replay controls stay out of scope, as when that scope was withdrawn on 2026-10-11 ([performance record](../performance.md)): the application still owns time.
 
 ## Considered options
 
 - **Stay a general viewport.** Rejected because it misdescribes the audience and the built features, and keeps tactical work in an awkward, uncertain scope.
 - **Become an off-the-shelf operator application.** Rejected because business workflows differ between applications and would make the library heavy and hard to adopt.
-- **Publish today's private attachment internals as the extension API.** Rejected because they were shaped by implementation, not by what packs need.
+- **Publish today's private viewport internals as the extension API.** Rejected because they were shaped by implementation, not by what packs need.

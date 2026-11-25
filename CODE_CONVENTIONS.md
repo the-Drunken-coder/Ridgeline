@@ -32,7 +32,7 @@ Prioritize these qualities over being lightweight for its own sake. Bundle size,
 ## Module and package boundaries
 
 - Prefer deep modules that hide complex behavior behind a small interface. Test each module's behavior through that interface.
-- Keep the map library framework-neutral. Playground scenarios, sample data, and application workflows belong to consumers. Keep the core domain-neutral and build optional capabilities as packs on the public extension API. Evaluate library additions against [ADR-0004](docs/adr/0004-tactical-mapping-toolkit.md).
+- Keep the map library framework-neutral. Playground scenarios, sample data, and application workflows belong to consumers. Keep the core domain-neutral and move optional capabilities to packs built on public interfaces (the extension API and MapLibre access). Evaluate library additions against [ADR-0004](docs/adr/0004-tactical-mapping-toolkit.md).
 - Keep public exports deliberate in `src/index.ts`. Expose a small interface that hides rendering and lifecycle machinery; exporting an internal helper solely to reach it from a test expands the wrong boundary.
 - Keep the playground on the public library API. The separate control lab owns its framework dependencies and experiments.
 - Use the explicit MapLibre integration allowed by [ADR-0002](docs/adr/0002-maplibre-extension-access.md). Add abstractions for concrete needs rather than hypothetical renderer replacement.
