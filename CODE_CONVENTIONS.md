@@ -21,7 +21,7 @@ Review every addition critically before finishing. Remove code left over from ex
 ## Core qualities and priorities
 
 - **Easy to use.** Make common mapping tasks straightforward through a clear public API, useful defaults, and practical examples. Keep integration and ongoing maintenance simple for consumers.
-- **Feature-rich within a clear scope.** Provide complete, reusable mapping capabilities. Keep surrounding application workflows with consumers, as defined in [ADR-0001](docs/adr/0001-consumer-owned-workflows.md).
+- **Feature-rich within a clear scope.** Provide complete, reusable mapping capabilities. Ridgeline displays geospatial information and lets users interact with it; applications own data and decisions, as defined in [ADR-0004](docs/adr/0004-tactical-mapping-toolkit.md), which partially supersedes [ADR-0001](docs/adr/0001-consumer-owned-workflows.md).
 - **Dynamic.** Support changing geographic data, live updates, and interactive exploration without requiring consumers to rebuild the viewport or lose interaction state unnecessarily.
 - **Customizable.** Let consumers adapt appearance and behavior through supported APIs. Common customization should not require a fork or knowledge of rendering internals.
 - **High quality.** Treat correctness, reliable lifecycle behavior, accessible interactions, visual polish, and clear documentation as part of a finished capability.
@@ -32,7 +32,7 @@ Prioritize these qualities over being lightweight for its own sake. Bundle size,
 ## Module and package boundaries
 
 - Prefer deep modules that hide complex behavior behind a small interface. Test each module's behavior through that interface.
-- Keep the map library framework-neutral. Playground scenarios, sample data, and application workflows belong to consumers. Evaluate library additions against [ADR-0001](docs/adr/0001-consumer-owned-workflows.md).
+- Keep the map library framework-neutral. Playground scenarios, sample data, and application workflows belong to consumers. Keep the core domain-neutral and build optional capabilities as packs on the public extension API. Evaluate library additions against [ADR-0004](docs/adr/0004-tactical-mapping-toolkit.md).
 - Keep public exports deliberate in `src/index.ts`. Expose a small interface that hides rendering and lifecycle machinery; exporting an internal helper solely to reach it from a test expands the wrong boundary.
 - Keep the playground on the public library API. The separate control lab owns its framework dependencies and experiments.
 - Use the explicit MapLibre integration allowed by [ADR-0002](docs/adr/0002-maplibre-extension-access.md). Add abstractions for concrete needs rather than hypothetical renderer replacement.

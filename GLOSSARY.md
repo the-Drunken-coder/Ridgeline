@@ -1,8 +1,23 @@
 # Ridgeline
 
-Ridgeline is a reusable interactive map viewport. Consumers supply geographic data and own the surrounding application workflows.
+Ridgeline is a tactical mapping toolkit: a domain-neutral core plus optional packs. It displays geospatial information and lets users interact with it; consumers supply the data and own the surrounding application workflows.
 
 ## Language
+
+**Core**:
+The domain-neutral part of Ridgeline: the viewport, features, styling, selection, events and camera. It has no knowledge of entities, models, sensors or military symbols.
+
+**Pack**:
+An optional add-on, tactical or not, built only on the extension API. First-party and third-party packs have the same access.
+_Avoid_: Plugin, module, attachment
+
+**Extension API**:
+The public seam through which packs work with the core, covering what only Ridgeline knows, such as features, selection, picking, view changes and lifecycle. It is distinct from direct MapLibre access.
+_Avoid_: Internals, attachment internals
+
+**Action request**:
+An output describing what the user asked to happen to features, such as moving an asset to a chosen point. The consumer decides whether and how to act, and draws any preview of the result.
+_Avoid_: Command, task, order
 
 **Viewport**:
 An interactive view of geographic features and their map context, defined by a camera and display capabilities.
