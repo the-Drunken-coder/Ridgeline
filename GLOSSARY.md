@@ -5,7 +5,7 @@ Ridgeline is a tactical mapping toolkit: a domain-neutral core plus optional pac
 ## Language
 
 **Core**:
-The domain-neutral part of Ridgeline: the viewport, features, styling, selection, events and camera. It has no knowledge of entities, models, sensors or military symbols.
+The domain-neutral part of Ridgeline: the viewport, features, styling, selection, events and camera. Entities, models, sensors and military symbols belong to packs, not the core.
 
 **Pack**:
 An optional add-on, tactical or not. First-party and third-party packs have the same access.
