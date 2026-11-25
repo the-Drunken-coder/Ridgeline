@@ -1,6 +1,6 @@
 # Ridgeline
 
-A framework-neutral TypeScript map viewport with optional selection, drawing and map controls. Consumers supply the current display state and own their data and application workflows. MapLibre GL JS renders the map; Mapterhorn supplies the default elevation data.
+A tactical mapping toolkit for TypeScript, built on MapLibre GL JS. It has a low barrier to entry: a working viewport takes [a few lines](#first-viewport-in-vite). Add optional capabilities such as drawing and entities with sensor cameras, and customize as far as you need. Ridgeline displays geospatial information and lets users interact with it; your application owns the data and decides what happens. Mapterhorn supplies the default elevation data.
 
 ## Standout features
 
@@ -19,16 +19,18 @@ A framework-neutral TypeScript map viewport with optional selection, drawing and
 
 ## Core design decisions
 
-Ridgeline is built for anyone who needs an easy-to-use, reusable map viewport. Core design decisions must serve consuming applications generally.
+Ridgeline is for developers building operator, command-and-control, public-safety, search-and-rescue and drone-operations applications. [ADR-0004](docs/adr/0004-tactical-mapping-toolkit.md) records this direction. These bullets describe the target shape; the code is still moving to it (see the note below).
 
-- The playground is one consumer. Its job is to host the map, let people explore it, and exercise the same public API available to everyone.
-- The library must work without the playground's code, sidebar, sample data, scenario names, state, or workflows. Dependencies flow from the playground to the library.
-- Consumers choose their data, surrounding UI, styling, and application behavior. A playground request belongs in the library only when it solves a reusable mapping need; demonstration controls and scenario logic stay in the playground.
-- Keep integration simple through sensible defaults, a small documented API, and optional interaction tools. General usefulness does not require a speculative plugin framework or universal rendering-engine abstraction.
+- **Display and interact, never decide.** Ridgeline shows located things in 3D space over terrain and turns user gestures into outputs. A gesture such as "send this asset there" is meant to produce an action request; your application decides and acts. A pack draws the draft the user is editing; your application draws what it plans to do.
+- **Domain-neutral core.** Viewport, features, styling, selection, events and camera. The core knows nothing about entities, models, sensors or military symbols.
+- **Optional capabilities ship as packs.** Drawing, interactions, controls and entities become optional packs, tactical or not, imported from their own subpaths. Each uses only public interfaces (the extension API and MapLibre access), so you can build your own packs the same way. Direct MapLibre access remains available for advanced rendering ([ADR-0002](docs/adr/0002-maplibre-extension-access.md)). New first-party packs are built for real demand.
+- **Configure, then compose.** Adjust a pack through its options, or combine core building blocks with pack outputs. Copying a pack's source is a last resort, not a supported path.
+- **Applications own data and time.** Authentication, networking, persistence, business workflows, the clock, source history, retention and replay controls stay in your application. Packs may interpolate the samples you supply for display, draw track trails and follow entities with the camera, keeping only the recent display positions they need.
+- **Simple to adopt before small.** Sizes of the core and each pack will be reported, not capped.
 
-Review each core change against this question: can another application use it without adopting the playground's structure or assumptions? Verify package usability in a separate consuming application, as well as in the playground.
+The playground and Atlas are ordinary consumers: the library must work without their code, sample data or workflows, and the playground and control lab do not establish an operational Atlas operator interface. Verify package usability in a separate consuming application as well as the playground.
 
-For an Atlas operator application, keep sensor-feed panels, Track inspectors, task controls, authentication and persistence in that consumer. [Atlas Protocol](https://github.com/atlas-field-systems/atlas-core#three-layers-one-contract) owns the shared vocabulary, schemas, message contracts and observable rules. Atlas Core implements the server that enforces them. Ridgeline receives the consumer's current display features. The map playground and control lab do not establish a completed or operational Atlas operator interface. [ADR-0001](docs/adr/0001-consumer-owned-workflows.md) defines this boundary.
+The code is still moving to this shape. Entities already load from `@ridgeline/map/entities`, but drawing, interactions and controls still ship from the main entry, most packs still use private viewport internals, and core types and main-entry exports still include entity, model and drawing members. There is no public extension API, action request, or interpolation, trail or follow-camera pack yet. `pnpm measure` reports only the main entry, its CSS and the playground, and CI does not run it.
 
 ## Run locally
 
