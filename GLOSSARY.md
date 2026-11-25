@@ -8,15 +8,15 @@ Ridgeline is a tactical mapping toolkit: a domain-neutral core plus optional pac
 The domain-neutral part of Ridgeline: the viewport, features, styling, selection, events and camera. It has no knowledge of entities, models, sensors or military symbols.
 
 **Pack**:
-An optional add-on, tactical or not, built only on the extension API. First-party and third-party packs have the same access.
-_Avoid_: Plugin, module, attachment
+An optional add-on, tactical or not, built only on public interfaces, never on private internals. First-party and third-party packs have the same access.
+_Avoid_: Plugin, module
 
 **Extension API**:
-The public seam through which packs work with the core, covering what only Ridgeline knows, such as features, selection, picking, view changes and lifecycle. It is distinct from direct MapLibre access.
-_Avoid_: Internals, attachment internals
+The public interface packs use to work with the core. It is distinct from direct access to the underlying map renderer.
+_Avoid_: Internals
 
 **Action request**:
-An output describing what the user asked to happen to features, such as moving an asset to a chosen point. The consumer decides whether and how to act, and draws any preview of the result.
+An output describing what the user asked to happen to features, such as moving an asset to a chosen point. The consumer decides whether and how to act, and draws any preview of what it plans to do.
 _Avoid_: Command, task, order
 
 **Viewport**:
